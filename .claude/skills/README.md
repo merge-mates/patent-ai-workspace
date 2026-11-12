@@ -8,7 +8,7 @@
 
 | 스킬 | 언제 | 부르는 에이전트 | 결과 |
 |---|---|---|---|
-| `/interview <기능>` | 기획안·requirements 쓰기 전, 모호할 때 | 없음 | 정한 것, [가정], 열린 질문 |
+| `/interview <기능>` | 기획안·requirements 쓰기 전, 모호할 때 | researcher (사실 찾기) | 질문 창(AskUserQuestion)으로 결정만 묻고, 문서 브랜치에 바로 씀 + 용어집, [가정], 열린 질문 |
 | `/doc-review <문서>` | 문서를 "다 썼다" 하기 전 | critic | 판정 + 지적 + 체크리스트 표 |
 | `/plan-feature <기능> <이터레이션>` | 이터레이션 시작 | plan-reviewer | tasks.md 이슈 계획, (원하면) 이슈 |
 | `/implement <tasks.md> <이터레이션>` | 이슈 하나 시작 | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋, 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
@@ -38,4 +38,4 @@
 - 스킬을 고치면 PR. 고친 이유를 커밋 본문에 한 줄.
 - SKILL.md는 500줄 아래 (공식 문서 권장). 긴 체크리스트는 `references/`로.
 - 내장 스킬과 이름이 겹치지 않게 한다. 예: `verify`는 내장 이름이라 `check`로 쓴다 (프로젝트에 `verify`가 있으면 Claude가 매 커밋 전에 돌리라는 지시를 받는다, 공식 문서 Skills).
-- 참고한 오픈소스 (아이디어만, 원문 복사 없음): oh-my-claudecode·gajae-code (MIT, Yeachan Heo)의 verify·deep-interview·critic·scientist·review.
+- 참고한 오픈소스 (아이디어만, 원문 복사 없음): oh-my-claudecode·gajae-code (MIT, Yeachan Heo)의 verify·deep-interview·critic·scientist·review, grill-with-docs (MIT, Matt Pocock).

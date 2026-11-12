@@ -19,4 +19,5 @@
 
 ## 결과
 이걸로 무엇이 쉬워지고 무엇이 어려워지나. 다시 볼 조건 (예: "응답이 3초를 넘으면 다시 본다").
-<!-- ADR(Architecture Decision Record). 틀: Michael Nygard, "Documenting Architecture Decisions" (2011) + MADR의 선택지 칸. 원본은 이 파일, PR 본문에는 요약과 링크 -->
+<!-- ADR은 세 조건이 다 맞을 때만 쓴다: 되돌리기 어렵다 / 이유를 모르면 이상해 보인다 / 진짜 선택지가 있었다. 하나라도 아니면 그 기능 design.md의 결정 칸에 쓴다.
+     ADR(Architecture Decision Record). 틀: Michael Nygard, "Documenting Architecture Decisions" (2011) + MADR의 선택지 칸. 원본은 이 파일, PR 본문에는 요약과 링크 -->
