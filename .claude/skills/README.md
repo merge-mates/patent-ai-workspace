@@ -11,7 +11,7 @@
 | `/interview <기능>` | 기획안·requirements 쓰기 전, 모호할 때 | researcher (사실 찾기) | 질문 창(AskUserQuestion)으로 결정만 묻고, 문서 브랜치에 바로 씀 + 용어집, [가정], 열린 질문 |
 | `/doc-review <문서>` | 문서를 "다 썼다" 하기 전 | critic | 판정 + 지적 + 체크리스트 표 |
 | `/plan-feature <기능> <이터레이션>` | 이터레이션 시작 | plan-reviewer | tasks.md 이슈 계획 (task마다 확인 방법), (원하면) 이슈 |
-| `/implement <tasks.md> <이터레이션>` | 이슈 하나 시작 | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋, 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
+| `/implement <tasks.md> <이터레이션>` | 이슈 하나 시작 | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋 (겹치지 않는 task는 워크트리에서 동시에), 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
 | `/check <이슈\|기능> …` | PR 전(이슈), 기능 끝(기능) | verifier → code-reviewer | 증거 + 문서 대조 표 |
 | `/experiment <실험>` | AI 점수 낼 때 (이슈 끝, 마일스톤 끝) | experiment-analyst | scores.json, card.md, index.md |
 | `/pr-draft` | PR 열기 전 | 없음 | work/pr-draft.md, 사람 OK 뒤 push·PR |
@@ -24,7 +24,7 @@
   └ 기능마다 requirements ─/doc-review→ design ─/doc-review→ (승인)
   마일스톤(M1=MVP, M2 …) 안에서
        └ 이터레이션(하루~이틀)마다 /plan-feature → tasks.md 이슈 계획 → 이슈 하나
-            └ /implement (task마다 구현·리뷰·고침·테스트·커밋) → /check 이슈
+            └ /implement (task마다 구현·리뷰·고침·테스트·커밋, 겹치지 않는 task는 동시에) → /check 이슈
               → (AI 동작을 바꿨으면) /experiment, tune 세트
               → /pr-draft → (사람 OK) Claude가 push·PR → 상대 /pr-review → (사람) 머지
        └ 기능이 끝나면 /check 기능

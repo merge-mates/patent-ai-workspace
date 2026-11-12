@@ -13,14 +13,18 @@ disable-model-invocation: true
 3. 그 이슈 계획 머리의 `상태:` 줄이 `승인`인지 본다 (`/plan-feature`가 계획마다 적는 줄). 아니면 멈춘다.
 4. 계획의 task 목록과 진행 칸을 읽는다. 세 번째 인자가 있으면 그 task부터.
 
-## task마다 반복 (task 하나씩, 다음 task는 앞 task가 커밋된 뒤)
-1. task 시작 커밋을 적어 둔다: `git rev-parse HEAD` → `<시작>`. 이 task의 변경은 `git diff <시작>..HEAD`.
-2. **implementer 에이전트**에 넘긴다: 그 task 항목만, 그 기능 requirements의 해당 합격 기준, 고칠 폴더.
-3. implementer 보고를 받는다. "막힘"이거나 "목적이 다른 일이라 나누자"면 진행 칸 `막힌 것`에 적고 사람에게 넘긴 뒤 멈춘다.
-4. **보고를 믿지 않고 직접 확인한다**: 보고가 비었거나 칸이 빠졌으면 `git log`, `git show --stat`, 테스트를 직접 돌려 본다.
-5. **code-reviewer 에이전트**(task 모드)에 넘긴다: task 항목, 합격 기준, `git diff <시작>..HEAD`. implementer 보고는 넘기지 않는다.
-6. 막음이 있으면 implementer에게 지적만 넘겨 고치게 하고, 테스트를 다시 돌리고, code-reviewer가 **바뀐 부분만** 다시 본다. 최대 2회. 그래도 막음이 남으면 멈추고 사람에게.
-7. 그 폴더 전체 테스트가 통과하는지 다시 본다 (코드 커밋은 implementer가 이미 했다). 진행 칸에서 task를 `[x]`로, `다음`을 고쳐 따로 커밋한다: `docs(docs): <기능> $1 task N 진행`. squash 머지라 main에는 하나로 합쳐진다.
+## task 반복 (겹치지 않는 task는 동시에, 한 묶음씩)
+1. **묶음 고르기**: 먼저 끝나야 할 task가 다 끝났고 고칠 파일이 서로 겹치지 않는 task들을 한 묶음으로 잡아 동시에 한다. 겹치는지 애매하면 순서대로 한다 (묶음 하나에 task 하나).
+2. **구현**: implementer 에이전트에 넘긴다. 넘길 것은 그 task 항목만, 그 기능 requirements의 해당 합격 기준, 고칠 폴더.
+   - task 하나: `git rev-parse HEAD` → `<시작>`을 적어 두고 implementer를 이 폴더에서 부른다. 이 task의 변경은 `git diff <시작>..HEAD`.
+   - 동시 묶음: Agent 도구의 `isolation: "worktree"`로 task마다 implementer를 각자 워크트리에서 한꺼번에 부른다. 같은 폴더에서 동시에 고치면 덮어쓴다.
+3. **가져오기** (동시 묶음만): 모두 끝나면 계획 순서대로 task마다 `git rev-parse HEAD` → `<시작>`을 적고, 그 워크트리의 커밋을 이 브랜치로 `git cherry-pick` 한다. 충돌이 나면 겹친 것이니 멈추고 사람에게 넘긴다. 다 가져온 뒤 그 폴더 전체 테스트를 돌린다.
+4. implementer 보고를 받는다. "막힘"이거나 "목적이 다른 일이라 나누자"면 진행 칸 `막힌 것`에 적고 사람에게 넘긴 뒤 멈춘다.
+5. **보고를 믿지 않고 직접 확인한다**: 보고가 비었거나 칸이 빠졌으면 `git log`, `git show --stat`, 테스트를 직접 돌려 본다.
+6. task마다 **code-reviewer 에이전트**(task 모드)에 넘긴다: task 항목, 합격 기준, `git diff <시작>..HEAD`. implementer 보고는 넘기지 않는다.
+7. 막음이 있으면 implementer에게 지적만 넘겨 고치게 하고 (이 폴더에서), 테스트를 다시 돌리고, code-reviewer가 **바뀐 부분만** 다시 본다. 최대 2회. 그래도 막음이 남으면 멈추고 사람에게.
+8. 그 폴더 전체 테스트가 통과하는지 다시 본다 (코드 커밋은 implementer가 이미 했다). 진행 칸에서 task를 `[x]`로, `다음`을 고쳐 따로 커밋한다: `docs(docs): <기능> $1 task N 진행`. squash 머지라 main에는 하나로 합쳐진다.
+9. 안 끝난 task가 남았으면 1로 돌아간다.
 
 ## 이슈가 끝나면
 1. `/check 이슈 $0 $1`로 **문서 대조 점검**과 이슈 전체 리뷰를 한다.
