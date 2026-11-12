@@ -1,0 +1,10 @@
+# Python 린트·포맷 (ruff, 오픈소스). 사람과 Claude가 같은 규칙을 쓰게 저장소에 둔다.
+# 프론트 언어가 정해지면 그 언어 린터 설정(ESLint+Prettier 또는 Biome)을 더한다.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]   # 기본 오류, import 정렬, 흔한 버그, 새 문법
+
+[format]
+quote-style = "double"
