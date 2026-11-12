@@ -4,13 +4,13 @@
 - **사람이 시작하는 스킬** (`disable-model-invocation: true`): interview, doc-review, plan-feature, implement, pr-review, daily. 말로는 안 불리고 `/이름`으로 직접 친다.
 - **이어서 불리는 스킬** (자동 호출 허용): check, pr-draft, experiment. 예: `/implement`가 끝나면 본문 지시대로 `/check 이슈` → `/pr-draft`를 Claude가 이어서 부른다. experiment는 돌리기 전에 비용을 말하고 사람에게 묻는다.
 - 이어지는 순서는 각 SKILL.md 본문에 적는다. 따로 오케스트레이터 파일은 없다 (`/implement`가 그 역할).
-- 용어: **이슈** = tasks.md의 이슈 계획 하나(`## m1-i3`) = 브랜치 하나 = PR 하나. **task** = 이슈 안의 반나절 단계.
+- 용어: **이슈** = tasks.md의 이슈 계획 하나(`## m1-i3`) = 브랜치 하나 = PR 하나. **task** = 이슈 안의 atomic 단위 (혼자 끝나고 혼자 검증되는 가장 작은 단위, 반나절 안쪽, 확인 방법 명령 한 줄).
 
 | 스킬 | 언제 | 부르는 에이전트 | 결과 |
 |---|---|---|---|
 | `/interview <기능>` | 기획안·requirements 쓰기 전, 모호할 때 | researcher (사실 찾기) | 질문 창(AskUserQuestion)으로 결정만 묻고, 문서 브랜치에 바로 씀 + 용어집, [가정], 열린 질문 |
 | `/doc-review <문서>` | 문서를 "다 썼다" 하기 전 | critic | 판정 + 지적 + 체크리스트 표 |
-| `/plan-feature <기능> <이터레이션>` | 이터레이션 시작 | plan-reviewer | tasks.md 이슈 계획, (원하면) 이슈 |
+| `/plan-feature <기능> <이터레이션>` | 이터레이션 시작 | plan-reviewer | tasks.md 이슈 계획 (task마다 확인 방법), (원하면) 이슈 |
 | `/implement <tasks.md> <이터레이션>` | 이슈 하나 시작 | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋, 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
 | `/check <이슈\|기능> …` | PR 전(이슈), 기능 끝(기능) | verifier → code-reviewer | 증거 + 문서 대조 표 |
 | `/experiment <실험>` | AI 점수 낼 때 (이슈 끝, 마일스톤 끝) | experiment-analyst | scores.json, card.md, index.md |
