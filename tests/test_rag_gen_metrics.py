@@ -1,3 +1,4 @@
+import pytest
 from src.rag.gen_metrics import summarize_answerable, summarize_noanswer
 
 CLEAN = {"unknown_tags": [], "articles_outside_evidence": [], "numbers_not_in_evidence": [],
@@ -58,3 +59,18 @@ def test_summarize_answerable_counts_plain_style_answers():
     polite = row("b", "answered", ["특허법#제29조"])
     polite["result"]["answer"] = "신규성이 없으면 특허를 받을 수 없습니다."
     assert summarize_answerable([plain, polite])["plain_style"] == 1
+
+
+def test_summarize_usage_gives_per_question_means_cost_and_missing_retrieval_count():
+    from src.rag.gen_metrics import summarize_usage
+    from src.retrieval import usage
+
+    full = usage.summarize([{"stage": "expand", "model": "mystery", "input_tokens": 100, "output_tokens": 10},
+                            {"stage": "generate", "model": "claude-sonnet-5-5", "input_tokens": 3000, "output_tokens": 500}])
+    gen_only = usage.summarize([{"stage": "generate", "model": "claude-sonnet-5-5", "input_tokens": 1000, "output_tokens": 100}])
+    s = summarize_usage([{"result": {"usage": full}}, {"result": {"usage": gen_only}}, {"result": {"status": "error"}}])
+    assert s["n"] == 3 and s["total"]["input_tokens"] == 4100
+    assert s["per_question"]["generate:claude-sonnet-5-5"] == {"calls": 2 / 3, "input_tokens": 4000 / 3, "output_tokens": 600 / 3}
+    assert s["questions_without_retrieval_usage"] == 2 and s["unpriced_models"] == ["mystery"]
+    assert s["cost_usd_total"] == pytest.approx(4000 / 1e6 * 2 + 600 / 1e6 * 10)
+    assert s["cost_usd_per_question"] == pytest.approx(s["cost_usd_total"] / 3)

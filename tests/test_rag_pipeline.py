@@ -94,3 +94,20 @@ def test_build_pipeline_rejects_misaligned_embedding_ids(tmp_path):
     env.write_text("OPENAI_API_KEY=x\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="순서"):
         build_pipeline(Settings(corpus=corpus, chunk_emb=emb, env_path=env))
+
+
+def test_retrieval_carries_token_usage_of_its_llm_calls():
+    from src.retrieval import usage
+
+    def expand(q):
+        usage.record("expand", "gpt-x", 100, 10)
+        return "발명"
+
+    def rerank(q, ranked):
+        usage.record("rerank", "gpt-x", 2000, 40)
+        return list(ranked), "순서 유지"
+
+    p, _ = make(expand=expand, rerank=rerank)
+    r = p.retrieve("질문입니다")
+    assert r.usage["by_stage"]["expand:gpt-x"] == {"calls": 1, "input_tokens": 100, "output_tokens": 10}
+    assert r.usage["by_stage"]["rerank:gpt-x"]["input_tokens"] == 2000 and r.usage["input_tokens"] == 2100

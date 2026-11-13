@@ -12,6 +12,7 @@ import time
 import requests
 
 from src.eval.metrics import article_of
+from src.retrieval import usage
 
 URL = "https://api.openai.com/v1/chat/completions"
 PROMPT_VERSION = "v1"
@@ -63,7 +64,9 @@ def call_llm(messages: list[dict], model: str, api_key: str, retries: int = 3, p
     for attempt in range(retries + 1):
         resp = post(URL, headers={"Authorization": f"Bearer {api_key}"}, json=body, timeout=120)
         if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            usage.record_openai_chat("rerank", model, data)
+            return data["choices"][0]["message"]["content"]
         if resp.status_code in (429, 500, 502, 503, 504) and attempt < retries:
             time.sleep(2 ** attempt)
             continue

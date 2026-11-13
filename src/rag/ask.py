@@ -15,6 +15,7 @@ from src.rag.generate import PROMPTS, generate
 from src.rag.pipeline import Pipeline, Retrieval, build_pipeline
 from src.rag.settings import Settings, load_key
 from src.rag.verify import check_answer
+from src.retrieval import usage
 
 
 def answer_question(question: str, pipeline: Pipeline, settings: Settings, anthropic_key: str,
@@ -30,7 +31,8 @@ def answer_question(question: str, pipeline: Pipeline, settings: Settings, anthr
     else:
         retrieval_seconds = 0.0
     t1 = time.perf_counter()
-    gen = generate_fn(question, retrieval.evidence, settings.generation_model, anthropic_key, settings.max_tokens)
+    with usage.capture() as recs:  # 생성 호출의 토큰 사용량
+        gen = generate_fn(question, retrieval.evidence, settings.generation_model, anthropic_key, settings.max_tokens)
     generation_seconds = time.perf_counter() - t1
 
     by_tag = {e.tag: e.article_id for e in retrieval.evidence}
@@ -53,6 +55,7 @@ def answer_question(question: str, pipeline: Pipeline, settings: Settings, anthr
         "generation": {"model": settings.generation_model, "prompt_version": settings.prompt_version,
                        "prompt_sha256": hashlib.sha256(PROMPTS[settings.prompt_version].encode("utf-8")).hexdigest()[:16],
                        "raw": gen["raw"]},
+        "usage": usage.merge(retrieval.usage, usage.summarize(recs)),  # 검색 + 생성 토큰 사용량(예전 캐시는 검색 부분이 비어 있음)
         "seconds": {"retrieval": retrieval_seconds, "generation": generation_seconds},
     }
 

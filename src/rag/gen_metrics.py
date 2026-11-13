@@ -53,3 +53,23 @@ def summarize_noanswer(rows: list[dict]) -> dict:
             "answered": sum(r["result"]["status"] == "answered" for r in rows),
             "partial": sum(r["result"]["status"] == "partial" for r in rows),
             "error": sum(r["result"]["status"] == "error" for r in rows)}
+
+
+def summarize_usage(rows: list[dict]) -> dict:
+    """질문별 결과의 토큰 사용량(result["usage"])을 합쳐 질문당 평균과 비용(가격표에 있는 모델만)을 낸다.
+    rows: [{"result": {"usage": ...}}]. 오류로 사용량이 없는 질문도 n 에는 센다(질문당 평균은 전체 질문 수로 나눔)."""
+    from src.retrieval import usage
+
+    total = {}
+    without_retrieval = 0
+    for r in rows:
+        u = r["result"].get("usage") or {}
+        total = usage.merge(total, u)
+        if not any(k.startswith("expand:") for k in u.get("by_stage", {})):
+            without_retrieval += 1
+    n = len(rows)
+    per_q = {k: {m: (s[m] / n if n else 0) for m in ("calls", "input_tokens", "output_tokens")} for k, s in total.get("by_stage", {}).items()}
+    usd, unpriced = usage.cost_of(total)
+    return {"n": n, "total": total, "per_question": per_q, "cost_usd_total": usd,
+            "cost_usd_per_question": usd / n if n else 0.0, "unpriced_models": unpriced,
+            "questions_without_retrieval_usage": without_retrieval}

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import requests
 
+from src.retrieval import usage
+
 URL = "https://api.openai.com/v1/embeddings"
 DEFAULT_MODEL = "text-embedding-3-small"
 BATCH_SIZE = 64
@@ -36,7 +38,9 @@ def embed_texts(texts: list[str], model: str, api_key: str, retries: int = 3,
             resp = post(URL, headers={"Authorization": f"Bearer {api_key}"},
                         json={"model": model, "input": batch, "encoding_format": "float"}, timeout=60)
             if resp.status_code == 200:
-                data = sorted(resp.json()["data"], key=lambda d: d["index"])
+                body = resp.json()
+                usage.record_openai_embedding(model, body)
+                data = sorted(body["data"], key=lambda d: d["index"])
                 vectors.extend(d["embedding"] for d in data)
                 break
             if resp.status_code in (429, 500, 502, 503, 504) and attempt < retries:

@@ -125,3 +125,20 @@ def test_cli_debug_flag_shows_the_full_traceback(monkeypatch):
     monkeypatch.setattr(ask_mod, "build_pipeline", boom)
     with pytest.raises(RuntimeError):
         ask_mod.main(["질문", "--debug"])
+
+
+def test_result_usage_merges_retrieval_and_generation_tokens():
+    from src.retrieval import usage
+
+    ret = make_retrieval()
+    ret.usage = usage.summarize([{"stage": "expand", "model": "gpt-x", "input_tokens": 100, "output_tokens": 10},
+                                 {"stage": "rerank", "model": "gpt-x", "input_tokens": 2000, "output_tokens": 40}])
+
+    def gen(question, evidence, model, key, max_tokens):
+        usage.record("generate", "claude-y", 900, 200)
+        return {"status": "answered", "answer": "답 [E1]", "cited": ["E1"], "raw": "RAW"}
+
+    r = answer_question("질문", FakePipeline(), Settings(), "k", retrieval=ret, generate_fn=gen)  # 캐시된 검색 결과도 검색 사용량을 가져온다
+    u = r["usage"]
+    assert u["by_stage"]["generate:claude-y"]["input_tokens"] == 900 and u["by_stage"]["expand:gpt-x"]["calls"] == 1
+    assert (u["input_tokens"], u["output_tokens"]) == (3000, 250)

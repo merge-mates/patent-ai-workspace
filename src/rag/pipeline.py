@@ -4,7 +4,7 @@
 이전에 만든 간단한 챗봇 실습 코드의 검색 부분과 같은 모양으로 새로 썼다(복사하지 않음).
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 import numpy as np
@@ -17,6 +17,7 @@ from src.retrieval.fusion import HybridRetriever
 from src.retrieval.llm_rerank import article_texts, llm_rerank
 from src.retrieval.openai_embed import embed_texts
 from src.retrieval.query_expand import expand_one, expanded_query, parse_terms
+from src.retrieval import usage
 from src.retrieval.tokenizers import kiwi_tokenizer
 
 ARTICLE_DEPTH = 20  # M4a 가 돌려주는 조문 순위 길이(평가와 같은 컷오프)
@@ -31,6 +32,7 @@ class Retrieval:
     ranked: list[str]       # 재순위된 앞 rerank_window 개 조문 id
     rerank_raw: str         # 재순위 모델 원문 응답
     evidence: list[Evidence]
+    usage: dict = field(default_factory=dict)  # 검색 단계(확장·임베딩·재순위) 토큰 사용량 요약, 예전 캐시에는 없다
 
 
 class LiveDenseRetriever:
@@ -62,13 +64,15 @@ class Pipeline:
     def retrieve(self, question: str) -> Retrieval:
         if not question.strip():
             raise ValueError("질문이 비어 있습니다.")  # 외부 호출 전에 막는다
-        raw = self._expand(question)
-        terms = parse_terms(raw)
-        query = expanded_query(question, terms)
-        ranked = [a for a, _ in self._hybrid.search(query, top_n=ARTICLE_DEPTH)]
-        reranked, rerank_raw = self._rerank(question, ranked)  # 재순위에는 원 질문(확장 전)을 쓴다
+        with usage.capture() as recs:  # 이 검색에서 일어난 확장·임베딩·재순위 호출의 토큰 사용량을 모은다
+            raw = self._expand(question)
+            terms = parse_terms(raw)
+            query = expanded_query(question, terms)
+            ranked = [a for a, _ in self._hybrid.search(query, top_n=ARTICLE_DEPTH)]
+            reranked, rerank_raw = self._rerank(question, ranked)  # 재순위에는 원 질문(확장 전)을 쓴다
         evidence = build_evidence(reranked, self._texts, self._s.n_evidence, self._s.max_evidence_chars)
-        return Retrieval(question, query, raw, terms, reranked[:self._s.rerank_window], rerank_raw, evidence)
+        return Retrieval(question, query, raw, terms, reranked[:self._s.rerank_window], rerank_raw, evidence,
+                         usage.summarize(recs))
 
 
 def build_pipeline(settings: Settings) -> Pipeline:

@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.eval.questions import corpus_gold, load_questions  # noqa: E402
 from src.rag.ask import answer_question, error_text  # noqa: E402
 from src.rag.evidence import Evidence  # noqa: E402
-from src.rag.gen_metrics import summarize_answerable, summarize_noanswer  # noqa: E402
+from src.rag.gen_metrics import summarize_answerable, summarize_noanswer, summarize_usage  # noqa: E402
 from src.rag.generate import PROMPTS, generate  # noqa: E402
 from src.rag.pipeline import Retrieval, build_pipeline  # noqa: E402
 from src.rag.settings import Settings, load_key  # noqa: E402
@@ -187,6 +187,7 @@ def main(argv=None, pipeline=None, generate_fn=None, anthropic_key=None) -> int:
         "run_at": now.isoformat(timespec="seconds"), "git": git_state(),
         "summary_answerable": summarize_answerable(answerable), "summary_noanswer": summarize_noanswer(noans),
         # 부분 답변 질문(질문 파일 note 의 "부분 답변" 표시)만 따로: 부분 답변 정책이 지켜지는지 본다
+        "summary_usage": summarize_usage(answerable + noans),
         "summary_partial_flagged": summarize_answerable([r for r in answerable if r["id"] in partial_ids]),
         "mean_seconds": {"generation": sum(gen_secs) / len(gen_secs) if gen_secs else None,
                          "retrieval": sum(ret_secs) / len(ret_secs) if ret_secs else None},
@@ -197,12 +198,17 @@ def main(argv=None, pipeline=None, generate_fn=None, anthropic_key=None) -> int:
 
     sa, sn = payload["summary_answerable"], payload["summary_noanswer"]
     pf = payload["summary_partial_flagged"]
+    us = payload["summary_usage"]
     print(f"정답 있음 n={sa['n']}: 정답 조문 인용 {sa['cited_gold']}, answered {sa['answered']}, partial {sa['partial']}, "
           f"no_basis {sa['no_basis']}, error {sa['error']}, 검증 경고 {sa['check_failures']} {sa['by_check']}, 반말체 추정 {sa['plain_style']}")
     if pf["n"]:
         print(f"부분 답변 표시 질문 n={pf['n']}: answered {pf['answered']}, partial {pf['partial']}, no_basis {pf['no_basis']}, 정답 조문 인용 {pf['cited_gold']}")
     if noans:
         print(f"정답 없음 n={sn['n']}: no_basis {sn['no_basis']}, 답을 만듦 {sn['fabricated']} {sn['fabricated_ids']}, error {sn['error']}")
+    print(f"토큰(질문당 평균, 단계:모델 → 호출 수 / 입력 / 출력): " + "; ".join(
+        f"{k} → {v['calls']:.1f} / {v['input_tokens']:.0f} / {v['output_tokens']:.0f}" for k, v in us["per_question"].items()))
+    print(f"비용 추정(질문당 ${us['cost_usd_per_question']:.4f}, 가격표에 없는 모델 제외: {us['unpriced_models'] or '없음'}), "
+          f"검색 사용량이 없는 질문(예전 캐시 등) {us['questions_without_retrieval_usage']}개")
     print(f"평균 소요(초): {payload['mean_seconds']}\n-> {out_json}\n-> {out_md}")
     return 0
 

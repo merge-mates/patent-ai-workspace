@@ -10,6 +10,8 @@ import time
 
 import requests
 
+from src.retrieval import usage
+
 URL = "https://api.openai.com/v1/chat/completions"
 PROMPT_VERSION = "v1"
 MAX_TERMS = 8
@@ -70,7 +72,9 @@ def expand_one(question: str, model: str, api_key: str, retries: int = 3, post=r
     for attempt in range(retries + 1):
         resp = post(URL, headers={"Authorization": f"Bearer {api_key}"}, json=body, timeout=60)
         if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            usage.record_openai_chat("expand", model, data)  # 토큰 사용량 기록(캡처 중일 때만)
+            return data["choices"][0]["message"]["content"]
         if resp.status_code in (429, 500, 502, 503, 504) and attempt < retries:
             time.sleep(2 ** attempt)
             continue

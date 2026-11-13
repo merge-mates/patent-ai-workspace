@@ -12,6 +12,7 @@ import time
 import requests
 
 from src.rag.evidence import Evidence
+from src.retrieval import usage
 
 URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -128,7 +129,7 @@ def parse_response(raw: str) -> dict | None:
 
 
 def call_claude(system: str, user: str, model: str, api_key: str, max_tokens: int = 2048,
-                retries: int = 3, post=requests.post) -> str:
+                retries: int = 3, post=requests.post, stage: str = "generate") -> str:
     """Claude Messages API 호출 -> 응답 글. 429/5xx 는 늘려 가며 재시도. 오류 메시지에 키를 넣지 않는다."""
     body = {"model": model, "max_tokens": max_tokens, "system": system,
             "messages": [{"role": "user", "content": user}]}
@@ -143,6 +144,7 @@ def call_claude(system: str, user: str, model: str, api_key: str, max_tokens: in
             raise RuntimeError("생성 호출 실패: 시간 초과 또는 연결 끊김으로 재시도를 모두 썼습니다") from None
         if resp.status_code == 200:
             data = resp.json()
+            usage.record_anthropic(stage, model, data)  # 토큰 사용량 기록(캡처 중일 때만, 잘린 응답도 비용은 든다)
             if data.get("stop_reason") == "max_tokens":  # 끊긴 JSON 을 파싱 실패로 숨기지 않고 원인을 그대로 알린다
                 raise RuntimeError("생성 응답이 max_tokens 에서 잘렸습니다(설정의 max_tokens 를 늘리세요)")
             # 응답에는 thinking 같은 다른 블록이 앞에 올 수 있다. text 블록만 이어 붙인다.
