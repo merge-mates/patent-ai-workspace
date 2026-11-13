@@ -1,0 +1,19 @@
+# 참고용 API 명세 (웹은 시연용이라 필수 아님). 쓰고 있으면 API를 바꿀 때 같이 고친다.
+# 쓰면 이 파일로 가짜 서버를 띄울 수 있다 (예: npx @stoplight/prism-cli mock docs/api/openapi.yaml).
+openapi: 3.1.0
+info:
+  title: PJ2 API
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: 서버가 살아 있는지
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
