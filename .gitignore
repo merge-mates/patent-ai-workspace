@@ -1,0 +1,23 @@
+# secrets
+.env
+
+# data (공개 저장소 업로드 금지)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.pkl
+*.pickle
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# os / editor
+.DS_Store
+.vscode/
+
+# subagent-driven-development scratch
+.superpowers/

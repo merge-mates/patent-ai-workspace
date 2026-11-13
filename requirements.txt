@@ -1,0 +1,6 @@
+requests
+numpy
+kiwipiepy
+rank_bm25
+python-dotenv
+pytest
