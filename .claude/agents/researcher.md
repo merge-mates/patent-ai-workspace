@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: 계획·설계 전에 기존 코드, 외부 API 문서, 라이브러리 문서를 읽고 짧게 요약한다. 파일은 고치지 않는다. 사실 확인이 필요할 때 /plan-feature, /interview, /doc-review가 부른다.
+description: 계획·설계 전에 기존 코드, 외부 API 문서, 라이브러리 문서를 읽고 짧게 요약한다. 파일은 고치지 않는다. 사실 확인이 필요할 때 /interview가 부른다.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 model: sonnet
 color: cyan
