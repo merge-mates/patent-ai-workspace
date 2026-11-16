@@ -1,7 +1,7 @@
 # 팀 규칙: Patent Professional AI Workspace
 
 ## 명령
-- 테스트·채점 명령은 프레임워크와 코드 폴더(ADR 0003)를 정한 뒤 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
+- 테스트·채점 명령은 프레임워크와 코드 폴더를 정한 뒤 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
 
 ## 폴더
@@ -57,7 +57,7 @@
 - 재리뷰는 막음이 있었을 때만, 바뀐 부분만, 최대 2회.
 
 ## 하위 규칙
-- 코드 폴더별 `CLAUDE.md`는 폴더를 만들 때(ADR 0003 뒤) 둔다. 웹(화면·서버)은 시연용이라 규칙을 가볍게 둔다. `eval/`·`experiments/` 규칙은 `.claude/rules/eval.md`(그 경로를 다룰 때만).
+- 코드 폴더별 `CLAUDE.md`는 폴더를 만들 때(프레임워크를 정한 뒤) 둔다. `eval/`·`experiments/` 규칙은 `.claude/rules/eval.md`(그 경로를 다룰 때만).
 - 이 파일은 200줄 아래로 둔다 (공식 문서 권장). 한 기능에만 맞는 내용은 여기 말고 `docs/features/<기능>/design.md`에.
 - 절차는 스킬로 부른다. 목록·순서·쓰임은 [`.claude/skills/README.md`](.claude/skills/README.md).
 - 개인 규칙은 각자 `CLAUDE.local.md`(git 제외). 팀 규칙과 부딪히면 이 파일이 이긴다.

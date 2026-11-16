@@ -10,7 +10,7 @@ argument-hint: "<실험 이름 예: m1-i3-<기능>-<바꾼 것>>"
 0. **준비물 확인**: 아래 중 하나라도 없으면 돌리지 않고 멈춰서, 무엇이 없는지와 어디서 만드는지(design.md 5-1)를 말한다.
    - 평가 세트와 버전 (`eval/goldsets/<tune|report>/`, `eval/goldsets/VERSION`)
    - 지표와 문턱 (그 기능 design.md 5-1)
-   - 채점 스크립트 `eval/run_eval.py`, 목록 스크립트 `eval/make_index.py`
+   - 채점 스크립트 `eval/run_eval.py` (프레임워크를 정한 뒤 생김), 목록 스크립트 `eval/make_index.py`
    - 기준선 실험 (`card.md`의 기준선이 가리키는 `scores.json`). 첫 실험이면 이번 실험이 기준선이라고 card.md에 적는다
 1. `experiments/$ARGUMENTS/config.yaml`이 있는지. 없으면 `experiments/_template/`에서 복사한다. 종류는 둘: **설정 비교**는 `settings`의 값 하나만 기준선과 다르게, **구현 비교**는 `impl`만 다르게 하고 나머지(평가 세트·지표·데이터)는 같게.
 2. 기준선이 무엇인지 card.md에 적혀 있는지.

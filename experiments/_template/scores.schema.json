@@ -1,5 +1,5 @@
 {
-  "$comment": "eval/run_eval.py가 쓰는 scores.json 모양. 사람이 손으로 쓰지 않는다.",
+  "$comment": "eval/run_eval.py(프레임워크를 정한 뒤 생김)가 쓰는 scores.json 모양. 사람이 손으로 쓰지 않는다.",
   "type": "object",
   "required": ["experiment", "commit", "goldset", "goldset_version", "n", "metrics", "failures", "cost"],
   "properties": {
