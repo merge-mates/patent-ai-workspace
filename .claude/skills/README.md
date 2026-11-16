@@ -14,7 +14,7 @@
 | `/implement <tasks.md> <이터레이션>` | 이슈 하나 시작 | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋 (겹치지 않는 task는 워크트리에서 동시에), 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
 | `/check <이슈\|기능> …` | PR 전(이슈), 기능 끝(기능) | verifier → code-reviewer | 증거 + 문서 대조 표 |
 | `/experiment <실험>` | AI 점수 낼 때 (이슈 끝, 마일스톤 끝) | experiment-analyst | scores.json, card.md, index.md |
-| `/pr-draft` | PR 열기 전 | 없음 | work/pr-draft.md, 사람 OK 뒤 push·PR |
+| `/pr-draft` | PR 열기 전 | 없음 | work/pr-draft.md, push·PR 생성은 매번 사람 승인 (확인 창) |
 | `/pr-review <번호>` | 상대 PR 리뷰 | code-reviewer | 판정 제안 + 지적 목록 (사람 확인 뒤 제출) |
 | `/daily [change]` | 데일리 스크럼 전후 | 없음 | docs/team/daily 초안 (막힘·이유는 사람이) |
 
@@ -26,7 +26,7 @@
        └ 이터레이션(하루~이틀)마다 /plan-feature → tasks.md 이슈 계획 → 이슈 하나
             └ /implement (task마다 구현·리뷰·고침·테스트·커밋, 겹치지 않는 task는 동시에) → /check 이슈
               → (AI 동작을 바꿨으면) /experiment, tune 세트
-              → /pr-draft → (사람 OK) Claude가 push·PR → 상대 /pr-review → (사람) 머지
+              → /pr-draft → (사람 OK, 매번 확인 창) Claude가 push·PR 생성 → 상대 /pr-review → (사람) 머지
        └ 기능이 끝나면 /check 기능
   마일스톤 끝: code-reviewer 마일스톤 모드 → 다음 마일스톤 이슈
                  └ AI면 /experiment, report 세트 → card.md

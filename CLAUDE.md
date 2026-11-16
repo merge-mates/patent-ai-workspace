@@ -40,7 +40,7 @@
 - `main`에 직접 푸시하지 않는다. Claude는 `git add -f`로 gitignore된 파일을 넣지 않는다 (settings로 막힘). 브랜치: `<type>/<이슈번호>-<짧은설명>` (예: `feat/12-<기능>-baseline`). 둘이 같은 기능을 각자 구현할 때만 뒤에 사람: `feat/12-<기능>-<사람>`.
 - 커밋 제목: `<type>(<영역>): <한국어 한 줄>`. type은 `feat` `fix` `test` `refactor` `docs` `chore`, 영역은 `backend` `frontend` `ai` `eval` `docs` `infra`. 자세한 건 `.claude/rules/git.md`.
 - PR 하나 = 이슈 하나. 제목은 커밋 제목 모양 (squash 머지로 main 커밋이 된다). 본문은 `.github/pull_request_template.md` 칸을 채우고 `Closes #N`.
-- 남의 브랜치를 merge·rebase하지 않는다. 커밋은 Claude가 해도 된다. push·PR 생성은 사람이 PR 초안을 보고 OK하면 Claude가 한다 (`/pr-draft`). `main`에 직접 push하지 않는다. 머지는 사람이 한다.
+- 남의 브랜치를 merge·rebase하지 않는다. 커밋은 Claude가 해도 된다. push와 PR 생성은 매번 사람이 승인한다 (확인 창). 사람이 `/pr-draft` 초안을 보고 OK하면 Claude가 한다. `main`에 직접 push하지 않는다. 머지는 사람이 한다.
 
 ## 코드 규칙 (공통)
 - 스타일은 린터(위 명령)가 본다. 리뷰에서 스타일을 지적하지 않는다.
