@@ -22,7 +22,7 @@
 ```
 기획안 ─/interview─/doc-review→ docs/product.md (둘 다 승인)
   └ 기능마다 requirements ─/doc-review→ design ─/doc-review→ (승인)
-  마일스톤(M1=MVP, M2 …) 안에서
+  마일스톤(product.md 9절: M1 OA 정리, M2 근거와 대비, M3 대응 초안과 평가) 안에서
        └ 이터레이션(하루~이틀)마다 /plan-feature → tasks.md 이슈 계획 → 이슈 하나
             └ /implement (task마다 구현·리뷰·고침·테스트·커밋, 겹치지 않는 task는 동시에) → /check 이슈
               → (AI 동작을 바꿨으면) /experiment, tune 세트
