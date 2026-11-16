@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(gh issue view *)",
+      "Bash(gh pr view *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr create *)"
+    ],
+    "deny": [
+      "Bash(git push origin main*)",
+      "Bash(git push * main)",
+      "Bash(git push * main:*)",
+      "Bash(git push * HEAD:main*)",
+      "Bash(git add -f *)",
+      "Bash(git add --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh repo delete *)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(/eval/goldsets/report/**)",
+      "Edit(/data/raw/**)",
+      "Write(/data/raw/**)"
+    ]
+  },
+  "worktree": {
+    "symlinkDirectories": [
+      "data"
+    ]
+  }
+}

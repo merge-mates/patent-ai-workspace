@@ -1,0 +1,4 @@
+# 워크트리를 만들 때 git 제외 파일 중 따라가야 하는 것 (작은 파일만. 큰 폴더는 settings.json의 worktree.symlinkDirectories)
+.env
+CLAUDE.local.md
+.claude/settings.local.json

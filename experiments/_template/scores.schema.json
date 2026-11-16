@@ -1,0 +1,24 @@
+{
+  "$comment": "eval/run_eval.py(프레임워크를 정한 뒤 생김)가 쓰는 scores.json 모양. 사람이 손으로 쓰지 않는다.",
+  "type": "object",
+  "required": ["experiment", "commit", "goldset", "goldset_version", "n", "metrics", "failures", "cost"],
+  "properties": {
+    "experiment": {"type": "string"},
+    "commit": {"type": "string"},
+    "goldset": {"type": "string"},
+    "goldset_version": {"type": "integer"},
+    "n": {"type": "integer", "description": "채점한 문항 수. 0이면 경고"},
+    "metrics": {"type": "object", "additionalProperties": {"type": "number"}},
+    "failures": {"type": "object", "additionalProperties": {"type": "integer"}, "description": "실패 유형별 개수"},
+    "cost": {
+      "type": "object",
+      "properties": {
+        "usd": {"type": "number"},
+        "input_tokens": {"type": "integer"},
+        "output_tokens": {"type": "integer"},
+        "external_calls": {"type": "integer"},
+        "seconds": {"type": "number"}
+      }
+    }
+  }
+}
