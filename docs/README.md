@@ -4,7 +4,7 @@
 <!-- 프로젝트 전체 위치만 3줄. 기능 진행은 각 features/<기능>/tasks.md에. 결정이 나는 PR에서만 고친다. -->
 - 단계: 기획 완료, M1~M3(3주) 준비. 기능 폴더 만들기 전 (2026-11-17)
 - 기준 기획: [product/service_plan_v3.1.md](product/service_plan_v3.1.md). 3주 PRD: [product.md](product.md)
-- 다음 결정: 프레임워크·기술 구조 (DB는 Postgres로 정함, ADR 0003 예정). 지원 거절이유는 진보성·명확성·신규성 (11/17 신규성 추가, [product.md](product.md) 3.2절). 대응 방향은 순위·이유·확신도까지 제시하기로 보완 ([ADR 0001](decisions/0001-ai-amended-claim-draft.md))
+- 다음 결정: 전체 설계·데이터 모델·API 명세 (기술 구조는 [ADR 0003](decisions/0003-tech-stack.md)로 정함). 지원 거절이유는 진보성·명확성·신규성 (11/17 신규성 추가, [product.md](product.md) 3.2절). 대응 방향은 순위·이유·확신도까지 제시하기로 보완 ([ADR 0001](decisions/0001-ai-amended-claim-draft.md))
 
 처음 온 사람(또는 새 Claude 세션)은 이 순서로 읽는다: 이 파일 → `product.md` → `architecture.md` → 맡은 기능의 `features/<기능>/requirements.md`.
 
@@ -41,3 +41,4 @@
 |---|---|---|---|
 | [0001](decisions/0001-ai-amended-claim-draft.md) | AI 대응 방향 제안·검토용 보정 청구항 초안 | 확정 (11/13 B안, 11/16 순위·이유·확신도 보완, 11/17 단위·기본 선택·확신도 3단계 보완) | 11/13 |
 | [0002](decisions/0002-first-build-scope.md) | 3주 첫 구현 범위 | 확정 | 11/13 |
+| [0003](decisions/0003-tech-stack.md) | 기술 구조 (앱·AI 코어·DB·에이전트·모델) | 확정 | 11/17 |
