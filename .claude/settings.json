@@ -5,7 +5,8 @@
       "Bash(uv run pytest *)",
       "Bash(uv run ruff *)",
       "Bash(gh issue view *)",
-      "Bash(gh pr view *)"
+      "Bash(gh pr view *)",
+      "Bash(.claude/scripts/board-status.sh *)"
     ],
     "ask": [
       "Bash(git push *)",
@@ -32,6 +33,20 @@
   "worktree": {
     "symlinkDirectories": [
       "data"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/board-sync.sh",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }
