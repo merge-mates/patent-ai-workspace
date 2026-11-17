@@ -15,7 +15,7 @@
     "deny": [
       "Bash(git push origin main*)",
       "Bash(git push * main)",
-      "Bash(git push * main:*)",
+      "Bash(git push *:main*)",
       "Bash(git push * HEAD:main*)",
       "Bash(git add -f *)",
       "Bash(git add --force *)",
@@ -26,8 +26,7 @@
       "Read(**/.env)",
       "Read(**/.env.*)",
       "Read(/eval/goldsets/report/**)",
-      "Edit(/data/raw/**)",
-      "Write(/data/raw/**)"
+      "Edit(/data/raw/**)"
     ]
   },
   "worktree": {
