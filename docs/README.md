@@ -14,6 +14,7 @@
 | `product.md` | 3주 PRD (만들 기능·합격 기준·평가·마일스톤) + 기준 기획서 판(`기준:` 한 줄) | |
 | `product/` | 기획에 쓰는 것 전부: 기획서 판(`service_plan_v<판>.md`)과 그 바탕이 되는 도메인 지식 `product/domain/` (주제마다 한 파일, 목차 `domain/README.md`, 출처·확인일·한계). 용어 표는 `product/domain/용어집.md`. 새 판은 새 파일로, 옛 판은 지우지 않는다 | 확정된 요약 (→ `product.md`), 법률 자문 |
 | `architecture.md`, `api/` | 전체 설계, API 명세 | 기능 하나의 세부 (→ features) |
+| `data-model.md` | 엔티티·관계, 공통 속성, 결과 스키마, DB 모델 | 기능 하나의 세부 (→ features) |
 | `decisions/NNNN-<제목>.md` | ADR: 세 조건이 다 맞는 결정만 (되돌리기 어렵다 / 이유를 모르면 이상해 보인다 / 진짜 선택지가 있었다). 제안(비교 중) → 확정 → 대체됨 | 하나라도 아닌 선택 (→ 그 기능 design.md 결정 칸) |
 | `features/<기능>/` | `requirements.md`(무엇) → `design.md`(어떻게) → `tasks.md`(구현 계획 + 진행) | 코드 (→ 코드 폴더) |
 | `data/<출처>.md` | 데이터 카드: 출처·이용 조건, 필드, 품질 숫자, 가공 단계 (`data/_template.md`) | 원문, 개인정보 |
