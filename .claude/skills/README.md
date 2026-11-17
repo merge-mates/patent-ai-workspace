@@ -11,6 +11,7 @@
 | `/interview <기능>` | 기획안·requirements 쓰기 전, 모호할 때 | researcher (사실 찾기) | 질문 창(AskUserQuestion)으로 결정만 묻고, 문서 브랜치에 바로 씀 + 용어집, [가정], 열린 질문 |
 | `/doc-review <문서>` | 문서를 "다 썼다" 하기 전 | critic | 판정 + 지적 + 체크리스트 표 |
 | `/plan-feature <기능> <이터레이션>` | 이터레이션 시작 | plan-reviewer | tasks.md 이슈 계획 (task마다 확인 방법), (원하면) 이슈 |
+| `/start <이슈번호>` | 이슈 하나 시작 (구현·문서 모두) | 없음 | 최신 main에서 `<type>/<번호>-<설명>` 브랜치, 보드 카드 In Progress |
 | `/implement <tasks.md> <이터레이션>` | 이슈 하나 시작 | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋 (겹치지 않는 task는 워크트리에서 동시에), 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
 | `/check <이슈\|기능> …` | PR 전(이슈), 기능 끝(기능) | verifier → code-reviewer | 증거 + 문서 대조 표 |
 | `/experiment <실험>` | AI 점수 낼 때 (이슈 끝, 마일스톤 끝) | experiment-analyst | scores.json, card.md, index.md |
@@ -23,13 +24,26 @@
   └ 기능마다 requirements ─/doc-review→ design ─/doc-review→ (승인)
   마일스톤(product.md 9절: M1 OA 정리, M2 근거와 대비, M3 대응 초안과 평가) 안에서
        └ 이터레이션(하루~이틀)마다 /plan-feature → tasks.md 이슈 계획 → 이슈 하나
-            └ /implement (task마다 구현·리뷰·고침·테스트·커밋, 겹치지 않는 task는 동시에) → /check 이슈
+            └ /start 이슈번호 → /implement (task마다 구현·리뷰·고침·테스트·커밋, 겹치지 않는 task는 동시에) → /check 이슈
               → (AI 동작을 바꿨으면) /experiment, tune 세트
               → /pr-draft → (사람 OK, 매번 확인 창) Claude가 push·PR 생성 → 상대 /pr-review → (사람) 머지
        └ 기능이 끝나면 /check 기능
   마일스톤 끝: code-reviewer 마일스톤 모드 → 다음 마일스톤 이슈
                  └ AI면 /experiment, report 세트 → card.md
 ```
+
+## 진행 보드 (저장소 Projects 탭)
+카드는 손으로 옮기지 않는다. 칸 옮기기는 이렇게 저절로 된다.
+| 언제 | 칸 | 누가 |
+|---|---|---|
+| 이슈를 만들면 | Todo | GitHub 보드 규칙 (열린 이슈 자동 추가) |
+| `/start`로 브랜치를 만들면 (`git switch -c <type>/<번호>-…`) | In Progress | 훅 `.claude/hooks/board-sync.sh` |
+| `/pr-draft` 뒤 PR을 만들면 (`gh pr create`) | In Review | 같은 훅 (브랜치 이름의 번호) |
+| PR이 머지되면 (본문 `Closes #N`) | Done | GitHub 보드 규칙 (이슈 닫힘) |
+
+- 보드 번호, Status 필드·옵션 id는 어디에도 적지 않는다. `.claude/scripts/board-status.sh <이슈번호> "<칸>"`이 매번 gh로 찾는다. 손으로 옮길 일이 있으면 이 스크립트를 쓴다.
+- 사람마다 한 번 `gh auth refresh -s project` (보드 권한). 없으면 훅이 이유를 알려 준다.
+- 칸 이름(Todo / In Progress / In Review / Done)을 바꾸면 훅·스킬의 칸 이름도 같이 바꾼다.
 
 ## 고치는 법
 - 같은 지시를 **두 번** 손으로 하면 `docs/team/rules-candidates.md`에 올리고 스킬 후보로 본다. 한 번도 안 쓴 스킬은 마일스톤 회고에서 빼거나 고친다.

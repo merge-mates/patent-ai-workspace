@@ -2,7 +2,7 @@
 
 ## 처음 한 번 (클론한 날)
 1. `git clone <레포 주소>` → `cd <폴더>` → `claude` 실행. "이 폴더를 신뢰" 질문에 허락한다 (그래야 팀 설정·스킬이 켜진다).
-2. `gh auth status`로 GitHub 로그인 확인, `git config user.email`이 GitHub 계정 이메일과 같은지 확인.
+2. `gh auth status`로 GitHub 로그인 확인 (진행 보드 권한이 없으면 `gh auth refresh -s project` 한 번), `git config user.email`이 GitHub 계정 이메일과 같은지 확인.
 3. `.env.example`을 `.env`로 복사하고 각자 키를 넣는다 (`.env`는 git에 안 올라간다).
 
 ## 기능 하나를 만드는 순서 (자세한 표: [.claude/skills/README.md](../../.claude/skills/README.md))
