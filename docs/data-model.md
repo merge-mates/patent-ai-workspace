@@ -73,6 +73,8 @@ erDiagram
 - 한 사건분 가짜 결과 파일(`tests/fixtures/`)은 결과 스키마 코드와 같이 만든다 (#14).
 
 ## 5. DB 모델 (저장)
+여기 적은 테이블 이름과 컬럼은 v0 방향이다. 컬럼 타입·제약·인덱스·마이그레이션은 서버 이슈(#55)에서 서버 코드로 정하고, 그때 이 절을 맞춘다.
+
 - 엔티티 표: `users`(기본 한 명) · `cases`(`user_id`) · `case_events` · `documents`(경로·해시·출처·받은 시각) · `claim_versions` · `claims` · `oas` · `rejections` · `cited_references` · N:M `rejection_claims`, `rejection_citations`(심사관 지정 위치).
 - 결과 표: 결과 스키마마다 표 하나. 본문은 `jsonb`, `status`·`origin`·`run_id`·`oa_id`는 보통 컬럼. M1은 `oa_results`. 스키마 검증은 Pydantic이 한다.
 - 실행 기록: `runs`(API 실행 상태 겸) · `agent_steps`(LLM 단계와 코드 도구 단계 모두. 모델·토큰·비용·시간·만든 결과 ID).
