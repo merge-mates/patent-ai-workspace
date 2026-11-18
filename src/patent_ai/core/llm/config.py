@@ -11,7 +11,7 @@ from patent_ai.core.llm.errors import ModelConfigError
 # 저장소 루트 (src/patent_ai/core/llm/config.py 기준 네 단계 위)
 logger = logging.getLogger(__name__)
 
-# 아는 설정 키 (뒤 셋은 task-3에서 쓴다). 이 밖의 키는 오타로 보고 경고한다
+# 아는 설정 키 (상한·재시도는 limits와 client가 쓴다). 이 밖의 키는 오타로 보고 경고한다
 KNOWN_KEYS = {
     "model",
     "temperature",
@@ -35,6 +35,10 @@ class StepConfig:
     prompt: str  # 저장소 루트 기준 경로 (prompts/...)
     price_per_mtok_input: float | None = None
     price_per_mtok_output: float | None = None
+    # 상한·재시도. 설정에 없으면 None (상한 없음 / 다시 안 부름)
+    max_model_calls: int | None = None
+    max_input_tokens: int | None = None
+    max_retries: int | None = None
 
 
 def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
@@ -75,6 +79,14 @@ def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
     else:
         price_in = price_out = None
         logger.warning("%s: price(가격) 설정이 없어 비용을 계산하지 않음", step)
+    limits = {}
+    for key in ("max_model_calls", "max_input_tokens", "max_retries"):
+        if section.get(key) is None:
+            limits[key] = None
+            continue
+        limits[key] = number(key, int)
+        if limits[key] < 0:
+            raise ModelConfigError(f"{step}의 {key}는 0 이상이어야 함: {limits[key]}")
     return StepConfig(
         model=section["model"],
         temperature=number("temperature", float),
@@ -82,4 +94,5 @@ def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
         prompt=section["prompt"],
         price_per_mtok_input=price_in,
         price_per_mtok_output=price_out,
+        **limits,
     )

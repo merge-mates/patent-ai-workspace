@@ -11,6 +11,14 @@ class TransportResponse:
     output_tokens: int
 
 
+class TransportError(Exception):
+    """전송 오류(429·연결 오류 등). retryable=True면 다시 불러 볼 만한 오류."""
+
+    def __init__(self, message: str, retryable: bool) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
 class Transport(Protocol):
     def complete(
         self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
@@ -34,12 +42,21 @@ class AnthropicTransport:
     def complete(
         self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
     ) -> TransportResponse:
-        message = self._client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        import anthropic
+
+        # SDK 예외를 TransportError로 바꿔 던진다 (429·5xx·연결 오류만 다시 부를 만함)
+        try:
+            message = self._client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except anthropic.APIStatusError as e:
+            retryable = e.status_code == 429 or e.status_code >= 500
+            raise TransportError(f"{e.status_code} {e.message}", retryable) from e
+        except anthropic.APIConnectionError as e:
+            raise TransportError(f"연결 오류: {e}", True) from e
         return parse_anthropic_message(message)
 
 
