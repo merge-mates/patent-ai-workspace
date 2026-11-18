@@ -221,6 +221,11 @@ def test_KR_US는_supported_true_그_밖은_false():
     assert cit("US").country_supported is True
 
 
+def test_나라_value가_null인데_country_status가_confirmed면_거부():
+    with pytest.raises(ValidationError):
+        cit(None, supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW])
+
+
 # ---------- 저장된 status와 모은 값의 일치 ----------
 
 

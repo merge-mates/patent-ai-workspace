@@ -189,13 +189,57 @@ def test_OAResult_안쪽_지원_안_하는_거절이유와_나라가_직접_검�
     ]
 
 
-def test_OAResult_인용문헌_나라를_못_정하면_unverified가_경로와_함께_뜸():
+def test_OAResult_인용문헌_나라를_못_정하면_원인_한_곳에만_줄이_뜸():
     unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
     c = _citation("US 2099/0000001", None, False, [Flag.NEEDS_HUMAN_REVIEW], unknown)
     items = collect_review_items([_oa([_rej("29-2", citations=[c])])], _empty_materials())
-    kinds = [(i.kind, i.target) for i in items]
-    assert ("unverified", "oa_result.rejections[0].citations[0]") in kinds
-    assert ("needs_human_review", "oa_result.rejections[0].citations[0]") in kinds
+    target = "oa_result.rejections[0].citations[0]"
+    # 위 거절이유·OAResult의 unverified는 같은 원인이라 다시 세지 않는다
+    assert items == [
+        ReviewItem(kind="unverified", target=target, label="US 2099/0000001", reason="ambiguous"),
+        ReviewItem(
+            kind="needs_human_review",
+            target=target,
+            label="US 2099/0000001",
+            reason="나라를 못 정함 (원문)",
+        ),
+    ]
+
+
+def test_거절이유_자기_칸이_원인이면_그_거절이유_줄_하나와_OAResult_줄은_안_셈():
+    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+    rej = build_rejection(
+        document_id="d_1",
+        article=_ev("29-2", status=bad),
+        supported=True,
+        claims=_ev([1]),
+        citations=[],
+        examiner_reasoning=_ev("요지"),
+    )
+    items = collect_review_items([_oa([rej])], _empty_materials())
+    assert items == [
+        ReviewItem(
+            kind="unverified", target="oa_result.rejections[0]", label="29-2", reason="ambiguous"
+        )
+    ]
+
+
+def test_OAResult_자기_칸이_원인이면_OAResult_줄_하나():
+    oa = _oa([_rej("29-2")])
+    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    fields = {k: getattr(oa, k) for k in ("oa_id", "notice_date", "response_due", "notice_kind")}
+    oa2 = build_oa_result(
+        document_id="d_1",
+        **{**fields, "notice_kind": oa.notice_kind},
+        application_number=_ev("10-2099-0000001", status=bad),
+        dispatch_number=oa.dispatch_number,
+        examiner_hints=oa.examiner_hints,
+        rejections=oa.rejections,
+    )
+    items = collect_review_items([oa2], _empty_materials())
+    assert items == [
+        ReviewItem(kind="unverified", target="oa_result", label="oa_1", reason="not_extracted")
+    ]
 
 
 def test_OAResult가_멀쩡하면_검토할_사항_없음():
