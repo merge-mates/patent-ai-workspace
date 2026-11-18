@@ -13,8 +13,10 @@ from pathlib import Path
 from patent_ai.core.f1_oa_reader.read_oa import read_oa
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
+from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import PageText
+from patent_ai.core.schemas.propagation import collect_review_items
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "f1"
 STEP = "f1.read_oa"
@@ -280,13 +282,81 @@ def test_같은_청구항_거절이유_줄이_겹치면_앞의_것만_남긴다(
 
 
 # ---- 줄이 없는 경우 ----
-def test_모델이_줄을_안_주면_빈_목록이고_경고(caplog):
+def test_모델이_줄을_안_주면_대상_청구항마다_빈_줄이고_결과가_확인되지_않음(caplog):
     answer = _answer()
     answer["claim_rows"] = []
     with caplog.at_level(logging.WARNING):
         result = _read(answer)
-    assert result.claim_rows == []
     assert "claim_rows" in caplog.text
+    keys = sorted((r.claim, r.rejection) for r in result.claim_rows)
+    assert keys == sorted([(1, 1), *[(c, 2) for c in range(1, 14)], (6, 3), (7, 3)])
+    assert all(r.status.value == StatusValue.UNVERIFIED for r in result.claim_rows)
+    assert result.status.value == StatusValue.UNVERIFIED
+    items = collect_review_items([result], CaseMaterials(case_id="c_1"))
+    targets = [i.target for i in items if "claim_rows" in i.target]
+    assert len(targets) == 16 and "oa_result[0].claim_rows[0]" in targets
+
+
+def test_줄이_빠진_청구항은_그_줄만_빈_확인되지_않음_줄():
+    answer = _answer()
+    answer["claim_rows"] = [
+        r for r in answer["claim_rows"] if not (r["claims"]["raw_text"] == "제2항")
+    ]
+    result = _read(answer)
+    _assert_dropped(_row(result, 2, 2))
+    assert _row(result, 3, 2).status.value == StatusValue.CONFIRMED
+    assert result.status.value == StatusValue.UNVERIFIED
+    assert all(r.rejection != 4 for r in result.claim_rows)  # 지원 안 하는 이유는 채우지 않음
+
+
+def test_대상_청구항을_모르는_거절이유는_빈_줄을_채우지_않는다():
+    answer = _answer()
+    answer["rejections"][1]["claims"]["raw_text"] = "제1항 내지 제A항"  # 청구항을 못 읽음
+    answer["claim_rows"] = [r for r in answer["claim_rows"] if r["rejection"] != 2]
+    result = _read(answer)
+    assert all(r.rejection != 2 for r in result.claim_rows)
+    assert result.status.value == StatusValue.UNVERIFIED  # 거절이유 status가 이미 확인되지 않음
+
+
+# ---- 줄이 엇붙으면 확인되지 않음 (리뷰) ----
+def test_거절이유에_없는_인용_라벨은_그_줄이_확인되지_않음():
+    answer = _answer()
+    answer["claim_rows"][0]["citations"][0]["label"] = "D2"  # 거절이유 1의 인용은 D1뿐
+    _assert_dropped(_row(_read(answer), 1, 1))
+
+
+def test_판단_원문에_그_인용_표기가_없으면_확인되지_않음():
+    answer = _answer()
+    answer["claim_rows"][3]["citations"] = [  # 제1항과 동일한 취지 문장엔 인용발명이 없다
+        {"label": "D1", "number": None, "location": None, "no_location": None}
+    ]
+    _assert_dropped(_row(_read(answer), 3, 2))
+
+
+def test_청구항_번호_원문이_판단_원문_안에_없으면_그_줄이_확인되지_않음():
+    answer = _answer()
+    answer["claim_rows"][2]["claims"]["raw_text"] = "제3항"  # 판단은 제2항 이야기
+    result = _read(answer)
+    assert _row(result, 3, 2).same_as == ["claim:1"]  # 3항 줄은 그대로 (덮어쓰지 않음)
+    _assert_dropped(_row(result, 2, 2))  # 2항은 빈 줄로 채워짐
+    assert [r for r in result.claim_rows if r.claim is None]  # 엇붙은 줄은 번호 없이 남김
+
+
+def test_판단_원문_머리_번호와_거절이유_순번이_다르면_확인되지_않음():
+    answer = _with_row(12, rejection=2)  # 7항 명확성 줄(3-2.)을 거절이유 2로 붙임
+    result = _read(answer)
+    _assert_dropped(_row(result, 7, 3))  # 빈 줄로 채워짐
+    assert _row(result, 7, 2).locations == {"D1": ["[0069]"]}  # 5-7항 줄 값 그대로
+    assert result.status.value == StatusValue.UNVERIFIED
+
+
+def test_명확성_이유는_AI가_쓴_글로_구분한다():
+    result = _read()
+    quoted = _row(result, 6, 3)
+    assert quoted.clarity_reason == "앞에 정의 없음"
+    assert quoted.clarity_reason_origin == "ai_generated"
+    assert _row(result, 7, 3).clarity_reason_origin is None
+    assert _row(result, 1, 1).clarity_reason_origin is None
 
 
 def test_claim_rows_칸이_없는_모델_답도_받는다():

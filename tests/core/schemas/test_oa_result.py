@@ -588,6 +588,7 @@ def test_청구항_줄은_정답_형식_칸을_가진다():
         "same_as",
         "clarity_terms",
         "clarity_reason",
+        "clarity_reason_origin",
         "raw_text",
         "page",
         "status",
@@ -656,7 +657,11 @@ def test_명확성이_아닌_줄에_명확성_표현이_있으면_거부():
     with pytest.raises(ValueError):
         oa(
             [rejection("29-2")],
-            claim_rows=[row_fields(clarity_terms=["약"], clarity_reason="x")],
+            claim_rows=[
+                row_fields(
+                    clarity_terms=["약"], clarity_reason="x", clarity_reason_origin="ai_generated"
+                )
+            ],
         )
 
 
@@ -692,3 +697,14 @@ def test_summarize는_claim_rows를_받아_모은다():
     ok = summarize_status(**base, claim_rows=[ClaimRow(**row_fields())])
     bad = summarize_status(**base, claim_rows=[ClaimRow(**unverified_row())])
     assert ok.value == StatusValue.CONFIRMED and bad.value == StatusValue.UNVERIFIED
+
+
+def test_명확성_이유가_있으면_AI가_쓴_글_표시가_꼭_있고_없으면_표시도_없다():
+    base = row_fields(citations=[], locations={}, clarity_reason="앞에 정의 없음")
+    with pytest.raises(ValidationError):
+        ClaimRow(**base)  # 이유는 AI가 쓴 글인데 표시 없음
+    with pytest.raises(ValidationError):
+        ClaimRow(**row_fields(clarity_reason_origin="ai_generated"))  # 이유 없는데 표시만
+    with pytest.raises(ValidationError):
+        ClaimRow(**{**base, "clarity_reason_origin": "human_edited"})
+    assert ClaimRow(**{**base, "clarity_reason_origin": "ai_generated"}).clarity_reason

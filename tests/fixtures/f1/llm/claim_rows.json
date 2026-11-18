@@ -259,14 +259,7 @@
         "ambiguous": false
       },
       "rejection": 2,
-      "citations": [
-        {
-          "label": "D1",
-          "number": null,
-          "location": null,
-          "no_location": null
-        }
-      ],
+      "citations": [],
       "same_as": [
         {
           "value": null,
@@ -392,14 +385,7 @@
         "ambiguous": false
       },
       "rejection": 2,
-      "citations": [
-        {
-          "label": "D1",
-          "number": null,
-          "location": null,
-          "no_location": null
-        }
-      ],
+      "citations": [],
       "same_as": [
         {
           "value": null,
