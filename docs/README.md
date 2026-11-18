@@ -25,6 +25,7 @@
 
 - 실험 기록은 docs 밖 루트 `experiments/` (스크립트가 읽고 쓰는 설정·점수). 점수 표는 [experiments/index.md](../experiments/index.md).
 - PR 본문은 문서의 집이 아니다. 문서는 여기에 두고 PR에서 링크한다.
+- product.md·기획서·용어집 본문엔 지금 상태만 쓴다. 바뀐 내용은 PR·커밋에 남긴다 (ADR·조사 문서는 날짜를 남긴다).
 
 ## 기능
 | 기능 | 담당 | 마일스톤 | 상태 | requirements | design | tasks |

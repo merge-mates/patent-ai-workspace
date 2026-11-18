@@ -7,8 +7,8 @@
 ## 폴더
 - 사람이 읽는 문서는 전부 `docs/`. 무엇을 어디에 둘지는 [`docs/README.md`](docs/README.md) 표를 따른다. 새 문서를 만들기 전에 그 표를 본다.
 - `experiments/<실험>/` 비교 실험 하나: `card.md`, `config.yaml`, `scores.json`. `experiments/index.md`는 스크립트가 만든다. 손으로 고치지 않는다.
-- `eval/` 채점기와 평가 세트. 앱 코드는 `eval/goldsets/`를 불러오지 않는다 (채점기만 읽는다).
-- `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `eval/goldsets/report/`는 Claude가 읽지 않는다 (채점기만 읽는다). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
+- `eval/` 채점기. 평가 세트(정답)는 git 밖 `data/goldsets/`에 둔다. 앱 코드는 `data/goldsets/`를 불러오지 않는다 (채점기만 읽는다).
+- `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 Claude가 읽지 않는다 (채점기만 읽는다). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 
 ## 진행 단위

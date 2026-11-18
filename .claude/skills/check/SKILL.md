@@ -17,7 +17,7 @@ argument-hint: "<이슈|기능> <tasks.md 또는 기능 폴더> [이터레이션
 2. 린트: `uv run ruff check`, `uv run ruff format --check`.
 3. 좁은 명령: 합격 기준마다 그 기준을 보여 주는 명령 하나 (예: API 한 번 호출, 채점 한 번).
 4. 손으로: 화면이 있으면 시연 흐름을 한 번 눌러 봤는지.
-5. 규칙: `eval/goldsets/` import 없음, 키·비공개 파일이 diff에 없음 (`git diff main... | grep -iE "api[_-]?key|secret|token"`).
+5. 규칙: `data/goldsets/` import 없음, 키·비공개 파일이 diff에 없음 (`git diff main... | grep -iE "api[_-]?key|secret|token"`).
 
 ## 2. 문서 대조
 - 계획한 task를 다 했나 (tasks.md 진행 칸 ↔ 실제 커밋). 안 한 것은 이유와 함께 "다음으로".
