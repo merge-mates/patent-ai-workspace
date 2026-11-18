@@ -359,7 +359,7 @@ def test_OAResult가_멀쩡하면_검토할_사항_없음():
 
 def test_심사_대상_청구항이_확인되지_않으면_필드_한_줄로_검토_사항에_든다():
     bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
-    oa = _oa([_rej("29-2")], examined_claims=_ev(None, None, status=bad))
+    oa = _oa([_rej("29-2")], examined_claims=_ev(None, "제1항 내지 제3항", status=bad))
     assert collect_review_items([oa], _empty_materials()) == [
         ReviewItem(
             kind="unverified",
