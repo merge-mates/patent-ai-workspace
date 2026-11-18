@@ -17,6 +17,7 @@ flowchart LR
   E["eval: 채점기"] --> O
 ```
 - 부르는 방향은 `api → core → retrieval·law_api·db`만이다. 화면은 `api`만 본다.
+  - 부르는 방향에 `retrieval → db`를 더한다. db는 retrieval을 import하지 않는다. ([ADR 0003](decisions/0003-tech-stack.md))
 - 평가(채점기)는 API를 거치지 않고 `core/`를 직접 부른다.
 - 모두 로컬 docker compose 안에서 돈다 (Langfuse 포함). 밖으로 나가는 호출은 6절 "밖으로 나가는 호출" 표에 둔다.
 
