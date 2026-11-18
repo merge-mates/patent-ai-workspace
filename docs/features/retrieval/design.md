@@ -163,9 +163,12 @@ def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher  
 
 **맞음 판정 인터페이스** (`eval/retrieval/matchers.py`)
 ```python
+# SearchHit은 Chunk 칸을 다 가지므로 그대로 넘김
 class Matcher(Protocol):
-    def matches(self, chunk: Chunk, item: GoldItem, row: GoldRow) -> bool: ...   # SearchHit은 Chunk 칸을 다 가지므로 그대로 넘김
-MATCHERS: dict[Corpus, Matcher]   # "cite": CiteMatcher, "law": LawMatcher
+    def matches(self, chunk: Chunk, item: GoldItem, row: GoldRow) -> bool: ...
+
+
+MATCHERS: dict[Corpus, Matcher]  # "cite": CiteMatcher, "law": LawMatcher
 ```
 
 **정답 파일** `data/goldsets/tune/retrieval/gold.jsonl` (git 밖, 한 줄 = 정답 줄 하나)
