@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _QUOTE_CHARS = " '\"‘’“”「」『』"
 _NO_LOCATION = "위치 없음"
+_LABEL_NOTE = "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨"
 
 
 class _Fail(Exception):
@@ -160,16 +161,30 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
     citations: list[str] = []
     locations: dict[str, list[str]] = {}
     known = _labels_of([rej])  # 후보는 그 거절이유의 인용문헌뿐
+    allowed = [c.label for c in rej["citations"]]
     mentioned = _mentioned(judgment, rej)
+    if mentioned - set(allowed):  # 판단 원문이 그 거절이유 밖의 인용을 가리킴
+        raise _Fail()
+    noted = False
     for c in r.citations:
-        label = _label(c, known, pages)
-        # 판단 원문이 그 인용을 실제로 가리켜야 쓴다 (엉뚱한 인용이 붙지 않게)
-        if label not in mentioned:
-            raise _Fail()
+        if c.label or c.number is not None:
+            label: str | None = _label(c, known, pages)
+        else:
+            label = allowed[0] if len(allowed) == 1 else None  # 인용이 하나뿐이면 그것
+        if label is None:
+            if c.location is not None or c.no_location is not None:
+                raise _Fail(UnverifiedReason.AMBIGUOUS)  # 위치가 있는데 어느 인용인지 모름
+            continue
+        if mentioned:
+            if label not in mentioned:  # 판단 원문이 가리키는 인용과 다름
+                raise _Fail()
+        elif len(allowed) > 1:
+            noted = True  # 언급이 없으면 거절이유 인용 중 모델 라벨을 받고 근거를 남긴다
         citations.append(label)
         found = _locations(c, pages)
         if found:
             locations[label] = _unique([*locations.get(label, []), *found])
+    out["label_note"] = noted
     out["citations"] = _unique(citations)
     out["locations"] = locations
     return out
@@ -234,18 +249,18 @@ def build_claim_rows(
         no = rej["no"] if rej is not None else None
         claims = parse_claims(r.claims.raw_text or "") if _on_page(r.claims, pages) else None
 
-        if rej is not None and claims is not None and not _fits(r, rej, pages):
-            # 청구항·순번이 판단 원문과 안 맞는 줄: 어느 줄인지 못 정해 번호 없이 남긴다
-            reason = (
-                UnverifiedReason.AMBIGUOUS if _is_ambiguous(r) else UnverifiedReason.NOT_EXTRACTED
-            )
-            made.append(_unverified(None, None, reason))
+        if claims is None:
+            # 번호 없는 줄은 만들지 않는다 (그 청구항은 끝에서 번호 있는 빈 줄로 채워짐)
+            logger.warning("청구항 번호를 못 읽은 줄은 만들지 않음 (거절이유 %s)", no)
+            continue
+        if rej is not None and not _fits(r, rej, pages):
+            logger.warning("청구항·순번이 판단 원문과 안 맞는 줄은 번호 없이 만들지 않음")
             continue
 
         # 값 대조는 줄 하나 단위라 청구항마다 같은 값을 준다 (3절 10)
         content: dict = {}
         reason: UnverifiedReason | None = None
-        if rej is None or claims is None:  # 어느 줄인지 못 정함
+        if rej is None:  # 어느 거절이유인지 못 정함
             reason = (
                 UnverifiedReason.AMBIGUOUS if _is_ambiguous(r) else UnverifiedReason.NOT_EXTRACTED
             )
@@ -256,7 +271,7 @@ def build_claim_rows(
                 reason = fail.reason
 
         targets = rej["claims"].value if rej is not None else None
-        for claim in claims if claims is not None else [None]:
+        for claim in claims:
             if claim is not None and no is not None:
                 if (claim, no) in seen:
                     logger.info("같은 청구항·거절이유 줄이 겹침: 앞의 것만 남김")
@@ -269,8 +284,12 @@ def build_claim_rows(
             if row_reason is not None:
                 made.append(_unverified(claim, no, row_reason))
                 continue
-            status = Status(value=StatusValue.CONFIRMED, checked=f"{content['page']}쪽 원문 대조")
-            made.append(ClaimRow(claim=claim, rejection=no, status=status, **content))
+            values = {k: v for k, v in content.items() if k != "label_note"}
+            checked = f"{content['page']}쪽 원문 대조"
+            if content.get("label_note"):
+                checked += f", {_LABEL_NOTE}"
+            status = Status(value=StatusValue.CONFIRMED, checked=checked)
+            made.append(ClaimRow(claim=claim, rejection=no, status=status, **values))
     # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
     # (줄이 빠져도 조용히 지나가지 않게)
     produced = {(row.claim, row.rejection) for row in made}
