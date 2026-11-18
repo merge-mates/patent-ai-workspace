@@ -481,3 +481,46 @@ def test_인용_있는_줄의_위치_없음은_그대로_locations_라벨_아래
 
 def test_평소_줄은_no_location이_비어_있다():
     assert all(r.no_location is None for r in _read().claim_rows)
+
+
+# ---- 인용 있는 줄의 줄 단위 no_location (리뷰) ----
+def _row_level(index: int, expression: str, *, ambiguous: bool = False) -> dict:
+    answer = _answer()
+    answer["claim_rows"][index]["no_location"] = {
+        "value": None,
+        "raw_text": expression,
+        "page": answer["claim_rows"][index]["judgment"]["page"],
+        "ambiguous": ambiguous,
+    }
+    return answer
+
+
+def test_인용이_하나이고_위치가_없으면_줄_단위_위치_없음을_그_인용_위치로_옮긴다():
+    answer = _row_level(6, "단순 부가")  # 8항 줄
+    answer["claim_rows"][6]["citations"][0]["no_location"] = None  # 인용 안에는 안 줄 때
+    row = _row(_read(answer), 8, 2)
+    assert row.status.value == StatusValue.CONFIRMED
+    assert row.locations == {"D1": ["위치 없음 (단순 부가)"]} and row.no_location is None
+
+
+def test_인용이_여럿이면_줄_단위_위치_없음은_어느_인용인지_몰라_애매():
+    answer = _row_level(2, "결합")  # 2항 줄: 인용 D1·D2
+    _assert_dropped(_row(_read(answer), 2, 2), UnverifiedReason.AMBIGUOUS)
+
+
+def test_인용이_하나여도_이미_위치가_있으면_줄_단위_위치_없음은_애매():
+    answer = _row_level(0, "신규성이 없습니다")  # 1항 줄: D1에 위치가 있음
+    _assert_dropped(_row(_read(answer), 1, 1), UnverifiedReason.AMBIGUOUS)
+
+
+def test_줄_단위_위치_없음에_애매_표시가_있으면_그_줄은_ambiguous():
+    answer = _row_level(6, "단순 부가", ambiguous=True)
+    _assert_dropped(_row(_read(answer), 8, 2), UnverifiedReason.AMBIGUOUS)
+
+
+def test_명확성_줄에_줄_단위_위치_없음이_오면_버리고_경고(caplog):
+    answer = _row_level(11, "불명확")  # 6항 명확성 줄
+    with caplog.at_level(logging.WARNING):
+        row = _row(_read(answer), 6, 3)
+    assert row.status.value == StatusValue.CONFIRMED and row.no_location is None
+    assert "위치 없음" in caplog.text
