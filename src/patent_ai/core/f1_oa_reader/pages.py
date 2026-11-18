@@ -26,15 +26,15 @@ def extract_pages(pdf_path: Path, document_id: str) -> PageText:
                 text = (pdf_page.extract_text() or "").strip()
                 if text:
                     status = Status(
-                        value=StatusValue.CONFIRMED, checked="pdfplumber 글자 층에서 추출"
+                        value=StatusValue.CONFIRMED,
+                        checked=f"pdfplumber 글자 층에서 추출, {len(text)}자",
                     )
                 else:  # 글자 층이 없는 쪽(스캔·그림뿐): 실패 대신 확인되지 않음
                     status = Status(
                         value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING
                     )
                 pages.append(Page(page=number, text=text, status=status))
-    except PdfReadError:
-        raise
+                pdf_page.close()  # 쪽 캐시를 풀어 메모리를 아낀다
     except Exception as e:  # pdfplumber/pdfminer는 여러 종류 오류를 냄: 한 오류로 모은다
         raise PdfReadError(f"PDF를 읽지 못함: {pdf_path.name} ({type(e).__name__})") from e
     # 문서 status: 글자 있는 쪽이 하나도 없을 때만 unverified (0쪽도 포함)

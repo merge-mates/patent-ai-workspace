@@ -39,6 +39,9 @@ def test_두_쪽_PDF는_쪽_번호와_글자가_나온다(tmp_path):
     assert all(isinstance(p, Page) for p in result.pages)
     assert all(p.status.value == StatusValue.CONFIRMED for p in result.pages)
     assert result.status.value == StatusValue.CONFIRMED
+    # 쪽 checked에 그 쪽 글자 수가 남는다
+    n = len(result.pages[1].text)
+    assert result.pages[1].status.checked == f"pdfplumber 글자 층에서 추출, {n}자"
 
 
 def test_PDF가_아닌_파일은_PdfReadError(tmp_path):
@@ -52,8 +55,9 @@ def test_깨진_PDF는_PdfReadError(tmp_path):
     good = _make_pdf(tmp_path / "a.pdf", ["hello"])
     broken = tmp_path / "b.pdf"
     broken.write_bytes(good.read_bytes()[:60])  # 앞부분만 남김
-    with pytest.raises(PdfReadError):
+    with pytest.raises(PdfReadError) as e:
         extract_pages(broken, "doc-1")
+    assert "hello" not in str(e.value)  # 파일 안 글자는 오류 메시지에 안 넣는다
 
 
 def test_파일이_없으면_PdfReadError(tmp_path):
