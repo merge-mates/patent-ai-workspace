@@ -42,9 +42,9 @@ def rej_fields(article="29-2", claims=(1, 2), supported=True, flags=(), **extra)
     return data
 
 
-def rejection(**kw):
+def rejection(*args, **kw):
     """status·evidence는 도우미가 칸에서 모아 채운다."""
-    return build_rejection(document_id="d_1", **rej_fields(**kw))
+    return build_rejection(document_id="d_1", **rej_fields(*args, **kw))
 
 
 def conflict_value():

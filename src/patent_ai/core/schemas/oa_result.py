@@ -1,11 +1,17 @@
-"""OAResult(①): F1이 내는 OA 정리 결과. 모양의 기준은 docs/features/F1/design.md 3-2절."""
+"""OAResult(①): F1이 내는 OA 정리 결과. 모양의 기준은 docs/features/F1/design.md 3-2절.
+
+status는 칸들에서 모은 값과 같아야 한다 (검사로 강제). 만드는 쪽은 status·evidence 없이
+칸만으로 `build_rejection`·`build_oa_result`를 부르면 된다.
+"""
 
 import logging
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.schemas.common import (
+    Evidence,
     ExtractedValue,
     Flag,
     ResultBase,
@@ -17,6 +23,7 @@ from patent_ai.core.schemas.common import (
 logger = logging.getLogger(__name__)
 
 ALL_CHECKED = "모든 칸 원문 대조"  # 모두 confirmed일 때 결과 status의 checked
+SUPPORTED_COUNTRIES = {"KR", "US"}  # 조회를 지원하는 나라 (product.md 3.2)
 
 
 class NoticeKind(StrEnum):
@@ -28,19 +35,31 @@ class NoticeKind(StrEnum):
 
 
 class Citation(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     number: ExtractedValue[str]
-    country: str | None = None  # 못 정하면 null
+    # 나라: KR/US/JP… 또는 못 정하면 value null + unverified(ambiguous)
+    country: ExtractedValue[str]
     country_supported: bool
     cited_paragraphs: ExtractedValue[list[str]]
     flags: list[Flag] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _지원_안_하는_나라는_직접_검토(self) -> Citation:
+    def _나라와_지원_여부가_맞아야_함(self) -> Citation:
+        value = self.country.value
+        # KR·US면 지원, 그 밖의 나라와 못 정한 경우(null)는 지원 안 함
+        if self.country_supported != (value in SUPPORTED_COUNTRIES):
+            raise ValueError("country_supported는 country가 KR·US일 때만 true")
         if not self.country_supported and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
             raise ValueError("country_supported=false면 flags에 needs_human_review가 필요")
         return self
+
+    def excluded_from_status(self) -> bool:
+        """지원 안 하는 나라(값 있음)는 status를 나쁘게 하지 않는다 (flags로만).
+
+        나라를 못 정한 것(null)은 빠지지 않는다: unverified가 그대로 들어간다.
+        """
+        return self.country.value is not None and not self.country_supported
 
 
 class Rejection(ResultBase):
@@ -53,22 +72,32 @@ class Rejection(ResultBase):
     examiner_reasoning: ExtractedValue[str]
 
     @model_validator(mode="after")
-    def _지원_안_하는_거절이유는_직접_검토(self) -> Rejection:
+    def _검사(self) -> Rejection:
         if not self.supported and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
             raise ValueError("supported=false면 flags에 needs_human_review가 필요")
+        expected = summarize_rejection_status(**self.model_dump_fields())
+        if self.status.value != expected.value:
+            raise ValueError(f"status {self.status.value}가 칸을 모은 값 {expected.value}와 다름")
         return self
+
+    def model_dump_fields(self) -> dict[str, Any]:
+        """summarize에 넘길 칸 (객체 그대로, dump하지 않음)."""
+        return {
+            "article": self.article,
+            "claims": self.claims,
+            "citations": self.citations,
+            "examiner_reasoning": self.examiner_reasoning,
+        }
 
 
 class ExaminerHints(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     allowable_claims: ExtractedValue[list[int]]  # 「특허 가능한 청구항」. 칸이 없으면 값 []
-    amendment_notes: ExtractedValue[str]  # 【보정에 관한 참고사항】. 칸이 없으면 값 null
+    amendment_note: ExtractedValue[str]  # 【보정에 관한 참고사항】. 칸이 없으면 값 null
 
 
 class OAResult(ResultBase):
-    model_config = ConfigDict(frozen=True)
-
     oa_id: str
     application_number: ExtractedValue[str]
     dispatch_number: ExtractedValue[str]
@@ -89,44 +118,139 @@ class OAResult(ResultBase):
         kind = self.notice_kind
         if kind.value == NoticeKind.UNKNOWN and kind.status.value != StatusValue.UNVERIFIED:
             raise ValueError("notice_kind=unknown이면 status는 unverified")
+        # 저장된 status는 칸을 모은 값과 같아야 한다
+        fields = {k: getattr(self, k) for k in _OA_FIELD_NAMES}
+        expected = summarize_status(**fields)
+        if self.status.value != expected.value:
+            raise ValueError(f"status {self.status.value}가 칸을 모은 값 {expected.value}와 다름")
         return self
 
 
-def summarize_rejection_status(rej: Rejection) -> Status:
-    """거절이유 하나의 status: 그 안 칸들 중 가장 나쁜 값.
+_OA_FIELD_NAMES = (
+    "oa_id",
+    "application_number",
+    "dispatch_number",
+    "notice_date",
+    "response_due",
+    "notice_kind",
+    "examined_claim_version",
+    "examiner_hints",
+    "rejections",
+)
 
-    지원 안 하는 나라 인용문헌은 상태를 나쁘게 하지 않는다 (flags로만).
+
+def _as(model: type, x: Any) -> Any:
+    """dict로 들어온 칸은 모델로 바꿔 쓴다 (만드는 쪽이 dict를 그대로 넘겨도 되게)."""
+    return model.model_validate(x) if isinstance(x, dict) else x
+
+
+def summarize_rejection_status(
+    *,
+    article: ExtractedValue,
+    claims: ExtractedValue,
+    citations: list[Citation],
+    examiner_reasoning: ExtractedValue,
+    **_ignored: Any,
+) -> Status:
+    """거절이유 하나의 status: 그 안 칸들 중 가장 나쁜 값 (칸만 받는다, status는 필요 없음).
+
+    지원 안 하는 나라(값 있음) 인용문헌은 빼고, 나라를 못 정한 것은 늘 넣는다.
     """
-    statuses = [rej.article.status, rej.claims.status]
-    for cit in rej.citations:
-        if cit.country_supported:
-            statuses += [cit.number.status, cit.cited_paragraphs.status]
-    statuses.append(rej.examiner_reasoning.status)
+    article, claims, examiner_reasoning = (
+        _as(ExtractedValue, v) for v in (article, claims, examiner_reasoning)
+    )
+    statuses = [article.status, claims.status]
+    for c in (_as(Citation, c) for c in citations):
+        if not c.excluded_from_status():
+            statuses += [c.number.status, c.country.status, c.cited_paragraphs.status]
+    statuses.append(examiner_reasoning.status)
     return worst_status(statuses, ALL_CHECKED)
 
 
-def summarize_status(oa: OAResult) -> Status:
+def summarize_status(
+    *,
+    oa_id: str = "",
+    application_number: ExtractedValue,
+    dispatch_number: ExtractedValue,
+    notice_date: ExtractedValue,
+    response_due: ExtractedValue,
+    notice_kind: ExtractedValue,
+    examiner_hints: ExaminerHints,
+    rejections: list[Rejection],
+    examined_claim_version: ExtractedValue | None = None,
+    **_ignored: Any,
+) -> Status:
     """결과 전체 status: 칸들 중 가장 나쁜 값 (순서: 식별 정보 -> 통지 -> 거절이유 -> 힌트).
 
     지원 안 하는 거절이유(supported=false)는 빼고 모은다. 거절이유가 0개면
     unverified(not_extracted)로 두고 경고를 남긴다.
     """
-    supported = [r for r in oa.rejections if r.supported]
-    if not oa.rejections:
-        logger.warning("OAResult %s: 거절이유 0개 -> unverified(not_extracted)", oa.oa_id)
+    application_number, dispatch_number, notice_date, response_due, notice_kind = (
+        _as(ExtractedValue, v)
+        for v in (application_number, dispatch_number, notice_date, response_due, notice_kind)
+    )
+    examiner_hints = _as(ExaminerHints, examiner_hints)
+    examined_claim_version = _as(ExtractedValue, examined_claim_version)
+    if not rejections:
+        logger.warning("OAResult %s: 거절이유 0개 -> unverified(not_extracted)", oa_id)
         return worst_status([], ALL_CHECKED)
     statuses = [
-        oa.application_number.status,
-        oa.dispatch_number.status,
-        oa.notice_date.status,
-        oa.response_due.status,
-        oa.notice_kind.status,
+        application_number.status,
+        dispatch_number.status,
+        notice_date.status,
+        response_due.status,
+        notice_kind.status,
     ]
-    if oa.examined_claim_version is not None:
-        statuses.append(oa.examined_claim_version.status)
-    statuses += [summarize_rejection_status(r) for r in supported]
-    statuses += [
-        oa.examiner_hints.allowable_claims.status,
-        oa.examiner_hints.amendment_notes.status,
-    ]
+    if examined_claim_version is not None:
+        statuses.append(examined_claim_version.status)
+    statuses += [r.status for r in rejections if r.supported]
+    statuses += [examiner_hints.allowable_claims.status, examiner_hints.amendment_note.status]
     return worst_status(statuses, ALL_CHECKED)
+
+
+def _evidence_of(values: list[ExtractedValue], document_id: str) -> list[Evidence]:
+    # 쪽이 있는 값만 근거로 둔다 (쪽 없는 confirmed 값은 근거 위치가 없음)
+    return [
+        Evidence(document_id=document_id, page=v.page, raw_text=v.raw_text)
+        for v in values
+        if v.page is not None
+    ]
+
+
+def collect_evidence(result: Rejection | OAResult, document_id: str) -> list[Evidence]:
+    """결과 단위 evidence: 쪽이 있는 값마다 {document_id, page, raw_text}."""
+    if isinstance(result, Rejection):
+        values = [result.article, result.claims, result.examiner_reasoning]
+        for c in result.citations:
+            values += [c.number, c.country, c.cited_paragraphs]
+        return _evidence_of(values, document_id)
+    values = [
+        result.application_number,
+        result.dispatch_number,
+        result.notice_date,
+        result.response_due,
+        result.notice_kind,
+        result.examiner_hints.allowable_claims,
+        result.examiner_hints.amendment_note,
+    ]
+    if result.examined_claim_version is not None:
+        values.append(result.examined_claim_version)
+    found = _evidence_of(values, document_id)
+    for r in result.rejections:  # 거절이유 안의 근거도 모은다
+        found += collect_evidence(r, document_id)
+    return found
+
+
+def build_rejection(*, document_id: str, **fields: Any) -> Rejection:
+    """status·evidence 없이 칸만으로 만든다. 둘은 여기서 칸에서 모아 채운다."""
+    draft = Rejection(
+        **fields,
+        status=summarize_rejection_status(**fields),
+    )
+    return draft.model_copy(update={"evidence": collect_evidence(draft, document_id)})
+
+
+def build_oa_result(*, document_id: str, **fields: Any) -> OAResult:
+    """status·evidence 없이 칸만으로 만든다. 거절이유는 build_rejection으로 만든 것을 넣는다."""
+    draft = OAResult(**fields, status=summarize_status(**fields))
+    return draft.model_copy(update={"evidence": collect_evidence(draft, document_id)})

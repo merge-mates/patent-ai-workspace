@@ -48,7 +48,9 @@ class Flag(StrEnum):
 class Status(BaseModel):
     """상태 객체. 직렬화하면 늘 네 키(없는 키는 null)."""
 
-    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+    model_config = ConfigDict(
+        frozen=True, extra="forbid"
+    )  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
 
     value: StatusValue
     reason: UnverifiedReason | None = None
@@ -76,7 +78,9 @@ class Status(BaseModel):
 class Evidence(BaseModel):
     """근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다."""
 
-    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+    model_config = ConfigDict(
+        frozen=True, extra="forbid"
+    )  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
 
     document_id: str
     page: int | None = None
@@ -88,7 +92,9 @@ class Evidence(BaseModel):
 class ResultBase(BaseModel):
     """모든 결과 스키마가 갖는 공통 칸."""
 
-    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+    model_config = ConfigDict(
+        frozen=True, extra="forbid"
+    )  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
 
     status: Status
     evidence: list[Evidence] = Field(default_factory=list)
@@ -101,7 +107,9 @@ class ResultBase(BaseModel):
 class Candidate[T](BaseModel):
     """충돌 때 남기는 후보 하나 (규칙 값 / 모델 값)."""
 
-    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+    model_config = ConfigDict(
+        frozen=True, extra="forbid"
+    )  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
 
     value: T | None = None
     raw_text: str | None = None
@@ -112,7 +120,9 @@ class Candidate[T](BaseModel):
 class ExtractedValue[T](BaseModel):
     """원문에서 뽑은 값 하나. 값에는 늘 원문 글자·쪽·상태가 붙는다."""
 
-    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+    model_config = ConfigDict(
+        frozen=True, extra="forbid"
+    )  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
 
     value: T | None = None
     raw_text: str | None = None

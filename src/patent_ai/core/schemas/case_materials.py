@@ -17,7 +17,7 @@ class LookupResult(StrEnum):
 
 
 class CaseDocument(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     document_id: str
     kind: str  # 예: oa, claims, citation
@@ -25,7 +25,7 @@ class CaseDocument(BaseModel):
 
 
 class MissingMaterial(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     what: str
     depends_on_tasks: list[str] = Field(default_factory=list)
@@ -41,14 +41,14 @@ class MissingMaterial(BaseModel):
 
 
 class HeldTask(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     task: str
     waiting_for: str
 
 
 class CaseMaterials(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     case_id: str
     documents: list[CaseDocument] = Field(default_factory=list)
