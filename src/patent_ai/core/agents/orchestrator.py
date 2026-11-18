@@ -8,6 +8,7 @@
 
 import logging
 from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypedDict
 
@@ -20,6 +21,7 @@ from patent_ai.core.f1_oa_reader.pages import PdfReadError
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
+from patent_ai.core.schemas.common import StatusValue
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +47,28 @@ class CaseInput(BaseModel):
 class CaseStore(Protocol):
     """서버가 넣어 주는 사건 저장소 (core는 api를 import하지 않는다). task-3에서 쓴다."""
 
-    def find_oa(self, application_number: str, dispatch_number: str) -> tuple[str, str] | None: ...
+    def find_oa(self, application_number: str, dispatch_number: str) -> tuple[str, str] | None:
+        """같은 출원번호 + 발송번호의 OA가 이미 있으면 (case_id, oa_id)."""
+        ...
+
+    def find_case(self, application_number: str) -> str | None:
+        """같은 출원번호의 기존 사건이 있으면 case_id."""
+        ...
+
+
+class WaitingFor(StrEnum):
+    """사람을 기다리는 이유."""
+
+    APPLICATION_NUMBER = "application_number"
+    DIRECTION_SELECTION = "direction_selection"
 
 
 class RunOutcome(BaseModel):
     state: Literal["succeeded", "failed", "waiting_for_human"]
     results: dict[str, Any] = {}  # 도구 이름 -> 결과 객체
-    waiting_for: str | None = None
-    error: dict | None = None  # {code, message}
+    waiting_for: WaitingFor | None = None
+    error: dict | None = None  # {code, message} (+ oa_already_exists면 case_id, oa_id)
+    searched_scope: str | None = None  # max_steps로 멈췄을 때 찾아본 범위(돈 도구 목록)
     case_id: str
 
 
@@ -68,6 +84,8 @@ class _State(TypedDict):
     steps: int
     next_tool: str | None
     error: dict | None
+    waiting_for: WaitingFor | None
+    case_id: str  # 같은 출원번호의 기존 사건이 있으면 그 사건
 
 
 def _error(code: str, message: str) -> dict:
@@ -113,7 +131,13 @@ def run_case(
 
     def decide_node(state: _State) -> dict:
         if state["steps"] >= max_steps:
-            return {"error": _error("max_steps", f"도구 호출 최대 {max_steps}번에 닿음")}
+            # 못 끝낸 것을 성공으로 두지 않고, 어디까지 돌았는지 남긴다
+            return {
+                "error": _error(
+                    "max_steps",
+                    f"도구 호출 최대 {max_steps}번에 닿음. 돈 도구: {', '.join(state['results'])}",
+                )
+            }
         if plan == "fixed_order":
             todo = [n for n in fixed_order if n not in state["results"]]
             choice = todo[0] if todo else "stop"
@@ -130,6 +154,28 @@ def run_case(
             # fixed_stage·없는 이름은 지휘가 고를 수 없다
             return {"error": _error("invalid_tool_choice", f"고를 수 없는 도구: {choice}")}
         return {"next_tool": choice}
+
+    def check_oa_node(state: _State) -> dict:
+        """read_oa 뒤 검사: 출원번호를 모르면 사람을 기다리고, 이미 있는 OA면 실패로 끝낸다."""
+        oa = state["results"]["read_oa"]
+        app, disp = oa.application_number, oa.dispatch_number
+        if app.status.value != StatusValue.CONFIRMED:  # unverified·conflict
+            return {"waiting_for": WaitingFor.APPLICATION_NUMBER}
+        if store is None:
+            return {}
+        if disp.status.value == StatusValue.CONFIRMED:
+            found = store.find_oa(app.value, disp.value)
+            if found is not None:
+                case_id, found_oa_id = found
+                return {
+                    "case_id": case_id,
+                    "error": {
+                        **_error("oa_already_exists", f"이미 있는 OA: {found_oa_id}"),
+                        "case_id": case_id,
+                        "oa_id": found_oa_id,
+                    },
+                }
+        return {"case_id": store.find_case(app.value) or state["case_id"]}
 
     def read_oa_node(state: _State) -> dict:
         return call_tool(
@@ -159,24 +205,38 @@ def run_case(
     g.add_node("extract_pages", extract_pages_node)
     g.add_node("decide", decide_node)
     g.add_node("read_oa", read_oa_node)
+    g.add_node("check_oa", check_oa_node)
     g.add_node("cut_to_oa", cut_node)
     g.add_edge(START, "extract_pages")
     g.add_conditional_edges("extract_pages", stop_on_error("decide"), ["decide", END])
     g.add_conditional_edges("decide", after_decide, ["extract_pages", "read_oa", "cut_to_oa", END])
-    g.add_conditional_edges("read_oa", stop_on_error("decide"), ["decide", END])
+    g.add_conditional_edges("read_oa", stop_on_error("check_oa"), ["check_oa", END])
+    g.add_conditional_edges(
+        "check_oa",
+        lambda s: END if s["error"] or s["waiting_for"] else "decide",
+        ["decide", END],
+    )
     g.add_edge("cut_to_oa", END)
 
-    final = g.compile().invoke({"results": {}, "steps": 0, "next_tool": None, "error": None})
+    final = g.compile().invoke(
+        {
+            "results": {},
+            "steps": 0,
+            "next_tool": None,
+            "error": None,
+            "waiting_for": None,
+            "case_id": case_input.case_id,
+        }
+    )
 
+    base = {"results": final["results"], "case_id": final["case_id"]}
     if final["error"]:
         logger.warning("run_case %s 실패: %s", run_id, final["error"])
-        return RunOutcome(
-            state="failed",
-            results=final["results"],
-            error=final["error"],
-            case_id=case_input.case_id,
-        )
-    return RunOutcome(state="succeeded", results=final["results"], case_id=case_input.case_id)
+        scope = ", ".join(final["results"]) if final["error"]["code"] == "max_steps" else None
+        return RunOutcome(state="failed", error=final["error"], searched_scope=scope, **base)
+    if final["waiting_for"]:
+        return RunOutcome(state="waiting_for_human", waiting_for=final["waiting_for"], **base)
+    return RunOutcome(state="succeeded", **base)
 
 
 def _ask_model(registry: ToolRegistry, state: _State, ctx: RunContext) -> str:
