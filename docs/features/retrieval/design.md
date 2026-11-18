@@ -32,21 +32,24 @@ flowchart LR
     M --> O2[CQ 후보 파일: git 밖]
     O2 -- 0건 --> W[경고]
 ```
-1. 입력: 실험 설정(`experiments/<실험>/config.yaml`), 정답 파일(`data/goldsets/tune/retrieval/gold.jsonl`), 조각 저장소(테스트는 메모리, 실제는 Postgres).
+1. 입력: 실험 설정(`experiments/<실험>/config.yaml`), 정답 파일(`data/goldsets/tune/retrieval/gold.jsonl`), 조각 저장소. 저장소는 CLI `--chunks <jsonl>`을 주면 메모리 저장소이고, 없으면 Postgres다 (7-1 채점기).
 2. 실행 전 검사 (requirements 기준 3):
    - `index_version`이 그 말뭉치 표에 있는지
    - 정답 파일이 있고 1줄 이상인지
    - 질의에 그 줄 정답 위치 표기가 있는지 (7-3 누출 검사)
    - 설정의 `goldset_version`이 `data/goldsets/VERSION`과 같은지, `gold:` 경로가 `goldset:` 세트 폴더(`data/goldsets/<goldset>/`) 안인지. 정답 파일은 `gold:` 경로로 읽는다.
+   - `--chunks`(메모리 저장소)로 돌리는데 출력 폴더가 `experiments/` 아래면 멈춘다. 가짜 조각 점수가 실험 표에 섞이지 않게 하려는 것이다 (7-1 채점기).
    - 하나라도 걸리면 `RetrievalEvalError`로 끝나고 종료 코드는 1이다.
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다.
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
    - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`text_missing`)면 그 줄을 빼고 `excluded_text_missing`에 센다.
-   - 결과에 다른 색인 판 조각이 있으면 실패로 끝난다.
-5. 결과 조각마다 그 말뭉치 `Matcher`로 정답 항목과 맞는지 본다.
-6. k마다 줄 Hit·Recall, 무작위 기대값을 계산한다 (7-3).
-7. 결과 저장: `experiments/<실험>/scores.json`(모은 숫자), `work/retrieval/<실험>/cq_candidates.jsonl`(CQ 후보).
+   - 결과에 다른 색인 판 조각이 있으면 실패로 끝난다. 판정은 조각마다 `hit.index_version`이 설정의 `index_version`과 같은지로 한다 (공통 래퍼가 먼저 보고, 채점기가 한 번 더 봄).
+5. 3·4번에서 빼고 남은 줄이 0개면 실패로 끝난다 (종료 코드 1, `RetrievalEvalError`). 빈 평균으로 성공 종료하지 않는다.
+6. 결과 조각마다 그 말뭉치 `Matcher`로 정답 항목과 맞는지 본다.
+7. k마다 줄 Hit·Recall, 무작위 기대값을 계산한다 (7-3).
+8. 결과 저장: `<scores 폴더>/scores.json`(모은 숫자, 기본 `experiments/<실험>/`), `<cq 폴더>/cq_candidates.jsonl`(CQ 후보, 기본 `work/retrieval/<실험>/`).
 - 실패하면: 실행 전 검사가 막는다. 줄 하나의 검색이 예외를 내면 그 줄에서 멈추고 실패로 끝난다 (조용히 건너뛰지 않음).
+- 메시지 규칙 (requirements "실패할 때"): 터미널 실패·경고 메시지에는 `row_id`와 건수를 쓸 수 있다. 질의·청구항·정답 원문 글자는 쓰지 않는다. git에 들어가는 `scores.json`에는 `row_id`도 쓰지 않는다.
 - 비면: 검색 결과 0개는 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다. 거른 문헌 조각이 0개면 `unverified(text_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
 - 느리면: 가짜 구현만 있는 이 이슈에는 해당 없음. 진짜 구현의 상한은 #66·#67 설정에 둔다.
 
@@ -74,6 +77,7 @@ flowchart LR
   "hits": [
     {
       "chunk_id": "cite-idx-v1:KR1020190012345A:p0023",
+      "index_version": "cite-idx-v1",
       "doc_id": "KR1020190012345A",
       "chunk_kind": "body",
       "location": {"kind": "paragraph", "start": 23, "end": 23, "label": "[0023]", "figures": [], "claims": []},
@@ -85,6 +89,7 @@ flowchart LR
   ]
 }
 ```
+- `SearchHit` = 조각 `Chunk`의 칸(5-1 표에서 `embedding`·`created_at` 뺀 것) + `score` + `rank`다. `Chunk`도 `retrieval/schemas.py`에 둔다. 저장소는 `Chunk`를 돌려주고 `Matcher`는 `Chunk`를 받으므로(7-1), 검색 결과와 무작위 기준선 계산이 같은 판정을 쓴다.
 - `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "text_missing"`, 거른 문헌 조각이 0개).
 - 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `status_reason: text_missing`, `edition.status: not_applicable`(인용문헌) 둘이다.
 - 다시 확인 필요: 해당 없음 (검색은 저장하지 않는 도구 결과).
@@ -146,15 +151,19 @@ class Searcher(Protocol):
 
 def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher  # 없는 이름 → UnknownImplError(쓸 수 있는 이름 목록)
 ```
+- `get_searcher`는 등록된 구현을 공통 검사 래퍼 `CheckedSearcher`로 감싸 돌려준다. 어느 구현이든 아래 검사를 래퍼가 하므로 #66·#67은 구현에서 다시 하지 않아도 된다.
+  - 부르기 전: `k ≥ 1`(아니면 `ValueError`), `corpus`·`mode` 값(아니면 `ValueError`), `mode == "hybrid"`면 `ModeNotSupportedError`, `settings["index_version"]`이 그 말뭉치에 없으면 `UnknownIndexVersionError`.
+  - 받은 뒤: 결과 조각 수 ≤ k, 모든 `hit.index_version == settings["index_version"]`(아니면 `IndexVersionMismatchError`), 점수 내림차순·같은 점수는 `chunk_id` 오름차순.
+- 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.
-- 어느 구현이든 `hybrid`를 부르면 `ModeNotSupportedError`다. 넣기로 하면 인터페이스는 그대로 두고 구현만 더한다.
-- `k`는 1 이상이다. 같은 점수는 `chunk_id` 오름차순으로 순서를 정한다 (다시 돌려도 같은 순서).
+- `hybrid`를 넣기로 하면 인터페이스는 그대로 두고, 구현과 래퍼의 막는 줄만 바꾼다.
+- 같은 점수의 순서는 `chunk_id` 오름차순이다 (다시 돌려도 같은 순서).
 
 **맞음 판정 인터페이스** (`eval/retrieval/matchers.py`)
 ```python
 class Matcher(Protocol):
-    def matches(self, hit: SearchHit, item: GoldItem, row: GoldRow) -> bool: ...
+    def matches(self, chunk: Chunk, item: GoldItem, row: GoldRow) -> bool: ...   # SearchHit은 Chunk 칸을 다 가지므로 그대로 넘김
 MATCHERS: dict[Corpus, Matcher]   # "cite": CiteMatcher, "law": LawMatcher
 ```
 
@@ -184,7 +193,13 @@ MATCHERS: dict[Corpus, Matcher]   # "cite": CiteMatcher, "law": LawMatcher
 - 정답 세트 버전은 기존 규칙대로 `data/goldsets/VERSION`(정수)이다.
 
 **채점기** `eval/retrieval/score.py`
-- 명령: `uv run python -m eval.retrieval.score --config experiments/<실험>/config.yaml`. 채점기를 만드는 구현 task에서 이 명령을 루트 CLAUDE.md "채점 명령" 줄에 더한다 (명령이 생기기 전에는 적지 않음).
+- 명령: `uv run python -m eval.retrieval.score --config experiments/<실험>/config.yaml [--goldsets-root data/goldsets] [--chunks <조각 jsonl>] [--scores-dir <폴더>] [--cq-dir <폴더>]`.
+  - `--goldsets-root`: 정답 세트 뿌리 (기본 `data/goldsets`). `VERSION`과 `<goldset>/` 폴더 검사를 이 아래에서 한다. 테스트는 임시 폴더에 같은 구조를 만들어 넘긴다.
+  - `--chunks`: 주면 그 JSONL로 `InMemoryChunkRepository`를 만든다. 없으면 `PostgresChunkRepository`(`DATABASE_URL`)다.
+  - `--scores-dir`, `--cq-dir`: 출력 폴더 (기본 `experiments/<실험>/`, `work/retrieval/<실험>/`).
+  - **`--chunks`로 돌리면 출력은 `work/retrieval/<실험>/` 아래로만 간다.** `--scores-dir`의 기본값도 `work/retrieval/<실험>/`로 바뀐다. `experiments/` 아래를 주면 실행 전에 멈춘다 (가짜 조각 점수가 실험 표 `experiments/index.md`에 섞이지 않게).
+  - 종료 코드: 성공 0, `RetrievalEvalError`(실행 전 검사, 남은 줄 0개, 색인 판 섞임, 줄 검색 예외) 1.
+  - 함수 모양: `score(cfg, repo, goldsets_root) -> ScoreReport`. CLI `main(argv) -> int`가 저장소를 고르고 파일을 쓴다. 채점기를 만드는 구현 task에서 이 명령을 루트 CLAUDE.md "채점 명령" 줄에 더한다 (명령이 생기기 전에는 적지 않음).
 - 실험 설정 (기존 `experiments/_template/config.yaml`에 더하는 키):
 ```yaml
 corpus: cite
@@ -199,6 +214,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
   - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_text_missing`, `excluded_edition_unverified`, `cq_candidates`, `recall_ratio_undefined`.
   - 위 표에 더하는 칸: `corpus`, `index_version`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
+  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `git rev-parse HEAD`(못 읽으면 `"unknown"`, 테스트는 인자로 넣음), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
   - 줄 ID·질의·정답 위치는 넣지 않는다.
 - **E (정답 파일 버전 기록)**: `scores.json`의 `goldset_version`(`data/goldsets/VERSION` 정수)과 `gold_sha256`(정답 파일 해시)으로 남긴다. CQ 후보 줄마다 같은 두 값을 넣는다. 버전이 같아도 해시가 다르면 다른 정답으로 보고, CQ 모으기는 멈춘다.
 
@@ -256,10 +272,11 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   2. `paragraph`·`column_line`·`page` 항목: 같은 `loc_kind`이고 [loc_start, loc_end]와 [start, end]가 겹치면 맞음.
   3. `figure` 항목: 조각 `loc_figures`가 항목 도면 번호와 하나라도 겹치면 맞음. 보통 `chunk_kind = figure_desc`이지만, 본문 조각이 도면 번호를 담고 있어도 맞음으로 본다 ("그 도면 설명을 담고 있으면", #9 B-3).
   4. `claim` 항목: `loc_claims`가 겹치면 맞음. `abstract` 항목: `chunk_kind = abstract`면 맞음.
-  5. 공보가 다르면(같은 출원의 공개 `A`만 색인에 있고 정답은 등록 `B`) 1번에서 거른 문헌 조각이 0개가 된다. 그러면 검색 결과가 `text_missing`이고 그 줄은 빠진다 (판단은 2절 4번 한 곳).
+  5. 2번에서 조각이나 항목의 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음 (`LawMatcher` 기본값과 같은 규칙).
+  6. 공보가 다르면(같은 출원의 공개 `A`만 색인에 있고 정답은 등록 `B`) 1번에서 거른 문헌 조각이 0개가 된다. 그러면 검색 결과가 `text_missing`이고 그 줄은 빠진다 (판단은 2절 4번 한 곳).
 - `LawMatcher`:
   1. 조각 `edition_status = confirmed`이고 시행 기간이 정답 줄 `gold_edition.effective_from`과 같은 법령 판본이어야 한다.
-  2. 위치 규칙은 #66이 끼우는 함수 `(hit, item) -> bool`이다. `register_law_location_rule("<이름>")`으로 등록하고 실험 설정 `law_location_rule: <이름>`으로 고른다 (`impl`과 같은 방식, `matchers.py`는 안 고침). 설정에 없으면 `overlap_or_label`을 쓴다. 이 기본값은 "같은 `loc_kind`이고 정렬 키가 겹침"이고, 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음이다.
+  2. 위치 규칙은 #66이 끼우는 함수 `(chunk, item) -> bool`이다. `register_law_location_rule("<이름>")`으로 등록하고 실험 설정 `law_location_rule: <이름>`으로 고른다 (`impl`과 같은 방식, `matchers.py`는 안 고침). 설정에 없으면 `overlap_or_label`을 쓴다. 이 기본값은 "같은 `loc_kind`이고 정렬 키가 겹침"이고, 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음이다.
 
 ### 7-5. CQ 모으기 (requirements 기준 5)
 - `uv run python -m eval.retrieval.cq_merge <파일>… -o work/retrieval/cq_merged.jsonl`
@@ -278,6 +295,9 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 검색 결과 스키마를 `retrieval/schemas.py`에 | `core/schemas/` | `retrieval`이 `core`를 import하면 부르는 방향이 거꾸로 됨 | 설계 | ADR 0003 폴더 |
 | 누출 검사에서 청구항·요약 항목 제외 | 전부 검사 | 질의 자신의 "제1항에 있어서"와 구별 불가. 한계로 남김 | 설계 (doc-review 2회차) | |
 | 저장소는 `retrieval/`, ORM은 `db/`, `retrieval → db` 방향 추가 | 저장소를 `db/`에 | 검색 계약과 거르기 규칙을 한곳에. `db`는 표 정의만 | 설계 (design doc-review, 11/18 허용) | ADR 0003 폴더 |
+| 공통 검사는 `get_searcher`가 감싸는 래퍼 `CheckedSearcher` | 구현마다 검사 | #66·#67이 빠뜨릴 수 있음 | 설계 (plan-reviewer, 11/18) | |
+| `--chunks`(메모리)로 돌리면 출력은 `work/`만 | 어디든 씀 | 가짜 조각 점수가 실험 표에 섞이지 않게 | 설계 (plan-reviewer, 11/18) | |
+| 이슈 셋으로 나눔 (A1·A2·B) | 둘 (A·B) | A가 400줄 규칙을 넘음. B·#66·#67은 A1만 필요 | 설계 (plan-reviewer, 11/18) | |
 
 - ADR 세 조건을 다 맞는 결정은 없다고 본다. 표 나누기는 되돌릴 때 마이그레이션 하나와 덤프 다시 뽑기라 "되돌리기 어렵다"가 약하다.
 
@@ -287,8 +307,10 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - `chunks_cite.jsonl`: 공보 두 개 (`KR…A` 문단 10개 + 도면 설명 + 요약 + 청구항, `US…B2` 칼럼:줄 조각 몇 개)
   - `chunks_law.jsonl`: 같은 조문의 두 법령 판본 + `unverified` 조각 하나
   - `query_vectors.json`: 질의 → 벡터 녹화
-  - `gold.jsonl`: 7-3 점검 예 줄, 빼는 줄(이유마다 하나), 누출 줄 하나, 종속항 질의 줄 하나
+  - `chunks_check.jsonl`: 7-3 점검 예용 공보 하나 (조각 정확히 10개)
+  - 정답 파일은 목적마다 나눈다: `gold_ok.jsonl`(점검 예 줄만, 점수 기대값 테스트용), `gold_excluded.jsonl`(빼는 줄 이유마다 하나 + 종속항·"온도 300℃" 등 통과 질의), `gold_leak.jsonl`(누출 줄), `gold_empty.jsonl`(0줄), `gold_all_excluded.jsonl`(모두 빠지는 줄)
   - `config_*.yaml`: 맞는 색인 판, 없는 색인 판, 없는 `impl`
+  - 계산식은 순수 함수(`random_recall(10, [4, 1], 5)` 등)로 따로 테스트하고, 소수는 `pytest.approx(abs=1e-3)`로 비교한다.
 - 상태·경우마다 하나씩:
   - 결과 있음 (`status: null`)
   - `not_found_in_scope`
@@ -297,15 +319,18 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - `hybrid` → `ModeNotSupportedError`
   - 없는 `impl` → `UnknownImplError`
   - 색인 판 없음·섞임 → 실패
-  - 정답 0줄 → 실패
+  - 정답 0줄 → 실패, 남은 줄 0개 → 실패 (종료 코드 1)
+  - `--chunks`로 돌리며 `--scores-dir`이 `experiments/` 아래 → 실행 전 실패
   - 누출 → 실패, 종속항 → 통과
   - CQ 0건 경고
   - CQ 모으기: 교집합, 버전 다름 → 멈춤
-  - `scores.json`과 실패·경고 메시지에 `row_id`·질의 글자가 없음
+  - `scores.json`에 `row_id`·질의 글자가 없음, 실패·경고 메시지에 질의 글자가 없음 (`row_id`는 있어도 됨)
 - 실제 DB: `tests/test_retrieval_db.py` `@pytest.mark.db` 하나 (기준 7, 있으면 좋음). 마이그레이션 → 두 표에 조각 넣기 → `PostgresChunkRepository`로 색인 판·기준일 거르기.
 - `pgvector` 파이썬 패키지의 SQLAlchemy 타입 `VECTOR(dim=None)`는 길이 없는 `vector`로 선언된다 (pgvector-python `pgvector/sqlalchemy/vector.py`, 오픈소스). 의존성 `pgvector`를 더한다.
 
 ## 10. 구현 나누기 (tasks.md 제안)
-- 어림 700줄 이상이라 이슈 계획 둘로 나눈다 (한 PR 400줄 규칙). 정할 곳은 /plan-feature.
-  - A. 검색 계약: 스키마·`Searcher`·등록표·`fake`, 조각 표 마이그레이션·저장소, `index-dump`·revision 옆 파일. #66·#67이 색인을 만들려면 이것만 있으면 된다.
+- 어림 900줄 안팎이라 이슈 계획 셋으로 나눈다 (한 PR 400줄 규칙). task는 /plan-feature에서 정한다.
+  - A1. 검색 계약 코드: 스키마(`Chunk`·`SearchHit`·`SearchResult`), `Searcher`·등록표·`CheckedSearcher`, `ChunkRepository`·`InMemoryChunkRepository`, `fake` 구현과 fixture.
+  - A2. DB: 조각 표 ORM·마이그레이션, `PostgresChunkRepository`, `index-dump`·`index-load`·revision 옆 파일.
   - B. 채점기: 정답 파일 읽기, 실행 전 검사·누출 검사, `Matcher` 둘, 계산식, `scores.json`, CQ 파일·모으기.
+- 순서: **B와 이슈 #66·#67은 A1만 있으면 시작할 수 있다.** 계약 코드와 메모리 저장소로 개발·테스트하고, 실제 DB가 필요할 때 A2를 받는다. A2는 A1 뒤 언제든 B와 동시에 할 수 있다.
