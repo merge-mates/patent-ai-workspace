@@ -10,6 +10,7 @@ from patent_ai.core.schemas.common import (
     StatusValue,
     UnverifiedReason,
 )
+from patent_ai.core.schemas.oa_result import ExaminerHints, build_oa_result, build_rejection
 from patent_ai.core.schemas.propagation import (
     ReviewItem,
     collect_review_items,
@@ -77,7 +78,12 @@ def test_빠진_자료가_검토할_사항에_뜸():
     )
     items = collect_review_items([ResultBase(status=OK)], m)
     assert items == [
-        ReviewItem(kind="missing_material", target="인용문헌 2", reason="body_missing")
+        ReviewItem(
+            kind="missing_material",
+            target="materials.missing[0]",
+            label="인용문헌 2",
+            reason="body_missing",
+        )
     ]
 
 
@@ -105,3 +111,92 @@ def test_결과는_있는데_검토할_사항_0건이면_경고_없음(caplog):
     with caplog.at_level(logging.WARNING):
         assert collect_review_items([ResultBase(status=OK)], _empty_materials()) == []
     assert not caplog.records
+
+
+# ---------- 실제 OAResult 안쪽까지 ----------
+
+
+def _ev(value, raw="원문", status=OK):
+    return {"value": value, "raw_text": raw, "page": 1, "status": status}
+
+
+def _citation(number, country, supported, flags=(), country_status=OK):
+    return {
+        "number": _ev(number),
+        "country": _ev(country, status=country_status),
+        "country_supported": supported,
+        "cited_paragraphs": _ev(["[0010]"]),
+        "flags": list(flags),
+    }
+
+
+def _rej(article, supported=True, citations=(), flags=()):
+    return build_rejection(
+        document_id="d_1",
+        article=_ev(article),
+        supported=supported,
+        claims=_ev([1]),
+        citations=list(citations),
+        examiner_reasoning=_ev("요지"),
+        flags=list(flags),
+    )
+
+
+def _oa(rejections):
+    none_value = {
+        "value": None,
+        "raw_text": None,
+        "page": None,
+        "status": Status(value=StatusValue.CONFIRMED, checked="원문에 칸 없음"),
+    }
+    return build_oa_result(
+        document_id="d_1",
+        oa_id="oa_1",
+        application_number=_ev("10-2099-0000001"),
+        dispatch_number=_ev("9-5-2099-000000001"),
+        notice_date=_ev(None, "2099.01.26"),
+        response_due=_ev(None, "2099.03.26"),
+        notice_kind={**none_value, "value": "initial"},
+        examiner_hints=ExaminerHints(
+            allowable_claims={**none_value, "value": []}, amendment_note=none_value
+        ),
+        rejections=rejections,
+    )
+
+
+def test_OAResult_안쪽_지원_안_하는_거절이유와_나라가_직접_검토_필요로_뜸():
+    r0 = _rej("29-2")
+    r1 = _rej(
+        "42-3",
+        supported=False,
+        flags=[Flag.NEEDS_HUMAN_REVIEW],
+        citations=[_citation("JP 2099-1", "JP", False, [Flag.NEEDS_HUMAN_REVIEW])],
+    )
+    items = collect_review_items([_oa([r0, r1])], _empty_materials())
+    assert items == [
+        ReviewItem(
+            kind="needs_human_review",
+            target="oa_result.rejections[1]",
+            label="42-3",
+            reason="지원 안 하는 거절이유 42-3",
+        ),
+        ReviewItem(
+            kind="needs_human_review",
+            target="oa_result.rejections[1].citations[0]",
+            label="JP 2099-1",
+            reason="지원 안 하는 나라 JP",
+        ),
+    ]
+
+
+def test_OAResult_인용문헌_나라를_못_정하면_unverified가_경로와_함께_뜸():
+    unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+    c = _citation("US 2099/0000001", None, False, [Flag.NEEDS_HUMAN_REVIEW], unknown)
+    items = collect_review_items([_oa([_rej("29-2", citations=[c])])], _empty_materials())
+    kinds = [(i.kind, i.target) for i in items]
+    assert ("unverified", "oa_result.rejections[0].citations[0]") in kinds
+    assert ("needs_human_review", "oa_result.rejections[0].citations[0]") in kinds
+
+
+def test_OAResult가_멀쩡하면_검토할_사항_없음():
+    assert collect_review_items([_oa([_rej("29-2")])], _empty_materials()) == []
