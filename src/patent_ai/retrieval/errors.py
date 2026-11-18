@@ -23,3 +23,7 @@ class SearchContractViolationError(RetrievalError):
 
 class IndexVersionMismatchError(SearchContractViolationError):
     """결과에 설정과 다른 색인 판 조각이 섞임."""
+
+
+class RecordedEmbeddingMissing(RetrievalError):
+    """fake 구현: 녹화해 둔 질의 벡터에 이 질의가 없다 (실제 모델을 부르지 않는다)."""
