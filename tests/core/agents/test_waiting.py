@@ -28,13 +28,10 @@ class FakeStore:
         return self.case
 
 
-def _answer(drop_numbers: bool, conflict_app: bool = False) -> TransportResponse:
+def _answer(drop_numbers: bool) -> TransportResponse:
     d = json.loads((FIXTURES / "llm" / "basic.json").read_text("utf-8"))
     if drop_numbers:
         d["application_number"] = None
-    if conflict_app:
-        # 규칙이 읽은 값(PDF 글자)과 모델 값이 다르면 충돌
-        d["application_number"]["value"] = "10-2099-0000009"
     return TransportResponse(json.dumps(d, ensure_ascii=False), 100, 50)
 
 
@@ -46,7 +43,6 @@ def _go(
     plan="fixed_order",
     max_steps=10,
     dispatch_in_pdf=True,
-    conflict_app=False,
     responses=None,
 ):
     pdf = tmp_path / "oa.pdf"
@@ -62,9 +58,7 @@ def _go(
         f"plan: {plan}\nfixed_order: [extract_pages, read_oa]\nmax_steps: {max_steps}\n",
         encoding="utf-8",
     )
-    transport = FakeTransport(
-        responses or {"f1.read_oa": [_answer(not with_numbers, conflict_app)]}
-    )
+    transport = FakeTransport(responses or {"f1.read_oa": [_answer(not with_numbers)]})
     store = store if store is not None else FakeStore()
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
@@ -113,8 +107,26 @@ def test_기존_사건의_다음_OA면_최종_case_id가_기존_사건(tmp_path)
     assert out.case_id == "c_old"
 
 
-def test_출원번호가_충돌이면_사람을_기다린다(tmp_path):
-    out = _go(tmp_path, conflict_app=True)
+def test_출원번호가_충돌이면_사람을_기다린다(tmp_path, monkeypatch):
+    # 영어 PDF로는 규칙이 번호를 못 읽어 충돌이 안 나므로 출원번호 칸만 충돌로 바꾼다
+    from patent_ai.core.f1_oa_reader import read_oa as mod
+    from patent_ai.core.schemas.common import Candidate, ExtractedValue, Status, StatusValue
+
+    real = mod.read_oa
+
+    def conflicted(*a, **k):
+        r = real(*a, **k)
+        bad = ExtractedValue[str](
+            status=Status(value=StatusValue.CONFLICT),
+            candidates=[
+                Candidate[str](value="10-2099-0000001", raw_text="a", page=1, source="rule"),
+                Candidate[str](value="10-2099-0000009", raw_text="b", page=1, source="model"),
+            ],
+        )
+        return r.model_copy(update={"application_number": bad})
+
+    monkeypatch.setattr(mod, "read_oa", conflicted)
+    out = _go(tmp_path)
     assert out.state == "waiting_for_human"
     assert out.waiting_for == WaitingFor.APPLICATION_NUMBER
     assert "cut_to_oa" not in out.results

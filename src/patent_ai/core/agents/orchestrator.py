@@ -7,7 +7,6 @@
 """
 
 import logging
-from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypedDict
@@ -60,6 +59,7 @@ class WaitingFor(StrEnum):
     """사람을 기다리는 이유."""
 
     APPLICATION_NUMBER = "application_number"
+    DISPATCH_NUMBER = "dispatch_number"
     DIRECTION_SELECTION = "direction_selection"
 
 
@@ -68,7 +68,8 @@ class RunOutcome(BaseModel):
     results: dict[str, Any] = {}  # 도구 이름 -> 결과 객체
     waiting_for: WaitingFor | None = None
     error: dict | None = None  # {code, message} (+ oa_already_exists면 case_id, oa_id)
-    searched_scope: str | None = None  # max_steps로 멈췄을 때 찾아본 범위(돈 도구 목록)
+    searched_scope: list[str] | None = None  # max_steps로 실패했을 때 찾아본 도구 목록
+    trace: list[str] = []  # 돈 도구 순서 (되풀이 포함)
     case_id: str
 
 
@@ -96,12 +97,14 @@ def run_case(
     case_input: CaseInput,
     oa_id: str,
     run_id: str,
-    store: CaseStore | None,
+    store: CaseStore,
     config_path: Path,
     *,
     ctx: RunContext,
 ) -> RunOutcome:
     """사건 1건을 그래프로 돌려 RunOutcome을 돌려준다. ctx는 서버가 실행마다 만든다."""
+    if store is None:
+        raise ValueError("store는 필수 (같은 OA 확인에 쓴다)")
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     plan = cfg.get("plan", "agent")
     if plan not in ("agent", "fixed_order"):
@@ -112,6 +115,7 @@ def run_case(
     registry = ToolRegistry()
     register_f1_tools(registry)
     code_tools = {t.name for t in registry.list(kind="code_tool")}
+    trace: list[str] = []  # 돈 도구 순서 (되풀이 포함)
 
     def call_tool(name: str, state: _State, payload: dict) -> dict:
         """도구 하나를 돌려 결과를 상태에 쌓는다. 실패하면 error를 채운다."""
@@ -119,7 +123,13 @@ def run_case(
             out = registry.get(name).run(payload, ctx)
         except _TOOL_ERRORS as e:
             return {"error": _error(type(e).__name__, str(e))}
-        return {"results": {**state["results"], name: out.result}, "steps": state["steps"] + 1}
+        trace.append(name)
+        # 자르기(fixed_stage)는 지휘가 고른 것이 아니라서 max_steps에 세지 않는다
+        counted = registry.get(name).kind == "code_tool"
+        return {
+            "results": {**state["results"], name: out.result},
+            "steps": state["steps"] + (1 if counted else 0),
+        }
 
     # ---- 노드 ----
     def extract_pages_node(state: _State) -> dict:
@@ -130,14 +140,6 @@ def run_case(
         )
 
     def decide_node(state: _State) -> dict:
-        if state["steps"] >= max_steps:
-            # 못 끝낸 것을 성공으로 두지 않고, 어디까지 돌았는지 남긴다
-            return {
-                "error": _error(
-                    "max_steps",
-                    f"도구 호출 최대 {max_steps}번에 닿음. 돈 도구: {', '.join(state['results'])}",
-                )
-            }
         if plan == "fixed_order":
             todo = [n for n in fixed_order if n not in state["results"]]
             choice = todo[0] if todo else "stop"
@@ -147,34 +149,43 @@ def run_case(
             except _TOOL_ERRORS as e:
                 return {"error": _error(type(e).__name__, str(e))}
         if choice == "stop":
-            # 자르기 앞에 read_oa 결과가 있어야 한다
+            # 자르기는 read_oa 뒤 간선에서 이미 돌았다. read_oa 없이 멈추면 실패
             if "read_oa" not in state["results"]:
                 return {"error": _error("no_oa_result", "read_oa 없이 멈춤")}
-        elif choice not in code_tools:
-            # fixed_stage·없는 이름은 지휘가 고를 수 없다
+            return {"next_tool": "stop"}
+        # 지휘가 고를 수 있는 것은 code_tool뿐 (fixed_stage·없는 이름·이미 돈 read_oa는 거부)
+        if choice not in code_tools or (choice == "read_oa" and "read_oa" in state["results"]):
             return {"error": _error("invalid_tool_choice", f"고를 수 없는 도구: {choice}")}
+        # 끝내자고 하지 않았는데 상한에 닿았으면 못 끝낸 것: 성공으로 두지 않는다
+        if state["steps"] >= max_steps:
+            return {
+                "error": _error(
+                    "max_steps",
+                    f"도구 호출 최대 {max_steps}번에 닿음. 돈 도구: {', '.join(trace)}",
+                )
+            }
         return {"next_tool": choice}
 
     def check_oa_node(state: _State) -> dict:
-        """read_oa 뒤 검사: 출원번호를 모르면 사람을 기다리고, 이미 있는 OA면 실패로 끝낸다."""
+        """read_oa 뒤 검사: 번호를 모르면 사람을 기다리고, 이미 있는 OA면 실패로 끝낸다."""
         oa = state["results"]["read_oa"]
         app, disp = oa.application_number, oa.dispatch_number
         if app.status.value != StatusValue.CONFIRMED:  # unverified·conflict
             return {"waiting_for": WaitingFor.APPLICATION_NUMBER}
-        if store is None:
-            return {}
-        if disp.status.value == StatusValue.CONFIRMED:
-            found = store.find_oa(app.value, disp.value)
-            if found is not None:
-                case_id, found_oa_id = found
-                return {
+        # 발송번호를 모르면 같은 OA인지 판정할 수 없어 사람에게 묻는다
+        if disp.status.value != StatusValue.CONFIRMED:
+            return {"waiting_for": WaitingFor.DISPATCH_NUMBER}
+        found = store.find_oa(app.value, disp.value)
+        if found is not None:
+            case_id, found_oa_id = found
+            return {
+                "case_id": case_id,
+                "error": {
+                    **_error("oa_already_exists", f"이미 있는 OA: {found_oa_id}"),
                     "case_id": case_id,
-                    "error": {
-                        **_error("oa_already_exists", f"이미 있는 OA: {found_oa_id}"),
-                        "case_id": case_id,
-                        "oa_id": found_oa_id,
-                    },
-                }
+                    "oa_id": found_oa_id,
+                },
+            }
         return {"case_id": store.find_case(app.value) or state["case_id"]}
 
     def read_oa_node(state: _State) -> dict:
@@ -193,13 +204,13 @@ def run_case(
         return call_tool("cut_to_oa", state, {"materials": case_input.materials})
 
     # ---- 간선 ----
-    def stop_on_error(nxt: str) -> Callable[[_State], str]:
-        return lambda s: END if s["error"] else nxt
-
     def after_decide(s: _State) -> str:
-        if s["error"]:
+        if s["error"] or s["next_tool"] == "stop":
             return END
-        return "cut_to_oa" if s["next_tool"] == "stop" else s["next_tool"]
+        return s["next_tool"]
+
+    def after_check(s: _State) -> str:
+        return END if s["error"] or s["waiting_for"] else "cut_to_oa"
 
     g = StateGraph(_State)
     g.add_node("extract_pages", extract_pages_node)
@@ -208,31 +219,37 @@ def run_case(
     g.add_node("check_oa", check_oa_node)
     g.add_node("cut_to_oa", cut_node)
     g.add_edge(START, "extract_pages")
-    g.add_conditional_edges("extract_pages", stop_on_error("decide"), ["decide", END])
-    g.add_conditional_edges("decide", after_decide, ["extract_pages", "read_oa", "cut_to_oa", END])
-    g.add_conditional_edges("read_oa", stop_on_error("check_oa"), ["check_oa", END])
     g.add_conditional_edges(
-        "check_oa",
-        lambda s: END if s["error"] or s["waiting_for"] else "decide",
-        ["decide", END],
+        "extract_pages", lambda s: END if s["error"] else "decide", ["decide", END]
     )
-    g.add_edge("cut_to_oa", END)
-
-    final = g.compile().invoke(
-        {
-            "results": {},
-            "steps": 0,
-            "next_tool": None,
-            "error": None,
-            "waiting_for": None,
-            "case_id": case_input.case_id,
-        }
+    g.add_conditional_edges("decide", after_decide, ["extract_pages", "read_oa", END])
+    g.add_conditional_edges(
+        "read_oa", lambda s: END if s["error"] else "check_oa", ["check_oa", END]
     )
+    # read_oa → check_oa → cut_to_oa 는 고정 간선: 지휘가 건너뛸 수 없다
+    g.add_conditional_edges("check_oa", after_check, ["cut_to_oa", END])
+    g.add_conditional_edges("cut_to_oa", lambda s: END if s["error"] else "decide", ["decide", END])
 
-    base = {"results": final["results"], "case_id": final["case_id"]}
+    try:
+        final = g.compile().invoke(
+            {
+                "results": {},
+                "steps": 0,
+                "next_tool": None,
+                "error": None,
+                "waiting_for": None,
+                "case_id": case_input.case_id,
+            }
+        )
+    except Exception:
+        # 목록 밖 예외(버그)는 숨기지 않고 던진다. 던지기 전에 어디까지 돌았는지 남긴다
+        logger.exception("run_case %s 예외, 지금까지 돈 도구: %s", run_id, trace)
+        raise
+
+    base = {"results": final["results"], "case_id": final["case_id"], "trace": list(trace)}
     if final["error"]:
         logger.warning("run_case %s 실패: %s", run_id, final["error"])
-        scope = ", ".join(final["results"]) if final["error"]["code"] == "max_steps" else None
+        scope = list(trace) if final["error"]["code"] == "max_steps" else None
         return RunOutcome(state="failed", error=final["error"], searched_scope=scope, **base)
     if final["waiting_for"]:
         return RunOutcome(state="waiting_for_human", waiting_for=final["waiting_for"], **base)
