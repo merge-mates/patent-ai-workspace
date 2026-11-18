@@ -6,9 +6,9 @@
 import logging
 from datetime import date
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,8 @@ class Flag(StrEnum):
 class Status(BaseModel):
     """상태 객체. 직렬화하면 늘 네 키(없는 키는 null)."""
 
+    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+
     value: StatusValue
     reason: UnverifiedReason | None = None
     checked: str | None = None  # confirmed: 무엇을 확인했나
@@ -56,6 +58,11 @@ class Status(BaseModel):
     @model_validator(mode="after")
     def _값에_맞는_칸만_채운다(self) -> Status:
         v = self.value
+        # 빈 문자열·공백뿐인 확인 내용은 "확인했다"가 아니므로 거부
+        for name in ("checked", "searched_scope"):
+            text = getattr(self, name)
+            if text is not None and not text.strip():
+                raise ValueError(f"{name}가 비어 있음")
         # 값마다 필수 칸이 있고, 그 값에 맞지 않는 칸은 비워 둬야 한다
         if (v == StatusValue.UNVERIFIED) != (self.reason is not None):
             raise ValueError("reason은 unverified일 때만, 그리고 unverified면 꼭 채운다")
@@ -69,6 +76,8 @@ class Status(BaseModel):
 class Evidence(BaseModel):
     """근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다."""
 
+    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+
     document_id: str
     page: int | None = None
     raw_text: str | None = None
@@ -78,6 +87,8 @@ class Evidence(BaseModel):
 
 class ResultBase(BaseModel):
     """모든 결과 스키마가 갖는 공통 칸."""
+
+    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
 
     status: Status
     evidence: list[Evidence] = Field(default_factory=list)
@@ -90,6 +101,8 @@ class ResultBase(BaseModel):
 class Candidate[T](BaseModel):
     """충돌 때 남기는 후보 하나 (규칙 값 / 모델 값)."""
 
+    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+
     value: T | None = None
     raw_text: str | None = None
     page: int | None = None
@@ -99,11 +112,13 @@ class Candidate[T](BaseModel):
 class ExtractedValue[T](BaseModel):
     """원문에서 뽑은 값 하나. 값에는 늘 원문 글자·쪽·상태가 붙는다."""
 
+    model_config = ConfigDict(frozen=True)  # 만든 뒤 칸을 바꿔 검사를 우회하지 못하게
+
     value: T | None = None
     raw_text: str | None = None
     page: int | None = None
     status: Status
-    candidates: list[Candidate[Any]] = Field(default_factory=list)
+    candidates: list[Candidate[T]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _후보는_충돌일_때만(self) -> ExtractedValue[T]:

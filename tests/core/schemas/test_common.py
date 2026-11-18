@@ -230,3 +230,42 @@ def test_worst_빈_목록은_unverified_not_extracted와_경고(caplog):
     assert s.value == StatusValue.UNVERIFIED
     assert s.reason == UnverifiedReason.NOT_EXTRACTED
     assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+# ---------- 리뷰 반영: 빈 확인 내용·후보 타입·고정 ----------
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
+def test_checked와_범위가_비었거나_공백이면_거부(blank):
+    with pytest.raises(ValidationError):
+        Status(value="confirmed", checked=blank)
+    with pytest.raises(ValidationError):
+        Status(value="not_found_in_scope", searched_scope=blank)
+
+
+def test_worst_confirmed에_빈_요약이면_거부():
+    with pytest.raises(ValidationError):
+        worst_status([C], "")
+
+
+def test_후보_값도_T_타입_검사():
+    with pytest.raises(ValidationError):
+        ExtractedValue[list[int]](
+            value=None,
+            status=Status(value="conflict"),
+            candidates=[
+                {"value": "abc", "source": "rule"},
+                {"value": [1, 2], "source": "model"},
+            ],
+        )
+
+
+def test_만든_뒤_칸을_바꾸면_거부():
+    s = Status(value="conflict")
+    with pytest.raises(ValidationError):
+        s.value = StatusValue.CONFIRMED
+    base = ResultBase(status=s)
+    with pytest.raises(ValidationError):
+        base.needs_recheck = True
+    # 새 값은 model_copy로 만든다
+    assert base.model_copy(update={"needs_recheck": True}).needs_recheck is True
