@@ -101,5 +101,45 @@
     "raw_text": "제1항 내지 제7항",
     "page": 1,
     "ambiguous": false
-  }
+  },
+  "claim_rows": [
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항 내지 제4항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "rejection": 1,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "이 출원의 청구항 제1항은 특허법 제42조제4항제2호에 해당하여 특허를 받을 수 없습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    }
+  ]
 }

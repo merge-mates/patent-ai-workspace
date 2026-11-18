@@ -672,6 +672,7 @@ def test_명확성_줄은_인용과_위치_대신_표현을_가진다():
         locations={},
         clarity_terms=["상기 프리뷰 이미지"],
         clarity_reason="앞에 정의 없음",
+        clarity_reason_origin="ai_generated",
     )
     assert oa([clarity], claim_rows=[good]).claim_rows[0].clarity_terms == ["상기 프리뷰 이미지"]
     with pytest.raises(ValueError):  # 명확성 줄에 인용이 있으면 거부

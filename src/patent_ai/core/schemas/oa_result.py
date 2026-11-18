@@ -15,6 +15,7 @@ from patent_ai.core.schemas.common import (
     Evidence,
     ExtractedValue,
     Flag,
+    Origin,
     ResultBase,
     Status,
     StatusValue,
@@ -143,7 +144,8 @@ class ClaimRow(BaseModel):
     locations: dict[str, list[str]] = Field(default_factory=dict)
     same_as: list[str] = Field(default_factory=list)  # `claim:<n>`·`rejection:<n>`
     clarity_terms: list[str] = Field(default_factory=list)  # 명확성 줄의 문제 표현 (따옴표 안 글자)
-    clarity_reason: str | None = None  # 참고용 한 구
+    clarity_reason: str | None = None  # 참고용 한 구 (모델이 쓴 글, 원문 대조 안 함, 채점 밖)
+    clarity_reason_origin: Origin | None = None  # 이유가 있으면 ai_generated
     raw_text: str | None = None  # 이 줄 판단이 적힌 원문 글자
     page: int | None = None
     status: Status
@@ -154,6 +156,12 @@ class ClaimRow(BaseModel):
             raise ValueError("page가 있으면 raw_text는 비어 있지 않아야 함")
         if any(not _SAME_AS_FORM.fullmatch(x) for x in self.same_as):
             raise ValueError("same_as는 `claim:<번호>`·`rejection:<번호>` 꼴")
+        # 이유는 AI가 쓴 글이라 늘 그렇게 표시한다 (원문에서 뽑은 값과 구분)
+        expected_origin = Origin.AI_GENERATED if self.clarity_reason is not None else None
+        if self.clarity_reason_origin != expected_origin:
+            raise ValueError(
+                "clarity_reason이 있으면 clarity_reason_origin은 ai_generated, 없으면 null"
+            )
         if set(self.locations) - set(self.citations):
             raise ValueError("locations의 라벨은 citations에 있어야 함")
         if self.status.value == StatusValue.CONFIRMED:

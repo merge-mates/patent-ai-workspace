@@ -16,7 +16,7 @@ from patent_ai.core.f1_oa_reader.extraction import (
 )
 from patent_ai.core.f1_oa_reader.rules import parse_cited_locations, parse_same_as, quoted_segments
 from patent_ai.core.f1_oa_reader.verify import raw_text_on_page
-from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import Origin, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import ClaimRow, RejectionKind, kind_of_article
 
@@ -107,9 +107,24 @@ def _unique(items: list[str]) -> list[str]:
     return list(dict.fromkeys(items))
 
 
-def _content(
-    r: ClaimRowExtraction, kind: RejectionKind, known: dict[str, str], pages: PageText
-) -> dict:
+def _mentioned(judgment: str, rej: dict) -> set[str]:
+    """판단 원문이 가리키는 인용 라벨: `인용발명 N`(`1 내지 2`, `1, 2` 포함)과 인용 원문 표기."""
+    text = _squash(judgment)
+    found: set[str] = set()
+    for m in re.finditer(r"인용발명(\d+(?:(?:내지|~|-|,|및|와|과)(?:인용발명)?\d+)*)", text):
+        parts = re.split(r"(내지|~|-|,|및|와|과)", m.group(1))
+        numbers, seps = parts[0::2], parts[1::2]
+        found.add(f"D{int(numbers[0])}")
+        for sep, num in zip(seps, numbers[1:], strict=True):
+            lo = int(numbers[numbers.index(num) - 1]) if sep in ("내지", "~", "-") else int(num)
+            found.update(f"D{n}" for n in range(lo, int(num) + 1))
+    for c in rej["citations"]:
+        if c.number.raw_text and _squash(c.number.raw_text) in text:
+            found.add(c.label)
+    return found
+
+
+def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageText) -> dict:
     """줄 안 값을 원문과 맞춰 뽑는다. 하나라도 못 맞추면 _Fail (그 줄을 통째로 버림)."""
     if _is_ambiguous(r):
         raise _Fail(UnverifiedReason.AMBIGUOUS)
@@ -138,12 +153,19 @@ def _content(
         if any(_squash(t) not in quoted for t in terms):
             raise _Fail()
         out["clarity_terms"] = _unique(terms)
-        out["clarity_reason"] = r.clarity_reason
+        reason = (r.clarity_reason or "").strip()
+        out["clarity_reason"] = reason or None
+        out["clarity_reason_origin"] = Origin.AI_GENERATED if reason else None  # 모델이 쓴 글
         return out
     citations: list[str] = []
     locations: dict[str, list[str]] = {}
+    known = _labels_of([rej])  # 후보는 그 거절이유의 인용문헌뿐
+    mentioned = _mentioned(judgment, rej)
     for c in r.citations:
         label = _label(c, known, pages)
+        # 판단 원문이 그 인용을 실제로 가리켜야 쓴다 (엉뚱한 인용이 붙지 않게)
+        if label not in mentioned:
+            raise _Fail()
         citations.append(label)
         found = _locations(c, pages)
         if found:
@@ -156,6 +178,32 @@ def _content(
 def _unverified(claim: int | None, rejection: int | None, reason: UnverifiedReason) -> ClaimRow:
     status = Status(value=StatusValue.UNVERIFIED, reason=reason)
     return ClaimRow(claim=claim, rejection=rejection, status=status)
+
+
+def _head_number(judgment: Item, pages: PageText) -> int | None:
+    """판단 원문 머리 번호(`N-M.`): 원문 글자 맨 앞, 없으면 그 쪽에서 바로 앞 글자."""
+    raw = judgment.raw_text or ""
+    m = re.match(r"\s*(\d+)\s*-\s*\d+\s*[.)]", raw)
+    if m:
+        return int(m.group(1))
+    page = next((p for p in pages.pages if p.page == judgment.page), None)
+    if page is None:
+        return None
+    text, needle = _squash(page.text), _squash(raw)
+    at = text.find(needle)
+    m = re.search(r"(?<!\d)(\d+)-\d+[.)]$", text[:at]) if at > 0 else None
+    return int(m.group(1)) if m else None
+
+
+def _fits(r: ClaimRowExtraction, rej: dict, pages: PageText) -> bool:
+    """청구항 번호 원문이 판단 원문 안에 있고, 머리 번호가 있으면 거절이유 순번과 같은가."""
+    if not _on_page(r.judgment, pages):
+        return True  # 판단 원문이 없으면 값 대조에서 어차피 떨어진다
+    assert r.judgment is not None and r.claims is not None
+    if _squash(r.claims.raw_text or "") not in _squash(r.judgment.raw_text or ""):
+        return False
+    head = _head_number(r.judgment, pages)
+    return head is None or head == rej["no"]
 
 
 def _is_ambiguous(r: ClaimRowExtraction) -> bool:
@@ -173,7 +221,6 @@ def build_claim_rows(
     rejections: read_oa가 만든 거절이유 칸 dict (no·article·supported·claims·citations).
     """
     by_no = {r["no"]: r for r in rejections}
-    known = _labels_of(rejections)
     made: list[ClaimRow] = []
     seen: set[tuple[int, int]] = set()
     for r in rows:
@@ -187,6 +234,14 @@ def build_claim_rows(
         no = rej["no"] if rej is not None else None
         claims = parse_claims(r.claims.raw_text or "") if _on_page(r.claims, pages) else None
 
+        if rej is not None and claims is not None and not _fits(r, rej, pages):
+            # 청구항·순번이 판단 원문과 안 맞는 줄: 어느 줄인지 못 정해 번호 없이 남긴다
+            reason = (
+                UnverifiedReason.AMBIGUOUS if _is_ambiguous(r) else UnverifiedReason.NOT_EXTRACTED
+            )
+            made.append(_unverified(None, None, reason))
+            continue
+
         # 값 대조는 줄 하나 단위라 청구항마다 같은 값을 준다 (3절 10)
         content: dict = {}
         reason: UnverifiedReason | None = None
@@ -196,7 +251,7 @@ def build_claim_rows(
             )
         else:
             try:
-                content = _content(r, kind_of_article(rej["article"].value), known, pages)
+                content = _content(r, kind_of_article(rej["article"].value), rej, pages)
             except _Fail as fail:
                 reason = fail.reason
 
@@ -216,4 +271,14 @@ def build_claim_rows(
                 continue
             status = Status(value=StatusValue.CONFIRMED, checked=f"{content['page']}쪽 원문 대조")
             made.append(ClaimRow(claim=claim, rejection=no, status=status, **content))
+    # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
+    # (줄이 빠져도 조용히 지나가지 않게)
+    produced = {(row.claim, row.rejection) for row in made}
+    for rej in rejections:
+        if not rej["supported"] or rej["claims"].value is None:
+            continue  # 대상 청구항을 모르면 채울 수 없다 (거절이유 status가 이미 확인되지 않음)
+        for claim in rej["claims"].value:
+            if (claim, rej["no"]) not in produced:
+                logger.warning("청구항 %s 거절이유 %s: 모델이 줄을 주지 않음", claim, rej["no"])
+                made.append(_unverified(claim, rej["no"], UnverifiedReason.NOT_EXTRACTED))
     return made

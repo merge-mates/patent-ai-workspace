@@ -271,8 +271,11 @@ def test_거절이유_대상_밖_청구항이면_그_줄은_확인되지_않음(
     answer = _with_row(
         0, claims={"value": None, "raw_text": "제1항", "page": 3, "ambiguous": False}, rejection=3
     )
-    result = _read(answer)  # 거절이유 3의 대상은 제6·7항
-    _assert_dropped(_row(result, 1, 3))
+    result = _read(answer)  # 거절이유 3의 대상은 제6·7항 (이 줄 판단 머리 번호도 1-1이라 어긋남)
+    assert not [r for r in result.claim_rows if (r.claim, r.rejection) == (1, 3)]
+    assert [r for r in result.claim_rows if r.claim is None]  # 엇붙은 줄은 번호 없이 남음
+    _assert_dropped(_row(result, 1, 1))  # 원래 줄은 빈 줄로 채워짐
+    assert result.status.value == StatusValue.UNVERIFIED
 
 
 def test_같은_청구항_거절이유_줄이_겹치면_앞의_것만_남긴다():
@@ -359,7 +362,9 @@ def test_명확성_이유는_AI가_쓴_글로_구분한다():
     assert _row(result, 1, 1).clarity_reason_origin is None
 
 
-def test_claim_rows_칸이_없는_모델_답도_받는다():
+def test_claim_rows_칸이_없는_모델_답도_받지만_줄이_빠진_것으로_본다():
     answer = _answer()
     del answer["claim_rows"]
-    assert _read(answer).claim_rows == []
+    result = _read(answer)
+    assert len(result.claim_rows) == 16
+    assert all(r.status.value == StatusValue.UNVERIFIED for r in result.claim_rows)

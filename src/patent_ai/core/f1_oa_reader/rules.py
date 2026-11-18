@@ -272,6 +272,7 @@ def parse_cited_locations(raw: str) -> list[str] | None:
 # ---- 청구항 줄: 같은 취지 대상, 따옴표 안 글자 ----
 _SAME_REJECTION = re.compile(r"거절\s*이유\s*(?:제\s*)?(\d+)")
 _SAME_SECTION = re.compile(r"(\d+)\s*-\s*\d+\s*에서\s*본\s*바와")  # "1-1에서 본 바와 같이"
+_SAME_MARK = re.compile(r"(.*)[과와]\s*(?:동일|같)")  # 마지막 "과/와 같" 앞까지
 _CLAIM_LIST = re.compile(
     r"(?:청구항\s*)?제?\s*\d+\s*항?(?:\s*(?:내지|~|-|,|및)\s*(?:청구항\s*)?제?\s*\d+\s*항?)*"
 )
@@ -290,12 +291,14 @@ def parse_same_as(raw: str) -> list[str] | None:
     m = _SAME_SECTION.search(raw)
     if m:
         return [f"rejection:{m.group(1)}"]
-    for m in _CLAIM_LIST.finditer(raw):
-        if "항" not in m.group(0):  # 번호만 있는 조각(날짜 등)은 청구항이 아님
-            continue
-        numbers = expand_claims(m.group(0))
-        return [f"claim:{n}" for n in numbers] if numbers else None
-    return None
+    # 판단 문장 전체가 와도 "과/와 같·동일" 앞의 묶음(가리키는 대상)을 고른다
+    head = _SAME_MARK.search(raw)
+    text = head.group(1) if head else raw
+    lists = [m.group(0) for m in _CLAIM_LIST.finditer(text) if "항" in m.group(0)]
+    if not lists:  # 번호만 있는 조각(날짜 등)은 청구항이 아님
+        return None
+    numbers = expand_claims(lists[-1] if head else lists[0])
+    return [f"claim:{n}" for n in numbers] if numbers else None
 
 
 _QUOTED = re.compile(r"[\'\"‘“「『](.+?)[\'\"’”」』]")

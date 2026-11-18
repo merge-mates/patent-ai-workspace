@@ -115,7 +115,6 @@ graph LR
 - [x] task-4
 - [x] task-5
 - [x] task-6
-- [x] task-5
 - 다음: /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
