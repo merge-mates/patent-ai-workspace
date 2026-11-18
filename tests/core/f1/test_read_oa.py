@@ -101,6 +101,7 @@ def test_기본_통지서의_거절이유는_청구항_1이_둘에_들어간다(
     assert (first.article.value, first.claims.value, first.claims.page) == ("29-2", [1, 2, 3, 4], 2)
     assert (second.article.value, second.claims.value, second.claims.page) == ("42-4-2", [1], 3)
     assert first.supported and second.supported
+    assert (first.kind, second.kind) == ("inventive_step", "clarity")  # 조문에서 규칙으로 정함
     assert 1 in first.claims.value and 1 in second.claims.value  # 합치지 않고 따로 둠
     numbers = [(c.number.value, c.country.value, c.cited_paragraphs.value) for c in first.citations]
     assert numbers == [
@@ -178,6 +179,7 @@ def test_지원_안_하는_조문과_나라는_직접_검토_필요_표시():
     result, _ = _run("notice_unsupported", _ok("unsupported"))
     first, second = result.rejections
     assert second.article.value == "42-3"
+    assert (first.kind, second.kind) == ("inventive_step", "other")
     assert not second.supported and Flag.NEEDS_HUMAN_REVIEW in second.flags
     assert first.supported and Flag.NEEDS_HUMAN_REVIEW not in first.flags
     kr, jp = first.citations

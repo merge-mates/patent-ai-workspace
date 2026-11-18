@@ -13,6 +13,7 @@ from patent_ai.core.schemas.oa_result import (
     NoticeKind,
     OAResult,
     Rejection,
+    RejectionKind,
     build_oa_result,
     build_rejection,
     collect_evidence,
@@ -471,3 +472,76 @@ def test_순번과_라벨_값이_그대로_직렬화된다():
     r = rejection(citations=[cit(label="D2")], no=3)
     assert r.no == 3
     assert r.citations[0].label == "D2"
+
+
+# ---------- #18 task-5: 거절이유 종류 kind (조문 코드에서 규칙으로 정함) ----------
+
+
+def test_RejectionKind_값은_넷():
+    assert {k.value for k in RejectionKind} == {"novelty", "inventive_step", "clarity", "other"}
+
+
+@pytest.mark.parametrize(
+    ("article", "kind"),
+    [
+        ("29-1-1", "novelty"),
+        ("29-1-2", "novelty"),
+        ("29-2", "inventive_step"),
+        ("42-4-2", "clarity"),
+        ("42-3", "other"),
+        ("42-8", "other"),
+        ("29-1", "other"),  # 호 없는 29조 1항은 지원 표 밖
+    ],
+)
+def test_조문_코드마다_kind가_정해진다(article, kind):
+    supported = article in {"29-1-1", "29-1-2", "29-2", "42-4-2"}
+    flags = [] if supported else [Flag.NEEDS_HUMAN_REVIEW]
+    r = rejection(article, supported=supported, flags=flags)
+    assert r.kind == kind
+    assert r.model_dump(mode="json")["kind"] == kind  # 직렬화는 영어 코드 문자열
+
+
+def test_호가_여럿이면_모두_신규성이면_novelty():
+    r = rejection("29-1-1|29-1-2")
+    assert r.kind == RejectionKind.NOVELTY and r.supported
+
+
+def test_호가_여럿이어도_종류가_섞이면_other():
+    r = rejection("29-1-1|42-4-2", supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW])
+    assert r.kind == RejectionKind.OTHER
+
+
+def test_조문을_모르면_other이고_supported_flags_status_규칙은_그대로():
+    r = rejection(
+        supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW], article=ev(None, None, None, BAD)
+    )
+    assert r.kind == RejectionKind.OTHER
+    assert r.status.value == StatusValue.UNVERIFIED  # 조문 모름은 status를 나쁘게 함
+    assert oa([rejection(), r]).status.value == StatusValue.UNVERIFIED
+
+
+def test_조문이_충돌이면_other():
+    r = build_rejection(
+        document_id="d_1",
+        **rej_fields(supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW], article=conflict_value()),
+    )
+    assert r.kind == RejectionKind.OTHER and r.status.value == StatusValue.CONFLICT
+
+
+def test_kind를_사람이_넣을_수_없다():
+    with pytest.raises(TypeError):
+        build_rejection(document_id="d_1", **rej_fields(), kind="clarity")
+
+
+def test_조문과_안_맞는_kind는_거부():
+    data = rejection("29-2").model_dump(mode="json")
+    data["kind"] = "clarity"
+    with pytest.raises(ValidationError):
+        Rejection.model_validate(data)
+
+
+def test_kind_없는_거절이유는_거부():
+    data = rejection().model_dump(mode="json")
+    del data["kind"]
+    with pytest.raises(ValidationError):
+        Rejection.model_validate(data)
