@@ -29,6 +29,7 @@ graph LR
 - 만들 함수·인터페이스 모양: `Tool{name, kind: "code_tool" | "fixed_stage" | "subagent", input_schema, output_schema, run(input) -> ToolResult{result, status, evidence}}`, `ToolRegistry.register/get`. F1 등록: `extract_pages`(code_tool), `read_oa`(code_tool, 안에서 모델 한 번), `cut_to_oa`(fixed_stage, 몸통은 #54 전까지 입력을 그대로 넘기는 가짜)
 - 테스트할 경우: 평소(등록·조회) / 빈 입력(없는 도구 이름 → `ToolNotFound`) / 실패(출력이 `output_schema`에 안 맞음 → 거부, status 없는 결과 → 거부)
 - 확인 방법: `uv run pytest tests/core/agents/test_tools.py -q` → 모두 통과
+- materials는 #54 전까지 문서 ID 문자열 목록, #54에서 DocumentRef로
 - 먼저: #14 task-1·task-2, #17 task-1, #18 task-3
 
 ### task-2: 지휘 그래프 뼈대와 `run_case()`

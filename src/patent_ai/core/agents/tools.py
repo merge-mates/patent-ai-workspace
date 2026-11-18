@@ -134,6 +134,9 @@ def _read_oa(i: ReadOAInput, ctx: RunContext | None) -> OAResult:
 def _cut_to_oa(i: CutToOAInput, ctx: RunContext | None) -> CutToOAOutput:
     # 가짜 몸통: 자료를 그대로 넘기고, 진짜 자르기가 아니라서 확인되지 않음으로 표시
     logger.warning("자르기 몸통은 #54")
+    # 자료가 하나도 없으면 #54에서 진짜 자르기가 들어와도 남도록 따로 경고
+    if not i.materials:
+        logger.warning("cut_to_oa: 사건 자료가 비어 있음")
     return CutToOAOutput(
         materials=i.materials,
         status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),

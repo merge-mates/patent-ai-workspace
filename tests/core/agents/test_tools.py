@@ -119,3 +119,26 @@ def test_cut_to_oa는_입력을_그대로_넘기고_경고를_남긴다(caplog):
     assert out.status.value == StatusValue.UNVERIFIED
     assert out.status.reason == UnverifiedReason.NOT_EXTRACTED
     assert "자르기 몸통은 #54" in caplog.text
+
+
+def test_입력이_틀리면_ValidationError():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _tool().run({"n": "가"})
+
+
+def test_read_oa는_ctx_없이_부르면_ValueError():
+    reg = ToolRegistry()
+    register_f1_tools(reg)
+    pages = PageText(document_id="d", pages=[], status=_OK)
+    with pytest.raises(ValueError, match="ctx"):
+        reg.get("read_oa").run({"pages": pages, "document_id": "d", "oa_id": "o", "run_id": "r"})
+
+
+def test_cut_to_oa는_자료가_비면_따로_경고한다(caplog):
+    reg = ToolRegistry()
+    register_f1_tools(reg)
+    with caplog.at_level("WARNING"):
+        reg.get("cut_to_oa").run({"materials": []})
+    assert "사건 자료가 비어 있음" in caplog.text
