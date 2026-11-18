@@ -25,7 +25,7 @@ graph LR
     I18 --> I15
 ```
 
-## m1-i2-14  (11/18~11/19)  상태: 승인  (이슈 #14)
+## m1-i2-14  (11/18~11/19)  상태: 끝  (이슈 #14)
 **구현할 design 부분**: design.md 3-2 (공통 칸, `OAResult`, `CaseMaterials` F1 칸)   **맡은 합격 기준**: requirements.md 1·2·4·5 (모양), product.md 5절 F5 1·2·3
 **목표** (한 줄): F1이 내고 화면·서버가 받는 결과 스키마와 상태 규칙을 `core/schemas/`에 코드로 둔다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run pytest tests/core/schemas -q` 통과 + 사건 1건 fixture가 스키마 검사를 통과하고, 네 값 밖 status는 저장 전에 거부된다.
@@ -94,11 +94,13 @@ graph LR
 - [x] task-3
 - [x] task-4
 - [x] task-5
-- 다음: /check 이슈
+- 다음: /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
-### 끝난 뒤 (이슈가 끝난 날)
-- 된 것 / 안 된 것 / 다음 이슈로
+### 끝난 뒤 (11/19)
+- 된 것: 공통 칸(Status 객체·이유 여섯·ExtractedValue·candidates·frozen·extra forbid), OAResult·CaseMaterials, build_*·summarize_*·collect_evidence, 상태 전파·검토할 사항(필드마다 한 줄), 사건 1건 fixture(`tests/fixtures/case_missing_citation/`), data-model.md·api/README.md 줄이기. `uv run pytest -q` 105 passed. /check: 증거 통과, 이슈 리뷰 막음 1 → 2회차 통과.
+- 안 된 것·사람 판단: 코드(테스트 제외) 약 670줄로 400줄 기준을 넘음(나눌지). pdfplumber·reportlab 의존성 커밋(c077068)이 이 브랜치에 있음(#17용). API 예시와 fixture는 겉 키만 비교. 정답 형식의 청구항×거절이유 줄·인용 라벨(D1)·거절이유 kind는 OAResult에 없음(#20 전에 정함).
+- 다음 이슈로: ②~⑤ 결과 스키마(F2~F4 설계), review_items_count를 collect_review_items로 채우기(#16·#54).
 
 ## m1-i2-17  (11/18~11/19)  상태: 승인  (이슈 #17)
 **구현할 design 부분**: design.md 2절 ①, 9절 (#17 줄)   **맡은 합격 기준**: requirements.md 1 (쪽 위치의 바탕), 2 (스캔본 = 확인되지 않음)
