@@ -118,19 +118,19 @@ flowchart LR
 - LLM 출력 스키마 `OAExtraction` ([data-model.md](../../data-model.md) 6절 열린 것을 여기서 정함): 결과 스키마의 일부. 값마다 `{value, raw_text, page, ambiguous: bool}`만 두고 `status`·`supported`·`country`·`flags`는 없다 (코드가 ⑤⑥에서 붙임). 모델이 상태를 정하지 않게 하려는 것이다.
 - `CaseMaterials`(⑥) 중 F1에서 쓰는 칸: `documents[]`, `missing[{what, depends_on_tasks, lookup_result, ask_upload: true}]`, `held_tasks[{task, waiting_for}]`, `review_items_count`. 채우는 것은 #16·#54, 모양은 #14.
 - 앞 기능 결과가 바뀌면 "다시 확인 필요": F1은 맨 앞이라 없다. 다만 사람이 출원번호를 넣거나(`PATCH /cases/{id}`) 빠진 자료를 올리면, 그 자료에 기댄 뒤 결과(F3·F4)에 `needs_recheck`를 붙인다 (data-model 3절 규칙 2, #14).
-- 인터페이스 변경: **있음**. 받는 쪽에 알림 (서버 은진: API, 결과 스키마 #14).
+- 인터페이스 변경: **있음**. 받는 쪽에 알림 (서버 담당: API, 결과 스키마 #14).
 
 | 바뀌는 곳 | 지금 (api/README.md) | 바꿀 것 | 확정 |
 |---|---|---|---|
-| `POST /cases` | `{case_id, oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 은진 리뷰 |
-| `POST /cases/{id}/oas` | `{oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 은진 리뷰 |
-| `PATCH /cases/{id}` | 없음 | 출원번호 넣기 → 기다리던 실행이 이어 감 (이어 가는 방식 #15) | 은진 리뷰 |
-| `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, date}]`, `claim_versions[{version, created_by_receipt_number, claim_count}]`, 각 OA에 `examined_claim_version{version, created_by_receipt_number}`. events·claim_versions는 올라온 OA 중 가장 늦은 OA 시점까지. 청구항 본문은 넣지 않음 | 은진 리뷰 |
-| 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | + 출원번호 입력 기다림 (`waiting_for: application_number`, 목록은 #15) | 은진 리뷰 |
-| 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 ([가정], requirements 실패할 때) | 은진 리뷰 |
-| `GET /documents/{id}` | 원문과 쪽 | 메타 + `pages[{page, text}]` + 글자 추출 status | 은진 리뷰 |
-| `GET /documents/{id}/file` | 없음 | 원본 PDF | 은진 리뷰 |
-| 실행 `failed` 오류 | `{code, message}` | 같은 OA면 `{code: "oa_already_exists", case_id, oa_id}` | 은진 리뷰 |
+| `POST /cases` | `{case_id, oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
+| `POST /cases/{id}/oas` | `{oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
+| `PATCH /cases/{id}` | 없음 | 출원번호 넣기 → 기다리던 실행이 이어 감 (이어 가는 방식 #15) | 서버 담당 리뷰 |
+| `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, date}]`, `claim_versions[{version, created_by_receipt_number, claim_count}]`, 각 OA에 `examined_claim_version{version, created_by_receipt_number}`. events·claim_versions는 올라온 OA 중 가장 늦은 OA 시점까지. 청구항 본문은 넣지 않음 | 서버 담당 리뷰 |
+| 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | + 출원번호 입력 기다림 (`waiting_for: application_number`, 목록은 #15) | 서버 담당 리뷰 |
+| 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 (11/18 확인, requirements 실패할 때) | 서버 담당 리뷰 |
+| `GET /documents/{id}` | 원문과 쪽 | 메타 + `pages[{page, text}]` + 글자 추출 status | 서버 담당 리뷰 |
+| `GET /documents/{id}/file` | 없음 | 원본 PDF | 서버 담당 리뷰 |
+| 실행 `failed` 오류 | `{code, message}` | 같은 OA면 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | 결과 공통 칸 | data-model 3절 | 위 JSON (Status 객체, 이유 셋 더함, `needs_recheck`, `flags`) | #14 PR |
 
 승인되면 api/README.md·data-model.md는 #14·#56 PR에서 같이 고친다 (이 문서가 기준이 되지 않게).
@@ -189,10 +189,10 @@ flowchart LR
 | 번호·조문·범위는 정규식 | 전부 모델 | 답이 정해진 일, 비용·재현성 | 설계 | ADR 0003 |
 | 규칙·모델 값이 다르면 `conflict`로 둘 다 남김 | 하나를 골라 씀 | 고르는 것은 사람 | 설계 | product.md 5절 F5 |
 | 지원 조문 표는 코드 상수 | 설정 파일 | 실험 값이 아니라 범위 결정 (product.md 3.2) | 설계 | — |
-| 통지 종류는 규칙만 (`initial`/`final`/`unknown`) | 규칙 + 모델 비교 | 표시 문구 하나로 정해지는 일. 정답 형식과 같은 코드 | 11/18 재아 (정답 형식 PR #91) + Claude (모델 뺌) | docs/evaluation/f1-oa-gold.md 2.1 |
-| PDF 글자 추출은 pdfplumber, `extract_pages` 인터페이스 뒤 | PyMuPDF(AGPL), Docling, Upstage(외부) | 라이선스 가볍고 쪽 번호가 남음. tune 10건에서 거절이유 표가 깨지면 Docling과 비교 | 11/18 재아 | #17 |
-| 보내도 되는 자료 검사 코드 없음 | `MaterialKind` 표 코드·거부 테스트 (이슈 #13 원래 기준) | architecture.md 7절(11/17 확정): 받지 않는 자료는 규칙으로 막음 | 11/18 재아 | architecture.md 7절 |
-| 출원번호·발송번호 결정 4개 (임시 자리, 같은 사건에 붙이기, 409, 중복 임시 사건 숨김) | 올릴 때 출원번호 입력 / 못 읽으면 거절 / 중복을 200으로 붙임 | "PDF 하나만 올림" 흐름 유지, 실수로 올린 것을 알림 | 설계 (11/18 재아 인터뷰) | requirements "실패할 때" |
+| 통지 종류는 규칙만 (`initial`/`final`/`unknown`) | 규칙 + 모델 비교 | 표시 문구 하나로 정해지는 일. 정답 형식과 같은 코드 | 11/18 (정답 형식 PR #91) + Claude (모델 뺌) | docs/evaluation/f1-oa-gold.md 2.1 |
+| PDF 글자 추출은 pdfplumber, `extract_pages` 인터페이스 뒤 | PyMuPDF(AGPL), Docling, Upstage(외부) | 라이선스 가볍고 쪽 번호가 남음. tune 10건에서 거절이유 표가 깨지면 Docling과 비교 | 11/18 | #17 |
+| 보내도 되는 자료 검사 코드 없음 | `MaterialKind` 표 코드·거부 테스트 (이슈 #13 원래 기준) | architecture.md 7절(11/17 확정): 받지 않는 자료는 규칙으로 막음 | 11/18 | architecture.md 7절 |
+| 출원번호·발송번호 결정 4개 (임시 자리, 같은 사건에 붙이기, 409, 중복 임시 사건 숨김) | 올릴 때 출원번호 입력 / 못 읽으면 거절 / 중복을 200으로 붙임 | "PDF 하나만 올림" 흐름 유지, 실수로 올린 것을 알림 | 설계 (11/18 인터뷰) | requirements "실패할 때" |
 | 순서: F1 읽기 → 자동 조회 + 자르기 | 자르기 먼저 (architecture 8절 그림) | 출원번호를 F1이 읽어야 조회할 수 있음 | 설계 (doc-review) | 4절 |
 
 ## 9. 테스트 방법
