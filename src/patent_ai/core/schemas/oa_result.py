@@ -38,10 +38,13 @@ class NoticeKind(StrEnum):
 class Citation(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    label: str  # D1, D2… (OA에 나온 순서, 같은 문헌은 같은 라벨)
+    # 값은 정답 형식의 키 꼴 (KR20990000001A, US1234567B2…). 꼴을 못 정하면 null + 애매
     number: ExtractedValue[str]
     # 나라: KR/US/JP… 또는 못 정하면 value null + unverified(ambiguous)
     country: ExtractedValue[str]
     country_supported: bool
+    # 값 꼴: [0016], [0080]-[0081], 도 4c, 청구항 9, 요약, 3:5-10
     cited_paragraphs: ExtractedValue[list[str]]
     flags: list[Flag] = Field(default_factory=list)
 
@@ -69,7 +72,8 @@ class Citation(BaseModel):
 class Rejection(ResultBase):
     """거절이유 하나. 청구항은 거절이유마다 따로 둔다 (합치지 않음)."""
 
-    article: ExtractedValue[str]
+    no: int  # OA 거절이유 표 순번 (1부터)
+    article: ExtractedValue[str]  # 호가 여럿이면 `29-1-1|29-1-2`
     supported: bool
     claims: ExtractedValue[list[int]]
     citations: list[Citation] = Field(default_factory=list)
@@ -103,6 +107,7 @@ class OAResult(ResultBase):
     notice_date: ExtractedValue[str]  # value는 비우고 raw_text만 (날짜 확정 안 함)
     response_due: ExtractedValue[str]  # 위와 같음
     notice_kind: ExtractedValue[NoticeKind]
+    examined_claims: ExtractedValue[list[int]]  # 심사 대상 청구항 (`제1-20항` -> [1..20])
     examined_claim_version: ExtractedValue[str] | None = None  # F1은 안 채움 (#16·#54)
     examiner_hints: ExaminerHints
     rejections: list[Rejection] = Field(default_factory=list)
@@ -134,6 +139,7 @@ _OA_FIELD_NAMES = (
     "notice_date",
     "response_due",
     "notice_kind",
+    "examined_claims",
     "examined_claim_version",
     "examiner_hints",
     "rejections",
@@ -180,6 +186,7 @@ def summarize_status(
     notice_date: ExtractedValue,
     response_due: ExtractedValue,
     notice_kind: ExtractedValue,
+    examined_claims: ExtractedValue,
     examiner_hints: ExaminerHints,
     rejections: list[Rejection],
     examined_claim_version: ExtractedValue | None = None,
@@ -193,10 +200,18 @@ def summarize_status(
         _as(ExtractedValue, v)
         for v in (application_number, dispatch_number, notice_date, response_due, notice_kind)
     )
+    examined_claims = _as(ExtractedValue, examined_claims)
     examiner_hints = _as(ExaminerHints, examiner_hints)
     examined_claim_version = _as(ExtractedValue, examined_claim_version)
     if not rejections:
-        upper = [application_number, dispatch_number, notice_date, response_due, notice_kind]
+        upper = [
+            application_number,
+            dispatch_number,
+            notice_date,
+            response_due,
+            notice_kind,
+            examined_claims,
+        ]
         if all(
             v.status.value == StatusValue.UNVERIFIED
             and v.status.reason == UnverifiedReason.INPUT_UNVERIFIED
@@ -211,6 +226,7 @@ def summarize_status(
         notice_date.status,
         response_due.status,
         notice_kind.status,
+        examined_claims.status,
     ]
     if examined_claim_version is not None:
         statuses.append(examined_claim_version.status)
@@ -242,6 +258,7 @@ def collect_evidence(result: Rejection | OAResult, document_id: str) -> list[Evi
         result.notice_date,
         result.response_due,
         result.notice_kind,
+        result.examined_claims,
         result.examiner_hints.allowable_claims,
         result.examiner_hints.amendment_note,
     ]

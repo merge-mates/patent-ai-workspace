@@ -24,8 +24,34 @@ _COUNTRY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 
 def is_supported(article: str) -> bool:
-    """정규화한 조문("29-2")이 지원 표에 있나."""
-    return article in SUPPORTED_ARTICLES
+    """정규화한 조문("29-2")이 지원 표에 있나.
+
+    호가 여럿("29-1-1|29-1-2")이면 모든 조각이 지원일 때만 True.
+    """
+    pieces = article.split("|") if article else []
+    return bool(pieces) and all(p in SUPPORTED_ARTICLES for p in pieces)
+
+
+# 인용문헌 키 꼴 (정답 형식 f1-oa-gold.md 2.3). 종류 코드(A·B1…)가 글자에 없으면 지어내지 않는다.
+_KEY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"공개특허공보\s*제\s*10-(\d{4})-(\d{7})\s*호"), "KR{0}{1}A"),
+    (re.compile(r"등록특허공보\s*제\s*10-(\d{7})\s*호"), "KR10{0}B1"),
+    (
+        re.compile(r"(?<![A-Za-z])US\s*(\d{1,3}(?:,\d{3})+|\d{7,8})\s*(B[12])(?![A-Za-z0-9])"),
+        "US{0}{1}",
+    ),
+    (re.compile(r"(?<![A-Za-z])US\s*(\d{4})\s*/\s*(\d{7})\s*(A[1-9])(?!\d)"), "US{0}{1}{2}"),
+    (re.compile(r"(?<![A-Za-z])JP\s*(\d{4})-?(\d{6})\s*(A)(?![A-Za-z])"), "JP{0}{1}{2}"),
+]
+
+
+def citation_key(text: str) -> str | None:
+    """인용문헌 표기 글자에서 맞춰 볼 키를 만든다. 꼴을 못 정하거나 둘 이상이면 None."""
+    keys = set()
+    for pattern, shape in _KEY_PATTERNS:
+        for m in pattern.finditer(text):
+            keys.add(shape.format(*(g.replace(",", "") for g in m.groups())))
+    return keys.pop() if len(keys) == 1 else None
 
 
 def country_of(text: str, page: int | None = None) -> ExtractedValue[str]:

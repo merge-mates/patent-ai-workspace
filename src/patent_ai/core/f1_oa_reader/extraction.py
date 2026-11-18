@@ -41,6 +41,7 @@ class OAExtraction(BaseModel):
 
     application_number: Item | None = None
     dispatch_number: Item | None = None
+    examined_claims: Item | None = None  # 심사 대상 청구항 (원문 글자, 예: 제1항 내지 제20항)
     rejections: list[RejectionExtraction]
     allowable_claims: Item | None = None  # 칸이 없으면 null
     amendment_note: Item | None = None  # 칸이 없으면 null

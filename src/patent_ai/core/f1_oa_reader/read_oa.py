@@ -6,6 +6,8 @@
 
 import logging
 import re
+from collections.abc import Callable
+from typing import Any
 
 from patent_ai.core.f1_oa_reader.extraction import (
     CitationExtraction,
@@ -21,8 +23,9 @@ from patent_ai.core.f1_oa_reader.rules import (
     normalize_article,
     normalize_dispatch_number,
     notice_kind_of,
+    parse_cited_locations,
 )
-from patent_ai.core.f1_oa_reader.support import country_of, is_supported
+from patent_ai.core.f1_oa_reader.support import citation_key, country_of, is_supported
 from patent_ai.core.f1_oa_reader.verify import Found, merge, unverified
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid
@@ -58,16 +61,33 @@ def _found(item: Item | None) -> Found | None:
 
 
 # ---- 원문 글자에서 값을 다시 뽑는 함수들 (모델이 준 value는 믿지 않는다) ----
-def _paragraphs_of(raw: str) -> list[str] | None:
-    """`식별번호 [0023], [0031]` -> ["0023", "0031"]. 하나도 없으면 None."""
-    found = re.findall(r"\[(\d+)\]", raw)
-    return found or None
+def _settle(v: ExtractedValue, parse: Callable[[str], Any]) -> ExtractedValue:
+    """글자만 대조한(compare_by="raw_text") 결과에 값을 붙인다.
+
+    대조에 통과했는데 글자를 값 꼴로 못 읽으면 값 없이 확인되지 않음(애매). 글자·쪽은 남긴다.
+    """
+    if v.status.value != StatusValue.CONFIRMED:
+        return v
+    value = parse(v.raw_text or "")
+    if value is None:
+        status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+        return ExtractedValue(value=None, raw_text=v.raw_text, page=v.page, status=status)
+    return v.model_copy(update={"value": value})
 
 
-def _number_of(raw: str) -> str | None:
-    """인용문헌 번호는 원문 표기를 (공백만 정리해) 그대로 쓴다."""
-    text = " ".join(raw.split())
-    return text or None
+# 심사 대상 청구항을 가리키는 말 (공백 없앤 뒤 비교)
+_ALL_CLAIMS = {"청구항전항", "전항", "전청구항", "모든청구항", "청구항전부"}
+
+
+def _claims_parser(examined: ExtractedValue) -> Callable[[str], list[int] | None]:
+    """대상 청구항 글자 -> 번호 목록. `청구항 전항`은 심사 대상 청구항으로 펼친다."""
+
+    def parse(raw: str) -> list[int] | None:
+        if "".join(raw.split()) in _ALL_CLAIMS:
+            return list(examined.value) if examined.value else None  # 못 펼치면 None
+        return expand_claims(raw)
+
+    return parse
 
 
 # ---- 글자 층 없음: 모델을 안 부르고 전부 input_unverified ----
@@ -88,6 +108,7 @@ def _result_without_text(document_id: str, oa_id: str) -> OAResult:
         notice_date=bad(),
         response_due=bad(),
         notice_kind=kind,
+        examined_claims=bad(),
         examiner_hints=ExaminerHints(allowable_claims=bad(), amendment_note=bad()),
         rejections=[],
     )
@@ -107,15 +128,36 @@ def _call(pages: PageText, ctx: RunContext) -> OAExtraction:
 
 
 # ---- 거절이유 하나 ----
-def _citation(c: CitationExtraction, pages: PageText) -> Citation:
-    number = merge(None, _found(c.number), pages, derive=_number_of, field="citation.number")
+def _label_of(number: ExtractedValue, labels: dict[str, str]) -> str:
+    """인용문헌 라벨: OA에 나온 순서로 D1, D2… 같은 문헌(키나 원문 표기가 같음)은 같은 라벨."""
+    identity = number.value or "".join((number.raw_text or "").split())
+    if not identity:  # 번호를 못 읽은 것은 문헌을 알 수 없으니 새 라벨
+        return f"D{len(labels) + 1}"
+    return labels.setdefault(identity, f"D{len(labels) + 1}")
+
+
+def _citation(c: CitationExtraction, pages: PageText, labels: dict[str, str]) -> Citation:
+    raw_number = merge(
+        None, _found(c.number), pages, compare_by="raw_text", field="citation.number"
+    )
     # 나라는 대조를 통과한 번호 글자에서 정규식으로 정한다
-    country = country_of(number.raw_text or "", number.page)
+    country = country_of(raw_number.raw_text or "", raw_number.page)
+
+    def key_of(raw: str) -> str | None:
+        key = citation_key(raw)
+        # 키의 나라와 판정한 나라가 어긋나면 꼴을 못 정한 것으로 본다
+        return key if key is not None and key[:2] == country.value else None
+
+    number = _settle(raw_number, key_of)  # 논문·꼴 불명은 값 null + 애매
     supported = country.value in SUPPORTED_COUNTRIES
-    paragraphs = merge(
-        None, _found(c.cited_paragraphs), pages, derive=_paragraphs_of, field="cited_paragraphs"
+    paragraphs = _settle(
+        merge(
+            None, _found(c.cited_paragraphs), pages, compare_by="raw_text", field="cited_paragraphs"
+        ),
+        parse_cited_locations,
     )
     return Citation(
+        label=_label_of(number, labels),
         number=number,
         country=country,
         country_supported=supported,
@@ -124,9 +166,15 @@ def _citation(c: CitationExtraction, pages: PageText) -> Citation:
     )
 
 
-def _rejection(r: RejectionExtraction, pages: PageText) -> dict:
+def _rejection(
+    no: int,
+    r: RejectionExtraction,
+    pages: PageText,
+    examined: ExtractedValue,
+    labels: dict[str, str],
+) -> dict:
     article = merge(None, _found(r.article), pages, derive=normalize_article, field="article")
-    claims = merge(None, _found(r.claims), pages, derive=expand_claims, field="claims")
+    claims = merge(None, _found(r.claims), pages, derive=_claims_parser(examined), field="claims")
     # 요지: 원문 글자만 대조하고, 요지 글(value)은 대조 통과 때만 붙인다
     reasoning = merge(
         None, _found(r.examiner_reasoning), pages, compare_by="raw_text", field="reasoning"
@@ -135,10 +183,11 @@ def _rejection(r: RejectionExtraction, pages: PageText) -> dict:
         reasoning = reasoning.model_copy(update={"value": r.examiner_reasoning.value})
     supported = article.value is not None and is_supported(article.value)
     return {
+        "no": no,
         "article": article,
         "supported": supported,
         "claims": claims,
-        "citations": [_citation(c, pages) for c in r.citations],
+        "citations": [_citation(c, pages, labels) for c in r.citations],
         "examiner_reasoning": reasoning,
         "flags": [] if supported else [Flag.NEEDS_HUMAN_REVIEW],
     }
@@ -193,7 +242,14 @@ def read_oa(
     model = _call(pages, ctx)
 
     # 3) 필드마다 원문 대조·합치기 (필드 출처 표)
-    rejections = [_rejection(r, pages) for r in model.rejections]
+    # 심사 대상 청구항을 먼저: `청구항 전항`을 펼칠 때 쓴다
+    examined = merge(
+        None, _found(model.examined_claims), pages, derive=expand_claims, field="examined_claims"
+    )
+    labels: dict[str, str] = {}  # 인용문헌 라벨 (거절이유를 건너 같은 문헌은 같은 라벨)
+    rejections = [
+        _rejection(i, r, pages, examined, labels) for i, r in enumerate(model.rejections, start=1)
+    ]
     return build_oa_result(
         document_id=document_id,
         oa_id=oa_id,
@@ -219,6 +275,7 @@ def read_oa(
             rules.response_due, None, pages, compare_by="raw_text", field="response_due"
         ),
         notice_kind=notice_kind_of(pages),  # 규칙만
+        examined_claims=examined,
         examiner_hints=ExaminerHints(
             allowable_claims=_hint_claims(model.allowable_claims, pages),
             amendment_note=_hint_note(model.amendment_note, pages),

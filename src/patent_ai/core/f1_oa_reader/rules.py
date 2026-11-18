@@ -42,26 +42,21 @@ _NOTICE_DATE = re.compile(r"(?:발송일자|발송일|통지일)" + _GAP + _DATE
 _RESPONSE_DUE = re.compile(r"(?:제출기일|제출기한)" + _GAP + _DATE)
 
 
-def _hyphenate_app(raw: str) -> str:
-    d = raw.replace("-", "")
-    return f"{d[:2]}-{d[2:6]}-{d[6:]}"
-
-
-def _hyphenate_dispatch(raw: str) -> str:
-    d = raw.replace("-", "")
-    return f"{d[:1]}-{d[1:2]}-{d[2:6]}-{d[6:]}"
+def _digits(raw: str) -> str:
+    """번호 값은 하이픈 없는 숫자만 (정답 형식 1020990000001). 글자(raw_text)는 원문 그대로."""
+    return raw.replace("-", "")
 
 
 def normalize_application_number(text: str) -> str | None:
-    """글자 속 출원번호(`10-YYYY-NNNNNNN`, 하이픈 있어도 없어도)를 하이픈 꼴로. 없으면 None."""
+    """글자 속 출원번호(`10-YYYY-NNNNNNN`, 하이픈 있어도 없어도)를 숫자만으로. 없으면 None."""
     m = re.search(_APP_BODY, text)
-    return _hyphenate_app(m.group(0)) if m else None
+    return _digits(m.group(0)) if m else None
 
 
 def normalize_dispatch_number(text: str) -> str | None:
-    """글자 속 발송번호(`9-5-YYYY-NNNNNNNNN`)를 하이픈 꼴로. 없으면 None."""
+    """글자 속 발송번호(`9-5-YYYY-NNNNNNNNN`)를 숫자만으로. 없으면 None."""
     m = re.search(_DISPATCH_BODY, text)
-    return _hyphenate_dispatch(m.group(0)) if m else None
+    return _digits(m.group(0)) if m else None
 
 
 def _find(pages: PageText, pattern: re.Pattern[str], normalize=None) -> Found | None:
@@ -85,8 +80,8 @@ def _find(pages: PageText, pattern: re.Pattern[str], normalize=None) -> Found | 
 def extract_by_rules(pages: PageText) -> RuleFields:
     """출원번호·발송번호·통지일·제출기일을 뽑는다. 못 찾은 칸은 None."""
     return RuleFields(
-        application_number=_find(pages, _APP_NO, _hyphenate_app),
-        dispatch_number=_find(pages, _DISPATCH_NO, _hyphenate_dispatch),
+        application_number=_find(pages, _APP_NO, _digits),
+        dispatch_number=_find(pages, _DISPATCH_NO, _digits),
         notice_date=_find(pages, _NOTICE_DATE),
         response_due=_find(pages, _RESPONSE_DUE),
     )
@@ -94,21 +89,27 @@ def extract_by_rules(pages: PageText) -> RuleFields:
 
 # ---- 조문 ----
 _ARTICLE_TOKEN = re.compile(r"제\s*([^\s조항호제]*)\s*(조|항|호)")
-_ARTICLE_ORDER = ["조", "항", "호"]
 
 
 def normalize_article(text: str) -> str | None:
-    """`특허법 제29조제2항` -> `29-2`, `제42조제4항제2호` -> `42-4-2`. 깨졌으면 None."""
+    """`특허법 제29조제2항` -> `29-2`, `제42조제4항제2호` -> `42-4-2`.
+
+    호가 여럿이면 `|`로 잇는다: `제29조제1항제1호 및 제2호` -> `29-1-1|29-1-2`. 깨졌으면 None.
+    """
     if re.search(r"조\s*의\s*\d", text):
         return None  # `제29조의2`(확대된 선출원 등)는 `29-2`(진보성)와 섞이지 않게 거부
     tokens = _ARTICLE_TOKEN.findall(text)
-    # 조가 맨 앞이고, 조 -> 항 -> 호 순서로 한 번씩만, 번호는 숫자여야 한다
+    if not tokens or any(not num.isdigit() for num, _ in tokens):
+        return None
     units = [u for _, u in tokens]
-    if not tokens or units != _ARTICLE_ORDER[: len(units)]:
+    # 조가 맨 앞, 그 뒤 항(있으면 한 번), 그 뒤 호(여럿 가능). 호는 항 다음에만 온다
+    if units[0] != "조" or (len(units) > 1 and units[1] != "항"):
         return None
-    if any(not num.isdigit() for num, _ in tokens):
+    if any(u != "호" for u in units[2:]):
         return None
-    return "-".join(num for num, _ in tokens)
+    base = "-".join(num for num, _ in tokens[:2])
+    hos = [num for num, _ in tokens[2:]]
+    return "|".join(f"{base}-{h}" for h in hos) if hos else base
 
 
 # ---- 청구항 범위 ----
@@ -185,3 +186,79 @@ def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
         value=NoticeKind.UNKNOWN,
         status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),
     )
+
+
+# ---- 인용 위치(식별번호 칸) ----
+# 정답 형식(f1-oa-gold.md 2.4): 문단 `[0016]`, 범위 `[0080]-[0081]`, 도면 `도 4c`,
+# 인용문헌 청구항 `청구항 9`, `요약`, 미국 칼럼·줄 `3:5-10`
+_LOC_NOISE = re.compile(r"식별번호|단락\s*번호|단락|문단|paragraphs?|para\.?", re.IGNORECASE)
+_LOC_TOKEN = re.compile(
+    r"""
+    (?P<range>\[\s*(?P<ra>\d+)\s*\]\s*(?:-|~|내지)\s*\[\s*(?P<rb>\d+)\s*\])
+    |\[(?P<group>[\d\s,~\-]+)\]
+    |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?)
+    |청구항\s*제?\s*(?P<claim>\d+)\s*항?
+    |(?P<abstract>요약)
+    |(?:col\.?\s*)?(?P<col>\d+)\s*(?::|,\s*ll?\.?)\s*(?P<l1>\d+)(?:\s*[-~]\s*(?P<l2>\d+))?
+    """,
+    re.VERBOSE,
+)
+_LOC_SEPARATOR = re.compile(r"[\s,;/]|및")
+_MAX_PARAGRAPH = 9999  # 문단 번호는 4자리까지
+
+
+def _paragraph(n: str) -> str | None:
+    return f"[{int(n):04d}]" if int(n) <= _MAX_PARAGRAPH else None
+
+
+def _paragraph_range(a: str, b: str) -> str | None:
+    first, last = _paragraph(a), _paragraph(b)
+    if first is None or last is None or int(a) > int(b):
+        return None
+    return f"{first}-{last}"
+
+
+def _paragraph_group(body: str) -> list[str] | None:
+    """`[16, 38, 78]`, `[0080-0081]` 속 내용을 `[0016]`, `[0038]`… 로."""
+    out: list[str] = []
+    for part in body.split(","):
+        m = re.fullmatch(r"\s*(\d+)(?:\s*[-~]\s*(\d+))?\s*", part)
+        if not m:
+            return None
+        one = _paragraph_range(m.group(1), m.group(2)) if m.group(2) else _paragraph(m.group(1))
+        if one is None:
+            return None
+        out.append(one)
+    return out
+
+
+def parse_cited_locations(raw: str) -> list[str] | None:
+    """식별번호 칸 글자를 정답 꼴 목록으로. 못 읽는 조각이 있으면 None (지어내지 않는다)."""
+    text = _LOC_NOISE.sub(" ", raw)
+    out: list[str] = []
+    pos = 0
+    for m in _LOC_TOKEN.finditer(text):
+        # 토큰 사이에 구분자 말고 남은 글자가 있으면 못 읽는 조각
+        if _LOC_SEPARATOR.sub("", text[pos : m.start()]):
+            return None
+        pos = m.end()
+        if m.group("range"):
+            one = _paragraph_range(m.group("ra"), m.group("rb"))
+            found = [one] if one else None
+        elif m.group("group") is not None:
+            found = _paragraph_group(m.group("group"))
+        elif m.group("fig"):
+            found = [f"도 {m.group('fig')}"]
+        elif m.group("claim"):
+            found = [f"청구항 {int(m.group('claim'))}"]
+        elif m.group("abstract"):
+            found = ["요약"]
+        else:
+            end = f"-{m.group('l2')}" if m.group("l2") else ""
+            found = [f"{m.group('col')}:{m.group('l1')}{end}"]
+        if found is None:
+            return None
+        out += found
+    if _LOC_SEPARATOR.sub("", text[pos:]):
+        return None
+    return out or None

@@ -135,6 +135,7 @@ def _items_of_oa_result(oa: OAResult, target: str) -> list[ReviewItem]:
         "notice_date",
         "response_due",
         "notice_kind",
+        "examined_claims",
         "examined_claim_version",
     ]
     for name in named:

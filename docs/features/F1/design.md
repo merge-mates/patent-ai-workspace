@@ -49,9 +49,10 @@ flowchart LR
 | 출원번호, 발송번호 | 뽑음 | 뽑음 | 둘 다 대조 통과 + 같음 → `confirmed` / 다름 → `conflict`(둘 다 남김) / 하나만 통과 → 그 값 |
 | 통지일·제출기일 (글자) | 뽑음 | 안 뽑음 | 규칙 값만. `value`는 비우고 `raw_text`·`page` |
 | 통지 종류 | 뽑음 | 안 뽑음 | 규칙 값만. "최후거절이유통지" 표시가 있으면 `final`(원문 글자 + 쪽). 1쪽 머리말 글자를 읽었는데 표시가 없으면 `initial`, `raw_text`·`page`는 `null`, `confirmed`(`checked` = "최후 표시 없음, 모든 쪽 글자를 봄". 머리말 = 1쪽 첫 15줄에 "의견제출통지서"가 있음). 1쪽 머리말을 못 읽으면 `unknown` + `unverified(not_extracted)`. 이력(앞 보정서)과의 대조는 #16 묶기에서 `conflict`로 |
+| 심사 대상 청구항 | 안 뽑음 | 원문 | 모델 `raw_text`를 대조한 뒤 `expand_claims`로 펼침 |
 | 거절이유 블록 나누기, 조문 | 안 뽑음 | 블록마다 조문 원문 | 모델 `raw_text`를 대조한 뒤 ③ `normalize_article`로 정규화한 값만 씀 |
-| 대상 청구항 | 안 뽑음 | 블록마다 원문 | 모델 `raw_text`를 대조한 뒤 ③ `expand_claims`로 펼침. 규칙 값과 비교하지 않음 |
-| 인용문헌 번호, 인용 식별번호 | 안 뽑음 | 블록마다 원문 | 대조 뒤 나라는 ⑥ 정규식 |
+| 대상 청구항 | 안 뽑음 | 블록마다 원문 | 모델 `raw_text`를 대조한 뒤 ③ `expand_claims`로 펼침 (`청구항 전항`은 심사 대상 청구항 값으로). 규칙 값과 비교하지 않음 |
+| 인용문헌 번호, 인용 식별번호 | 안 뽑음 | 블록마다 원문 | 대조 뒤 번호는 ⑥ `citation_key`로 키 꼴(나라와 맞아야 함), 식별번호는 `parse_cited_locations`로 정답 꼴, 나라는 ⑥ 정규식 |
 | 심사관 논리 요지 | 안 뽑음 | 요지 + 원문 | 원문 `raw_text`만 대조 (요지 글은 대조하지 않음, `origin: ai_generated`) |
 | 「특허 가능한 청구항」, 【보정에 관한 참고사항】 | 안 뽑음 | 원문 (칸이 없으면 "없음") | 대조 뒤 청구항은 `expand_claims`. 칸이 없으면 "없음": 값 `[]` / `null`, `raw_text`·`page`는 `null`, `confirmed`(`checked` = "원문에 칸 없음"). "확인되지 않음"과 다름 (정답 형식 f1-oa-gold.md 2.1·4절) |
 - 원문에 글자가 없어서 정한 값(통지 종류 `initial`, 힌트 "없음")은 쪽이 없는 `confirmed`이고 `checked`에 본 범위를 적는다. "확인하지 않은 원문 위치 0건"은 쪽이 있는 값에만 건다.
@@ -89,21 +90,24 @@ flowchart LR
 ```json
 {
   "oa_id": "oa_1",
-  "application_number": {"value": "10-2099-0000001", "raw_text": "10-2099-0000001", "page": 1, "status": {"value": "confirmed", "checked": "1쪽 출원번호 칸 글자와 일치"}},
-  "dispatch_number": {"value": "9-5-2099-000000001", "raw_text": "...", "page": 1, "status": {"value": "confirmed", "checked": "..."}},
+  "application_number": {"value": "1020990000001", "raw_text": "10-2099-0000001", "page": 1, "status": {"value": "confirmed", "checked": "1쪽 출원번호 칸 글자와 일치"}},
+  "dispatch_number": {"value": "952099000000001", "raw_text": "9-5-2099-000000001", "page": 1, "status": {"value": "confirmed", "checked": "..."}},
   "notice_date":  {"value": null, "raw_text": "2099.01.26", "page": 1, "status": {"value": "confirmed", "checked": "원문 글자만, 날짜 확정 안 함"}},
   "response_due": {"value": null, "raw_text": "2099.03.26", "page": 1, "status": {"value": "confirmed", "checked": "원문 글자만, 기한 확정 안 함"}},
   "notice_kind":  {"value": "final", "raw_text": "최후거절이유통지", "page": 1, "status": {"value": "confirmed", "checked": "..."}},
+  "examined_claims": {"value": [1, 2, 3, 4, 5, 6, 7], "raw_text": "제1항 내지 제7항", "page": 1, "status": {"...": "..."}},
   "examined_claim_version": null,
   "examiner_hints": {"allowable_claims": {"value": [5, 7], "raw_text": "청구항 5, 7", "page": 3, "status": {"...": "..."}},
                      "amendment_note": {"value": null, "raw_text": "…", "page": 3, "status": {"...": "..."}}},
   "rejections": [
-    {"article": {"value": "29-2", "raw_text": "특허법 제29조제2항", "page": 2, "status": {"...": "..."}},
+    {"no": 1,
+     "article": {"value": "29-2", "raw_text": "특허법 제29조제2항", "page": 2, "status": {"...": "..."}},
      "supported": true,
      "claims": {"value": [1, 2, 3, 4], "raw_text": "제1항 내지 제4항", "page": 2, "status": {"...": "..."}},
-     "citations": [{"number": {"value": "KR10-0000001", "raw_text": "...", "page": 2, "status": {"...": "..."}},
-                    "country": {"value": "KR", "raw_text": "KR10-0000001", "page": 2, "status": {"...": "..."}}, "country_supported": true,
-                    "cited_paragraphs": {"value": ["0023", "0031"], "raw_text": "식별번호 [0023], [0031]", "page": 2, "status": {"...": "..."}}}],
+     "citations": [{"label": "D1",
+                    "number": {"value": "KR20990000001A", "raw_text": "공개특허공보 제10-2099-0000001호", "page": 2, "status": {"...": "..."}},
+                    "country": {"value": "KR", "raw_text": "공개특허공보 제10-2099-0000001호", "page": 2, "status": {"...": "..."}}, "country_supported": true,
+                    "cited_paragraphs": {"value": ["[0023]", "[0031]"], "raw_text": "식별번호 [0023], [0031]", "page": 2, "status": {"...": "..."}}}],
      "examiner_reasoning": {"value": "…요지…", "raw_text": "…원문…", "page": 2, "status": {"...": "..."}},
      "status": {"...": "..."}, "evidence": [], "origin": "ai_generated", "needs_recheck": false, "recheck_reason": null, "flags": []}
   ],
@@ -111,6 +115,8 @@ flowchart LR
 }
 ```
 - 값 하나하나는 `ExtractedValue{value, raw_text, page, status, candidates}` ([data-model.md](../../data-model.md) 4절 첫 줄에 `candidates`를 더함). 날짜·기한은 `value`를 비우고 `raw_text`만 둔다 (합격 기준 2). `candidates: [{value, raw_text, page, source: rule|model}]`는 `conflict`일 때만 채우고 그때 `value`는 `null` (규칙·모델 값을 둘 다 남김).
+- 값 꼴은 정답 형식([f1-oa-gold.md](../../evaluation/f1-oa-gold.md) 2·4절)을 따른다. 출원번호·발송번호 `value`는 하이픈 없는 숫자(`raw_text`는 원문 그대로). 인용문헌 `number.value`는 키 꼴(한국 공개 `KR20990000001A`, 한국 등록 `KR109900001B1`, 미국 등록 `US1234567B2`, 미국 공개 `US20200123456A1`, 일본 `JP2020123456A`). 종류 코드가 글자에 없거나 논문(NPL)이면 `value` null + `unverified(ambiguous)` (논문은 지원 안 하는 나라라 `needs_human_review`도). 인용 식별번호는 `[0016]`(4자리)·`[0080]-[0081]`(범위 하나)·`도 4c`·`청구항 9`·`요약`·`3:5-10`, 못 읽는 조각이 있으면 그 칸 `unverified(ambiguous)`. 조문에 호가 여럿이면 `29-1-1|29-1-2`처럼 `|`로 잇고 모든 조각이 지원 표에 있을 때만 `supported`. `Rejection.no`는 거절이유 표 순번(1부터), `Citation.label`은 OA에 나온 순서 `D1`·`D2`(같은 문헌은 같은 라벨). 이 PR로 바뀐 스키마: `examined_claims`, `Rejection.no`, `Citation.label`, 번호 `value` 꼴.
+- `examined_claims`(심사 대상 청구항)는 모델이 글자를 뽑고 코드가 `expand_claims`로 펼친다. 거절이유 대상이 `청구항 전항`이면 이 값으로 펼치고, 못 펼치면 `unverified`. 정답 형식의 청구항 줄(`claim_rows`)·명확성 문제 표현·`kind` 코드는 아직 안 맞춘다.
 - `notice_kind.value`: `initial` / `final` / `unknown`(이때만 `unverified`). 정답 형식과 같은 코드.
 - `examined_claim_version`: F1이 채우지 않는다. 사건 묶기·자동 조회(#16·#54)가 4절 규칙으로 정해 넣고, 모르면 `unverified`.
 - 지원 안 하는 거절이유: `supported: false` + `flags: ["needs_human_review"]`. 지원 안 하는 나라 인용문헌: `country_supported: false` + `flags: ["needs_human_review"]`.
