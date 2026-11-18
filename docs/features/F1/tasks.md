@@ -248,7 +248,7 @@ graph LR
 - 담당: 재아
 - 합격 기준: requirements.md 2 (지어낸 값·확인하지 않은 원문 위치 0건), 5
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/verify.py`, `src/patent_ai/core/f1_oa_reader/support.py`, `tests/core/f1/test_verify.py`
-- 만들 함수·인터페이스 모양: `raw_text_on_page(pages, page, raw_text) -> bool` (공백·줄바꿈만 무시), `merge(rule: Candidate | None, model: Candidate | None, pages) -> ExtractedValue` (design.md 필드 출처 표: 대조 실패 → `unverified(not_extracted)`, 둘이 다름 → `conflict` + `candidates`, `ambiguous` → `value=null` + `unverified(ambiguous)`), `SUPPORTED_ARTICLES = {"29-1","29-2","42-4-2"}`, `country_of(text) -> str | None` (design.md 2절 ⑥ 정규식)
+- 만들 함수·인터페이스 모양: `raw_text_on_page(pages, page, raw_text) -> bool` (공백·줄바꿈만 무시), `merge(rule: Candidate | None, model: Candidate | None, pages) -> ExtractedValue` (design.md 필드 출처 표: 대조 실패 → `unverified(not_extracted)`, 둘이 다름 → `conflict` + `candidates`, `ambiguous` → `value=null` + `unverified(ambiguous)`), `SUPPORTED_ARTICLES = {"29-1-1","29-1-2","29-2","42-4-2"}`, `country_of(text) -> str | None` (design.md 2절 ⑥ 정규식)
 - 테스트할 경우: 평소(같은 값) / 빈 입력(둘 다 없음 → `unverified(not_extracted)`) / 실패(원문에 없는 글자, 다른 쪽 번호, 둘이 다름) / 지원 안 하는 조문·JP 인용 → flags / 나라 표기 맞는 것 없음 → `unverified(ambiguous)`
 - 확인 방법: `uv run pytest tests/core/f1/test_verify.py -q` → 모두 통과
 - 먼저: #14 task-2, #17 task-1 (`PageText`)

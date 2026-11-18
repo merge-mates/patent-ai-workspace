@@ -16,6 +16,11 @@ from patent_ai.core.schemas.oa_result import NoticeKind
 HEADER_LINES = 15
 
 
+def loose_pattern(text: str) -> re.Pattern[str]:
+    """글자 사이에 공백·줄바꿈이 끼어도 찾는 정규식 (text 안의 공백은 무시)."""
+    return re.compile(r"\s*".join(re.escape(ch) for ch in text if not ch.isspace()))
+
+
 @dataclass(frozen=True)
 class RuleFields:
     application_number: Found | None = None
@@ -28,8 +33,10 @@ class RuleFields:
 # 날짜 YYYY.MM.DD. 이름표(출원번호·발송일자 등) 바로 뒤의 값만 뽑는다.
 # 인용문헌의 번호를 출원번호로 잘못 뽑지 않으려는 것이다.
 _GAP = r"[^\d\n]{0,8}"  # 이름표와 값 사이의 짧은 글자(공백·콜론 등)
-_APP_NO = re.compile(r"출원번호" + _GAP + r"(10-?\d{4}-?\d{7})(?!\d)")
-_DISPATCH_NO = re.compile(r"발송번호" + _GAP + r"(9-?5-?\d{4}-?\d{9})(?!\d)")
+_APP_BODY = r"10-?\d{4}-?\d{7}(?!\d)"  # 출원번호 모양 (이름표 찾기와 글자 속 찾기가 같이 씀)
+_DISPATCH_BODY = r"9-?5-?\d{4}-?\d{9}(?!\d)"
+_APP_NO = re.compile(r"출원번호" + _GAP + "(" + _APP_BODY + ")")
+_DISPATCH_NO = re.compile(r"발송번호" + _GAP + "(" + _DISPATCH_BODY + ")")
 _DATE = r"(\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.)"
 _NOTICE_DATE = re.compile(r"(?:발송일자|발송일|통지일)" + _GAP + _DATE)
 _RESPONSE_DUE = re.compile(r"(?:제출기일|제출기한)" + _GAP + _DATE)
@@ -47,13 +54,13 @@ def _hyphenate_dispatch(raw: str) -> str:
 
 def normalize_application_number(text: str) -> str | None:
     """글자 속 출원번호(`10-YYYY-NNNNNNN`, 하이픈 있어도 없어도)를 하이픈 꼴로. 없으면 None."""
-    m = re.search(r"10-?\d{4}-?\d{7}(?!\d)", text)
+    m = re.search(_APP_BODY, text)
     return _hyphenate_app(m.group(0)) if m else None
 
 
 def normalize_dispatch_number(text: str) -> str | None:
     """글자 속 발송번호(`9-5-YYYY-NNNNNNNNN`)를 하이픈 꼴로. 없으면 None."""
-    m = re.search(r"9-?5-?\d{4}-?\d{9}(?!\d)", text)
+    m = re.search(_DISPATCH_BODY, text)
     return _hyphenate_dispatch(m.group(0)) if m else None
 
 
@@ -131,8 +138,8 @@ def expand_claims(text: str) -> list[int] | None:
 
 # ---- 통지 종류 ----
 # 글자 사이에 공백·줄바꿈이 끼어도 찾는다
-_FINAL_MARK = re.compile(r"최\s*후\s*거\s*절\s*이\s*유\s*통\s*지")
-_TITLE = re.compile(r"의\s*견\s*제\s*출\s*통\s*지\s*서")
+_FINAL_MARK = loose_pattern("최후거절이유통지")
+_TITLE = loose_pattern("의견제출통지서")
 _INITIAL_CHECKED = "최후 표시 없음, 모든 쪽 글자를 봄"
 
 

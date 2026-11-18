@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Found:
-    """뽑은 값 하나 (규칙이든 모델이든). 나중에 rules.Candidate와 맞춘다."""
+    """뽑은 값 하나 (규칙이든 모델이든). 두 쪽 값을 이 모양으로 맞춰 merge에 넘긴다."""
 
     value: Any | None
     raw_text: str | None
@@ -50,7 +50,7 @@ def _passes(found: Found, pages: PageText) -> bool:
     return raw_text_on_page(pages, found.page, found.raw_text)
 
 
-def _unverified(
+def unverified(
     reason: UnverifiedReason, found: Found | None = None, *, keep_location: bool = False
 ) -> ExtractedValue:
     """값 없는 확인되지 않음. 대조를 통과한 자리만 남긴다."""
@@ -79,7 +79,7 @@ def merge(
     given = [(s, f) for s, f in given if f is not None]
     # 1) 둘 다 안 뽑았다
     if not given:
-        return _unverified(UnverifiedReason.NOT_EXTRACTED)
+        return unverified(UnverifiedReason.NOT_EXTRACTED)
 
     # 2) 한쪽이라도 애매 표시면 다른 쪽이 통과해도 확인되지 않음.
     #    글자·쪽은 대조에 통과한 쪽 것 (애매 쪽 먼저)
@@ -88,8 +88,8 @@ def merge(
         others = [f for _, f in given if not f.ambiguous]
         for f in ambiguous + others:
             if _passes(f, pages):
-                return _unverified(UnverifiedReason.AMBIGUOUS, f, keep_location=True)
-        return _unverified(UnverifiedReason.AMBIGUOUS)
+                return unverified(UnverifiedReason.AMBIGUOUS, f, keep_location=True)
+        return unverified(UnverifiedReason.AMBIGUOUS)
 
     # 3) 쓸 값: 원문 대조 통과 + (값은 원문 글자에서 나온 것이어야 함)
     usable: list[tuple[Literal["rule", "model"], Found, Any]] = []
@@ -113,7 +113,7 @@ def merge(
         usable.append((source, f, value))
 
     if not usable:
-        return _unverified(UnverifiedReason.NOT_EXTRACTED)
+        return unverified(UnverifiedReason.NOT_EXTRACTED)
 
     def key(item: tuple[str, Found, Any]) -> Any:
         return _squash(item[1].raw_text or "") if compare_by == "raw_text" else item[2]

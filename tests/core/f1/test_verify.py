@@ -108,7 +108,7 @@ def test_날짜처럼_글자만_비교하면_value_없이_raw_text와_쪽을_남
 
 
 # ---- support ----
-def test_지원_조문은_셋만():
+def test_지원_조문은_넷만():
     assert SUPPORTED_ARTICLES == {"29-1-1", "29-1-2", "29-2", "42-4-2"}
     for a in ("29-1-1", "29-1-2", "29-2", "42-4-2"):
         assert is_supported(a)

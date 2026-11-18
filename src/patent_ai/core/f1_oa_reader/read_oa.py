@@ -16,13 +16,14 @@ from patent_ai.core.f1_oa_reader.extraction import (
 from patent_ai.core.f1_oa_reader.rules import (
     expand_claims,
     extract_by_rules,
+    loose_pattern,
     normalize_application_number,
     normalize_article,
     normalize_dispatch_number,
     notice_kind_of,
 )
 from patent_ai.core.f1_oa_reader.support import country_of, is_supported
-from patent_ai.core.f1_oa_reader.verify import Found, merge
+from patent_ai.core.f1_oa_reader.verify import Found, merge, unverified
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
@@ -69,14 +70,10 @@ def _number_of(raw: str) -> str | None:
     return text or None
 
 
-def _unverified(reason: UnverifiedReason) -> ExtractedValue:
-    return ExtractedValue(status=Status(value=StatusValue.UNVERIFIED, reason=reason))
-
-
 # ---- 글자 층 없음: 모델을 안 부르고 전부 input_unverified ----
 def _result_without_text(document_id: str, oa_id: str) -> OAResult:
     def bad() -> ExtractedValue:
-        return _unverified(UnverifiedReason.INPUT_UNVERIFIED)
+        return unverified(UnverifiedReason.INPUT_UNVERIFIED)
 
     kind = ExtractedValue[NoticeKind](
         value=NoticeKind.UNKNOWN,
@@ -147,14 +144,9 @@ def _rejection(r: RejectionExtraction, pages: PageText) -> dict:
     }
 
 
-def _loose(title: str) -> re.Pattern[str]:
-    """제목 글자 사이에 공백·줄바꿈이 끼어도 찾는 정규식."""
-    return re.compile(r"\s*".join(re.escape(ch) for ch in title if not ch.isspace()))
-
-
 # 힌트 칸 제목 (표기가 둘 이상일 수 있음). [가정] 표본 OA로 확인 (#22)
-_CLAIMS_TITLES = [_loose("특허 가능한 청구항")]
-_NOTE_TITLES = [_loose("보정에 관한 참고사항"), _loose("보정서 제출시 참고사항")]
+_CLAIMS_TITLES = [loose_pattern("특허 가능한 청구항")]
+_NOTE_TITLES = [loose_pattern("보정에 관한 참고사항"), loose_pattern("보정서 제출시 참고사항")]
 
 
 def _has_title(pages: PageText, titles: list[re.Pattern[str]]) -> bool:
