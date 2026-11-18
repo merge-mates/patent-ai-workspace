@@ -33,17 +33,17 @@
 ```
 
 ## 진행 보드 (저장소 Projects 탭)
-카드는 손으로 옮기지 않는다. 칸 옮기기는 이렇게 저절로 된다.
+칸 옮기기는 이렇게 된다. 가운데 두 칸은 스킬이 `.claude/scripts/board-status.sh`를 불러 옮긴다 (훅은 이슈 #83에서 뺐다: 명령 글자로 이슈를 짐작하다 엉뚱한 카드를 옮김).
 | 언제 | 칸 | 누가 |
 |---|---|---|
 | 이슈를 만들면 | Todo | GitHub 보드 규칙 (열린 이슈 자동 추가) |
-| `/start`로 브랜치를 만들면 (`git switch -c <type>/<번호>-…`) | In Progress | 훅 `.claude/hooks/board-sync.sh` |
-| `/pr-draft` 뒤 PR을 만들면 (`gh pr create`) | In Review | 같은 훅 (브랜치 이름의 번호) |
+| `/start`로 브랜치를 만들면 (`git switch -c <type>/<번호>-…`) | In Progress | `/start` 6번 |
+| `/pr-draft` 뒤 PR을 만들면 (`gh pr create`) | In Review | `/pr-draft` 6번 |
 | PR이 머지되면 (본문 `Closes #N`) | Done | GitHub 보드 규칙 (이슈 닫힘) |
 
-- 보드 번호, Status 필드·옵션 id는 어디에도 적지 않는다. `.claude/scripts/board-status.sh <이슈번호> "<칸>"`이 매번 gh로 찾는다. 손으로 옮길 일이 있으면 이 스크립트를 쓴다.
-- 사람마다 한 번 `gh auth refresh -s project` (보드 권한). 없으면 훅이 이유를 알려 준다.
-- 칸 이름(Todo / In Progress / In Review / Done)을 바꾸면 훅·스킬의 칸 이름도 같이 바꾼다.
+- 보드 번호, Status 필드·옵션 id는 어디에도 적지 않는다. `.claude/scripts/board-status.sh <이슈번호> "<칸>"`이 매번 gh로 찾는다. 스킬 없이 손으로 브랜치·PR을 만들었으면 이 스크립트로 옮긴다.
+- 사람마다 한 번 `gh auth refresh -s project` (보드 권한). 없으면 스크립트가 이유를 알려 준다.
+- 칸 이름(Todo / In Progress / In Review / Done)을 바꾸면 스킬의 칸 이름도 같이 바꾼다.
 
 ## 고치는 법
 - 같은 지시를 **두 번** 손으로 하면 `docs/team/rules-candidates.md`에 올리고 스킬 후보로 본다. 한 번도 안 쓴 스킬은 마일스톤 회고에서 빼거나 고친다.
