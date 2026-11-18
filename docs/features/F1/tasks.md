@@ -155,7 +155,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m1-i2-13  (11/18~11/19)  상태: 승인  (이슈 #13)
+## m1-i2-13  (11/18~11/19)  상태: 끝  (이슈 #13)
 **구현할 design 부분**: design.md 2절 ④·7-1 (상한 키)·7-2 (모델 호출)·9절 (녹화 다시 하기), architecture.md 6절 "밖으로 나가는 호출"·7절   **맡은 합격 기준**: requirements.md 실패할 때 "모델 호출이 실패할 때", #13 합격 기준 5개
 **목표** (한 줄): 모델 호출을 `core/llm/` 한 곳에서만, 설정·프롬프트 파일·캐시·호출 상한·기록을 거쳐 하게 한다.
 **끝나면 보여 줄 것** (데모 한 줄): 가짜 전송층으로 같은 호출 두 번 → 두 번째는 캐시, 상한 넘으면 이유와 함께 멈춤 (`uv run pytest tests/core/llm -q`).
@@ -213,11 +213,13 @@ graph LR
 - [x] task-2
 - [x] task-3
 - [x] task-4
-- 다음: /check 이슈
+- 다음: /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
-### 끝난 뒤 (이슈가 끝난 날)
-- 된 것 / 안 된 것 / 다음 이슈로
+### 끝난 뒤 (11/19)
+- 된 것: `call_model(step, variables, output_schema, *, ctx: RunContext, attempt)` (설정 `config/<기능>.yaml`, 프롬프트 `$var` 파일, 캐시 키 = 단계·모델·프롬프트 내용 해시·변수·설정·attempt, 검사 실패 답은 캐시 안 씀, 진짜 전송층이면 기본 FileCache), 상한(단계 키, 실행마다 CallBudget 필수)·429 재시도·호출마다 기록(CallRecord), FakeTransport(답·예외 목록), SDK 직접 import 금지 검사, tests/conftest.py(진짜 호출·키 막기), scripts/record_llm.py(git 밖 work/에 저장, data/ 거부). `uv run pytest -q` 165 passed. /check: 증거 통과, 이슈 리뷰 막음 없음.
+- 안 된 것·사람 판단: 코드(테스트 제외) 약 790줄로 400줄 기준을 넘음. record_llm.py는 call_model을 거치지 않음(루트 CLAUDE.md 예외 문구는 scripts/fetch_*만) — 예외에 넣을지. 실행 하나의 시간·비용 상한(ADR 0003)은 없음(#15에서). DB 기록기·api_cache 테이블은 #55 뒤. 이슈 #13 본문에서 지울 두 줄은 아직 그대로(본문은 고치지 않기로 함).
+- 다음 이슈로: RecordedTransport는 지금 손 확인용이라 쓰는 곳이 적음 — 계속 둘지.
 
 ## m1-i2-18  (11/19)  상태: 승인  (이슈 #18)
 **구현할 design 부분**: design.md 2절 ③④⑤⑥과 필드 출처 표, 3-2 `OAExtraction`, 7절, 9절   **맡은 합격 기준**: requirements.md 1·2·3·5·6 (9번 tune 점수는 데이터 뒤 따로)
