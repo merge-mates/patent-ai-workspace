@@ -141,3 +141,50 @@ def test_표_클래스는_말뭉치로_고른다(session):
     ][0]
     assert isinstance(chunk_to_row("cite", chunk), CiteChunk)
     assert isinstance(chunk_to_row("law", chunk), LawChunk)
+
+
+def test_판본_confirmed인데_시작일_없는_조각은_두_저장소가_같게_다룬다(session):
+    """fixture에 없는 경계 사례를 여기서 만든다: as_of 검색에서 빠지고 판본 모름 셈에 들어간다."""
+    mem = InMemoryChunkRepository.from_jsonl("law", FIXTURES / "chunks_law.jsonl")
+    base = mem._tables["law"][0]
+    gap = base.model_copy(
+        update={
+            "chunk_id": "law-idx-v1:가상법:시작일없음",
+            "edition": base.edition.model_copy(
+                update={"status": "confirmed", "effective_from": None, "effective_to": None}
+            ),
+        }
+    )
+    mem._tables["law"].append(gap)
+    session.add_all([chunk_to_row("law", c) for c in mem._tables["law"]])
+    session.flush()
+    pg = PostgresChunkRepository(session)
+    version = base.index_version
+
+    for as_of in (date(1990, 1, 1), date(2017, 1, 1), date(2099, 1, 1)):
+        got = _ids(pg.chunks("law", version, as_of=as_of))
+        assert got == _ids(mem.chunks("law", version, as_of=as_of))
+        assert gap.chunk_id not in got  # 시작일 없는 조각은 as_of 검색에서 빠진다
+    assert gap.chunk_id in _ids(pg.chunks("law", version))  # as_of 없으면 남는다
+    n = pg.count_unverified_edition("law", version)
+    assert n == mem.count_unverified_edition("law", version)
+    # fixture의 unverified 조각 수보다 정확히 하나 많다 (그 조각이 셈에 들어갔다)
+    assert n == sum(1 for c in mem._tables["law"] if c.edition.status == "unverified") + 1
+
+
+@pytest.mark.parametrize("corpus", ["law", "cite"])
+def test_DB에서_읽은_조각의_위치와_판본이_메모리와_같다(both, corpus):
+    mem, pg = both
+    version = mem._tables[corpus][0].index_version
+    by_id = {c.chunk_id: c for c in mem.chunks(corpus, version)}
+    from_db = pg.chunks(corpus, version)
+    assert _ids(from_db) == set(by_id)
+    for got in from_db:
+        want = by_id[got.chunk_id]
+        assert got.location == want.location
+        assert got.edition == want.edition
+        # embedding은 float4로 저장돼 오차가 있다
+        if want.embedding is None:
+            assert got.embedding is None
+        else:
+            assert got.embedding == pytest.approx(want.embedding, abs=1e-6)
