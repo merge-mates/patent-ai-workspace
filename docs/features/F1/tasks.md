@@ -113,7 +113,7 @@ graph LR
 - [x] task-2
 - [x] task-3
 - [x] task-4
-- [ ] task-5
+- [x] task-5
 - [ ] task-6
 - [x] task-5
 - 다음: /pr-draft (아침, 사람 확인 뒤)

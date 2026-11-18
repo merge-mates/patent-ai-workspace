@@ -100,7 +100,7 @@ flowchart LR
   "examiner_hints": {"allowable_claims": {"value": [5, 7], "raw_text": "청구항 5, 7", "page": 3, "status": {"...": "..."}},
                      "amendment_note": {"value": null, "raw_text": "…", "page": 3, "status": {"...": "..."}}},
   "rejections": [
-    {"no": 1,
+    {"no": 1, "kind": "inventive_step",
      "article": {"value": "29-2", "raw_text": "특허법 제29조제2항", "page": 2, "status": {"...": "..."}},
      "supported": true,
      "claims": {"value": [1, 2, 3, 4], "raw_text": "제1항 내지 제4항", "page": 2, "status": {"...": "..."}},
@@ -116,7 +116,8 @@ flowchart LR
 ```
 - 값 하나하나는 `ExtractedValue{value, raw_text, page, status, candidates}` ([data-model.md](../../data-model.md) 4절 첫 줄에 `candidates`를 더함). 날짜·기한은 `value`를 비우고 `raw_text`만 둔다 (합격 기준 2). `candidates: [{value, raw_text, page, source: rule|model}]`는 `conflict`일 때만 채우고 그때 `value`는 `null` (규칙·모델 값을 둘 다 남김).
 - 값 꼴은 정답 형식([f1-oa-gold.md](../../evaluation/f1-oa-gold.md) 2·4절)을 따른다. 출원번호·발송번호 `value`는 하이픈 없는 숫자(`raw_text`는 원문 그대로). 인용문헌 `number.value`는 키 꼴(한국 공개 `KR20990000001A`, 한국 등록 `KR109900001B1`, 미국 등록 `US1234567B2`, 미국 공개 `US20200123456A1`, 일본 `JP2020123456A`). 종류 코드가 글자에 없거나 논문(NPL)이면 `value` null + `unverified(ambiguous)` (논문은 지원 안 하는 나라라 `needs_human_review`도). 인용 식별번호는 `[0016]`(4자리)·`[0080]-[0081]`(범위 하나)·`도 4c`·`청구항 9`·`요약`·`3:5-10`, 못 읽는 조각이 있으면 그 칸 `unverified(ambiguous)`. 조문에 호가 여럿이면 `29-1-1|29-1-2`처럼 `|`로 잇고 모든 조각이 지원 표에 있을 때만 `supported`. `Rejection.no`는 거절이유 표 순번(1부터), `Citation.label`은 OA에 나온 순서 `D1`·`D2`(같은 문헌은 같은 라벨). 이 PR로 바뀐 스키마: `examined_claims`, `Rejection.no`, `Citation.label`, 번호 `value` 꼴.
-- `examined_claims`(심사 대상 청구항)는 모델이 글자를 뽑고 코드가 `expand_claims`로 펼친다. 거절이유 대상이 `청구항 전항`이면 이 값으로 펼치고, 못 펼치면 `unverified`. 정답 형식의 청구항 줄(`claim_rows`)·명확성 문제 표현·`kind` 코드는 아직 안 맞춘다.
+- `examined_claims`(심사 대상 청구항)는 모델이 글자를 뽑고 코드가 `expand_claims`로 펼친다. 거절이유 대상이 `청구항 전항`이면 이 값으로 펼치고, 못 펼치면 `unverified`. 정답 형식의 청구항 줄(`claim_rows`)·명확성 문제 표현은 아직 안 맞춘다.
+- `Rejection.kind`: `novelty` / `inventive_step` / `clarity` / `other`(정답 형식과 같은 코드). 조문 코드에서 코드 규칙으로 정한다(`29-1-1`·`29-1-2`·`29-1-1|29-1-2` → novelty, `29-2` → inventive_step, `42-4-2` → clarity, 그 밖·조문 모름·종류가 섞인 호 여럿 → other). 모델이 정하지 않고, `build_rejection`이 채워서 사람이 넣을 수 없다. 조문을 모르면 other이되 `supported`·`flags`·status 규칙은 그대로.
 - `notice_kind.value`: `initial` / `final` / `unknown`(이때만 `unverified`). 정답 형식과 같은 코드.
 - `examined_claim_version`: F1이 채우지 않는다. 사건 묶기·자동 조회(#16·#54)가 4절 규칙으로 정해 넣고, 모르면 `unverified`.
 - 지원 안 하는 거절이유: `supported: false` + `flags: ["needs_human_review"]`. 지원 안 하는 나라 인용문헌: `country_supported: false` + `flags: ["needs_human_review"]`.

@@ -216,7 +216,6 @@
       },
       "candidates": []
     },
-    "examined_claim_version": null,
     "examined_claims": {
       "value": [
         1,
@@ -235,6 +234,7 @@
       },
       "candidates": []
     },
+    "examined_claim_version": null,
     "examiner_hints": {
       "allowable_claims": {
         "value": [
@@ -265,7 +265,6 @@
     },
     "rejections": [
       {
-        "no": 1,
         "status": {
           "value": "confirmed",
           "reason": null,
@@ -334,6 +333,8 @@
         "needs_recheck": false,
         "recheck_reason": null,
         "flags": [],
+        "no": 1,
+        "kind": "inventive_step",
         "article": {
           "value": "29-2",
           "raw_text": "특허법 제29조 제2항",
@@ -465,7 +466,6 @@
         }
       },
       {
-        "no": 2,
         "status": {
           "value": "confirmed",
           "reason": null,
@@ -499,6 +499,8 @@
         "needs_recheck": false,
         "recheck_reason": null,
         "flags": [],
+        "no": 2,
+        "kind": "clarity",
         "article": {
           "value": "42-4-2",
           "raw_text": "특허법 제42조 제4항 제2호",
@@ -541,7 +543,6 @@
         }
       },
       {
-        "no": 3,
         "status": {
           "value": "confirmed",
           "reason": null,
@@ -577,6 +578,8 @@
         "flags": [
           "needs_human_review"
         ],
+        "no": 3,
+        "kind": "other",
         "article": {
           "value": "42-3",
           "raw_text": "특허법 제42조 제3항",

@@ -35,6 +35,33 @@ class NoticeKind(StrEnum):
     UNKNOWN = "unknown"  # 머리말을 못 읽음. 이때만 unverified
 
 
+class RejectionKind(StrEnum):
+    """거절이유 종류. 정답 형식(f1-oa-gold.md 4절 `kind`)과 같은 코드."""
+
+    NOVELTY = "novelty"  # 신규성 29조 1항 1·2호
+    INVENTIVE_STEP = "inventive_step"  # 진보성 29조 2항
+    CLARITY = "clarity"  # 명확성 42조 4항 2호
+    OTHER = "other"  # 그 밖, 조문을 모름
+
+
+# 조문 코드 -> 종류 (규칙, 모델 안 씀)
+_KIND_BY_ARTICLE = {
+    "29-1-1": RejectionKind.NOVELTY,
+    "29-1-2": RejectionKind.NOVELTY,
+    "29-2": RejectionKind.INVENTIVE_STEP,
+    "42-4-2": RejectionKind.CLARITY,
+}
+
+
+def kind_of_article(article: str | None) -> RejectionKind:
+    """조문 코드(`29-2`, 호가 여럿이면 `29-1-1|29-1-2`)로 종류를 정한다.
+
+    조문을 모르거나(None) 표에 없으면 other. 호가 여럿인데 종류가 섞이면 other.
+    """
+    kinds = {_KIND_BY_ARTICLE.get(p, RejectionKind.OTHER) for p in (article or "").split("|")}
+    return kinds.pop() if len(kinds) == 1 else RejectionKind.OTHER
+
+
 class Citation(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -73,6 +100,7 @@ class Rejection(ResultBase):
     """거절이유 하나. 청구항은 거절이유마다 따로 둔다 (합치지 않음)."""
 
     no: int  # OA 거절이유 표 순번 (1부터)
+    kind: RejectionKind  # 조문에서 규칙으로 정함 (build_rejection이 채움)
     article: ExtractedValue[str]  # 호가 여럿이면 `29-1-1|29-1-2`
     supported: bool
     claims: ExtractedValue[list[int]]
@@ -83,6 +111,8 @@ class Rejection(ResultBase):
     def _검사(self) -> Rejection:
         if not self.supported and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
             raise ValueError("supported=false면 flags에 needs_human_review가 필요")
+        if self.kind != kind_of_article(self.article.value):
+            raise ValueError(f"kind {self.kind}가 조문 {self.article.value}에서 정한 값과 다름")
         expected = summarize_rejection_status(**self._status_fields())
         if self.status.value != expected.value:
             raise ValueError(f"status {self.status.value}가 칸을 모은 값 {expected.value}와 다름")
@@ -272,7 +302,8 @@ def collect_evidence(result: Rejection | OAResult, document_id: str) -> list[Evi
 
 def _check_names(model: type[BaseModel], fields: dict[str, Any]) -> None:
     """모르는 칸 이름(또는 직접 넣은 status·evidence)은 TypeError."""
-    unknown = set(fields) - (set(model.model_fields) - {"status", "evidence"})
+    # status·evidence·kind는 도우미가 칸에서 채운다 (kind는 OAResult에는 없는 이름)
+    unknown = set(fields) - (set(model.model_fields) - {"status", "evidence", "kind"})
     if unknown:
         raise TypeError(f"{model.__name__}에 없는(또는 직접 못 넣는) 칸: {sorted(unknown)}")
 
@@ -281,7 +312,9 @@ def build_rejection(*, document_id: str, **fields: Any) -> Rejection:
     """status·evidence 없이 칸만으로 만든다. 둘은 여기서 칸에서 모아 채운다."""
     _check_names(Rejection, fields)
     summary = {k: fields[k] for k in _REJECTION_FIELD_NAMES if k in fields}
-    draft = Rejection(**fields, status=summarize_rejection_status(**summary))
+    article = _as(ExtractedValue, fields["article"]) if "article" in fields else None
+    kind = kind_of_article(article.value if article is not None else None)
+    draft = Rejection(**fields, kind=kind, status=summarize_rejection_status(**summary))
     return draft.model_copy(update={"evidence": collect_evidence(draft, document_id)})
 
 
