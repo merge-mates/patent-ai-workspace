@@ -206,3 +206,25 @@ def test_조의N은_None(text):
 
 def test_제29조제1항제1호는_그대로():
     assert normalize_article("제29조제1항제1호") == "29-1-1"
+
+
+# ---- 본문 속 언급은 표시가 아니다 ----
+@pytest.mark.parametrize(
+    "sentence",
+    ["최후거절이유통지에 해당하지 않음", "앞선 최후거절이유통지에 대한 보정"],
+)
+def test_본문_속_최후거절이유통지_언급은_initial(sentence):
+    k = notice_kind_of(_pages(HEADER, sentence))
+    assert k.value == NoticeKind.INITIAL
+
+
+def test_꺾쇠로_감싼_표시는_final():
+    k = notice_kind_of(_pages(HEADER + "[최후거절이유통지]\n"))
+    assert k.value == NoticeKind.FINAL
+    assert k.raw_text == "최후거절이유통지"
+
+
+def test_제목_줄_괄호_안_표시는_final():
+    k = notice_kind_of(_pages("의견제출통지서 (최후거절이유통지)\n출원번호 10-2099-0001234\n"))
+    assert k.value == NoticeKind.FINAL
+    assert k.page == 1
