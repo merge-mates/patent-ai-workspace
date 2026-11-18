@@ -152,6 +152,8 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
         terms = [_need(t, pages).strip(_QUOTE_CHARS) for t in r.clarity_terms]
         if any(_squash(t) not in quoted for t in terms):
             raise _Fail()
+        if r.no_location is not None:
+            logger.warning("명확성 줄의 줄 단위 위치 없음은 쓰지 않음")
         out["clarity_terms"] = _unique(terms)
         reason = (r.clarity_reason or "").strip()
         out["clarity_reason"] = reason or None
@@ -189,12 +191,14 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
         expression = _need(r.no_location, pages).strip(_QUOTE_CHARS)
         if not expression or _squash(expression) not in _squash(judgment):
             raise _Fail()
-        if citations:
-            logger.warning(
-                "인용이 있는 줄의 줄 단위 위치 없음은 쓰지 않음 (인용 안 no_location 사용)"
-            )
-        else:
-            out["no_location"] = f"{_NO_LOCATION} ({expression})"
+        text = f"{_NO_LOCATION} ({expression})"
+        unique = _unique(citations)
+        if not unique:
+            out["no_location"] = text
+        elif len(unique) == 1 and unique[0] not in locations:
+            locations[unique[0]] = [text]  # 인용이 하나고 위치가 없으면 그 인용의 위치로 옮긴다
+        else:  # 어느 인용의 위치 없음인지 못 정함
+            raise _Fail(UnverifiedReason.AMBIGUOUS)
     out["citations"] = _unique(citations)
     out["locations"] = locations
     return out
