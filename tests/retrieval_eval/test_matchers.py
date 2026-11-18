@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 
+from eval.retrieval import matchers as matchers_mod
 from eval.retrieval.matchers import (
     MATCHERS,
     CiteMatcher,
@@ -13,6 +14,15 @@ from eval.retrieval.matchers import (
     register_law_location_rule,
 )
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
+
+
+@pytest.fixture(autouse=True)
+def _등록표_되돌리기():
+    """테스트가 전역 위치 규칙 등록표에 남긴 이름을 테스트 끝에 지운다."""
+    saved = dict(matchers_mod.LAW_LOCATION_RULES)
+    yield
+    matchers_mod.LAW_LOCATION_RULES.clear()
+    matchers_mod.LAW_LOCATION_RULES.update(saved)
 
 
 @dataclass
@@ -203,3 +213,22 @@ def test_law_위치_규칙을_등록해_이름으로_고른다():
 def test_law_없는_위치_규칙_이름은_오류():
     with pytest.raises(UnknownLocationRuleError, match="overlap_or_label"):
         LawMatcher("no_such_rule")
+
+
+def test_law_같은_이름에_다른_함수를_등록하면_오류():
+    @register_law_location_rule("dup_rule")
+    def first(chunk, item):
+        return True
+
+    with pytest.raises(ValueError, match="dup_rule"):
+
+        @register_law_location_rule("dup_rule")
+        def second(chunk, item):
+            return False
+
+    # 기본 규칙 덮어쓰기도 막힌다
+    with pytest.raises(ValueError, match="overlap_or_label"):
+
+        @register_law_location_rule("overlap_or_label")
+        def hijack(chunk, item):
+            return True

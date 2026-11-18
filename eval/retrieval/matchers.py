@@ -16,7 +16,7 @@ class GoldItem(Protocol):
     start: int | None
     end: int | None
     figures: list[int]
-    claims: list[int]  # claim 항목용 (gold.py에 없으면 빈 목록으로 본다)
+    claims: list[int]  # claim 항목용 청구항 번호들
     label: str
 
 
@@ -60,6 +60,9 @@ DEFAULT_LAW_LOCATION_RULE = "overlap_or_label"
 
 def register_law_location_rule(name: str):
     def deco(fn: Callable[[Chunk, GoldItem], bool]):
+        # 같은 이름에 다른 함수가 오면 막는다 (기본 규칙 덮어쓰기 포함). 같은 함수 재등록은 허용
+        if name in LAW_LOCATION_RULES and LAW_LOCATION_RULES[name] is not fn:
+            raise ValueError(f"위치 규칙 이름 {name!r}이 이미 다른 함수로 등록돼 있다")
         LAW_LOCATION_RULES[name] = fn
         return fn
 
@@ -81,7 +84,7 @@ class CiteMatcher:
             # 도면 번호를 담은 조각이면 본문이어도 맞음
             return bool(set(loc.figures) & set(item.figures))
         if item.kind == "claim":
-            return bool(set(loc.claims) & set(getattr(item, "claims", [])))
+            return bool(set(loc.claims) & set(item.claims))
         if item.kind == "abstract":
             return chunk.chunk_kind == "abstract"
         # paragraph / column_line / page: 종류가 같고 겹침, 키가 null이면 label
