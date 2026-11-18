@@ -22,7 +22,9 @@ class ChunkRepository(Protocol):
         index_version: str,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
-    ) -> list[Chunk]: ...
+    ) -> list[Chunk]:
+        """조건에 맞는 조각. 결과 순서는 보장하지 않는다."""
+        ...
 
     def has_index_version(self, corpus: Corpus, index_version: str) -> bool: ...
 
@@ -41,15 +43,23 @@ def _check_doc_ids(doc_ids: list[str] | None) -> None:
         raise ValueError("doc_ids가 빈 목록이다. 전체는 None으로 표현한다")
 
 
+def _edition_unknown(chunk: Chunk) -> bool:
+    """판본을 모르는 조각: unverified, 또는 confirmed인데 시작일이 없는 조각.
+
+    규칙: as_of 검색에서 빠지는 판본 모름 조각은 모두 count_unverified_edition에 센다.
+    """
+    ed = chunk.edition
+    return ed.status == "unverified" or (ed.status == "confirmed" and ed.effective_from is None)
+
+
 def _in_force(chunk: Chunk, as_of: date) -> bool:
     """그 날짜에 시행 중인 판본인가. effective_from <= as_of <= effective_to (끝 없으면 현행)."""
     ed = chunk.edition
-    if ed.status == "unverified":
+    if _edition_unknown(chunk):
         return False  # 판본을 모르면 기준일 검색에서 뺀다 (센 것은 count_unverified_edition)
     if ed.status == "not_applicable":
         return True  # 인용문헌은 판본이 없어 기준일로 거르지 않는다
-    if ed.effective_from is None:
-        return False  # confirmed인데 시작일이 없으면 그날 시행인지 알 수 없다
+    assert ed.effective_from is not None  # 위에서 걸러졌다 (타입 검사용)
     if as_of < ed.effective_from:
         return False
     return ed.effective_to is None or as_of <= ed.effective_to
@@ -74,6 +84,12 @@ class InMemoryChunkRepository:
                 if not prefix.match(chunk.index_version):
                     raise ValueError(
                         f"{path}:{no} 색인 판 {chunk.index_version!r}이 {corpus}와 안 맞는다"
+                    )
+                # law는 판본이 있어야 하고 cite는 판본이 없어야 한다 (표가 섞이면 막는다)
+                na = chunk.edition.status == "not_applicable"
+                if (corpus == "law" and na) or (corpus == "cite" and not na):
+                    raise ValueError(
+                        f"{path}:{no} {corpus} 표에 맞지 않는 판본 상태 {chunk.edition.status!r}"
                     )
                 if chunk.chunk_id in seen:
                     raise ValueError(f"{path}:{no} chunk_id가 겹친다: {chunk.chunk_id}")
@@ -127,4 +143,4 @@ class InMemoryChunkRepository:
         self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
     ) -> int:
         rows = self._scope(corpus, index_version, doc_ids)
-        return sum(1 for c in rows if c.edition.status == "unverified")
+        return sum(1 for c in rows if _edition_unknown(c))
