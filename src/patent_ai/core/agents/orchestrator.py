@@ -45,7 +45,7 @@ class CaseInput(BaseModel):
 
 
 class CaseStore(Protocol):
-    """서버가 넣어 주는 사건 저장소 (core는 api를 import하지 않는다). task-3에서 쓴다."""
+    """서버가 넣어 주는 사건 저장소 (core는 api를 import하지 않는다). 같은 OA 확인에 쓴다."""
 
     def find_oa(self, application_number: str, dispatch_number: str) -> tuple[str, str] | None:
         """같은 출원번호 + 발송번호의 OA가 이미 있으면 (case_id, oa_id)."""
@@ -109,6 +109,8 @@ def run_case(
         raise ValueError("store는 필수 (같은 OA 확인에 쓴다)")
     if steps is None:
         raise ValueError("steps는 필수 (단계 기록이 조용히 0줄이 되지 않게)")
+    if run_id != ctx.run_id:
+        raise ValueError(f"run_id {run_id!r}가 ctx.run_id {ctx.run_id!r}와 다름")
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     plan = cfg.get("plan", "agent")
     if plan not in ("agent", "fixed_order"):
@@ -121,7 +123,7 @@ def run_case(
     code_tools = {t.name for t in registry.list(kind="code_tool")}
     trace: list[str] = []  # 돈 도구 순서 (되풀이 포함)
 
-    def note(kind, name, reason, outcome, status=None, calls=0) -> None:
+    def note(kind, name, reason, outcome, status=None, calls=None) -> None:
         """단계 기록 한 줄."""
         steps.record(
             StepRecord(
@@ -135,9 +137,17 @@ def run_case(
             )
         )
 
-    def model_calls() -> int:
-        # 모델 호출 수는 호출 기록기(MemoryRecorder)가 있을 때만 센다
-        return len(getattr(ctx.recorder, "records", []))
+    def model_calls() -> int | None:
+        """실제 전송 시도 수. records 없는 기록기는 셀 수 없어 None (0으로 속이지 않음)."""
+        records = getattr(ctx.recorder, "records", None)
+        if records is None:
+            return None
+        sent = ("ok", "invalid_output", "transport_error")  # cache_hit·limit_exceeded는 안 셈
+        return sum(1 for r in records if r.run_id == run_id and r.outcome in sent)
+
+    def calls_since(before: int | None) -> int | None:
+        after = model_calls()
+        return None if before is None or after is None else after - before
 
     def call_tool(name: str, state: _State, payload: dict, reason: str) -> dict:
         """도구 하나를 돌려 결과를 상태에 쌓는다. 실패하면 error를 채운다."""
@@ -146,12 +156,12 @@ def run_case(
         try:
             out = tool.run(payload, ctx)
         except _TOOL_ERRORS as e:
-            note(tool.kind, name, reason, "failed", calls=model_calls() - before)
+            note(tool.kind, name, reason, "failed", calls=calls_since(before))
             return {"error": _error(type(e).__name__, str(e))}
-        note(tool.kind, name, reason, "ok", out.status.value, model_calls() - before)
+        note(tool.kind, name, reason, "ok", out.status.value, calls_since(before))
         trace.append(name)
         # 자르기(fixed_stage)는 지휘가 고른 것이 아니라서 max_steps에 세지 않는다
-        counted = registry.get(name).kind == "code_tool"
+        counted = tool.kind == "code_tool"
         return {
             "results": {**state["results"], name: out.result},
             "steps": state["steps"] + (1 if counted else 0),
@@ -169,31 +179,34 @@ def run_case(
     def decide_node(state: _State) -> dict:
         if plan == "fixed_order":
             todo = [n for n in fixed_order if n not in state["results"]]
-            choice = todo[0] if todo else "stop"
+            choice, reason, calls = (todo[0] if todo else "stop"), "고정 순서", None
         else:
+            before = model_calls()
             try:
                 action = _ask_model(registry, state, ctx)
             except _TOOL_ERRORS as e:
-                note("decide", "?", "지휘 모델 실패", "failed", calls=1)
+                note("decide", "?", "지휘 모델 실패", "failed", calls=calls_since(before))
                 return {"error": _error(type(e).__name__, str(e))}
-            choice = action.next_tool
-            note("decide", choice, action.reason, "ok", calls=1)
+            choice, reason, calls = action.next_tool, action.reason, calls_since(before)
+
+        def reject(code: str, message: str) -> dict:
+            note("decide", choice, reason, "failed", calls=calls)
+            return {"error": _error(code, message)}
+
         if choice == "stop":
             # 자르기는 read_oa 뒤 간선에서 이미 돌았다. read_oa 없이 멈추면 실패
             if "read_oa" not in state["results"]:
-                return {"error": _error("no_oa_result", "read_oa 없이 멈춤")}
-            return {"next_tool": "stop"}
+                return reject("no_oa_result", "read_oa 없이 멈춤")
         # 지휘가 고를 수 있는 것은 code_tool뿐 (fixed_stage·없는 이름·이미 돈 read_oa는 거부)
-        if choice not in code_tools or (choice == "read_oa" and "read_oa" in state["results"]):
-            return {"error": _error("invalid_tool_choice", f"고를 수 없는 도구: {choice}")}
+        elif choice not in code_tools or (choice == "read_oa" and "read_oa" in state["results"]):
+            return reject("invalid_tool_choice", f"고를 수 없는 도구: {choice}")
         # 끝내자고 하지 않았는데 상한에 닿았으면 못 끝낸 것: 성공으로 두지 않는다
-        if state["steps"] >= max_steps:
-            return {
-                "error": _error(
-                    "max_steps",
-                    f"도구 호출 최대 {max_steps}번에 닿음. 돈 도구: {', '.join(trace)}",
-                )
-            }
+        elif state["steps"] >= max_steps:
+            return reject(
+                "max_steps", f"도구 호출 최대 {max_steps}번에 닿음. 돈 도구: {', '.join(trace)}"
+            )
+        if plan == "agent":  # 고정 순서는 모델 판단이 없어 성공 줄을 남기지 않는다
+            note("decide", choice, reason, "ok", calls=calls)
         return {"next_tool": choice}
 
     def check_oa_node(state: _State) -> dict:
@@ -201,15 +214,16 @@ def run_case(
         oa = state["results"]["read_oa"]
         app, disp = oa.application_number, oa.dispatch_number
         if app.status.value != StatusValue.CONFIRMED:  # unverified·conflict
-            note("fixed_stage", "check_oa", "출원번호를 몰라 사람을 기다림", "waiting")
+            note("check", "check_oa", "출원번호를 몰라 사람을 기다림", "waiting")
             return {"waiting_for": WaitingFor.APPLICATION_NUMBER}
         # 발송번호를 모르면 같은 OA인지 판정할 수 없어 사람에게 묻는다
         if disp.status.value != StatusValue.CONFIRMED:
-            note("fixed_stage", "check_oa", "발송번호를 몰라 사람을 기다림", "waiting")
+            note("check", "check_oa", "발송번호를 몰라 사람을 기다림", "waiting")
             return {"waiting_for": WaitingFor.DISPATCH_NUMBER}
         found = store.find_oa(app.value, disp.value)
         if found is not None:
             case_id, found_oa_id = found
+            note("check", "check_oa", f"이미 있는 OA: {found_oa_id}", "failed")
             return {
                 "case_id": case_id,
                 "error": {

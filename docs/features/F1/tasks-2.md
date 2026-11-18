@@ -54,9 +54,10 @@ graph LR
 - 담당: 재아
 - 합격 기준: #15 "녹화 응답으로 사건 1건을 처음부터 끝까지 돌리는 테스트", "단계 기록"(메모리 구현까지)
 - 고칠 파일: `src/patent_ai/core/agents/steps.py`, `tests/core/agents/test_scenario.py`
-- 만들 함수·인터페이스 모양: `StepRecorder` 프로토콜 `record(run_id, step_kind, tool_name, reason, result_id, model_call_ids)` + 메모리 구현. 시나리오는 #14 `tests/fixtures/case_missing_citation/`과 #18 가짜 통지서·가짜 전송층 답을 쓴다
+- 만들 함수·인터페이스 모양: `StepRecorder` 프로토콜 `record(step: StepRecord{run_id, step_kind, tool_name, reason, result_status, result_id(#55 뒤 채움), model_call_count(셀 수 없으면 None), outcome})` + 메모리 구현. 시나리오는 #14 `tests/fixtures/case_missing_citation/`과 #18 가짜 통지서·가짜 전송층 답을 쓴다
 - 테스트할 경우: 사건 1건 끝까지(`succeeded`, `OAResult`가 fixture와 같음, 도구 호출마다 기록 1줄 + 왜 불렀나) / 인용문헌 1건 없음 → 보류 목록에 뜨고 실행은 `succeeded` / 실패한 도구도 기록
 - 확인 방법: `uv run pytest tests/core/agents/test_scenario.py -q` → 통과
+- #54에서 cut_to_oa가 자료를 묶으면 "인용문헌 없음 → 보류 목록"을 run 결과로 다시 잼 (지금은 fixture 사건으로 잼)
 - 먼저: task-2, task-3
 
 ### 이번에 안 하는 것

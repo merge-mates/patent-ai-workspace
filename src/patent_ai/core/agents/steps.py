@@ -7,11 +7,12 @@ from pydantic import BaseModel
 
 class StepRecord(BaseModel):
     run_id: str
-    step_kind: Literal["code_tool", "fixed_stage", "decide"]
+    step_kind: Literal["code_tool", "fixed_stage", "decide", "check"]
     tool_name: str
     reason: str  # 왜 불렀나 ("지휘 선택" / "고정 단계" / "고정 순서" / 지휘 모델이 준 이유)
     result_status: str | None = None  # 결과 status 값. 실패하면 None
-    model_call_count: int = 0  # 이 단계에서 모델을 부른 횟수
+    result_id: str | None = None  # 만든 결과 ID (DB가 생기는 #55 뒤에 채움)
+    model_call_count: int | None = None  # 이 단계의 실제 전송 시도 수. 셀 수 없는 기록기면 None
     outcome: Literal["ok", "failed", "waiting"]
 
 
