@@ -65,7 +65,7 @@
     {
       "document_id": "doc_oa_1",
       "page": 2,
-      "raw_text": "KR10-0000001",
+      "raw_text": "공개특허공보 제10-2099-0000001호",
       "edition": null,
       "checked_on": null
     },
@@ -79,7 +79,7 @@
     {
       "document_id": "doc_oa_1",
       "page": 2,
-      "raw_text": "[0023], [0031]",
+      "raw_text": "식별번호 [0023], [0031]",
       "edition": null,
       "checked_on": null
     },
@@ -94,13 +94,6 @@
       "document_id": "doc_oa_1",
       "page": 2,
       "raw_text": "US",
-      "edition": null,
-      "checked_on": null
-    },
-    {
-      "document_id": "doc_oa_1",
-      "page": 2,
-      "raw_text": "",
       "edition": null,
       "checked_on": null
     },
@@ -202,12 +195,12 @@
   },
   "notice_kind": {
     "value": "initial",
-    "raw_text": "의견제출통지서",
+    "raw_text": null,
     "page": null,
     "status": {
       "value": "confirmed",
       "reason": null,
-      "checked": "원문 대조",
+      "checked": "최후 표시 없음, 1쪽 머리말·거절이유 표 아래·[첨 부] 앞을 봄",
       "searched_scope": null
     },
     "candidates": []
@@ -229,13 +222,13 @@
       "candidates": []
     },
     "amendment_note": {
-      "value": "없음",
-      "raw_text": "없음",
+      "value": null,
+      "raw_text": null,
       "page": null,
       "status": {
         "value": "confirmed",
         "reason": null,
-        "checked": "원문 대조",
+        "checked": "원문에 칸 없음",
         "searched_scope": null
       },
       "candidates": []
@@ -274,7 +267,7 @@
         {
           "document_id": "doc_oa_1",
           "page": 2,
-          "raw_text": "KR10-0000001",
+          "raw_text": "공개특허공보 제10-2099-0000001호",
           "edition": null,
           "checked_on": null
         },
@@ -288,7 +281,7 @@
         {
           "document_id": "doc_oa_1",
           "page": 2,
-          "raw_text": "[0023], [0031]",
+          "raw_text": "식별번호 [0023], [0031]",
           "edition": null,
           "checked_on": null
         },
@@ -303,13 +296,6 @@
           "document_id": "doc_oa_1",
           "page": 2,
           "raw_text": "US",
-          "edition": null,
-          "checked_on": null
-        },
-        {
-          "document_id": "doc_oa_1",
-          "page": 2,
-          "raw_text": "",
           "edition": null,
           "checked_on": null
         }
@@ -351,8 +337,8 @@
       "citations": [
         {
           "number": {
-            "value": "KR10-0000001",
-            "raw_text": "KR10-0000001",
+            "value": "KR 10-2099-0000001",
+            "raw_text": "공개특허공보 제10-2099-0000001호",
             "page": 2,
             "status": {
               "value": "confirmed",
@@ -377,10 +363,10 @@
           "country_supported": true,
           "cited_paragraphs": {
             "value": [
-              "[0023]",
-              "[0031]"
+              "0023",
+              "0031"
             ],
-            "raw_text": "[0023], [0031]",
+            "raw_text": "식별번호 [0023], [0031]",
             "page": 2,
             "status": {
               "value": "confirmed",
@@ -420,12 +406,12 @@
           "country_supported": true,
           "cited_paragraphs": {
             "value": [],
-            "raw_text": "",
-            "page": 2,
+            "raw_text": null,
+            "page": null,
             "status": {
               "value": "confirmed",
               "reason": null,
-              "checked": "원문 대조",
+              "checked": "인용 식별번호 표시 없음, 2쪽 거절이유 블록 봄",
               "searched_scope": null
             },
             "candidates": []

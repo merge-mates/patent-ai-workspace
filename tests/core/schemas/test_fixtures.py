@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.case_materials import CaseMaterials, HeldTask
 from patent_ai.core.schemas.common import StatusValue
 from patent_ai.core.schemas.oa_result import OAResult, collect_evidence
 from patent_ai.core.schemas.propagation import ReviewItem, collect_review_items
@@ -49,9 +49,12 @@ def test_응답_겉_키가_api_명세_예시와_같다(oa):
     assert set(response) == _api_example_keys() == {"oa_id", "run_id", "status", "result"}
 
 
-def test_바깥_status는_result_status와_같다(oa):
-    response = {"status": oa.status.value, "result": oa.model_dump(mode="json")}
+def test_응답_모양_fixture의_바깥_status는_result_status와_같다(oa):
+    # 화면 목 응답에도 쓰는 파일: {oa_id, run_id, status, result}
+    response = json.loads((FIXTURE_DIR / "oa_result_response.json").read_text("utf-8"))
+    assert set(response) == _api_example_keys()
     assert response["status"] == response["result"]["status"]["value"]
+    assert OAResult.model_validate(response["result"]) == oa
     # 지원 안 하는 42조 3항은 빼고 모으므로 모든 값이 확인된 이 사건은 confirmed
     assert oa.status.value == StatusValue.CONFIRMED
 
@@ -81,12 +84,12 @@ def test_review_items_count가_검토할_사항_수와_같다(oa, materials):
 def test_보류와_빠진_자료가_서로_맞는다(materials):
     missing = materials.missing[0]
     assert missing.ask_upload is True
+    assert materials.held_tasks == [
+        HeldTask(task="F3 대비: US 2099/0000001", waiting_for="US 2099/0000001 본문")
+    ]
     assert materials.held_tasks[0].task in missing.depends_on_tasks
 
 
 def test_근거에_쪽_없는_값은_없다(oa):
     evidence = collect_evidence(oa, "doc_oa_1")
     assert evidence and all(e.page is not None for e in evidence)
-    raws = {e.raw_text for e in evidence}
-    assert "의견제출통지서" not in raws  # 통지 종류(쪽 없음)
-    assert "없음" not in raws  # 보정 참고사항(쪽 없음)

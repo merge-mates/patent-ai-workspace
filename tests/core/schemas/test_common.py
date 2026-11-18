@@ -112,6 +112,18 @@ def test_extracted_value_conflict_후보_둘_value는_null():
     assert [c.source for c in v.candidates] == ["rule", "model"]
 
 
+@pytest.mark.parametrize("raw", [None, "", "   "])
+def test_extracted_value_쪽이_있는데_원문_글자가_비면_거부(raw):
+    # 빈 글자는 어느 쪽에서나 "찾음"이 되어 원문 위치 검사를 지나치므로 막는다
+    with pytest.raises(ValidationError):
+        ExtractedValue[str](
+            value="x",
+            raw_text=raw,
+            page=2,
+            status=Status(value="confirmed", checked="확인"),
+        )
+
+
 def test_extracted_value_conflict인데_value가_있으면_거부():
     with pytest.raises(ValidationError):
         ExtractedValue[str](

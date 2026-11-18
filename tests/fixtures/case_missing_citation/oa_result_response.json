@@ -1,0 +1,593 @@
+{
+  "oa_id": "oa_1",
+  "run_id": "r_1",
+  "status": "confirmed",
+  "result": {
+    "status": {
+      "value": "confirmed",
+      "reason": null,
+      "checked": "모든 칸 원문 대조",
+      "searched_scope": null
+    },
+    "evidence": [
+      {
+        "document_id": "doc_oa_1",
+        "page": 1,
+        "raw_text": "10-2099-0000001",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 1,
+        "raw_text": "9-5-2099-000000001",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 1,
+        "raw_text": "2099.01.26",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 1,
+        "raw_text": "2099.03.26",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 4,
+        "raw_text": "특허 가능한 청구항 5",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "특허법 제29조 제2항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "청구항 1 내지 4",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "쉽게 발명할 수 있",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "공개특허공보 제10-2099-0000001호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "KR",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "식별번호 [0023], [0031]",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "US 2099/0000001",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "US",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "특허법 제42조 제4항 제2호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "청구항 1",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "불명확",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "특허법 제42조 제3항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "청구항 1",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "실시할 수 있",
+        "edition": null,
+        "checked_on": null
+      }
+    ],
+    "origin": "ai_generated",
+    "needs_recheck": false,
+    "recheck_reason": null,
+    "flags": [],
+    "oa_id": "oa_1",
+    "application_number": {
+      "value": "10-2099-0000001",
+      "raw_text": "10-2099-0000001",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "dispatch_number": {
+      "value": "9-5-2099-000000001",
+      "raw_text": "9-5-2099-000000001",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_date": {
+      "value": null,
+      "raw_text": "2099.01.26",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "response_due": {
+      "value": null,
+      "raw_text": "2099.03.26",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_kind": {
+      "value": "initial",
+      "raw_text": null,
+      "page": null,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "최후 표시 없음, 1쪽 머리말·거절이유 표 아래·[첨 부] 앞을 봄",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claim_version": null,
+    "examiner_hints": {
+      "allowable_claims": {
+        "value": [
+          5
+        ],
+        "raw_text": "특허 가능한 청구항 5",
+        "page": 4,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      },
+      "amendment_note": {
+        "value": null,
+        "raw_text": null,
+        "page": null,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "원문에 칸 없음",
+          "searched_scope": null
+        },
+        "candidates": []
+      }
+    },
+    "rejections": [
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "특허법 제29조 제2항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "청구항 1 내지 4",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "쉽게 발명할 수 있",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "공개특허공보 제10-2099-0000001호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "KR",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "식별번호 [0023], [0031]",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "US 2099/0000001",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 2,
+            "raw_text": "US",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "article": {
+          "value": "29-2",
+          "raw_text": "특허법 제29조 제2항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "raw_text": "청구항 1 내지 4",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [
+          {
+            "number": {
+              "value": "KR 10-2099-0000001",
+              "raw_text": "공개특허공보 제10-2099-0000001호",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "KR",
+              "raw_text": "KR",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": true,
+            "cited_paragraphs": {
+              "value": [
+                "0023",
+                "0031"
+              ],
+              "raw_text": "식별번호 [0023], [0031]",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": []
+          },
+          {
+            "number": {
+              "value": "US 2099/0000001",
+              "raw_text": "US 2099/0000001",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "US",
+              "raw_text": "US",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": true,
+            "cited_paragraphs": {
+              "value": [],
+              "raw_text": null,
+              "page": null,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "인용 식별번호 표시 없음, 2쪽 거절이유 블록 봄",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": []
+          }
+        ],
+        "examiner_reasoning": {
+          "value": "인용발명 1에 인용발명 2를 결합하면 쉽게 발명할 수 있다",
+          "raw_text": "쉽게 발명할 수 있",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      },
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "doc_oa_1",
+            "page": 3,
+            "raw_text": "특허법 제42조 제4항 제2호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 3,
+            "raw_text": "청구항 1",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 3,
+            "raw_text": "불명확",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "article": {
+          "value": "42-4-2",
+          "raw_text": "특허법 제42조 제4항 제2호",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            1
+          ],
+          "raw_text": "청구항 1",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [],
+        "examiner_reasoning": {
+          "value": "청구항 1의 기재가 불명확하다",
+          "raw_text": "불명확",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      },
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "doc_oa_1",
+            "page": 3,
+            "raw_text": "특허법 제42조 제3항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 3,
+            "raw_text": "청구항 1",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "doc_oa_1",
+            "page": 3,
+            "raw_text": "실시할 수 있",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [
+          "needs_human_review"
+        ],
+        "article": {
+          "value": "42-3",
+          "raw_text": "특허법 제42조 제3항",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": false,
+        "claims": {
+          "value": [
+            1
+          ],
+          "raw_text": "청구항 1",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [],
+        "examiner_reasoning": {
+          "value": "발명의 설명이 통상의 기술자가 실시할 수 있게 적혀 있지 않다",
+          "raw_text": "실시할 수 있",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      }
+    ]
+  }
+}

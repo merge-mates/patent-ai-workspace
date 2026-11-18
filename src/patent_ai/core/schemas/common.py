@@ -132,6 +132,9 @@ class ExtractedValue[T](BaseModel):
 
     @model_validator(mode="after")
     def _후보는_충돌일_때만(self) -> ExtractedValue[T]:
+        # 쪽이 있으면 원문 글자도 있어야 한다 (빈 글자는 위치 검사를 그냥 지남)
+        if self.page is not None and (self.raw_text is None or not self.raw_text.strip()):
+            raise ValueError("page가 있으면 raw_text는 비어 있지 않아야 함")
         if self.status.value == StatusValue.CONFLICT:
             # 충돌이면 값은 비우고 후보를 둘 이상 남긴다
             if self.value is not None:
