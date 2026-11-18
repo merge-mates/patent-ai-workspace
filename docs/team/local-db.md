@@ -23,9 +23,9 @@
 - 데이터는 docker 볼륨(`patent-ai_db-data`)에 남는다. 맥을 껐다 켜도 그대로다.
 
 ## 덤프 불러오기 (검색 색인)
-색인은 한 사람이 만들어 `pg_dump -Fc` 파일로 드라이브에 올리고(`make index-dump`, 이슈 #65에서 채움), 받는 쪽은 `data/index/`에 받아 불러온다. 덤프 만드는 규칙(판 이름 `idx-v1` 등)은 이슈 #65.
+색인은 한 사람이 만들어 `pg_dump -Fc` 파일로 드라이브에 올리고(`make index-dump`, 이슈 #65에서 채움), 받는 쪽은 `data/index/`에 받아 불러온다. 덤프 파일 이름은 `<말뭉치>-idx-<색인 판>.dump`(예: `law-idx-v1.dump`, `cite-idx-v1.dump`)이고, 규칙은 [db/CLAUDE.md](../../src/patent_ai/db/CLAUDE.md) 검색 색인 절.
 ```
-make index-load DUMP=data/index/idx-v1.dump
+make index-load DUMP=data/index/law-idx-v1.dump
 ```
 - 덤프에 든 테이블만 지우고 다시 만든다 (`pg_restore --clean`). 다른 테이블은 그대로다.
 - 덤프는 git에 올리지 않는다.
