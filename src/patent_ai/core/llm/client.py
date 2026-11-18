@@ -17,8 +17,9 @@ from patent_ai.core.llm.errors import (
     ModelCallLimitExceeded,
     ModelConfigError,
     ModelOutputInvalid,
+    RecordingMissing,
 )
-from patent_ai.core.llm.limits import DEFAULT_BUDGET, CallBudget, CallRecorder
+from patent_ai.core.llm.limits import CallBudget, CallRecorder
 from patent_ai.core.llm.prompts import render_prompt
 from patent_ai.core.llm.transport import Transport, TransportError, TransportResponse
 
@@ -52,7 +53,11 @@ def call_model(
     sleep: Callable[[float], None] = time.sleep,
 ) -> ModelResult:
     root = root or REPO_ROOT
-    budget = budget or DEFAULT_BUDGET
+    # 진짜 전송층이면 실행마다 새 CallBudget을 받아야 한다 (전역으로 세면 실행끼리 섞임)
+    if budget is None:
+        if transport is None:
+            raise ModelConfigError("실행마다 CallBudget을 넘겨야 함 (budget=None)")
+        budget = CallBudget()  # 가짜 전송층: 그 호출만의 새 budget
     cfg = load_step_config(step, config_dir)
     prompt = render_prompt(cfg.prompt, variables, root)
 
@@ -94,17 +99,31 @@ def call_model(
         ) / 1_000_000
 
     # 호출마다 기록 한 줄 (적중·실패 포함)
-    def record(resp, elapsed_ms, from_cache, outcome):
+    def record(resp, elapsed_ms, from_cache, outcome, transport_try):
         if recorder is None:
+            budget.warn_once(
+                run_id, step, "no_recorder", "%s: recorder가 없어 호출 기록이 빠짐 (run_id=%s)"
+            )
             return
         in_tok = resp.input_tokens if resp else 0
         out_tok = resp.output_tokens if resp else 0
         cost = cost_of(resp, from_cache) if resp else None
         recorder.record(
-            run_id, step, cfg.model, in_tok, out_tok, cost, elapsed_ms, from_cache, attempt, outcome
+            run_id,
+            step,
+            cfg.model,
+            in_tok,
+            out_tok,
+            cost,
+            elapsed_ms,
+            from_cache,
+            attempt,
+            outcome,
+            transport_try,
         )
 
     start = time.monotonic()
+    tries = 0  # 성공한 전송 시도 번호 (캐시 적중은 0)
     if hit is not None:
         # 캐시 적중: 전송층을 부르지 않고 상한에도 세지 않는다
         resp = TransportResponse(hit["text"], hit["input_tokens"], hit["output_tokens"])
@@ -116,7 +135,7 @@ def call_model(
             try:
                 budget.check(run_id, step, cfg.max_model_calls, cfg.max_input_tokens)
             except ModelCallLimitExceeded:
-                record(None, int((time.monotonic() - start) * 1000), False, "limit_exceeded")
+                record(None, int((time.monotonic() - start) * 1000), False, "limit_exceeded", n + 1)
                 raise
             try_start = time.monotonic()
             try:
@@ -127,14 +146,25 @@ def call_model(
                     temperature=cfg.temperature,
                     max_tokens=cfg.max_tokens,
                 )
-            except TransportError as e:
+            except RecordingMissing:
+                raise  # 녹화 없음은 조용히 감싸지 않고 그대로 멈춘다
+            except Exception as e:
+                # TransportError 말고 모르는 예외도 기록하고 세고 ModelCallFailed로 감싼다
                 budget.add(run_id, step, 0)
-                record(None, int((time.monotonic() - try_start) * 1000), False, "transport_error")
-                if not e.retryable or n == retries:
+                record(
+                    None,
+                    int((time.monotonic() - try_start) * 1000),
+                    False,
+                    "transport_error",
+                    n + 1,
+                )
+                known_retryable = isinstance(e, TransportError) and e.retryable
+                if not known_retryable or n == retries:
                     raise ModelCallFailed(f"{step}: {e} (시도 {n + 1}번)") from e
                 sleep(2.0**n)  # 1초, 2초, 4초... 쉬었다가 다시
                 continue
             budget.add(run_id, step, resp.input_tokens)
+            tries = n + 1
             break
     elapsed_ms = int((time.monotonic() - start) * 1000)
 
@@ -144,10 +174,10 @@ def call_model(
         try:
             parsed = output_schema.model_validate(json.loads(resp.text))
         except json.JSONDecodeError as e:
-            record(resp, elapsed_ms, hit is not None, "invalid_output")
+            record(resp, elapsed_ms, hit is not None, "invalid_output", tries)
             raise ModelOutputInvalid(f"답이 JSON이 아님: {e}") from e
         except ValidationError as e:
-            record(resp, elapsed_ms, hit is not None, "invalid_output")
+            record(resp, elapsed_ms, hit is not None, "invalid_output", tries)
             raise ModelOutputInvalid(f"스키마 검사 실패: {e}") from e
 
     # 검사를 통과한 답만 캐시에 쓴다 (위에서 예외가 나면 여기까지 오지 않음)
@@ -161,7 +191,7 @@ def call_model(
             },
         )
 
-    record(resp, elapsed_ms, hit is not None, "ok" if hit is None else "cache_hit")
+    record(resp, elapsed_ms, hit is not None, "ok" if hit is None else "cache_hit", tries)
     cost = cost_of(resp, hit is not None)
 
     return ModelResult(

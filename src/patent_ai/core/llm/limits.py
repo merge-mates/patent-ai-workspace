@@ -12,26 +12,30 @@ logger = logging.getLogger(__name__)
 class CallBudget:
     """실행(run_id)·단계(step)마다 쓴 호출 수와 입력 토큰 수를 센다.
 
-    인자로 안 넘기면 call_model이 모듈 공용 객체(DEFAULT_BUDGET)를 쓴다.
-    테스트는 새 CallBudget()을 만들어 넘기거나 reset()을 부른다.
+    실행(run)마다 지휘가 새로 만들어 call_model에 넘긴다. 전역 객체는 없다.
     """
 
     def __init__(self) -> None:
         self._calls: dict[tuple[str, str], int] = {}
         self._tokens: dict[tuple[str, str], int] = {}
-        self._warned: set[tuple[str, str]] = set()
+        self._warned: set[tuple[str, str, str]] = set()
 
-    def reset(self) -> None:
-        self.__init__()
+    def warn_once(self, run_id: str, step: str, what: str, message: str) -> None:
+        """같은 (실행, 단계, 종류) 경고는 한 번만 남긴다."""
+        key = (run_id, step, what)
+        if key not in self._warned:
+            self._warned.add(key)
+            logger.warning(message, step, run_id)
 
     def check(
         self, run_id: str, step: str, max_calls: int | None, max_input_tokens: int | None
     ) -> None:
         """전송층을 부르기 직전에 부른다. 이미 상한만큼 썼으면 예외."""
         key = (run_id, step)
-        if max_calls is None and max_input_tokens is None and key not in self._warned:
-            self._warned.add(key)
-            logger.warning("%s: 호출 상한 설정이 없어 제한 없이 부름 (run_id=%s)", step, run_id)
+        if max_calls is None and max_input_tokens is None:
+            self.warn_once(
+                run_id, step, "no_limit", "%s: 호출 상한 설정이 없어 제한 없이 부름 (run_id=%s)"
+            )
         used_calls = self._calls.get(key, 0)
         if max_calls is not None and used_calls >= max_calls:
             raise ModelCallLimitExceeded("max_model_calls", used_calls, max_calls)
@@ -47,9 +51,6 @@ class CallBudget:
         self._tokens[key] = self._tokens.get(key, 0) + input_tokens
 
 
-DEFAULT_BUDGET = CallBudget()
-
-
 @dataclass(frozen=True)
 class CallRecord:
     run_id: str
@@ -63,6 +64,8 @@ class CallRecord:
     attempt: int
     # ok / cache_hit / transport_error / limit_exceeded / invalid_output
     outcome: str
+    # 전송 시도 번호 (1부터, 재시도마다 +1). 캐시 적중은 0
+    transport_try: int
 
 
 class CallRecorder(Protocol):
@@ -78,6 +81,7 @@ class CallRecorder(Protocol):
         from_cache: bool,
         attempt: int,
         outcome: str,
+        transport_try: int,
     ) -> None: ...
 
 

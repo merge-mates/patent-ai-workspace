@@ -11,6 +11,7 @@ from patent_ai.core.llm.cache import FileCache, MemoryCache, make_cache_key
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.config import REPO_ROOT, load_step_config
 from patent_ai.core.llm.errors import ModelConfigError
+from patent_ai.core.llm.limits import CallBudget
 from patent_ai.core.llm.prompts import render_prompt
 from patent_ai.core.llm.transport import AnthropicTransport, FakeTransport, TransportResponse
 
@@ -29,6 +30,7 @@ def call(transport, cache=None, variables=VARS, step=STEP, root=FIX, config_dir=
         cache=cache,
         config_dir=config_dir,
         root=root,
+        budget=CallBudget() if transport is None else None,
     )
 
 
