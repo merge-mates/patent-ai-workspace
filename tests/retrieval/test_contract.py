@@ -8,6 +8,7 @@ from patent_ai.retrieval import (
     SearchContractViolationError,
     UnknownImplError,
     UnknownIndexVersionError,
+    contract,
     get_searcher,
     register_impl,
 )
@@ -34,10 +35,18 @@ def _hit(chunk_id, score, rank, index_version=IV):
     return SearchHit(**c.model_dump(), score=score, rank=rank)
 
 
-def _result(hits, k=5):
+@pytest.fixture(autouse=True)
+def _빈_등록표():
+    # 테스트마다 같은 이름 "t"를 새로 등록하므로 등록표를 비워 준다
+    contract._REGISTRY.clear()
+    yield
+    contract._REGISTRY.clear()
+
+
+def _result(hits, k=5, index_version=IV):
     return SearchResult(
         corpus="cite",
-        index_version=IV,
+        index_version=index_version,
         mode="bm25",
         scope=SearchScope(k=k),
         status=None if hits else "not_found_in_scope",
@@ -45,14 +54,14 @@ def _result(hits, k=5):
     )
 
 
-def _register(name, hits_fn):
+def _register(name, hits_fn, result_index_version=IV):
     @register_impl(name)
     class _Impl:
         def __init__(self, repo, settings):
             pass
 
         def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
-            return _result(hits_fn(), k)
+            return _result(hits_fn(), k, result_index_version)
 
     return _Impl
 
@@ -80,8 +89,8 @@ def test_같은_점수는_chunk_id_오름차순이면_통과():
 
 
 def test_없는_impl은_등록된_이름을_알려준다():
-    _register("t", lambda: [])
-    with pytest.raises(UnknownImplError, match="t"):
+    _register("impl_a", lambda: [])
+    with pytest.raises(UnknownImplError, match=r"nope.*impl_a"):
         get_searcher("nope", FakeRepo(), {"index_version": IV})
 
 
@@ -146,3 +155,16 @@ def test_같은_점수인데_chunk_id_순서가_틀리면_오류():
     _register("t", lambda: [_hit("b", 1.0, 1), _hit("a", 1.0, 2)])
     with pytest.raises(SearchContractViolationError):
         _search(_get())
+
+
+def test_result의_index_version만_다르면_오류():
+    # 조각은 설정 판과 같지만 결과 머리의 판이 다른 경우
+    _register("t", lambda: [_hit("a", 1.0, 1)], result_index_version="cite-idx-v2")
+    with pytest.raises(IndexVersionMismatchError, match="cite-idx-v1"):
+        _search(_get())
+
+
+def test_같은_이름에_다른_클래스를_또_등록하면_오류():
+    _register("t", lambda: [])
+    with pytest.raises(ValueError, match="이미 등록"):
+        _register("t", lambda: [])

@@ -5,7 +5,7 @@ core를 import하지 않는다 (부르는 방향이 core -> retrieval).
 
 from collections.abc import Callable
 from datetime import date
-from typing import Any, Protocol, get_args
+from typing import Protocol, get_args
 
 from patent_ai.retrieval.errors import (
     IndexVersionMismatchError,
@@ -14,6 +14,7 @@ from patent_ai.retrieval.errors import (
     UnknownImplError,
     UnknownIndexVersionError,
 )
+from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import Corpus, Mode, SearchResult
 
 
@@ -43,6 +44,9 @@ def register_impl(name: str) -> Callable[[Callable[..., Searcher]], Callable[...
     """구현 클래스를 이름으로 등록하는 데코레이터. 클래스는 (repo, settings)로 만들어진다."""
 
     def deco(cls: Callable[..., Searcher]) -> Callable[..., Searcher]:
+        # 같은 이름에 다른 클래스가 덮어쓰면 어느 구현이 도는지 알 수 없다. 막는다
+        if name in _REGISTRY and _REGISTRY[name] is not cls:
+            raise ValueError(f"impl {name!r}은 이미 등록돼 있다")
         _REGISTRY[name] = cls
         return cls
 
@@ -100,7 +104,7 @@ class CheckedSearcher:
         return result
 
 
-def get_searcher(impl: str, repo: Any, settings: dict) -> Searcher:
+def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher:
     """이름으로 구현을 골라 CheckedSearcher로 감싸 돌려준다."""
     if impl not in _REGISTRY:
         raise UnknownImplError(f"없는 impl {impl!r}. 쓸 수 있는 이름: {sorted(_REGISTRY)}")
