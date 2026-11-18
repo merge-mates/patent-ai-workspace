@@ -6,8 +6,7 @@ import pytest
 from pydantic import BaseModel
 
 from patent_ai.core.llm.client import call_model
-from patent_ai.core.llm.config import ModelConfigError
-from patent_ai.core.llm.errors import ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
 from patent_ai.core.llm.transport import (
     AnthropicTransport,
     FakeTransport,
@@ -61,7 +60,10 @@ def test_모델과_설정값은_설정_파일에서_전송층으로_간다():
 def test_프롬프트_파일의_변수가_채워진다():
     fake = FakeTransport({"test.summarize": TransportResponse("x", 1, 1)})
     run(fake)
-    assert fake.calls[0]["prompt"] == "다음 거절이유를 2 줄로 요약하세요.\n본문: 청구항 1은 진보성이 없다\n"
+    assert (
+        fake.calls[0]["prompt"]
+        == "다음 거절이유를 2 줄로 요약하세요.\n본문: 청구항 1은 진보성이 없다\n"
+    )
 
 
 def test_스키마가_있으면_JSON을_읽어_parsed에_객체를_준다():
@@ -109,9 +111,7 @@ def test_출력이_JSON이_아니면_ModelOutputInvalid():
 
 
 def test_출력이_스키마에_안_맞으면_ModelOutputInvalid에_이유():
-    fake = FakeTransport(
-        {"test.summarize": TransportResponse('{"title": "x"}', 1, 1)}
-    )
+    fake = FakeTransport({"test.summarize": TransportResponse('{"title": "x"}', 1, 1)})
     with pytest.raises(ModelOutputInvalid, match="score"):
         run(fake, schema=Summary)
 
@@ -119,8 +119,14 @@ def test_출력이_스키마에_안_맞으면_ModelOutputInvalid에_이유():
 def test_attempt_기본값은_1이고_바꿀_수_있다():
     fake = FakeTransport({"test.summarize": TransportResponse("x", 1, 1)})
     r = call_model(
-        "test.summarize", VARS, None, "run-1", attempt=2,
-        transport=fake, config_dir=FIX / "config", root=FIX,
+        "test.summarize",
+        VARS,
+        None,
+        "run-1",
+        attempt=2,
+        transport=fake,
+        config_dir=FIX / "config",
+        root=FIX,
     )
     assert r.text == "x"
 
