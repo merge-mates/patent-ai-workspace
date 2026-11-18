@@ -149,6 +149,9 @@ def test_발송번호를_모르면_같은_OA인지_몰라_사람을_기다린다
     out = _go(tmp_path, dispatch_in_pdf=False, store=store)
     assert out.state == "waiting_for_human"
     assert out.waiting_for == WaitingFor.DISPATCH_NUMBER
+    # 필드 추출은 끝까지 했고(거절이유까지 나옴), 멈춘 것은 중복 판정·자동 조회(자르기)뿐이다
+    assert "read_oa" in out.results
+    assert len(out.results["read_oa"].rejections) > 0
     assert "cut_to_oa" not in out.results
     assert store.calls == []
 
