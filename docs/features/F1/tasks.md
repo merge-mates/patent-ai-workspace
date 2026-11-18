@@ -239,7 +239,7 @@ graph LR
 - 담당: 재아
 - 합격 기준: requirements.md 1·2·6
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/rules.py`, `tests/core/f1/test_rules.py`
-- 만들 함수·인터페이스 모양: `Candidate{value, raw_text, page, ambiguous}`, `RuleFields` = 필드 이름(출원번호·발송번호·통지일·제출기일·통지 종류) → `Candidate | None`, `extract_by_rules(pages: PageText) -> RuleFields`, `normalize_article(text) -> str | None` (`"특허법 제29조제2항"` → `"29-2"`), `expand_claims(text) -> list[int] | None` (`"제1항 내지 제4항, 제6항"` → `[1,2,3,4,6]`), `notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]` ("최후거절이유통지" 표시 → `final` + 원문·쪽 / 1쪽 머리말을 읽었는데 표시 없음 → `initial`, 쪽 없음, `confirmed` + 본 범위 / 1쪽 머리말 없음 → `unknown` + `unverified(not_extracted)`, design.md 필드 출처 표)
+- 만들 함수·인터페이스 모양: `Found{value, raw_text, page, ambiguous}`(verify.py에 있음, rules가 import), `RuleFields{application_number, dispatch_number, notice_date, response_due}` → 각각 `Found | None` (통지 종류는 `notice_kind_of`로 따로), `extract_by_rules(pages: PageText) -> RuleFields`, `normalize_article(text) -> str | None` (`"특허법 제29조제2항"` → `"29-2"`), `expand_claims(text) -> list[int] | None` (`"제1항 내지 제4항, 제6항"` → `[1,2,3,4,6]`), `notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]` ("최후거절이유통지" 표시가 모든 쪽 중 어디든 있으면 → `final` + 원문·쪽 / 1쪽 머리말(첫 15줄)에 "의견제출통지서"가 있는데 표시 없음 → `initial`, 쪽 없음, `confirmed` + 본 범위 / 머리말에 제목 없음 → `unknown` + `unverified(not_extracted)`, design.md 필드 출처 표)
 - 테스트할 경우: 평소(형식마다 하나, 통지 종류 셋: 최후 표시 / 표시 없음 / 머리말 잘림) / 빈 입력(빈 쪽 → 모든 필드 `None`, 통지 종류 `unknown`) / 실패·애매(`제1항 내지 제A항`, 조문 표기 깨짐 → `None`, 지어내지 않음)
 - 확인 방법: `uv run pytest tests/core/f1/test_rules.py -q` → 모두 통과
 - 먼저: #14 task-1, #17 task-1 (`PageText`)

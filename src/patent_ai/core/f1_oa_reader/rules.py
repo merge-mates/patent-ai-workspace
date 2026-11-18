@@ -7,6 +7,7 @@
 import re
 from dataclasses import dataclass
 
+from patent_ai.core.f1_oa_reader.verify import Found
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import NoticeKind
@@ -16,25 +17,11 @@ HEADER_LINES = 15
 
 
 @dataclass(frozen=True)
-class RuleCandidate:
-    """규칙이 뽑은 값 하나. (schemas.common.Candidate와 이름이 겹쳐 RuleCandidate)
-
-    날짜는 value를 비우고 raw_text(원문 글자 그대로)만 둔다.
-    ambiguous: 같은 칸에 서로 다른 값이 둘 이상 보여 첫 값만 둔 경우.
-    """
-
-    value: str | None
-    raw_text: str
-    page: int
-    ambiguous: bool = False
-
-
-@dataclass(frozen=True)
 class RuleFields:
-    application_number: RuleCandidate | None = None
-    dispatch_number: RuleCandidate | None = None
-    notice_date: RuleCandidate | None = None
-    response_due: RuleCandidate | None = None
+    application_number: Found | None = None
+    dispatch_number: Found | None = None
+    notice_date: Found | None = None
+    response_due: Found | None = None
 
 
 # [가정] 형식: 출원번호 10-YYYY-NNNNNNN, 발송번호 9-5-YYYY-NNNNNNNNN (하이픈은 있어도 없어도),
@@ -58,7 +45,7 @@ def _hyphenate_dispatch(raw: str) -> str:
     return f"{d[:1]}-{d[1:2]}-{d[2:6]}-{d[6:]}"
 
 
-def _find(pages: PageText, pattern: re.Pattern[str], normalize=None) -> RuleCandidate | None:
+def _find(pages: PageText, pattern: re.Pattern[str], normalize=None) -> Found | None:
     """쪽 순서대로 보아 처음 찾은 쪽의 첫 값을 돌려준다. 같은 쪽에 다른 값이 또 있으면 ambiguous."""
     for page in pages.pages:
         found = [m.group(1) for m in pattern.finditer(page.text)]
@@ -67,7 +54,7 @@ def _find(pages: PageText, pattern: re.Pattern[str], normalize=None) -> RuleCand
         keyed = [normalize(f) if normalize else None for f in found]
         # 값(정규화한 것, 날짜는 글자)이 서로 다른 게 둘 이상이면 애매
         distinct = set(keyed) if normalize else set(found)
-        return RuleCandidate(
+        return Found(
             value=keyed[0] if normalize else None,
             raw_text=found[0],
             page=page.page,
@@ -93,6 +80,8 @@ _ARTICLE_ORDER = ["조", "항", "호"]
 
 def normalize_article(text: str) -> str | None:
     """`특허법 제29조제2항` -> `29-2`, `제42조제4항제2호` -> `42-4-2`. 깨졌으면 None."""
+    if re.search(r"조\s*의\s*\d", text):
+        return None  # `제29조의2`(확대된 선출원 등)는 `29-2`(진보성)와 섞이지 않게 거부
     tokens = _ARTICLE_TOKEN.findall(text)
     # 조가 맨 앞이고, 조 -> 항 -> 호 순서로 한 번씩만, 번호는 숫자여야 한다
     units = [u for _, u in tokens]
@@ -131,29 +120,34 @@ def expand_claims(text: str) -> list[int] | None:
 # ---- 통지 종류 ----
 # 글자 사이에 공백·줄바꿈이 끼어도 찾는다
 _FINAL_MARK = re.compile(r"최\s*후\s*거\s*절\s*이\s*유\s*통\s*지")
-_INITIAL_CHECKED = "최후 표시 없음, 1쪽 머리말·거절이유 표 아래·[첨 부] 앞을 봄"
+_TITLE = re.compile(r"의\s*견\s*제\s*출\s*통\s*지\s*서")
+_INITIAL_CHECKED = "최후 표시 없음, 모든 쪽 글자를 봄"
 
 
 def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
-    """통지 종류. 최후 표시 -> final(원문·쪽) / 머리말을 읽었는데 표시 없음 -> initial /
-    머리말을 못 읽음 -> unknown + unverified(not_extracted)."""
+    """통지 종류. 최후 표시가 어느 쪽에든 있으면 final(원문·쪽) /
+    머리말에 `의견제출통지서` 제목이 있고 최후 표시는 없으면 initial /
+    머리말(제목)을 못 읽으면 unknown + unverified(not_extracted)."""
     first = next((p for p in pages.pages if p.page == 1), None)
     header = "\n".join(first.text.splitlines()[:HEADER_LINES]) if first else ""
-    # [가정] 머리말을 읽었다 = 첫 15줄에 통지서 제목 글자("통지")가 있다
-    if "통지" not in header:
+    # 1) 모든 쪽에서 최후 표시를 찾는다 (쪽 순서대로 처음 것)
+    for page in pages.pages:
+        m = _FINAL_MARK.search(page.text)
+        if m:
+            return ExtractedValue[NoticeKind](
+                value=NoticeKind.FINAL,
+                raw_text=m.group(0),
+                page=page.page,
+                status=Status(value=StatusValue.CONFIRMED, checked="최후 표시를 찾음"),
+            )
+    # 2) 제목을 읽었는데 표시가 없다 -> initial (쪽 없음)
+    if _TITLE.search(header):
         return ExtractedValue[NoticeKind](
-            value=NoticeKind.UNKNOWN,
-            status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),
+            value=NoticeKind.INITIAL,
+            status=Status(value=StatusValue.CONFIRMED, checked=_INITIAL_CHECKED),
         )
-    m = _FINAL_MARK.search(header)
-    if m:
-        return ExtractedValue[NoticeKind](
-            value=NoticeKind.FINAL,
-            raw_text=m.group(0),
-            page=1,
-            status=Status(value=StatusValue.CONFIRMED, checked="1쪽 머리말에서 최후 표시를 찾음"),
-        )
+    # 3) 머리말을 못 읽음
     return ExtractedValue[NoticeKind](
-        value=NoticeKind.INITIAL,
-        status=Status(value=StatusValue.CONFIRMED, checked=_INITIAL_CHECKED),
+        value=NoticeKind.UNKNOWN,
+        status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),
     )
