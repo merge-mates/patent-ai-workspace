@@ -94,7 +94,7 @@ def gold_path(cfg: RetrievalEvalConfig, goldsets_root: Path) -> Path:
     return Path(goldsets_root) / cfg.goldset / rel
 
 
-def _is_git_ignored(path: Path) -> bool:
+def is_git_ignored(path: Path) -> bool:
     """저장소 밖이면 통과. 안이면 git check-ignore로 무시되는 경로여야 통과."""
     p = path.resolve()
     try:
@@ -168,7 +168,7 @@ def preflight(
             raise RetrievalEvalError("--chunks로 돌릴 때 scores 폴더는 experiments/ 아래일 수 없다")
 
     # CQ 후보에는 정답 위치·질의가 들어가므로 git에 들어갈 수 있는 경로면 멈춘다
-    if not _is_git_ignored(Path(cq_dir)):
+    if not is_git_ignored(Path(cq_dir)):
         raise RetrievalEvalError(
             "cq 폴더가 git에 들어갈 수 있는 경로다 (저장소 밖이나 무시되는 경로만)"
         )

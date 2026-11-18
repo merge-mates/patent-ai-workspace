@@ -114,4 +114,6 @@ class LawMatcher:
         return self.location_rule(chunk, item)
 
 
+# law 칸은 기본 위치 규칙이다. 채점기는 설정의 law_location_rule로 LawMatcher를 새로 만든다
+# (score._matcher_for). 설정 규칙을 쓰려면 MATCHERS["law"] 대신 그쪽을 쓴다.
 MATCHERS: dict[Corpus, Matcher] = {"cite": CiteMatcher(), "law": LawMatcher()}

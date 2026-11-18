@@ -10,7 +10,7 @@ import logging
 import sys
 from pathlib import Path
 
-from eval.retrieval.checks import _is_git_ignored
+from eval.retrieval.checks import is_git_ignored
 from eval.retrieval.errors import RetrievalEvalError
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.output)
     try:
         # 모은 파일에도 질의가 있으니 git에 들어갈 수 있는 곳이면 멈춘다
-        if not _is_git_ignored(out):
+        if not is_git_ignored(out):
             raise RetrievalEvalError(
                 "출력이 git에 들어갈 수 있는 경로다 (저장소 밖이나 git이 무시하는 곳만)"
             )

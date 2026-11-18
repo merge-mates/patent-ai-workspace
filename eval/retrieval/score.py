@@ -109,7 +109,11 @@ def score(
     scores_dir: Path | None = None,
     cq_dir: Path | None = None,
 ) -> ScoreReport:
-    """정답 줄마다 검색해 점수를 낸다. 파일은 쓰지 않는다 (쓰기는 main)."""
+    """정답 줄마다 검색해 점수를 낸다. 파일은 쓰지 않는다 (쓰기는 main).
+
+    돌려준 scores의 failures.cq_candidates는 0이다. 실제 건수는 main이 write_cq 뒤에 채운다.
+    Postgres 저장소로 돌릴 때(m2-i2)는 chunks_mode=False를 넘겨야 기본 출력이 experiments/로 간다.
+    """
     started = time.monotonic()
     goldsets_root = Path(goldsets_root)
     path = gold_path(cfg, goldsets_root)
