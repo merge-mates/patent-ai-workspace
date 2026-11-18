@@ -1,4 +1,4 @@
-"""OAResult·CaseMaterials 테스트. 기대값은 tasks.md m1-i2-14 task-2와 design.md 3-2절에서 가져왔다."""
+"""OAResult·CaseMaterials 테스트. 기대값은 tasks.md m1-i2-14 task-2, design.md 3-2절."""
 
 import logging
 
@@ -40,6 +40,14 @@ def rejection(article="29-2", claims=(1, 2), supported=True, flags=(), status=OK
     return Rejection(**data)
 
 
+def conflict_value():
+    cands = [
+        {"value": v, "raw_text": v, "page": 1, "source": s}
+        for v, s in (("a", "rule"), ("b", "model"))
+    ]
+    return {"value": None, "raw_text": None, "page": None, "status": CONFLICT, "candidates": cands}
+
+
 def hints():
     none_value = {
         "value": None,
@@ -47,9 +55,7 @@ def hints():
         "page": None,
         "status": Status(value="confirmed", checked="원문에 칸 없음"),
     }
-    return ExaminerHints(
-        allowable_claims={**none_value, "value": []}, amendment_notes=none_value
-    )
+    return ExaminerHints(allowable_claims={**none_value, "value": []}, amendment_notes=none_value)
 
 
 def oa(rejections, **extra):
@@ -112,14 +118,23 @@ def test_모두_confirmed면_모든_칸_원문_대조():
 
 def test_가장_나쁜_값을_모은다_충돌이_확인되지_않음보다_나쁨():
     r = oa(
-        [rejection(status=BAD), rejection(status=CONFLICT)],
+        [
+            rejection(examiner_reasoning=ev("요지", status=BAD)),
+            rejection(examiner_reasoning=conflict_value()),
+        ],
     )
     assert summarize_status(r).value == StatusValue.CONFLICT
 
 
 def test_같은_등급이면_앞_칸의_reason_식별정보가_거절이유보다_앞():
     r = oa(
-        [rejection(status=Status(value="unverified", reason="body_missing"))],
+        [
+            rejection(
+                examiner_reasoning=ev(
+                    "요지", status=Status(value="unverified", reason="body_missing")
+                )
+            )
+        ],
         application_number=ev(None, None, None, Status(value="unverified", reason="lookup_failed")),
     )
     s = summarize_status(r)
@@ -138,7 +153,7 @@ def test_지원_안_하는_거절이유의_칸은_모으지_않는다():
 
 
 def test_지원하는_거절이유가_나쁘면_결과도_나쁨():
-    r = oa([rejection(), rejection(status=BAD)])
+    r = oa([rejection(), rejection(examiner_reasoning=ev("요지", status=BAD))])
     assert summarize_status(r).value == StatusValue.UNVERIFIED
 
 
@@ -199,7 +214,9 @@ def test_supported_false인데_needs_human_review_없으면_거부():
 
 
 def test_supported_false와_needs_human_review가_같이_있으면_통과():
-    assert rejection(article="46", supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW]).supported is False
+    assert (
+        rejection(article="46", supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW]).supported is False
+    )
 
 
 def test_country_supported_false인데_needs_human_review_없으면_거부():
@@ -209,7 +226,6 @@ def test_country_supported_false인데_needs_human_review_없으면_거부():
             country="JP",
             country_supported=False,
             cited_paragraphs=ev([]),
-            status=OK,
         )
 
 
