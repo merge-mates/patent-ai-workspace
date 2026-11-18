@@ -209,11 +209,11 @@ graph LR
 - 보내도 되는 자료 종류 표 코드·거부 테스트 (11/18: architecture.md 7절대로 막는 코드 없음).
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- 다음: 
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- 다음: /check 이슈
 - 막힌 것: 
 
 ### 끝난 뒤 (이슈가 끝난 날)
