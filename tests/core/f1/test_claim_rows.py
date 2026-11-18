@@ -209,14 +209,14 @@ def test_위치_글자를_못_읽으면_그_줄이_확인되지_않음():
     _assert_dropped(_row(_read(answer), 1, 1))
 
 
-def test_청구항_번호를_못_읽으면_번호_없는_확인되지_않음_줄_하나():
+def test_청구항_번호를_못_읽으면_번호_없는_줄은_안_만들고_그_청구항은_빈_줄():
     answer = _with_row(
         0, claims={"value": None, "raw_text": "제A항", "page": 3, "ambiguous": False}
     )
     result = _read(answer)
-    bad = [r for r in result.claim_rows if r.claim is None]
-    assert len(bad) == 1
-    _assert_dropped(bad[0])
+    assert not [r for r in result.claim_rows if r.claim is None]
+    _assert_dropped(_row(result, 1, 1))
+    assert result.status.value == StatusValue.UNVERIFIED
 
 
 def test_없는_거절이유_순번이면_확인되지_않음():
@@ -273,7 +273,7 @@ def test_거절이유_대상_밖_청구항이면_그_줄은_확인되지_않음(
     )
     result = _read(answer)  # 거절이유 3의 대상은 제6·7항 (이 줄 판단 머리 번호도 1-1이라 어긋남)
     assert not [r for r in result.claim_rows if (r.claim, r.rejection) == (1, 3)]
-    assert [r for r in result.claim_rows if r.claim is None]  # 엇붙은 줄은 번호 없이 남음
+    assert not [r for r in result.claim_rows if r.claim is None]  # 번호 없는 줄은 안 만듦
     _assert_dropped(_row(result, 1, 1))  # 원래 줄은 빈 줄로 채워짐
     assert result.status.value == StatusValue.UNVERIFIED
 
@@ -328,21 +328,78 @@ def test_거절이유에_없는_인용_라벨은_그_줄이_확인되지_않음(
     _assert_dropped(_row(_read(answer), 1, 1))
 
 
-def test_판단_원문에_그_인용_표기가_없으면_확인되지_않음():
+def test_판단_원문에_인용_언급이_없고_거절이유_인용이_여럿이면_모델_라벨을_받고_checked에_남김():
+    result = _read()
+    for claim in (3, 9, 10):  # 같은 취지 줄: 정답 모양대로 citations D1
+        row = _row(result, claim, 2)
+        assert row.citations == ["D1"] and row.status.value == StatusValue.CONFIRMED
+        assert "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨" in row.status.checked
+    five = _row(result, 5, 2)  # 3절 10: "제5-7항 ... [0069]에 개시" (인용발명 언급 없음)
+    assert (
+        five.locations == {"D1": ["[0069]"]}
+        and "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨" in five.status.checked
+    )
+    assert (
+        "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨"
+        not in _row(result, 1, 1).status.checked
+    )  # 언급이 있는 줄은 메모 없음
+
+
+def _single_citation_variant():
+    """거절이유 1(인용 하나)의 판단에서 `인용발명 1의`를 뺀 통지서와 모델 답."""
+    old, new = "인용발명 1의 [0014], [0056] 및 도 4b에 개시", "[0014], [0056] 및 도 4b에 개시"
     answer = _answer()
-    answer["claim_rows"][3]["citations"] = [  # 제1항과 동일한 취지 문장엔 인용발명이 없다
-        {"label": "D1", "number": None, "location": None, "no_location": None}
-    ]
-    _assert_dropped(_row(_read(answer), 3, 2))
+    j = answer["claim_rows"][0]["judgment"]
+    j["raw_text"] = j["raw_text"].replace("인용발명 1의 ", "")
+    return answer, _pages((old, new))
 
 
-def test_청구항_번호_원문이_판단_원문_안에_없으면_그_줄이_확인되지_않음():
+def test_판단_원문에_인용_언급이_없어도_거절이유_인용이_하나면_그_라벨():
+    answer, pages = _single_citation_variant()
+    answer["claim_rows"][0]["citations"][0]["label"] = None  # 라벨을 안 줘도 하나뿐이라 정해짐
+    row = _row(_read(answer, pages), 1, 1)
+    assert row.status.value == StatusValue.CONFIRMED and row.citations == ["D1"]
+    assert row.locations == {"D1": ["[0014]", "[0056]", "도 4b"]}
+    assert "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨" not in row.status.checked
+
+
+def test_판단_원문이_거절이유_밖_인용을_언급하면_확인되지_않음():
+    answer, pages = _single_citation_variant()
+    j = answer["claim_rows"][0]["judgment"]
+    j["raw_text"] = (
+        "청구항 제1항은 인용발명 2의 [0014], [0056] 및 도 4b에 개시되어 있어 신규성이 없습니다."
+    )
+    pages = _pages(
+        (
+            "인용발명 1의 [0014], [0056] 및 도 4b에 개시",
+            "인용발명 2의 [0014], [0056] 및 도 4b에 개시",
+        )
+    )
+    _assert_dropped(_row(_read(answer, pages), 1, 1))  # 거절이유 1의 인용은 D1뿐
+
+
+def test_판단_원문이_가리키는_인용과_모델_라벨이_다르면_확인되지_않음():
+    answer = _answer()
+    answer["claim_rows"][1]["citations"][0]["label"] = "D2"  # 판단은 인용발명 1
+    _assert_dropped(_row(_read(answer), 1, 2))
+
+
+def test_라벨을_정할_수_없는데_위치가_있으면_ambiguous():
+    answer = _answer()
+    cit = answer["claim_rows"][5]["citations"][0]  # 5-7항 줄, 거절이유 2의 인용은 둘
+    cit["label"] = None
+    _assert_dropped(_row(_read(answer), 5, 2), UnverifiedReason.AMBIGUOUS)
+
+
+def test_청구항_번호_원문이_판단_원문_안에_없으면_번호_없는_줄은_안_만들고_경고(caplog):
     answer = _answer()
     answer["claim_rows"][2]["claims"]["raw_text"] = "제3항"  # 판단은 제2항 이야기
-    result = _read(answer)
+    with caplog.at_level(logging.WARNING):
+        result = _read(answer)
     assert _row(result, 3, 2).same_as == ["claim:1"]  # 3항 줄은 그대로 (덮어쓰지 않음)
-    _assert_dropped(_row(result, 2, 2))  # 2항은 빈 줄로 채워짐
-    assert [r for r in result.claim_rows if r.claim is None]  # 엇붙은 줄은 번호 없이 남김
+    _assert_dropped(_row(result, 2, 2))  # 2항은 번호 있는 빈 줄로 채워짐
+    assert not [r for r in result.claim_rows if r.claim is None]
+    assert "번호" in caplog.text
 
 
 def test_판단_원문_머리_번호와_거절이유_순번이_다르면_확인되지_않음():

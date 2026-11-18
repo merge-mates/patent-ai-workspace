@@ -259,7 +259,14 @@
         "ambiguous": false
       },
       "rejection": 2,
-      "citations": [],
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": null,
+          "no_location": null
+        }
+      ],
       "same_as": [
         {
           "value": null,
@@ -341,7 +348,7 @@
       "clarity_reason": null,
       "judgment": {
         "value": null,
-        "raw_text": "제5-7항 발명에서 한정하고 있는 기술적 특징은 인용발명 1의 [0069]에 개시되어 있습니다.",
+        "raw_text": "제5-7항 발명에서 한정하고 있는 기술적 특징은 [0069]에 개시되어 있습니다.",
         "page": 4,
         "ambiguous": false
       }
@@ -385,7 +392,14 @@
         "ambiguous": false
       },
       "rejection": 2,
-      "citations": [],
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": null,
+          "no_location": null
+        }
+      ],
       "same_as": [
         {
           "value": null,
