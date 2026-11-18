@@ -32,6 +32,7 @@ FAILURE_KEYS = [
     "excluded_same_as_other",
     "excluded_text_missing",
     "excluded_edition_unverified",
+    "excluded_no_edition_in_scope",
     "cq_candidates",
     "recall_ratio_undefined",
 ]
@@ -171,7 +172,10 @@ def score(
         # 7. 검색 범위 N과 항목별 맞는 조각 수 Mi
         scope = repo.chunks(cfg.corpus, cfg.index_version, row.doc_ids, row.as_of)
         if not scope:
-            raise RetrievalEvalError(f"줄 {row.row_id}: 검색 범위 조각이 0개다")
+            # 기준일로 걸러 범위가 0개: 무작위 기준선을 못 정하므로
+            # 이 줄만 빼고 센다 (design 2절 4번)
+            failures["excluded_no_edition_in_scope"] += 1
+            continue
         results.append(
             RowResult(
                 row=row,

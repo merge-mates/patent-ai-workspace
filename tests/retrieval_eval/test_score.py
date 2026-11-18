@@ -83,6 +83,7 @@ def test_점검_예_값이_나온다(tmp_path, goldsets_root):
         "excluded_same_as_other",
         "excluded_text_missing",
         "excluded_edition_unverified",
+        "excluded_no_edition_in_scope",
         "cq_candidates",
         "recall_ratio_undefined",
     }
@@ -267,23 +268,19 @@ def test_edition_unverified_건수가_1이다(tmp_path, goldsets_root):
     assert report.scores["failures"]["excluded_text_missing"] == 0
 
 
-def test_기준일로_범위가_비면_row_id만_담아_멈춘다(tmp_path, goldsets_root, capsys):
-    """[사람 판단 대기] design 2절과 다름: 지금은 멈춘다 (행동을 고정해 둔 테스트)."""
+def test_기준일로_범위가_비면_그_줄만_빼고_센다(tmp_path, goldsets_root):
+    """design 2절 4번 (11/19): 범위 조각 0개 줄은 멈추지 않고 excluded_no_edition_in_scope."""
     cfg = make_config(tmp_path, "gold_law_scope_empty.jsonl", base="config_law_ok.yaml")
     repo = InMemoryChunkRepository.from_jsonl("law", FIX / "chunks_law.jsonl")
-    with pytest.raises(RetrievalEvalError) as ei:
-        score(
-            load_config(cfg),
-            repo,
-            goldsets_root,
-            "abc",
-            scores_dir=tmp_path / "out",
-            cq_dir=tmp_path / "cq",
-        )
-    assert "cnt-law-early" in str(ei.value)
-    assert "진보성 판단" not in str(ei.value)
-    # main도 1을 돌려주고 질의 글자를 찍지 않는다
-    assert run_main(tmp_path, goldsets_root, chunks=FIX / "chunks_law.jsonl", cfg=cfg) == 1
-    err = capsys.readouterr().err
-    assert "cnt-law-early" in err and "진보성 판단" not in err
-    assert not (tmp_path / "out" / "scores.json").exists()
+    report = score(
+        load_config(cfg),
+        repo,
+        goldsets_root,
+        "abc",
+        scores_dir=tmp_path / "out",
+        cq_dir=tmp_path / "cq",
+    )
+    assert report.scores["n"] == 1
+    assert report.scores["failures"]["excluded_no_edition_in_scope"] == 1
+    # 뺀 줄은 CQ 후보가 아니다 (검색 범위가 없어서 못 찾은 것이지 검색이 놓친 게 아님)
+    assert all(r.row.row_id != "cnt-law-early" for r in report.rows)
