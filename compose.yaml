@@ -1,0 +1,63 @@
+# 개발 환경: `make up`(= docker compose up --build --renew-anon-volumes) 한 줄로 DB·서버·화면을 띄운다. 안내: docs/team/local-db.md
+# Langfuse는 M2 시작 때 더한다 (ADR 0003).
+name: patent-ai
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-patent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-patent}
+      POSTGRES_DB: ${POSTGRES_DB:-patent_ai}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18부터 데이터가 /var/lib/postgresql/18/docker에 생겨서 상위 폴더를 마운트한다
+      - db-data:/var/lib/postgresql
+      - ./scripts/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-patent}:${POSTGRES_PASSWORD:-patent}@db:5432/${POSTGRES_DB:-patent_ai}
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./src:/app/src
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./config:/app/config:ro
+      - ./prompts:/app/prompts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: ./web
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:

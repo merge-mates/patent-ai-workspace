@@ -3,6 +3,7 @@
 | 파일 | 넣는 것 | 넣지 않는 것 |
 |---|---|---|
 | `getting-started.md` | 클론한 날 할 일, 기능 하나를 만드는 스킬 순서 (팀원이 처음 읽는 것) | 스킬 자세한 설명 (→ `.claude/skills/README.md`) |
+| `local-db.md` | 로컬 개발 환경 켜기·끄기, DB 처음부터 다시, 덤프 불러오기 (`make` 명령) | 테이블 설계 (→ `docs/data-model.md`) |
 | `retro/mN.md` | 마일스톤 회고. 틀 `retro-template.md` | |
 | `rules-candidates.md` | **팀** 규칙 후보 (저장소 결과물에 남는 것: 커밋 모양, PR 칸, 팀 CLAUDE.md, 팀 스킬·에이전트) | 개인 규칙 후보 (`CLAUDE.local.md`, 내 에이전트 → 개인 노트) |
 | `questions.md` | 강사·멘토·서로에게 물을 것 | |
