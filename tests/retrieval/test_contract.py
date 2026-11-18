@@ -37,7 +37,8 @@ def _hit(chunk_id, score, rank, index_version=IV):
 
 @pytest.fixture(autouse=True)
 def _빈_등록표():
-    # 테스트마다 같은 이름 "t"를 새로 등록하므로 등록표를 비워 준다
+    # 테스트마다 같은 이름 "t"를 새로 등록하므로 등록표를 비워 준다.
+    # conftest의 fixture는 저장·되돌리기만 해서 이 비우기가 따로 필요하다 (중복 등록 금지)
     contract._REGISTRY.clear()
     yield
     contract._REGISTRY.clear()

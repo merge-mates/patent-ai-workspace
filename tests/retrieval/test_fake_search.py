@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
-import patent_ai.retrieval  # noqa: F401  (fake 등록)
-from patent_ai.retrieval import get_searcher
-from patent_ai.retrieval.errors import RecordedEmbeddingMissing
+from patent_ai.retrieval import (
+    RecordedEmbeddingMissing,
+    get_searcher,
+)  # 패키지 import가 fake도 등록
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 
 FIX = Path(__file__).parent.parent / "fixtures" / "retrieval"

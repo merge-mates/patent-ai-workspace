@@ -3,6 +3,7 @@ from patent_ai.retrieval.contract import CheckedSearcher, Searcher, get_searcher
 from patent_ai.retrieval.errors import (
     IndexVersionMismatchError,
     ModeNotSupportedError,
+    RecordedEmbeddingMissing,
     RetrievalError,
     SearchContractViolationError,
     UnknownImplError,
@@ -13,6 +14,7 @@ __all__ = [
     "CheckedSearcher",
     "IndexVersionMismatchError",
     "ModeNotSupportedError",
+    "RecordedEmbeddingMissing",
     "RetrievalError",
     "SearchContractViolationError",
     "Searcher",
