@@ -9,6 +9,7 @@ from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.common import Flag, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import (
     Citation,
+    ClaimRow,
     ExaminerHints,
     NoticeKind,
     OAResult,
@@ -545,3 +546,149 @@ def test_kind_없는_거절이유는_거부():
     del data["kind"]
     with pytest.raises(ValidationError):
         Rejection.model_validate(data)
+
+
+# ---------- #18 task-6: 청구항 줄 ClaimRow, OAResult.claim_rows ----------
+
+
+def row_fields(**extra):
+    data = {
+        "claim": 1,
+        "rejection": 1,
+        "citations": ["D1"],
+        "locations": {"D1": ["[0014]", "도 4b"]},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": None,
+        "raw_text": "청구항 1은 인용발명 1의 [0014]에 개시",
+        "page": 3,
+        "status": OK,
+    }
+    data.update(extra)
+    return data
+
+
+NOT_EXTRACTED = Status(value="unverified", reason="not_extracted")
+
+
+def unverified_row(**extra):
+    return row_fields(
+        citations=[], locations={}, raw_text=None, page=None, status=NOT_EXTRACTED, **extra
+    )
+
+
+def test_청구항_줄은_정답_형식_칸을_가진다():
+    row = ClaimRow(**row_fields(same_as=["claim:1", "rejection:2"]))
+    dumped = row.model_dump(mode="json")
+    assert set(dumped) == {
+        "claim",
+        "rejection",
+        "citations",
+        "locations",
+        "same_as",
+        "clarity_terms",
+        "clarity_reason",
+        "raw_text",
+        "page",
+        "status",
+    }
+    assert dumped["locations"] == {"D1": ["[0014]", "도 4b"]}
+
+
+def test_확인되지_않은_줄은_값이_비어_있고_쪽과_글자가_없다():
+    row = ClaimRow(**unverified_row())
+    assert row.status.value == StatusValue.UNVERIFIED and row.page is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"locations": {"D9": ["[0014]"]}},  # 인용에 없는 라벨
+        {"same_as": ["claim:x"]},  # 같은 취지 꼴
+        {"same_as": ["청구항 1"]},
+        {"raw_text": None, "page": None},  # confirmed인데 근거 없음
+        {"claim": None},  # confirmed인데 청구항 번호 없음
+        {"rejection": None},
+        {"page": 3, "raw_text": "  "},  # 쪽이 있으면 글자도
+    ],
+)
+def test_확인됨_줄의_모양이_틀리면_거부(bad):
+    with pytest.raises(ValidationError):
+        ClaimRow(**row_fields(**bad))
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"citations": ["D1"]},
+        {"locations": {"D1": ["[0014]"]}, "citations": ["D1"]},
+        {"same_as": ["claim:1"]},
+        {"clarity_terms": ["약"]},
+        {"raw_text": "원문", "page": 1},
+    ],
+)
+def test_확인되지_않은_줄에_값을_남기면_거부(bad):
+    data = unverified_row()
+    data.update(bad)
+    with pytest.raises(ValidationError):
+        ClaimRow(**data)
+
+
+def test_OAResult에_청구항_줄이_들어가고_직렬화에_나온다():
+    r = oa([rejection("29-2", [1, 2])], claim_rows=[row_fields(), row_fields(claim=2)])
+    assert [row.claim for row in r.claim_rows] == [1, 2]
+    assert r.model_dump(mode="json")["claim_rows"][0]["rejection"] == 1
+    assert oa([rejection()]).claim_rows == []  # 없으면 빈 목록
+
+
+def test_줄이_가리키는_거절이유가_없으면_거부():
+    with pytest.raises(ValueError):
+        oa([rejection()], claim_rows=[row_fields(rejection=2)])
+
+
+def test_지원_안_하는_거절이유의_줄은_거부():
+    unsupported = rejection("42-3", supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW])
+    with pytest.raises(ValueError):
+        oa([unsupported], claim_rows=[row_fields()])
+
+
+def test_명확성이_아닌_줄에_명확성_표현이_있으면_거부():
+    with pytest.raises(ValueError):
+        oa(
+            [rejection("29-2")],
+            claim_rows=[row_fields(clarity_terms=["약"], clarity_reason="x")],
+        )
+
+
+def test_명확성_줄은_인용과_위치_대신_표현을_가진다():
+    clarity = rejection("42-4-2", [1])
+    good = row_fields(
+        citations=[],
+        locations={},
+        clarity_terms=["상기 프리뷰 이미지"],
+        clarity_reason="앞에 정의 없음",
+    )
+    assert oa([clarity], claim_rows=[good]).claim_rows[0].clarity_terms == ["상기 프리뷰 이미지"]
+    with pytest.raises(ValueError):  # 명확성 줄에 인용이 있으면 거부
+        oa([clarity], claim_rows=[row_fields(clarity_terms=["약"])])
+
+
+def test_확인되지_않은_줄이_있으면_결과도_확인되지_않음():
+    r = oa([rejection("29-2", [1, 2])], claim_rows=[row_fields(), unverified_row(claim=2)])
+    assert r.status.value == StatusValue.UNVERIFIED
+    assert r.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+def test_확인됨_줄은_결과_status를_안_바꾸고_evidence에_든다():
+    r = oa([rejection()], claim_rows=[row_fields()])
+    assert r.status.value == StatusValue.CONFIRMED
+    assert "청구항 1은 인용발명 1의 [0014]에 개시" in [e.raw_text for e in r.evidence]
+    assert any(e.page == 3 for e in r.evidence)
+
+
+def test_summarize는_claim_rows를_받아_모은다():
+    base = oa_fields([rejection()])
+    base.pop("oa_id")
+    ok = summarize_status(**base, claim_rows=[ClaimRow(**row_fields())])
+    bad = summarize_status(**base, claim_rows=[ClaimRow(**unverified_row())])
+    assert ok.value == StatusValue.CONFIRMED and bad.value == StatusValue.UNVERIFIED

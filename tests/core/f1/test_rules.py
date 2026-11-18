@@ -10,6 +10,8 @@ from patent_ai.core.f1_oa_reader.rules import (
     normalize_dispatch_number,
     notice_kind_of,
     parse_cited_locations,
+    parse_same_as,
+    quoted_segments,
 )
 from patent_ai.core.f1_oa_reader.verify import Found
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
@@ -300,3 +302,47 @@ def test_식별번호를_정답_꼴로_바꾼다(raw, expected):
 )
 def test_못_읽는_조각이_있으면_None_지어내지_않는다(raw):
     assert parse_cited_locations(raw) is None
+
+
+# ---- #18 task-6: 도면 부호, 같은 취지 대상, 따옴표 안 글자 ----
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("폐곡선(310, 320)", ["폐곡선(310, 320)"]),  # 3절 5: 도면 부호만 -> 그대로
+        ("폐곡선(310,320)", ["폐곡선(310,320)"]),
+        ("[0014], 폐곡선(310, 320)", ["[0014]", "폐곡선(310, 320)"]),
+    ],
+)
+def test_도면_부호만_짚으면_부호를_그대로_적는다(raw, expected):
+    assert parse_cited_locations(raw) == expected
+
+
+def test_도면_부호_꼴이_아닌_글자는_여전히_None():
+    assert parse_cited_locations("폐곡선 어딘가") is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("제1항과 동일한 취지", ["claim:1"]),  # 3절 1
+        ("청구항 제1항 내지 제3항과 같", ["claim:1", "claim:2", "claim:3"]),  # 3절 2: 펼침
+        ("청구항 1, 2는", ["claim:1", "claim:2"]),
+        ("거절이유 2와 같고", ["rejection:2"]),  # 3절 3
+        ("1-1에서 본 바와 같이", ["rejection:1"]),  # 3절 8
+        ("2-3에서 본 바와 같이", ["rejection:2"]),
+    ],
+)
+def test_같은_취지_글자를_대상_목록으로(raw, expected):
+    assert parse_same_as(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "같은 취지", "제A항과 같다", "제1항 내지 제항"])
+def test_같은_취지_대상을_못_읽으면_None(raw):
+    assert parse_same_as(raw) is None
+
+
+def test_따옴표_안_글자만_모은다():
+    text = "청구항 제6항의 '상기 프리뷰 이미지'는 앞에 정의가 없고 \"약\" 도 불명확합니다."
+    assert quoted_segments(text) == ["상기 프리뷰 이미지", "약"]
+    assert quoted_segments("모듈들은 장치 구성을 특정할 수 없다") == []
+    assert quoted_segments("‘가’와 “나”와 「다」") == ["가", "나", "다"]

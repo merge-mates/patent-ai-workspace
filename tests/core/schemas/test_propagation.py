@@ -368,3 +368,54 @@ def test_심사_대상_청구항이_확인되지_않으면_필드_한_줄로_검
             reason="not_extracted",
         )
     ]
+
+
+# ---------- #18 task-6: 청구항 줄 ----------
+def _row(**extra):
+    data = {
+        "claim": 1,
+        "rejection": 1,
+        "citations": ["D1"],
+        "locations": {"D1": ["[0014]"]},
+        "raw_text": "원문",
+        "page": 3,
+        "status": Status(value="confirmed", checked="3쪽 원문 대조"),
+    }
+    data.update(extra)
+    return data
+
+
+def _bad_row(**extra):
+    data = {
+        "claim": 2,
+        "rejection": 1,
+        "raw_text": None,
+        "page": None,
+        "status": Status(value="unverified", reason="not_extracted"),
+    }
+    data.update(extra)
+    return data
+
+
+def test_확인되지_않은_청구항_줄은_그_줄_경로에서_한_줄():
+    oa = _oa([_rej("29-2")], claim_rows=[_row(), _bad_row()])
+    items = collect_review_items([oa], CaseMaterials(case_id="c_1"))
+    assert items == [
+        ReviewItem(
+            kind="unverified",
+            target="oa_result[0].claim_rows[1]",
+            label="청구항 2·거절이유 1",
+            reason="not_extracted",
+        )
+    ]
+
+
+def test_청구항_번호를_못_읽은_줄은_이름만():
+    oa = _oa([_rej("29-2")], claim_rows=[_bad_row(claim=None, rejection=None)])
+    (item,) = collect_review_items([oa], CaseMaterials(case_id="c_1"))
+    assert (item.target, item.label) == ("oa_result[0].claim_rows[0]", "청구항 줄")
+
+
+def test_확인됨_청구항_줄은_검토할_사항이_아니다():
+    oa = _oa([_rej("29-2")], claim_rows=[_row()])
+    assert collect_review_items([oa], CaseMaterials(case_id="c_1")) == []
