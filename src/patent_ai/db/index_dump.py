@@ -180,6 +180,9 @@ def _run(args: list[str]) -> int:
         if not Path(jsonl).exists():
             return _fail(f"파일이 없다: {jsonl}")
         rows = fixture_rows(corpus, Path(jsonl).read_text(encoding="utf-8"))
+        if not rows:
+            # 빈 파일이면 DB에 닿기 전에 멈춘다 (조용히 0개 넣고 성공하지 않게)
+            return _fail(f"경고: {jsonl}에서 읽은 조각이 0개다. 아무것도 넣지 않는다")
         table = _TABLES[corpus]
         with Session(create_engine(get_settings().database_url)) as s:
             have = set(s.scalars(select(table.chunk_id)))

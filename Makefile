@@ -56,7 +56,10 @@ index-dump: ## 그 말뭉치 색인 표만 덤프로 뽑는다: make index-dump 
 	$(COMPOSE) up -d --wait db
 	@mkdir -p data/index
 	@name=$$($(IDX) name "$(CORPUS)") || exit 1; \
-	$(COMPOSE) exec -T db sh -c 'pg_dump -U $(DB_USER) -d $(DB_NAME) -Fc -t $(CORPUS)_chunks' > "data/index/$$name.tmp" \
+	rev="data/index/$${name%.dump}.revision"; \
+	cur=$$($(IDX) current-revision) || exit 1; \
+	printf '%s\n' "$$cur" > "$$rev.tmp" \
+	  && $(COMPOSE) exec -T db sh -c 'pg_dump -U $(DB_USER) -d $(DB_NAME) -Fc -t $(CORPUS)_chunks' > "data/index/$$name.tmp" \
 	  && mv "data/index/$$name.tmp" "data/index/$$name" \
-	  && $(IDX) current-revision > "data/index/$${name%.dump}.revision" \
+	  && mv "$$rev.tmp" "$$rev" \
 	  && echo "만듦: data/index/$$name, data/index/$${name%.dump}.revision"

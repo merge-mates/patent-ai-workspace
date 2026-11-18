@@ -27,6 +27,7 @@
 ```
 make index-load DUMP=data/index/law-idx-v1.dump
 ```
+- 덤프를 주고받을 때는 같은 main에서 `make db`로 마이그레이션을 맞춘 뒤 한다 (revision이 정확히 같아야 한다).
 - 덤프 옆 `.revision`이 내 DB의 마이그레이션 revision과 다르면 멈춘다. `make db`로 맞춘 뒤 다시 한다. 옆 파일이 없으면 경고만 하고 넣는다.
 - 손 확인(가짜 조각): `make db` 뒤 `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl`, `make index-dump CORPUS=cite`로 `data/index/cite-idx-v1.dump`·`.revision`이 생기는지 본다.
 - 덤프에 든 테이블만 지우고 다시 만든다 (`pg_restore --clean`). 다른 테이블은 그대로다.

@@ -111,3 +111,16 @@ def test_revision_파일과_현재가_같으면_성공(tmp_path, monkeypatch):
     f.write_text("abc\n")
     monkeypatch.setattr(index_dump, "current_revision", lambda: "abc")
     assert main(["check-revision", str(f)]) == 0
+
+
+# ---- load-fixture 빈 파일 ----
+def test_빈_fixture는_경고하고_DB에_닿기_전에_종료_1(tmp_path, monkeypatch, capsys):
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("\n", encoding="utf-8")
+
+    def no_db(*a, **k):
+        raise AssertionError("DB에 닿으면 안 된다")
+
+    monkeypatch.setattr(index_dump, "create_engine", no_db)
+    assert main(["load-fixture", "cite", str(empty)]) == 1
+    assert "0개" in capsys.readouterr().err
