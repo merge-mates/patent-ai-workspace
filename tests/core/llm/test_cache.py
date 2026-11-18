@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from patent_ai.core.llm.cache import FileCache, MemoryCache
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid, RecordingMissing
+from patent_ai.core.llm.limits import CallBudget
 from patent_ai.core.llm.recorded import RecordedTransport, save_recording
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 
@@ -34,6 +35,7 @@ def run(transport, cache, variables=VARS, schema=None, attempt=1, root=FIX):
         cache=cache,
         config_dir=FIX / "config",
         root=root,
+        budget=CallBudget(),
     )
 
 

@@ -16,27 +16,22 @@ from patent_ai.core.llm.errors import (
     ModelConfigError,
     ModelOutputInvalid,
 )
-from patent_ai.core.llm.limits import CallBudget, MemoryRecorder
-from patent_ai.core.llm.transport import AnthropicTransport, TransportError, TransportResponse
+from patent_ai.core.llm.limits import CallBudget, CallRecord, MemoryRecorder, RunContext
+from patent_ai.core.llm.transport import (
+    AnthropicTransport,
+    FakeTransport,
+    TransportError,
+    TransportResponse,
+)
 
 FIX = Path(__file__).parent.parent.parent / "fixtures" / "llm"
 VARS = {"lines": 2, "text": "청구항 1은 진보성이 없다"}
 OK = TransportResponse("답", 600, 100)
 
 
-class ScriptedTransport:
-    """답이나 예외를 차례로 낸다. 다 쓰면 마지막 것을 계속 낸다."""
-
-    def __init__(self, *script):
-        self.script = list(script)
-        self.calls = 0
-
-    def complete(self, **kwargs):
-        item = self.script[min(self.calls, len(self.script) - 1)]
-        self.calls += 1
-        if isinstance(item, Exception):
-            raise item
-        return item
+def scripted(*items):
+    """FakeTransport: 항목이 여럿이면 시도마다 차례로, 하나면 늘 같은 것 (답 또는 예외)."""
+    return FakeTransport({"t.s": list(items) if len(items) > 1 else items[0]})
 
 
 def make_config(tmp_path, **limits):
@@ -82,7 +77,7 @@ def run(
 def test_평소_상한_안이면_성공하고_기록이_한_줄_남는다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=3)
     rec = MemoryRecorder()
-    run(ScriptedTransport(OK), cfg, CallBudget(), rec)
+    run(scripted(OK), cfg, CallBudget(), rec)
     assert len(rec.records) == 1
     r = rec.records[0]
     assert (r.run_id, r.step, r.model) == ("run-1", "t.s", "fake-model-1")
@@ -94,16 +89,16 @@ def test_평소_상한_안이면_성공하고_기록이_한_줄_남는다(tmp_pa
 
 def test_경계_딱_상한만큼은_성공한다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=2)
-    budget, rec, t = CallBudget(), MemoryRecorder(), ScriptedTransport(OK)
+    budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)
     run(t, cfg, budget, rec)
     run(t, cfg, budget, rec)
-    assert t.calls == 2
+    assert len(t.calls) == 2
     assert [r.outcome for r in rec.records] == ["ok", "ok"]
 
 
 def test_상한_더하기_하나는_예외이고_전송층을_부르지_않는다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=2)
-    budget, rec, t = CallBudget(), MemoryRecorder(), ScriptedTransport(OK)
+    budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)
     run(t, cfg, budget, rec)
     run(t, cfg, budget, rec)
     with pytest.raises(ModelCallLimitExceeded) as e:
@@ -111,13 +106,13 @@ def test_상한_더하기_하나는_예외이고_전송층을_부르지_않는�
     assert e.value.limit == "max_model_calls"
     assert e.value.used == 2
     assert e.value.limit_value == 2
-    assert t.calls == 2  # 세 번째는 전송층까지 가지 않음
+    assert len(t.calls) == 2  # 세 번째는 전송층까지 가지 않음
     assert rec.records[-1].outcome == "limit_exceeded"
 
 
 def test_다른_run_id는_따로_센다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=1)
-    budget, rec, t = CallBudget(), MemoryRecorder(), ScriptedTransport(OK)
+    budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)
     run(t, cfg, budget, rec, run_id="a")
     run(t, cfg, budget, rec, run_id="b")
     with pytest.raises(ModelCallLimitExceeded):
@@ -126,24 +121,24 @@ def test_다른_run_id는_따로_센다(tmp_path):
 
 def test_입력_토큰_상한은_쓴_양이_상한에_닿으면_다음_호출을_막는다(tmp_path):
     cfg = make_config(tmp_path, max_input_tokens=1000)
-    budget, rec, t = CallBudget(), MemoryRecorder(), ScriptedTransport(OK)  # 호출당 600
+    budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)  # 호출당 600
     run(t, cfg, budget, rec)  # 쓴 양 0 -> 600
     run(t, cfg, budget, rec)  # 600 < 1000 -> 1200
     with pytest.raises(ModelCallLimitExceeded) as e:
         run(t, cfg, budget, rec)
     assert e.value.limit == "max_input_tokens"
     assert e.value.used == 1200
-    assert t.calls == 2
+    assert len(t.calls) == 2
 
 
 def test_캐시_적중은_상한에_세지_않고_기록은_남는다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=1)
-    budget, rec, t = CallBudget(), MemoryRecorder(), ScriptedTransport(OK)
+    budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)
     cache = MemoryCache()
     run(t, cfg, budget, rec, cache=cache)
     run(t, cfg, budget, rec, cache=cache)
     run(t, cfg, budget, rec, cache=cache)
-    assert t.calls == 1
+    assert len(t.calls) == 1
     assert [(r.from_cache, r.outcome) for r in rec.records] == [
         (False, "ok"),
         (True, "cache_hit"),
@@ -154,11 +149,11 @@ def test_캐시_적중은_상한에_세지_않고_기록은_남는다(tmp_path):
 
 def test_상한이_설정에_없으면_막지_않고_경고를_한_번만_남긴다(tmp_path, caplog):
     cfg = make_config(tmp_path)
-    budget, rec, t = CallBudget(), MemoryRecorder(), ScriptedTransport(OK)
+    budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)
     with caplog.at_level(logging.WARNING):
         for _ in range(5):
             run(t, cfg, budget, rec)
-    assert t.calls == 5
+    assert len(t.calls) == 5
     warns = [m for m in caplog.messages if "상한" in m]
     assert len(warns) == 1
 
@@ -166,11 +161,11 @@ def test_상한이_설정에_없으면_막지_않고_경고를_한_번만_남긴
 def test_429가_계속되면_max_retries_뒤_ModelCallFailed(tmp_path):
     cfg = make_config(tmp_path, max_retries=2)
     rec, sleeps = MemoryRecorder(), []
-    t = ScriptedTransport(TransportError("429 너무 많은 요청", retryable=True))
+    t = scripted(TransportError("429 너무 많은 요청", retryable=True))
     with pytest.raises(ModelCallFailed) as e:
         run(t, cfg, CallBudget(), rec, sleeps=sleeps)
     assert "429" in str(e.value)
-    assert t.calls == 3  # 처음 1 + 다시 2
+    assert len(t.calls) == 3  # 처음 1 + 다시 2
     assert len(sleeps) == 2  # 다시 부르기 전에만 쉰다
     assert [r.outcome for r in rec.records] == ["transport_error"] * 3
 
@@ -178,7 +173,7 @@ def test_429가_계속되면_max_retries_뒤_ModelCallFailed(tmp_path):
 def test_429_뒤_성공하면_결과를_돌려준다(tmp_path):
     cfg = make_config(tmp_path, max_retries=2)
     rec = MemoryRecorder()
-    t = ScriptedTransport(TransportError("429", retryable=True), OK)
+    t = scripted(TransportError("429", retryable=True), OK)
     r = run(t, cfg, CallBudget(), rec)
     assert r.text == "답"
     assert [x.outcome for x in rec.records] == ["transport_error", "ok"]
@@ -186,27 +181,27 @@ def test_429_뒤_성공하면_결과를_돌려준다(tmp_path):
 
 def test_max_retries가_없으면_다시_부르지_않는다(tmp_path):
     cfg = make_config(tmp_path)
-    t = ScriptedTransport(TransportError("연결 끊김", retryable=True))
+    t = scripted(TransportError("연결 끊김", retryable=True))
     with pytest.raises(ModelCallFailed):
         run(t, cfg, CallBudget(), MemoryRecorder())
-    assert t.calls == 1
+    assert len(t.calls) == 1
 
 
 def test_다시_불러도_소용없는_오류는_바로_실패한다(tmp_path):
     cfg = make_config(tmp_path, max_retries=3)
-    t = ScriptedTransport(TransportError("400 잘못된 요청", retryable=False))
+    t = scripted(TransportError("400 잘못된 요청", retryable=False))
     with pytest.raises(ModelCallFailed):
         run(t, cfg, CallBudget(), MemoryRecorder())
-    assert t.calls == 1
+    assert len(t.calls) == 1
 
 
 def test_다시_부르는_것도_호출_수에_센다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=2, max_retries=5)
-    t = ScriptedTransport(TransportError("429", retryable=True))
+    t = scripted(TransportError("429", retryable=True))
     with pytest.raises(ModelCallLimitExceeded) as e:
         run(t, cfg, CallBudget(), MemoryRecorder())
     assert e.value.used == 2
-    assert t.calls == 2
+    assert len(t.calls) == 2
 
 
 class Strict(BaseModel):
@@ -216,37 +211,28 @@ class Strict(BaseModel):
 def test_검사_실패_재시도도_상한에_센다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=1)
     budget, rec = CallBudget(), MemoryRecorder()
-    t = ScriptedTransport(TransportResponse("{}", 10, 1))
+    t = scripted(TransportResponse("{}", 10, 1))
     with pytest.raises(ModelOutputInvalid):
         run(t, cfg, budget, rec, schema=Strict, attempt=1)
     with pytest.raises(ModelCallLimitExceeded):
         run(t, cfg, budget, rec, schema=Strict, attempt=2)
-    assert t.calls == 1
+    assert len(t.calls) == 1
     assert [r.outcome for r in rec.records] == ["invalid_output", "limit_exceeded"]
 
 
-def test_진짜_전송층인데_budget이_없으면_막는다(tmp_path):
+def test_budget이_없으면_가짜_전송층이어도_막는다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=1)
-    with pytest.raises(ModelConfigError, match="CallBudget"):
-        call_model(
-            "t.s", VARS, None, "run-1", transport=None, config_dir=cfg, root=FIX, recorder=None
-        )
-
-
-def test_가짜_전송층이고_budget이_없으면_그_호출만의_새_budget을_쓴다(tmp_path):
-    cfg = make_config(tmp_path, max_model_calls=1)
-    t = ScriptedTransport(OK)
-    for _ in range(3):  # 호출마다 새로 세므로 상한 1이어도 막히지 않음 (전역에 안 쌓임)
-        run(t, cfg, None, MemoryRecorder())
-    assert t.calls == 3
+    for transport in (None, scripted(OK)):
+        with pytest.raises(ModelConfigError, match="CallBudget"):
+            call_model("t.s", VARS, None, "run-1", transport=transport, config_dir=cfg, root=FIX)
 
 
 def test_recorder가_없으면_기록_빠짐_경고를_단계마다_한_번(tmp_path, caplog):
     cfg = make_config(tmp_path, max_model_calls=9)
-    budget, t = CallBudget(), ScriptedTransport(OK)
+    budget, t = CallBudget(), scripted(OK)
     with caplog.at_level(logging.WARNING):
         for _ in range(3):
-            run(t, cfg, budget, None)
+            run(t, cfg, budget, None, run_id="run-norec-unique")
     warns = [m for m in caplog.messages if "기록" in m]
     assert len(warns) == 1
 
@@ -254,10 +240,10 @@ def test_recorder가_없으면_기록_빠짐_경고를_단계마다_한_번(tmp_
 def test_TransportError가_아닌_예외도_기록하고_세고_ModelCallFailed로_감싼다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=1, max_retries=3)
     budget, rec = CallBudget(), MemoryRecorder()
-    t = ScriptedTransport(RuntimeError("뜻밖의 오류"))
+    t = scripted(RuntimeError("뜻밖의 오류"))
     with pytest.raises(ModelCallFailed, match="뜻밖의 오류"):
         run(t, cfg, budget, rec)
-    assert t.calls == 1  # 모르는 오류는 다시 부르지 않는다
+    assert len(t.calls) == 1  # 모르는 오류는 다시 부르지 않는다
     assert [r.outcome for r in rec.records] == ["transport_error"]
     with pytest.raises(ModelCallLimitExceeded):  # 호출 수에 셌다
         run(t, cfg, budget, rec)
@@ -266,13 +252,13 @@ def test_TransportError가_아닌_예외도_기록하고_세고_ModelCallFailed�
 def test_재시도_기록에_전송_시도_번호가_남는다(tmp_path):
     cfg = make_config(tmp_path, max_retries=2)
     rec = MemoryRecorder()
-    t = ScriptedTransport(TransportError("429", retryable=True), OK)
+    t = scripted(TransportError("429", retryable=True), OK)
     run(t, cfg, CallBudget(), rec)
     assert [r.transport_try for r in rec.records] == [1, 2]
     cached = MemoryRecorder()
     cache = MemoryCache()
-    run(ScriptedTransport(OK), cfg, CallBudget(), cached, cache=cache)
-    run(ScriptedTransport(OK), cfg, CallBudget(), cached, cache=cache)
+    run(scripted(OK), cfg, CallBudget(), cached, cache=cache)
+    run(scripted(OK), cfg, CallBudget(), cached, cache=cache)
     assert [r.transport_try for r in cached.records] == [1, 0]  # 적중은 0
 
 
@@ -315,3 +301,80 @@ def test_SDK_예외를_TransportError로_바꾸고_다시_부를지_정한다(ex
     with pytest.raises(TransportError) as e:
         tr.complete(step="t.s", model="m", prompt="p", temperature=0.0, max_tokens=5)
     assert e.value.retryable is retryable
+
+
+# ---- RunContext ----
+def ctx_call(ctx, cfg, attempt=1, schema=None, **extra):
+    return call_model(
+        "t.s", VARS, schema, attempt=attempt, ctx=ctx, config_dir=cfg, root=FIX, **extra
+    )
+
+
+def test_ctx로_부르면_ctx의_run_id_budget_recorder_transport를_쓴다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    ctx = RunContext("run-ctx", CallBudget(), rec, transport=scripted(OK))
+    ctx_call(ctx, cfg)
+    assert [(r.run_id, r.outcome) for r in rec.records] == [("run-ctx", "ok")]
+    with pytest.raises(ModelCallLimitExceeded):
+        ctx_call(ctx, cfg)  # 같은 ctx 안에서 상한이 쌓인다
+
+
+def test_ctx_경로에서도_attempt_1_2_둘_다_센다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    ctx = RunContext("run-ctx", CallBudget(), MemoryRecorder(), transport=scripted(OK))
+    ctx_call(ctx, cfg, attempt=1)
+    with pytest.raises(ModelCallLimitExceeded):
+        ctx_call(ctx, cfg, attempt=2)
+
+
+def test_ctx와_따로_넘긴_인자를_같이_주면_막는다(tmp_path):
+    cfg = make_config(tmp_path)
+    ctx = RunContext("run-ctx", CallBudget(), MemoryRecorder(), transport=scripted(OK))
+    with pytest.raises(ModelConfigError, match="ctx"):
+        ctx_call(ctx, cfg, budget=CallBudget())
+    with pytest.raises(ModelConfigError, match="ctx"):
+        call_model("t.s", VARS, None, "run-x", ctx=ctx, config_dir=cfg, root=FIX)
+
+
+def test_가짜_전송층이면_캐시_기본은_안_쓰고_진짜_전송층이면_파일_캐시를_쓴다(tmp_path):
+    cfg = make_config(tmp_path)
+    fake = scripted(OK)
+    ctx = RunContext("r", CallBudget(), MemoryRecorder(), transport=fake)
+    ctx_call(ctx, cfg)
+    ctx_call(ctx, cfg)
+    assert len(fake.calls) == 2  # cache None + Fake -> 캐시 안 씀
+
+    # AnthropicTransport 객체(생성자 우회, complete는 가짜로 바꿈)면 기본 FileCache
+    inner = scripted(OK)
+    real = object.__new__(AnthropicTransport)
+    real.complete = inner.complete
+    ctx2 = RunContext("r2", CallBudget(), MemoryRecorder(), transport=real)
+    ctx_call(ctx2, cfg)
+    r = ctx_call(ctx2, cfg)
+    assert r.from_cache is True
+    assert len(inner.calls) == 1
+
+
+# ---- FakeTransport 답 목록 ----
+def test_FakeTransport는_목록이면_시도마다_차례로_답한다():
+    t = FakeTransport({"s": [TransportResponse("a", 1, 1), TransportError("x", True)]})
+    kw = dict(step="s", model="m", prompt="p", temperature=0.0, max_tokens=1)
+    assert t.complete(**kw).text == "a"
+    with pytest.raises(TransportError):
+        t.complete(**kw)
+    with pytest.raises(ModelConfigError):  # 목록을 다 씀
+        t.complete(**kw)
+
+
+def test_FakeTransport에_없는_step이면_ModelConfigError이고_감싸지_않는다(tmp_path):
+    cfg = make_config(tmp_path, max_retries=3)
+    with pytest.raises(ModelConfigError):
+        run(FakeTransport({}), cfg, CallBudget(), MemoryRecorder())
+
+
+def test_기록기는_CallRecord_하나를_받는다(tmp_path):
+    cfg = make_config(tmp_path)
+    rec = MemoryRecorder()
+    run(scripted(OK), cfg, CallBudget(), rec)
+    assert isinstance(rec.records[0], CallRecord)

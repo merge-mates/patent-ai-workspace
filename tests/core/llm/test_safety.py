@@ -30,7 +30,7 @@ def call(transport, cache=None, variables=VARS, step=STEP, root=FIX, config_dir=
         cache=cache,
         config_dir=config_dir,
         root=root,
-        budget=CallBudget() if transport is None else None,
+        budget=CallBudget(),
     )
 
 

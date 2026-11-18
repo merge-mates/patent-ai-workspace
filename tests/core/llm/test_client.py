@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
+from patent_ai.core.llm.limits import CallBudget
 from patent_ai.core.llm.transport import (
     AnthropicTransport,
     FakeTransport,
@@ -32,6 +33,7 @@ def run(transport, step="test.summarize", variables=VARS, schema=None):
         transport=transport,
         config_dir=FIX / "config",
         root=FIX,
+        budget=CallBudget(),
     )
 
 
