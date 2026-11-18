@@ -269,12 +269,12 @@ graph LR
 - 은진 님 정답 파일 변환 스크립트, 법령 위치 규칙 실제 값, 실제 tune 점수·`/experiment` 연결 (→ #66·#67).
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
+- [x] task-1
+- [x] task-2
+- [x] task-3
 - [ ] task-4
 - [ ] task-5
-- 다음: m2-i1 머지 뒤 `/implement docs/features/retrieval/tasks.md m2-i3` (m2-i2와 동시에 해도 됨)
+- 다음: task-4.
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
