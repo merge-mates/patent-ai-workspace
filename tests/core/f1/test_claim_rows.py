@@ -314,7 +314,7 @@ def test_줄이_빠진_청구항은_그_줄만_빈_확인되지_않음_줄():
     ]
     result = _read(answer)
     _assert_dropped(_row(result, 2, 2))
-    assert _row(result, 3, 2).status.value == StatusValue.CONFIRMED
+    assert _row(result, 4, 2).status.value == StatusValue.CONFIRMED  # 다른 줄은 그대로
     assert result.status.value == StatusValue.UNVERIFIED
     assert all(r.rejection != 4 for r in result.claim_rows)  # 지원 안 하는 이유는 채우지 않음
 

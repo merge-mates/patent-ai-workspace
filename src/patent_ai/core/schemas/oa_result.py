@@ -168,10 +168,18 @@ class ClaimRow(BaseModel):
             if None in (self.claim, self.rejection, self.raw_text, self.page):
                 raise ValueError("confirmed 줄은 청구항·거절이유 번호와 원문 글자·쪽이 있어야 함")
         elif self.status.value == StatusValue.UNVERIFIED:
-            # 대조에 떨어진 줄은 값을 남기지 않는다 (지어내지 않음)
             kept = (self.citations, self.locations, self.same_as, self.clarity_terms)
-            if any(kept) or self.clarity_reason is not None or self.raw_text or self.page:
-                raise ValueError("unverified 줄은 값·원문 글자·쪽을 비워 둬야 함")
+            has_values = (
+                any(kept) or self.clarity_reason is not None or bool(self.raw_text) or self.page
+            )
+            if self.status.reason == UnverifiedReason.AMBIGUOUS:
+                # 애매한 줄(예: 인용이 여럿인데 판단 원문에 인용 번호가 없음)은 값·원문·쪽을 남겨
+                # 사람이 보게 한다 (ExtractedValue의 ambiguous 규칙과 같게). 어느 줄인지는 알아야 함
+                if has_values and (self.claim is None or self.rejection is None):
+                    raise ValueError("값을 남긴 애매한 줄은 청구항·거절이유 번호가 있어야 함")
+            elif has_values:
+                # 대조에 떨어진 줄은 값을 남기지 않는다 (지어내지 않음)
+                raise ValueError("unverified 줄은 값·원문 글자·쪽을 비워 둬야 함 (애매 제외)")
         else:
             raise ValueError("청구항 줄 status는 confirmed 또는 unverified")
         return self

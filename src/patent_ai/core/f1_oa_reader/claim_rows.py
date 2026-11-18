@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 _QUOTE_CHARS = " '\"‘’“”「」『』"
 _NO_LOCATION = "위치 없음"
-_LABEL_NOTE = "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨"
 
 
 class _Fail(Exception):
@@ -179,7 +178,7 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
             if label not in mentioned:  # 판단 원문이 가리키는 인용과 다름
                 raise _Fail()
         elif len(allowed) > 1:
-            noted = True  # 언급이 없으면 거절이유 인용 중 모델 라벨을 받고 근거를 남긴다
+            noted = True  # 언급이 없으면 거절이유 인용 중 모델 라벨을 받되 애매로 표시
         citations.append(label)
         found = _locations(c, pages)
         if found:
@@ -285,10 +284,14 @@ def build_claim_rows(
                 made.append(_unverified(claim, no, row_reason))
                 continue
             values = {k: v for k, v in content.items() if k != "label_note"}
-            checked = f"{content['page']}쪽 원문 대조"
             if content.get("label_note"):
-                checked += f", {_LABEL_NOTE}"
-            status = Status(value=StatusValue.CONFIRMED, checked=checked)
+                # 인용이 여럿인데 판단 원문에 인용 번호가 없음: 모델 라벨(거절이유 인용 안)을 남기되
+                # 어느 인용인지 원문으로 못 정했으니 확인되지 않음(애매)
+                status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+            else:
+                status = Status(
+                    value=StatusValue.CONFIRMED, checked=f"{content['page']}쪽 원문 대조"
+                )
             made.append(ClaimRow(claim=claim, rejection=no, status=status, **values))
     # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
     # (줄이 빠져도 조용히 지나가지 않게)
