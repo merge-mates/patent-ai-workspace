@@ -62,7 +62,7 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
   - `scripts/fetch_prec_novelty.py`: 신규성 판례 1차
   - `scripts/fetch_prec_novelty_refill.py`: 본문에 제29조 제1항이 있는 사건만으로 다시 채우기
   - 이 PR에 없는 것: 법령 판 받기 `fetch_law_versions.py`와 심사기준 현행 판 받기 `fetch_exam_guidelines.py`·`fetch_exam_guidelines_body.py`는 은진 로컬 `feat/law-chunker` 브랜치에만 있다(원격에 안 올림). 법령 목록·본문 받기 `list_patent_laws.py`·`fetch_law_body.py`는 원격 `feat/law-rag-demo` 브랜치에 있다. 진보성·명확성 판례(11/16)는 스크립트로 남지 않았고, 받은 방법은 `data/raw/DOWNLOAD_1116.md` 1절에 있다.
-  - 이 받기 스크립트들은 한 번 쓰는 수집용이라 CLAUDE.md의 "외부 API 호출은 캐시와 호출 상한을 거친다"에서 뺀다. 대신 이미 있는 파일이면 멈추고 호출 사이 1초 쉰다. 앱 코드는 규칙대로 캐시·상한을 거친다.
+  - 캐시·호출 상한 예외는 CLAUDE.md 코드 규칙을 따른다 (이 스크립트들은 이미 있는 파일이면 멈추고 호출 사이 1초 쉰다).
 - 모든 스크립트는 기존 파일을 덮어쓰지 않고 멈추며, 호출 사이 1초 쉰다.
 - raw → processed(조각 테이블·청킹·임베딩)는 이슈 #65(검색 계약)와 이슈 #66에서 정한다.
 
