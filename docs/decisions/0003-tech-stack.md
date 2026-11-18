@@ -60,7 +60,7 @@
 | 화면 | React + TypeScript (Vite). 타입은 서버 OpenAPI에서 뽑는다 |
 | DB | Postgres 하나: 표 + jsonb + pgvector. 그래프 표는 F2·F3 설계 때 |
 | 에이전트 | LangGraph. 모델 호출은 어느 경우든 `core/llm/` 한 곳으로 |
-| 실행 기록 | DB `runs`·`agent_steps`가 먼저(M1). Langfuse는 docker compose 안에 띄움 (LangSmith 안 씀). 코드 뼈대 이슈에 여유가 있으면 M1, 아니면 M2 초 |
+| 실행 기록 | DB `runs`·`agent_steps`가 먼저(M1). Langfuse는 docker compose 안에 띄움 (LangSmith 안 씀). M2 초 |
 | 모델 | 전부 Haiku 5.5로 시작. LLM 저지는 OpenAI로 시작하고, OpenAI 비용이 예산(3만 원)을 넘으면 Anthropic 모델로 바꾼다. 모델 이름·회사는 단계마다 설정 파일에 두고 코드에 쓰지 않는다 |
 | 개발 환경 | docker compose (Postgres·pgvector·Langfuse). 둘이 같은 환경 |
 | 실행 위치 | 로컬 docker compose로 시작. 발표용 웹 주소는 발표 형태를 정할 때 본다 |
