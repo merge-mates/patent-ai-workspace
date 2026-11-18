@@ -2,9 +2,8 @@
 
 from patent_ai.core.f1_oa_reader.support import SUPPORTED_ARTICLES, country_of, is_supported
 from patent_ai.core.f1_oa_reader.verify import Found, merge, raw_text_on_page
-from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import Page, PageText
-from patent_ai.core.schemas.common import Status
 
 
 def _pages(*texts: str) -> PageText:
