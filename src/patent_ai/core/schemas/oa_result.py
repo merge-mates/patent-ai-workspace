@@ -50,6 +50,9 @@ class Citation(BaseModel):
         # KR·US면 지원, 그 밖의 나라와 못 정한 경우(null)는 지원 안 함
         if self.country_supported != (value in SUPPORTED_COUNTRIES):
             raise ValueError("country_supported는 country가 KR·US일 때만 true")
+        # 나라를 못 정했으면(null) 확인됨일 수 없다: unverified(ambiguous)
+        if value is None and self.country.status.value == StatusValue.CONFIRMED:
+            raise ValueError("country.value가 null이면 status는 confirmed일 수 없음")
         if not self.country_supported and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
             raise ValueError("country_supported=false면 flags에 needs_human_review가 필요")
         return self

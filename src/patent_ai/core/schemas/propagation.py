@@ -14,7 +14,7 @@ from patent_ai.core.schemas.common import (
     StatusValue,
     UnverifiedReason,
 )
-from patent_ai.core.schemas.oa_result import OAResult
+from patent_ai.core.schemas.oa_result import OAResult, Rejection
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +66,15 @@ def _text(v: ExtractedValue) -> str:
     return v.raw_text or "알 수 없음"
 
 
-def _items_of_result(r: ResultBase, target: str, label: str, flag_reason: dict) -> list[ReviewItem]:
+def _items_of_result(
+    r: ResultBase, target: str, label: str, flag_reason: dict, skip_status: bool = False
+) -> list[ReviewItem]:
     """결과 하나(ResultBase 칸)에서 나오는 항목: status, 다시 확인, 직접 판단·검토 표시."""
     items: list[ReviewItem] = []
-    if r.status.value == StatusValue.UNVERIFIED:
+    # skip_status: 안쪽 자식에서 이미 같은 원인 줄이 나왔으면 위에서 다시 세지 않는다
+    if skip_status:
+        pass
+    elif r.status.value == StatusValue.UNVERIFIED:
         items.append(
             ReviewItem(kind="unverified", target=target, label=label, reason=str(r.status.reason))
         )
@@ -101,34 +106,50 @@ def _flag_items(flags: list[Flag], target: str, label: str, flag_reason: dict) -
     ]
 
 
-def _items_of_oa_result(oa: OAResult, root: str) -> list[ReviewItem]:
-    """OAResult 하나: 맨 위 + 거절이유 + 그 안 인용문헌까지 내려가며 모은다."""
-    items = _items_of_result(oa, root, oa.oa_id, {})
-    for i, rej in enumerate(oa.rejections):
-        r_target = f"{root}.rejections[{i}]"
-        r_label = _text(rej.article)
-        # 지원 안 하는 거절이유는 직접 검토 필요의 이유가 조문이다
-        reason = (
-            {Flag.NEEDS_HUMAN_REVIEW: f"지원 안 하는 거절이유 {r_label}"}
-            if not rej.supported
-            else {}
-        )
-        items += _items_of_result(rej, r_target, r_label, reason)
-        for j, c in enumerate(rej.citations):
-            c_target = f"{r_target}.citations[{j}]"
-            c_label = _text(c.number)
-            if c.country.status.value == StatusValue.UNVERIFIED:  # 나라를 못 정함
-                items.append(
-                    ReviewItem(
-                        kind="unverified",
-                        target=c_target,
-                        label=c_label,
-                        reason=str(c.country.status.reason),
-                    )
+def _status_lines(items: list[ReviewItem]) -> bool:
+    """이 항목들 안에 unverified·conflict 줄이 있나."""
+    return any(i.kind in ("unverified", "conflict") for i in items)
+
+
+def _items_of_rejection(rej: Rejection, r_target: str) -> list[ReviewItem]:
+    """거절이유 하나: 인용문헌에서 나온 줄이 있으면 거절이유 자신의 status 줄은 내지 않는다."""
+    r_label = _text(rej.article)
+    # 지원 안 하는 거절이유는 직접 검토 필요의 이유가 조문이다
+    reason = (
+        {Flag.NEEDS_HUMAN_REVIEW: f"지원 안 하는 거절이유 {r_label}"} if not rej.supported else {}
+    )
+    child: list[ReviewItem] = []
+    for j, c in enumerate(rej.citations):
+        c_target = f"{r_target}.citations[{j}]"
+        c_label = _text(c.number)
+        if c.country.status.value == StatusValue.UNVERIFIED:  # 나라를 못 정함
+            child.append(
+                ReviewItem(
+                    kind="unverified",
+                    target=c_target,
+                    label=c_label,
+                    reason=str(c.country.status.reason),
                 )
-            c_reason = {Flag.NEEDS_HUMAN_REVIEW: f"지원 안 하는 나라 {_text(c.country)}"}
-            items += _flag_items(c.flags, c_target, c_label, c_reason)
-    return items
+            )
+        if c.country.value is None:
+            country_reason = f"나라를 못 정함 ({c.country.raw_text or '원문 글자 없음'})"
+        else:
+            country_reason = f"지원 안 하는 나라 {c.country.value}"
+        child += _flag_items(c.flags, c_target, c_label, {Flag.NEEDS_HUMAN_REVIEW: country_reason})
+    own = _items_of_result(rej, r_target, r_label, reason, skip_status=_status_lines(child))
+    return own + child
+
+
+def _items_of_oa_result(oa: OAResult, root: str) -> list[ReviewItem]:
+    """OAResult 하나: 거절이유·인용문헌 안까지 내려가며 모은다. 원인은 가장 안쪽 한 곳에만."""
+    rej_items: list[ReviewItem] = []
+    counted = False  # OAResult status에 들어간(지원하는) 거절이유에서 status 줄이 나왔나
+    for i, rej in enumerate(oa.rejections):
+        got = _items_of_rejection(rej, f"{root}.rejections[{i}]")
+        rej_items += got
+        if rej.supported and _status_lines(got):
+            counted = True
+    return _items_of_result(oa, root, oa.oa_id, {}, skip_status=counted) + rej_items
 
 
 def collect_review_items(results: list[ResultBase], materials: CaseMaterials) -> list[ReviewItem]:
