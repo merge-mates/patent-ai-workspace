@@ -1,5 +1,5 @@
 # Python 린트·포맷 (ruff, 오픈소스). 사람과 Claude가 같은 규칙을 쓰게 저장소에 둔다.
-# 프론트 언어가 정해지면 그 언어 린터 설정(ESLint+Prettier 또는 Biome)을 더한다.
+# 화면(web/) 린트는 oxlint(Vite 템플릿 기본, 설정 web/.oxlintrc.json). 명령은 web/CLAUDE.md.
 target-version = "py312"
 line-length = 100
 
