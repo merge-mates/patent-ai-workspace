@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: task 하나(task 모드), 이슈 = PR 하나(이슈 모드), 기능 전체(기능 모드), 마일스톤 전체(마일스톤 모드)의 diff를 규칙 축과 의도 축으로 따로 리뷰한다. 파일은 고치지 않는다. /implement, /check, /pr-review가 부른다.
+description: task 하나(task 모드), 계획 하나 = PR 하나(이슈 모드), 기능 전체(기능 모드), 마일스톤 전체(마일스톤 모드)의 diff를 규칙 축과 의도 축으로 따로 리뷰한다. 파일은 고치지 않는다. /implement, /check, /pr-review가 부른다.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit
 model: opus

@@ -1,6 +1,6 @@
 ---
 name: task
-about: 이슈 계획 하나 (구현 일. 이 이슈 = 브랜치 하나 = PR 하나)
+about: 구현 일 (계획 하나 이상. 계획 하나 = 브랜치 하나 = PR 하나)
 title: "<type>(<영역>): "
 labels: []
 assignees: []
