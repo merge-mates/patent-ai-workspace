@@ -7,6 +7,10 @@
 input=$(cat)
 cmd=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("command",""))' <<<"$input" 2>/dev/null)
 [[ -z "$cmd" ]] && exit 0
+# 브랜치는 훅 입력의 cwd(세션이 일하는 폴더) 기준으로 구한다.
+# 훅 프로세스의 현재 폴더는 $CLAUDE_PROJECT_DIR(메인 체크아웃)이라, worktree 세션이면 엉뚱한 브랜치가 나온다.
+cwd=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("cwd",""))' <<<"$input" 2>/dev/null)
+[[ -d "$cwd" ]] || cwd="$PWD"
 
 dir="$(cd "$(dirname "$0")/.." && pwd)"
 move() { # <이슈번호> <칸>
@@ -20,17 +24,17 @@ issue_of() { [[ "$1" =~ ^[a-z]+/([0-9]+)- ]] && echo "${BASH_REMATCH[1]}"; }
 
 if [[ "$cmd" =~ git[[:space:]]+(switch[[:space:]]+(-c|-C|--create)|checkout[[:space:]]+-[bB])[[:space:]]+([^[:space:];&|]+) ]]; then
   branch="${BASH_REMATCH[3]}"
-  [[ "$(git branch --show-current 2>/dev/null)" == "$branch" ]] || exit 0   # 브랜치가 실제로 생겼을 때만
+  [[ "$(git -C "$cwd" branch --show-current 2>/dev/null)" == "$branch" ]] || exit 0   # 브랜치가 실제로 생겼을 때만
   n=$(issue_of "$branch")
   [[ -n "$n" ]] && move "$n" "In Progress"
   exit 0
 fi
 
 if [[ "$cmd" =~ gh[[:space:]]+pr[[:space:]]+create ]]; then
-  branch=$(git branch --show-current 2>/dev/null)
+  branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
   n=$(issue_of "$branch")
   [[ -z "$n" ]] && exit 0
-  gh pr view "$branch" --json number >/dev/null 2>&1 || exit 0   # PR이 실제로 생겼을 때만
+  (cd "$cwd" && gh pr view "$branch" --json number >/dev/null 2>&1) || exit 0   # PR이 실제로 생겼을 때만 (그 폴더의 저장소에서)
   move "$n" "In Review"
 fi
 exit 0
