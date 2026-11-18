@@ -270,8 +270,8 @@ graph LR
 ### 진행
 - [x] task-1
 - [x] task-2
-- [ ] task-3
-- 다음: task-3
+- [x] task-3
+- 다음: /check 이슈
 - 막힌 것: 
 
 ### 끝난 뒤 (이슈가 끝난 날)
