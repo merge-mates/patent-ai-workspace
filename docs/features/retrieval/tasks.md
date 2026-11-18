@@ -272,9 +272,9 @@ graph LR
 - [x] task-1
 - [x] task-2
 - [x] task-3
-- [ ] task-4
+- [x] task-4
 - [ ] task-5
-- 다음: task-4.
+- 다음: task-5.
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
