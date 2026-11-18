@@ -2,7 +2,7 @@
 
 명령: uv run python -m eval.retrieval.score --config experiments/<실험>/config.yaml
 흐름: 정답 읽기 -> 실행 전 검사 -> 뺄 줄 -> 줄마다 search -> 맞음 판정 -> 계산 -> scores.json.
-CQ 후보 파일은 task-5가 더한다 (여기서는 쓰지 않는다).
+CQ 후보 파일은 main이 write_cq로 쓴다 (cq.py).
 """
 
 import argparse
@@ -16,6 +16,7 @@ from pathlib import Path
 
 from eval.retrieval.checks import REPO_ROOT, gold_path, preflight
 from eval.retrieval.config import RetrievalEvalConfig, load_config
+from eval.retrieval.cq import write_cq
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
@@ -57,6 +58,7 @@ class RowResult:
 class ScoreReport:
     scores: dict  # scores.json 내용
     rows: list[RowResult] = field(default_factory=list)
+    k_max: int = 0  # 검색에 쓴 가장 큰 k (CQ 파일의 k)
 
 
 def _check_experiment(experiment: str) -> None:
@@ -227,7 +229,7 @@ def score(
             "seconds": round(time.monotonic() - started, 3),
         },
     }
-    return ScoreReport(scores=scores, rows=results)
+    return ScoreReport(scores=scores, rows=results, k_max=k_max)
 
 
 def main(argv: list[str] | None = None, commit: str | None = None) -> int:
@@ -269,6 +271,8 @@ def main(argv: list[str] | None = None, commit: str | None = None) -> int:
         print(f"채점 실패: {type(e).__name__}", file=sys.stderr)
         return 1
 
+    # CQ 후보 파일은 git 밖 폴더에 쓰고, 건수만 scores.json에 남긴다
+    report.scores["failures"]["cq_candidates"] = write_cq(report, cq_dir / "cq_candidates.jsonl")
     scores_dir.mkdir(parents=True, exist_ok=True)
     (scores_dir / "scores.json").write_text(
         json.dumps(report.scores, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
