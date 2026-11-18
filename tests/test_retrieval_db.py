@@ -188,3 +188,11 @@ def test_DB에서_읽은_조각의_위치와_판본이_메모리와_같다(both,
             assert got.embedding is None
         else:
             assert got.embedding == pytest.approx(want.embedding, abs=1e-6)
+
+
+def test_from_url은_설정의_DB로_저장소를_만든다():
+    # 채점기가 --chunks 없이 돌 때 쓰는 길 (빈 DB여도 읽기만 한다)
+    from patent_ai.retrieval.repository import PostgresChunkRepository
+
+    repo = PostgresChunkRepository.from_url()
+    assert repo.has_index_version("cite", "cite-idx-v999") is False

@@ -1,4 +1,4 @@
-"""조각 저장소 (design.md 5-1절). 테스트용 메모리 저장소.
+"""조각 저장소 (design.md 5-1절). 메모리 저장소(테스트·--chunks)와 Postgres 저장소.
 
 core를 import하지 않는다. Postgres 저장소는 같은 Protocol로 같은 거르기를 한다.
 """
@@ -10,11 +10,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Protocol
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, create_engine, func, or_, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
 from patent_ai.retrieval.schemas import Chunk, Corpus, Edition, Location
+from patent_ai.settings import get_settings
 
 
 class ChunkRepository(Protocol):
@@ -211,6 +212,12 @@ class PostgresChunkRepository:
 
     def __init__(self, session: Session):
         self._session = session
+
+    @classmethod
+    def from_url(cls, url: str | None = None) -> PostgresChunkRepository:
+        """DB 주소로 저장소를 만든다. 주소가 없으면 설정의 DATABASE_URL (design 7-1 채점기)."""
+        engine = create_engine(url or get_settings().database_url)
+        return cls(Session(engine))
 
     def _where(self, corpus: Corpus, index_version: str, doc_ids: list[str] | None):
         _check_doc_ids(doc_ids)
