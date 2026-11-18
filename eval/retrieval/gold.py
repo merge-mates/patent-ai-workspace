@@ -20,6 +20,9 @@ class GoldItem(BaseModel):
     end: int | None = None
     label: str
     figures: list[int] = Field(default_factory=list)
+    # 인용문헌 청구항 항목(kind="claim")의 청구항 번호들
+    # (design 7-4: 조각 loc_claims와 겹치면 맞음)
+    claims: list[int] = Field(default_factory=list)
 
 
 class GoldRow(BaseModel):

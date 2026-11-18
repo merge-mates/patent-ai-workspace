@@ -243,3 +243,12 @@ def test_정답_줄을_읽는다(goldsets_root):
     assert len(rows) == 1
     assert rows[0].doc_ids == ["KR2000000001A"]
     assert [i.label for i in rows[0].items] == ["[0022-0025]", "도 3"]
+
+
+def test_정답_항목은_청구항_번호를_담는다():
+    # matchers.CiteMatcher가 claim 항목에서 item.claims를 읽는다 (design 7-4)
+    from eval.retrieval.gold import GoldItem
+
+    item = GoldItem(kind="claim", label="청구항 2", claims=[2])
+    assert item.claims == [2]
+    assert GoldItem(kind="paragraph", start=1, end=1, label="[0001]").claims == []
