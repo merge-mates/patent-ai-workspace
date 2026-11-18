@@ -89,8 +89,13 @@ def test_결과가_ResultBase면_그_status와_evidence를_그대로():
 
     ev = Evidence(document_id="d", page=1, raw_text="글")
     res = ResultBase(status=_OK, evidence=[ev])
-    t = Tool(name="r", kind="code_tool", input_schema=_In, output_schema=ResultBase,
-             fn=lambda i, ctx: res)
+    t = Tool(
+        name="r",
+        kind="code_tool",
+        input_schema=_In,
+        output_schema=ResultBase,
+        fn=lambda i, ctx: res,
+    )
     out = t.run({"n": 1})
     assert out.status == _OK
     assert out.evidence == [ev]
