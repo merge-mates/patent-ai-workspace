@@ -1,0 +1,32 @@
+{
+  "case_id": "c_1",
+  "documents": [
+    {
+      "document_id": "doc_oa_1",
+      "kind": "oa",
+      "source": "uploaded"
+    },
+    {
+      "document_id": "doc_cit_kr_1",
+      "kind": "citation",
+      "source": "api"
+    }
+  ],
+  "missing": [
+    {
+      "what": "US 2099/0000001 본문",
+      "depends_on_tasks": [
+        "F3 대비: US 2099/0000001"
+      ],
+      "lookup_result": "body_missing",
+      "ask_upload": true
+    }
+  ],
+  "held_tasks": [
+    {
+      "task": "F3 대비: US 2099/0000001",
+      "waiting_for": "US 2099/0000001 본문"
+    }
+  ],
+  "review_items_count": 2
+}
