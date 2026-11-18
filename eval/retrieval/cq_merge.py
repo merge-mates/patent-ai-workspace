@@ -54,9 +54,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # 모은 파일에도 질의가 있으니 git에 들어갈 수 있는 곳이면 멈춘다
         if not _is_git_ignored(out):
-            raise RetrievalEvalError("출력이 git에 들어갈 수 있는 경로다 (저장소 밖만)")
+            raise RetrievalEvalError(
+                "출력이 git에 들어갈 수 있는 경로다 (저장소 밖이나 git이 무시하는 곳만)"
+            )
         if len(args.files) == 1:
-            _read(Path(args.files[0]))  # 읽히는지만 본다
+            # 읽히는지 보고, 비었으면 경고 (0건을 조용히 넘기지 않음)
+            if not _read(Path(args.files[0])):
+                logger.warning("CQ 모으기: 파일 1개, 후보 0건")
             text = Path(args.files[0]).read_text(encoding="utf-8")
         else:
             merged = merge_cq(args.files)

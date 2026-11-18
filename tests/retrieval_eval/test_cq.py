@@ -145,6 +145,16 @@ def test_파일_1개는_그대로_복사(tmp_path):
     assert out.read_text(encoding="utf-8") == a.read_text(encoding="utf-8")
 
 
+def test_빈_파일_1개는_복사하고_경고(tmp_path, caplog):
+    a = tmp_path / "a.jsonl"
+    a.write_text("", encoding="utf-8")
+    out = tmp_path / "merged.jsonl"
+    with caplog.at_level(logging.WARNING):
+        assert merge_main([str(a), "-o", str(out)]) == 0
+    assert out.read_text(encoding="utf-8") == ""
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
 def test_파일_0개는_1(tmp_path, capsys):
     assert merge_main(["-o", str(tmp_path / "m.jsonl")]) == 1
 
