@@ -181,7 +181,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m2-i3  (11/20~11/21)  상태: 초안  (B, 이슈 번호는 승인 뒤)
+## m2-i3  (11/20~11/21)  상태: 승인  (B, 이슈 번호는 아침에. 11/18 승인, 상대 리뷰는 PR에서)
 **구현할 design 부분**: design.md 2절, 7-1 정답 파일·채점기·CQ 파일, 7-3, 7-4, 7-5   **맡은 합격 기준**: requirements.md 3, 4, 5
 **목표** (한 줄): 가짜 조각·가짜 정답으로 심사관 지정 위치 회수율·무작위 기준선·CQ 후보를 내는 채점기를 만든다.
 **끝나면 보여 줄 것** (데모 한 줄): 테스트가 임시 폴더에 정답 세트 구조(`VERSION`, `tune/retrieval/gold_ok.jsonl`)를 만들고 `main(["--config", …, "--goldsets-root", <임시>, "--chunks", "tests/fixtures/retrieval/chunks_check.jsonl"], commit="test")`를 부른다. 그러면 `work/retrieval/<실험>/` 아래 `scores.json`(Hit@5 = 1, Recall@5 = 0.5, 무작위 Recall@5 ≈ 0.738)과 CQ 후보 파일이 생긴다.
