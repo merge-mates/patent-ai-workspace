@@ -1,9 +1,11 @@
 """모델 호출의 유일한 입구. 설정·프롬프트 파일을 거쳐 전송층을 부른다.
 
-캐시는 cache 인자로 받는다(없으면 안 씀). 호출 상한(budget)·기록(recorder)·재시도도 여기서 한다.
+실행 맥락(ctx)이나 따로 넘긴 인자로 run_id·budget·recorder·transport·cache를 받는다.
+호출 상한(budget)·기록(recorder)·재시도도 여기서 한다.
 """
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -19,9 +21,25 @@ from patent_ai.core.llm.errors import (
     ModelOutputInvalid,
     RecordingMissing,
 )
-from patent_ai.core.llm.limits import CallBudget, CallRecorder
+from patent_ai.core.llm.limits import CallBudget, CallRecord, CallRecorder, RunContext
 from patent_ai.core.llm.prompts import render_prompt
-from patent_ai.core.llm.transport import Transport, TransportError, TransportResponse
+from patent_ai.core.llm.transport import (
+    AnthropicTransport,
+    Transport,
+    TransportError,
+    TransportResponse,
+)
+
+logger = logging.getLogger(__name__)
+
+# 기록기가 없다는 경고를 이미 남긴 (run_id, step). 로그 중복 막기용이고 호출 결과엔 영향 없음
+_warned_no_recorder: set[tuple[str, str]] = set()
+
+
+def _warn_no_recorder(run_id: str, step: str) -> None:
+    if (run_id, step) not in _warned_no_recorder:
+        _warned_no_recorder.add((run_id, step))
+        logger.warning("%s: recorder가 없어 호출 기록이 빠짐 (run_id=%s)", step, run_id)
 
 
 class ModelResult(BaseModel):
@@ -41,9 +59,10 @@ def call_model(
     step: str,
     variables: dict,
     output_schema: type[BaseModel] | None,
-    run_id: str,
+    run_id: str | None = None,
     attempt: int = 1,
     *,
+    ctx: RunContext | None = None,
     transport: Transport | None = None,
     cache: Cache | bool | None = None,
     config_dir: Path | None = None,
@@ -53,16 +72,34 @@ def call_model(
     sleep: Callable[[float], None] = time.sleep,
 ) -> ModelResult:
     root = root or REPO_ROOT
-    # 진짜 전송층이면 실행마다 새 CallBudget을 받아야 한다 (전역으로 세면 실행끼리 섞임)
+    if ctx is not None:
+        # ctx가 있으면 따로 넘긴 인자와 섞지 않는다 (어느 쪽이 맞는지 헷갈리지 않게)
+        given = [
+            n
+            for n, v in (
+                ("run_id", run_id),
+                ("transport", transport),
+                ("cache", cache),
+                ("budget", budget),
+                ("recorder", recorder),
+            )
+            if v is not None
+        ]
+        if given:
+            raise ModelConfigError(f"ctx와 {given}를 같이 줄 수 없음")
+        run_id, budget, recorder = ctx.run_id, ctx.budget, ctx.recorder
+        transport, cache = ctx.transport, ctx.cache
+    if run_id is None:
+        raise ModelConfigError("run_id가 없음 (run_id 또는 ctx 필요)")
+    # 상한은 실행마다 새 CallBudget이 있어야 센다 (없으면 상한이 조용히 빠짐)
     if budget is None:
-        if transport is None:
-            raise ModelConfigError("실행마다 CallBudget을 넘겨야 함 (budget=None)")
-        budget = CallBudget()  # 가짜 전송층: 그 호출만의 새 budget
+        raise ModelConfigError("실행마다 CallBudget을 넘겨야 함 (budget=None)")
     cfg = load_step_config(step, config_dir)
     prompt = render_prompt(cfg.prompt, variables, root)
 
-    # 진짜 전송층이면 기본 파일 캐시를 쓴다 (과금 방지). 끄려면 cache=False
-    if cache is None and transport is None:
+    # 진짜 전송층(AnthropicTransport)이면 기본 파일 캐시를 쓴다 (과금 방지). 끄려면 cache=False
+    # 가짜 등 그 밖의 전송층은 cache=None이면 캐시를 안 쓴다
+    if cache is None and (transport is None or isinstance(transport, AnthropicTransport)):
         cache = FileCache()
     if cache is False:
         cache = None
@@ -83,8 +120,6 @@ def call_model(
     hit = cache.get(key) if cache is not None else None
 
     if hit is None and transport is None:
-        from patent_ai.core.llm.transport import AnthropicTransport
-
         transport = AnthropicTransport()
 
     # 가격 설정이 둘 다 있을 때만 비용을 계산한다 (캐시 적중은 과금 없음)
@@ -101,25 +136,25 @@ def call_model(
     # 호출마다 기록 한 줄 (적중·실패 포함)
     def record(resp, elapsed_ms, from_cache, outcome, transport_try):
         if recorder is None:
-            budget.warn_once(
-                run_id, step, "no_recorder", "%s: recorder가 없어 호출 기록이 빠짐 (run_id=%s)"
-            )
+            _warn_no_recorder(run_id, step)
             return
         in_tok = resp.input_tokens if resp else 0
         out_tok = resp.output_tokens if resp else 0
         cost = cost_of(resp, from_cache) if resp else None
         recorder.record(
-            run_id,
-            step,
-            cfg.model,
-            in_tok,
-            out_tok,
-            cost,
-            elapsed_ms,
-            from_cache,
-            attempt,
-            outcome,
-            transport_try,
+            CallRecord(
+                run_id=run_id,
+                step=step,
+                model=cfg.model,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                cost=cost,
+                elapsed_ms=elapsed_ms,
+                from_cache=from_cache,
+                attempt=attempt,
+                outcome=outcome,
+                transport_try=transport_try,
+            )
         )
 
     start = time.monotonic()
@@ -146,8 +181,8 @@ def call_model(
                     temperature=cfg.temperature,
                     max_tokens=cfg.max_tokens,
                 )
-            except RecordingMissing:
-                raise  # 녹화 없음은 조용히 감싸지 않고 그대로 멈춘다
+            except RecordingMissing, ModelConfigError:
+                raise  # 녹화 없음·설정 잘못은 감싸지 않고 그대로 멈춘다
             except Exception as e:
                 # TransportError 말고 모르는 예외도 기록하고 세고 ModelCallFailed로 감싼다
                 budget.add(run_id, step, 0)

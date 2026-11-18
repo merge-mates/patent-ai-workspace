@@ -4,7 +4,9 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
+from patent_ai.core.llm.cache import Cache
 from patent_ai.core.llm.errors import ModelCallLimitExceeded
+from patent_ai.core.llm.transport import Transport
 
 logger = logging.getLogger(__name__)
 
@@ -18,24 +20,17 @@ class CallBudget:
     def __init__(self) -> None:
         self._calls: dict[tuple[str, str], int] = {}
         self._tokens: dict[tuple[str, str], int] = {}
-        self._warned: set[tuple[str, str, str]] = set()
-
-    def warn_once(self, run_id: str, step: str, what: str, message: str) -> None:
-        """같은 (실행, 단계, 종류) 경고는 한 번만 남긴다."""
-        key = (run_id, step, what)
-        if key not in self._warned:
-            self._warned.add(key)
-            logger.warning(message, step, run_id)
+        self._warned: set[tuple[str, str]] = set()
 
     def check(
         self, run_id: str, step: str, max_calls: int | None, max_input_tokens: int | None
     ) -> None:
         """전송층을 부르기 직전에 부른다. 이미 상한만큼 썼으면 예외."""
         key = (run_id, step)
-        if max_calls is None and max_input_tokens is None:
-            self.warn_once(
-                run_id, step, "no_limit", "%s: 호출 상한 설정이 없어 제한 없이 부름 (run_id=%s)"
-            )
+        # 상한 설정이 없으면 제한 없이 부르되, 실행·단계마다 경고는 한 번만
+        if max_calls is None and max_input_tokens is None and key not in self._warned:
+            self._warned.add(key)
+            logger.warning("%s: 호출 상한 설정이 없어 제한 없이 부름 (run_id=%s)", step, run_id)
         used_calls = self._calls.get(key, 0)
         if max_calls is not None and used_calls >= max_calls:
             raise ModelCallLimitExceeded("max_model_calls", used_calls, max_calls)
@@ -69,20 +64,7 @@ class CallRecord:
 
 
 class CallRecorder(Protocol):
-    def record(
-        self,
-        run_id: str,
-        step: str,
-        model: str,
-        input_tokens: int,
-        output_tokens: int,
-        cost: float | None,
-        elapsed_ms: int,
-        from_cache: bool,
-        attempt: int,
-        outcome: str,
-        transport_try: int,
-    ) -> None: ...
+    def record(self, rec: CallRecord) -> None: ...
 
 
 class MemoryRecorder:
@@ -91,5 +73,20 @@ class MemoryRecorder:
     def __init__(self) -> None:
         self.records: list[CallRecord] = []
 
-    def record(self, *args, **kwargs) -> None:
-        self.records.append(CallRecord(*args, **kwargs))
+    def record(self, rec: CallRecord) -> None:
+        self.records.append(rec)
+
+
+@dataclass
+class RunContext:
+    """실행(run) 하나의 모델 호출 맥락. 지휘가 실행마다 하나 만들어 도구에 넘긴다.
+
+    같은 ctx로 부른 호출은 상한(budget)을 같이 쓰고 기록(recorder)이 한 곳에 쌓인다.
+    transport가 None이면 진짜 전송층, cache가 None이면 진짜 전송층만 파일 캐시를 쓴다.
+    """
+
+    run_id: str
+    budget: CallBudget
+    recorder: CallRecorder
+    transport: Transport | None = None
+    cache: Cache | bool | None = None

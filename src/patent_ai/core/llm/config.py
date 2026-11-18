@@ -8,7 +8,6 @@ import yaml
 
 from patent_ai.core.llm.errors import ModelConfigError
 
-# 저장소 루트 (src/patent_ai/core/llm/config.py 기준 네 단계 위)
 logger = logging.getLogger(__name__)
 
 # 아는 설정 키 (상한·재시도는 limits와 client가 쓴다). 이 밖의 키는 오타로 보고 경고한다
@@ -24,6 +23,7 @@ KNOWN_KEYS = {
     "max_retries",
 }
 
+# 저장소 루트 (src/patent_ai/core/llm/config.py 기준 네 단계 위)
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 

@@ -129,6 +129,7 @@ def test_attempt_기본값은_1이고_바꿀_수_있다():
         transport=fake,
         config_dir=FIX / "config",
         root=FIX,
+        budget=CallBudget(),
     )
     assert r.text == "x"
 

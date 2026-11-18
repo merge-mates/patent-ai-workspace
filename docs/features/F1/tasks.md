@@ -252,7 +252,7 @@ graph LR
 - 담당: 재아
 - 합격 기준: requirements.md 1·2·3·5·6
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/read_oa.py`, `src/patent_ai/core/f1_oa_reader/extraction.py`(`OAExtraction`), `prompts/f1/read_oa.md`, `config/f1.yaml`, `tests/core/f1/test_read_oa.py`, `tests/fixtures/f1/*.pages.json`, `tests/fixtures/f1/llm/`
-- 만들 함수·인터페이스 모양: `read_oa(pages: PageText, document_id: str, oa_id: str, run_id: str) -> OAResult` (design.md 7-1). 모델 호출은 `call_model(step="f1.read_oa", …, output_schema=OAExtraction)` 한 번 + 검사 실패 때 `attempt=2` 한 번. 모델 실패는 결과로 돌려주지 않고 예외를 그대로 던진다: 전송 실패·상한은 `ModelCallFailed`·`ModelCallLimitExceeded`, 두 번째 검사 실패는 `ModelOutputInvalid` (지휘가 셋 다 실행 `failed` + 이유로 남김, #15 task-2). `invalid_twice`는 `FakeTransport`가 시도마다 다른(둘 다 잘못된) 답을 차례로 준다. 날짜 칸은 `value`가 비어 있어 `merge`의 비교는 `raw_text`로 한다. 글자 층 없음 → 전송층 호출 0회
+- 만들 함수·인터페이스 모양: `read_oa(pages: PageText, document_id: str, oa_id: str, run_id: str, *, ctx: RunContext) -> OAResult` (design.md 7-1). 모델 호출은 `call_model(step="f1.read_oa", …, output_schema=OAExtraction)` 한 번 + 검사 실패 때 `attempt=2` 한 번. 모델 실패는 결과로 돌려주지 않고 예외를 그대로 던진다: 전송 실패·상한은 `ModelCallFailed`·`ModelCallLimitExceeded`, 두 번째 검사 실패는 `ModelOutputInvalid` (지휘가 셋 다 실행 `failed` + 이유로 남김, #15 task-2). `invalid_twice`는 `FakeTransport`가 시도마다 다른(둘 다 잘못된) 답을 차례로 준다. 날짜 칸은 `value`가 비어 있어 `merge`의 비교는 `raw_text`로 한다. 글자 층 없음 → 전송층 호출 0회
 - 테스트할 경우: design.md 9절 표의 `notice_*`·`llm/*`·모으기 줄 전부 (14건). 모델 답은 사람이 직접 쓴 `FakeTransport` 답(fixture 이름으로 찾음)이라 프롬프트를 고쳐도 깨지지 않는다. 프롬프트 문구는 테스트하지 않음
 - 확인 방법: `uv run pytest tests/core/f1/test_read_oa.py -q` → 모두 통과 (API 키 없이)
 - 먼저: task-1, task-2, #13 task-3

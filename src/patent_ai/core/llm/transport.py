@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from patent_ai.core.llm.errors import ModelConfigError
+
 
 @dataclass(frozen=True)
 class TransportResponse:
@@ -62,10 +64,15 @@ class AnthropicTransport:
 
 @dataclass
 class FakeTransport:
-    """테스트용. step 이름으로 미리 쓴 답을 돌려주고, 받은 호출을 calls에 쌓는다."""
+    """테스트용. step 이름으로 미리 쓴 답을 돌려주고, 받은 호출을 calls에 쌓는다.
 
-    responses: dict[str, TransportResponse]
+    값이 목록이면 시도마다 차례로 (답 또는 예외), 목록이 아니면 늘 같은 것을 낸다.
+    없는 step이거나 목록을 다 썼으면 ModelConfigError (테스트 준비가 모자란 것).
+    """
+
+    responses: dict[str, object]
     calls: list[dict] = field(default_factory=list)
+    _used: dict[str, int] = field(default_factory=dict)
 
     def complete(
         self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
@@ -79,4 +86,15 @@ class FakeTransport:
                 max_tokens=max_tokens,
             )
         )
-        return self.responses[step]
+        if step not in self.responses:
+            raise ModelConfigError(f"FakeTransport에 {step!r}의 답이 없음")
+        item = self.responses[step]
+        if isinstance(item, list):
+            i = self._used.get(step, 0)
+            if i >= len(item):
+                raise ModelConfigError(f"FakeTransport의 {step!r} 답 목록을 다 씀 ({len(item)}개)")
+            self._used[step] = i + 1
+            item = item[i]
+        if isinstance(item, Exception):
+            raise item
+        return item
