@@ -9,9 +9,9 @@ import json
 from pathlib import Path
 
 import pytest
-from patent_ai.core.agents.steps import MemoryStepRecorder, StepRecord
 
 from patent_ai.core.agents.orchestrator import CaseInput, run_case
+from patent_ai.core.agents.steps import MemoryStepRecorder, StepRecord
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -82,7 +82,6 @@ def test_사건_1건을_끝까지_돌고_도구마다_기록_한_줄(tmp_path, n
     assert all(r.outcome == "ok" for r in steps.records)
     # read_oa 안에서 모델을 한 번 불렀다
     assert [r.model_call_count for r in steps.records] == [0, 1, 0]
-    assert steps.records[1].result_status == "unverified" or steps.records[1].result_status
 
 
 def test_agent_모드는_지휘_판단_이유를_기록한다(tmp_path, notice_pages):

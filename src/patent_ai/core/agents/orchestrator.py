@@ -15,6 +15,7 @@ import yaml
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
+from patent_ai.core.agents.steps import StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
 from patent_ai.core.llm.client import call_model
@@ -101,10 +102,13 @@ def run_case(
     config_path: Path,
     *,
     ctx: RunContext,
+    steps: StepRecorder,
 ) -> RunOutcome:
-    """사건 1건을 그래프로 돌려 RunOutcome을 돌려준다. ctx는 서버가 실행마다 만든다."""
+    """사건 1건을 그래프로 돌려 RunOutcome을 돌려준다. ctx·steps는 서버가 실행마다 만든다."""
     if store is None:
         raise ValueError("store는 필수 (같은 OA 확인에 쓴다)")
+    if steps is None:
+        raise ValueError("steps는 필수 (단계 기록이 조용히 0줄이 되지 않게)")
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     plan = cfg.get("plan", "agent")
     if plan not in ("agent", "fixed_order"):
@@ -117,12 +121,34 @@ def run_case(
     code_tools = {t.name for t in registry.list(kind="code_tool")}
     trace: list[str] = []  # 돈 도구 순서 (되풀이 포함)
 
-    def call_tool(name: str, state: _State, payload: dict) -> dict:
+    def note(kind, name, reason, outcome, status=None, calls=0) -> None:
+        """단계 기록 한 줄."""
+        steps.record(
+            StepRecord(
+                run_id=run_id,
+                step_kind=kind,
+                tool_name=name,
+                reason=reason,
+                result_status=status,
+                model_call_count=calls,
+                outcome=outcome,
+            )
+        )
+
+    def model_calls() -> int:
+        # 모델 호출 수는 호출 기록기(MemoryRecorder)가 있을 때만 센다
+        return len(getattr(ctx.recorder, "records", []))
+
+    def call_tool(name: str, state: _State, payload: dict, reason: str) -> dict:
         """도구 하나를 돌려 결과를 상태에 쌓는다. 실패하면 error를 채운다."""
+        tool = registry.get(name)
+        before = model_calls()
         try:
-            out = registry.get(name).run(payload, ctx)
+            out = tool.run(payload, ctx)
         except _TOOL_ERRORS as e:
+            note(tool.kind, name, reason, "failed", calls=model_calls() - before)
             return {"error": _error(type(e).__name__, str(e))}
+        note(tool.kind, name, reason, "ok", out.status.value, model_calls() - before)
         trace.append(name)
         # 자르기(fixed_stage)는 지휘가 고른 것이 아니라서 max_steps에 세지 않는다
         counted = registry.get(name).kind == "code_tool"
@@ -137,6 +163,7 @@ def run_case(
             "extract_pages",
             state,
             {"pdf_path": case_input.oa_document, "document_id": case_input.oa_document_id},
+            "고정 단계",
         )
 
     def decide_node(state: _State) -> dict:
@@ -145,9 +172,12 @@ def run_case(
             choice = todo[0] if todo else "stop"
         else:
             try:
-                choice = _ask_model(registry, state, ctx)
+                action = _ask_model(registry, state, ctx)
             except _TOOL_ERRORS as e:
+                note("decide", "?", "지휘 모델 실패", "failed", calls=1)
                 return {"error": _error(type(e).__name__, str(e))}
+            choice = action.next_tool
+            note("decide", choice, action.reason, "ok", calls=1)
         if choice == "stop":
             # 자르기는 read_oa 뒤 간선에서 이미 돌았다. read_oa 없이 멈추면 실패
             if "read_oa" not in state["results"]:
@@ -171,9 +201,11 @@ def run_case(
         oa = state["results"]["read_oa"]
         app, disp = oa.application_number, oa.dispatch_number
         if app.status.value != StatusValue.CONFIRMED:  # unverified·conflict
+            note("fixed_stage", "check_oa", "출원번호를 몰라 사람을 기다림", "waiting")
             return {"waiting_for": WaitingFor.APPLICATION_NUMBER}
         # 발송번호를 모르면 같은 OA인지 판정할 수 없어 사람에게 묻는다
         if disp.status.value != StatusValue.CONFIRMED:
+            note("fixed_stage", "check_oa", "발송번호를 몰라 사람을 기다림", "waiting")
             return {"waiting_for": WaitingFor.DISPATCH_NUMBER}
         found = store.find_oa(app.value, disp.value)
         if found is not None:
@@ -198,10 +230,11 @@ def run_case(
                 "oa_id": oa_id,
                 "run_id": run_id,
             },
+            "고정 순서" if plan == "fixed_order" else "지휘 선택",
         )
 
     def cut_node(state: _State) -> dict:
-        return call_tool("cut_to_oa", state, {"materials": case_input.materials})
+        return call_tool("cut_to_oa", state, {"materials": case_input.materials}, "고정 단계")
 
     # ---- 간선 ----
     def after_decide(s: _State) -> str:
@@ -256,9 +289,9 @@ def run_case(
     return RunOutcome(state="succeeded", **base)
 
 
-def _ask_model(registry: ToolRegistry, state: _State, ctx: RunContext) -> str:
+def _ask_model(registry: ToolRegistry, state: _State, ctx: RunContext) -> NextAction:
     """지휘 모델에게 다음 code_tool을 묻는다. 도구 목록은 code_tool만 보여 준다."""
     tools = "\n".join(f"- {t.name}" for t in registry.list(kind="code_tool"))
     done = ", ".join(state["results"]) or "(없음)"
     r = call_model(STEP, {"tools": tools, "results": done}, NextAction, ctx=ctx)
-    return r.parsed.next_tool
+    return r.parsed

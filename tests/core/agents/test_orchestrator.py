@@ -7,12 +7,12 @@ import json
 from pathlib import Path
 
 import pytest
-from patent_ai.core.agents.steps import MemoryStepRecorder
 from pydantic import BaseModel, ValidationError
 from reportlab.pdfgen import canvas
 
 from patent_ai import core
 from patent_ai.core.agents.orchestrator import CaseInput, run_case
+from patent_ai.core.agents.steps import MemoryStepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
 from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelOutputInvalid

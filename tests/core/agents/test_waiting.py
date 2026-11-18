@@ -3,10 +3,10 @@
 import json
 from pathlib import Path
 
-from patent_ai.core.agents.steps import MemoryStepRecorder
 from reportlab.pdfgen import canvas
 
 from patent_ai.core.agents.orchestrator import CaseInput, WaitingFor, run_case
+from patent_ai.core.agents.steps import MemoryStepRecorder
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 
