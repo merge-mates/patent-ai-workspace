@@ -49,9 +49,18 @@ def _pdf(tmp_path: Path) -> Path:
     path = tmp_path / "oa.pdf"
     c = canvas.Canvas(str(path))
     c.drawString(72, 720, "Application No. 10-2099-0000001")
+    c.drawString(72, 700, "Dispatch No. 9-5-2099-000000001")
     c.showPage()
     c.save()
     return path
+
+
+class _EmptyStore:
+    def find_oa(self, application_number, dispatch_number):
+        return None
+
+    def find_case(self, application_number):
+        return None
 
 
 def _go(tmp_path, plan, responses, max_steps=10):
@@ -65,7 +74,9 @@ def _go(tmp_path, plan, responses, max_steps=10):
         oa_document_id="d_1",
         materials=["자료1"],
     )
-    outcome = run_case(case, "oa_1", "r_1", None, _config(tmp_path, plan, max_steps), ctx=ctx)
+    outcome = run_case(
+        case, "oa_1", "r_1", _EmptyStore(), _config(tmp_path, plan, max_steps), ctx=ctx
+    )
     return outcome, transport
 
 

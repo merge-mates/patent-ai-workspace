@@ -28,19 +28,33 @@ class FakeStore:
         return self.case
 
 
-def _answer(drop_numbers: bool) -> TransportResponse:
+def _answer(drop_numbers: bool, conflict_app: bool = False) -> TransportResponse:
     d = json.loads((FIXTURES / "llm" / "basic.json").read_text("utf-8"))
     if drop_numbers:
         d["application_number"] = None
+    if conflict_app:
+        # 규칙이 읽은 값(PDF 글자)과 모델 값이 다르면 충돌
+        d["application_number"]["value"] = "10-2099-0000009"
     return TransportResponse(json.dumps(d, ensure_ascii=False), 100, 50)
 
 
-def _go(tmp_path, *, with_numbers=True, store=None, plan="fixed_order", max_steps=10, extra=None):
+def _go(
+    tmp_path,
+    *,
+    with_numbers=True,
+    store=None,
+    plan="fixed_order",
+    max_steps=10,
+    dispatch_in_pdf=True,
+    conflict_app=False,
+    responses=None,
+):
     pdf = tmp_path / "oa.pdf"
     c = canvas.Canvas(str(pdf))
     # 번호가 있는 통지서 / 번호 글자가 하나도 없는 통지서
     c.drawString(72, 720, f"Application No. {APP}" if with_numbers else "Notice of reasons")
-    c.drawString(72, 700, f"Dispatch No. {DISPATCH}" if with_numbers else "Please respond")
+    has_dispatch = with_numbers and dispatch_in_pdf
+    c.drawString(72, 700, f"Dispatch No. {DISPATCH}" if has_dispatch else "Please respond")
     c.showPage()
     c.save()
     cfg = tmp_path / "orchestrator.yaml"
@@ -48,7 +62,10 @@ def _go(tmp_path, *, with_numbers=True, store=None, plan="fixed_order", max_step
         f"plan: {plan}\nfixed_order: [extract_pages, read_oa]\nmax_steps: {max_steps}\n",
         encoding="utf-8",
     )
-    transport = FakeTransport({"f1.read_oa": [_answer(not with_numbers)]})
+    transport = FakeTransport(
+        responses or {"f1.read_oa": [_answer(not with_numbers, conflict_app)]}
+    )
+    store = store if store is not None else FakeStore()
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
@@ -96,10 +113,91 @@ def test_기존_사건의_다음_OA면_최종_case_id가_기존_사건(tmp_path)
     assert out.case_id == "c_old"
 
 
-def test_max_steps에_닿으면_failed와_찾아본_범위(tmp_path):
-    out = _go(tmp_path, max_steps=2)
+def test_출원번호가_충돌이면_사람을_기다린다(tmp_path):
+    out = _go(tmp_path, conflict_app=True)
+    assert out.state == "waiting_for_human"
+    assert out.waiting_for == WaitingFor.APPLICATION_NUMBER
+    assert "cut_to_oa" not in out.results
+
+
+def test_발송번호를_모르면_같은_OA인지_몰라_사람을_기다린다(tmp_path):
+    store = FakeStore(oa=("c_old", "oa_old"))
+    out = _go(tmp_path, dispatch_in_pdf=False, store=store)
+    assert out.state == "waiting_for_human"
+    assert out.waiting_for == WaitingFor.DISPATCH_NUMBER
+    assert "cut_to_oa" not in out.results
+    assert store.calls == []
+
+
+def test_store가_None이면_ValueError(tmp_path):
+    import pytest
+
+    cfg = tmp_path / "o.yaml"
+    cfg.write_text("plan: fixed_order\n", encoding="utf-8")
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=FakeTransport({})
+    )
+    case = CaseInput(case_id="c", oa_document=tmp_path / "x.pdf", oa_document_id="d")
+    with pytest.raises(ValueError, match="store"):
+        run_case(case, "oa_1", "r_1", None, cfg, ctx=ctx)
+
+
+def _decision(name: str) -> TransportResponse:
+    return TransportResponse(json.dumps({"next_tool": name, "reason": "테스트"}), 10, 10)
+
+
+def test_read_oa_뒤_extract_pages만_되풀이해도_자르기는_이미_돌았다(tmp_path):
+    answers = {
+        "agents.orchestrator": [_decision("read_oa")] + [_decision("extract_pages")] * 10,
+        "f1.read_oa": [_answer(False)],
+    }
+    out = _go(tmp_path, plan="agent", max_steps=4, responses=answers)
     assert out.state == "failed"
     assert out.error["code"] == "max_steps"
-    assert "extract_pages" in out.searched_scope and "read_oa" in out.searched_scope
+    # read_oa 바로 다음이 자르기 (check_oa는 도구가 아니라 검사 노드라 기록에 없다)
+    assert out.trace[:3] == ["extract_pages", "read_oa", "cut_to_oa"]
+    assert "cut_to_oa" in out.results
+    # 찾아본 범위는 돈 도구 목록
+    assert out.searched_scope == out.trace
     assert "extract_pages" in out.error["message"]
-    assert "cut_to_oa" not in out.results
+
+
+def test_정확히_max_steps만큼_돌고_끝났으면_실패가_아니다(tmp_path):
+    # extract_pages(1) + read_oa(2) 뒤 stop: 상한과 같아도 성공
+    answers = {
+        "agents.orchestrator": [_decision("read_oa"), _decision("stop")],
+        "f1.read_oa": [_answer(False)],
+    }
+    out = _go(tmp_path, plan="agent", max_steps=2, responses=answers)
+    assert out.state == "succeeded"
+    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
+
+
+def test_read_oa를_두_번_고르면_거부(tmp_path):
+    answers = {
+        "agents.orchestrator": [_decision("read_oa"), _decision("read_oa")],
+        "f1.read_oa": [_answer(False)],
+    }
+    out = _go(tmp_path, plan="agent", responses=answers)
+    assert out.state == "failed"
+    assert out.error["code"] == "invalid_tool_choice"
+
+
+def test_지휘_모델_답이_틀리면_failed(tmp_path):
+    bad = TransportResponse("JSON 아님", 10, 10)
+    out = _go(tmp_path, plan="agent", responses={"agents.orchestrator": [bad, bad, bad]})
+    assert out.state == "failed"
+    assert out.error["code"] == "ModelOutputInvalid"
+
+
+def test_목록_밖_예외는_로그를_남기고_그대로_던진다(tmp_path, monkeypatch, caplog):
+    import pytest
+
+    def boom(*a, **k):
+        raise RuntimeError("버그")
+
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", boom)
+    with caplog.at_level("ERROR"), pytest.raises(RuntimeError):
+        _go(tmp_path)
+    assert "r_1" in caplog.text
+    assert "extract_pages" in caplog.text
