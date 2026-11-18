@@ -83,26 +83,6 @@ graph LR
 - 확인 방법: `grep -n "core/schemas" docs/data-model.md` → ①·⑥ 줄마다 코드 링크가 있음
 - 먼저: task-4
 
-### task-5: 거절이유 종류 `Rejection.kind` (11/19 승인)
-- 담당: 재아
-- 합격 기준: requirements.md 1·9 (정답 형식 2.2 종류·4절 `kind` 코드와 같아야 채점기가 비교함)
-- 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`, `tests/core/schemas/test_oa_result.py`, `tests/core/f1/test_read_oa.py`, `tests/fixtures/case_missing_citation/*.json`
-- 만들 함수·칸: `RejectionKind`(`novelty`/`inventive_step`/`clarity`/`other`), `kind_of_article(article: str | None) -> RejectionKind`(규칙, 모델 안 씀: `29-1-1`·`29-1-2`·`29-1-1|29-1-2` → novelty, `29-2` → inventive_step, `42-4-2` → clarity, 그 밖·조문 모름 → other), `Rejection.kind`(필수 칸, `build_rejection`이 조문에서 채우고 사람이 넣지 못함, 조문과 안 맞으면 거부). 조문이 unverified면 kind는 other이되 supported·flags·status 규칙은 그대로
-- 테스트할 경우: 조문 코드마다 / 조문 모름·충돌 → other / 호 여럿 / kind를 직접 넣으면 TypeError / 조문과 안 맞는 kind는 거부 / read_oa 결과에 kind가 붙음
-- 확인 방법: `uv run pytest tests/core -q` → 모두 통과
-- 먼저: task-4
-
-### task-6: 청구항 줄 `claim_rows`와 명확성 표현 (11/19 승인)
-- 담당: 재아
-- 합격 기준: requirements.md 1·3·9 (정답 형식 2.4 청구항 줄, 3절 애매한 경우 1~11, 4절 JSON)
-- 고칠 파일: `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `src/patent_ai/core/f1_oa_reader/{rules,read_oa,extraction}.py`, 새 파일 `src/patent_ai/core/f1_oa_reader/claim_rows.py`(줄 대조), `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2 JSON·필드 출처 표), `docs/data-model.md`(① 줄), `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`, `tests/fixtures/case_missing_citation/*.json`(`build_*` 도우미로 다시 만듦)
-- 만들 칸·함수 모양: `ClaimRow{claim, rejection(=Rejection.no), citations: 라벨 목록, locations: {라벨: 정답 꼴 위치 목록}, same_as: [`claim:<n>`·`rejection:<n>`], clarity_terms, clarity_reason, raw_text, page, status}`, `OAResult.claim_rows`. 모델 추출 `OAExtraction.claim_rows`(청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현 원문, 같은 취지 원문, 명확성 표현 원문, 판단이 적힌 원문 글자·쪽). 코드가 원문 대조: 행 `raw_text`가 그 쪽에 있어야 confirmed, 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 값 안 씀), 명확성 표현은 따옴표 안 글자이고 원문에 있어야 함, 청구항 번호는 `expand_claims`. 대조 실패 → 그 행 `unverified(not_extracted)`, 값 버림
-- 정답 3절과 대응: 1 같은 취지 → locations 비우고 same_as만 / 2 짝 없는 같은 취지 → 펼친 목록 / 3 자기 위치 + 같은 취지 둘 다 / 4 위치 없음 → `위치 없음 (<OA 표현>)` / 5 도면 부호만 → 부호 그대로(`parse_cited_locations`에 부호 꼴 추가) / 6 `[16, 38, 78]` → `[0016]`… (task-4에서 됨) / 7 결합 진보성 → citations `D1`+`D2`, 위치는 짚은 것만 / 8 "1-1에서 본 바와 같이" → same_as `rejection:1` / 9 지원 안 하는 이유 → 거절이유 표에만, 줄 없음 / 10 묶어서 짚은 청구항 → 5·6·7 줄에 같은 위치 / 11 따옴표 없는 명확성 → clarity_terms 빈 목록
-- 결과 status 모으기·검토할 사항: `claim_rows` 행을 넣는다 (행 unverified → 그 행 경로 한 줄, 지원 안 하는 이유 행은 없음)
-- 테스트할 경우: 평소(청구항 1이 이유 둘) / 3절 1~11 / 대조 실패(원문에 없는 글자·없는 쪽) → 그 행만 unverified / 스키마 검사 / 모으기·검토할 사항. 프롬프트 문구는 테스트하지 않음
-- 확인 방법: `uv run pytest -q` → 모두 통과
-- 먼저: task-5
-
 ### 이번에 안 하는 것
 - ②~⑤ 결과 스키마(`JudgmentUnit`·`ComparisonTable`·`LegalEvidenceBundle`·`DirectionCandidates`) 코드: F2~F4 설계 때 (11/18). 이슈 #14 "모든 결과 모양에 상태 칸"은 공통 칸 + ①⑥으로 본다.
 - DB 저장(`oa_results`·`result_inputs`)은 #55. 여기서는 Pydantic 검사까지.
@@ -114,7 +94,6 @@ graph LR
 - [x] task-3
 - [x] task-4
 - [x] task-5
-- [x] task-6
 - 다음: /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
@@ -294,6 +273,26 @@ graph LR
 - 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과
 - 먼저: task-3
 
+### task-5: 거절이유 종류 `Rejection.kind` (11/19 승인)
+- 담당: 재아
+- 합격 기준: requirements.md 1·9 (정답 형식 2.2 종류·4절 `kind` 코드와 같아야 채점기가 비교함)
+- 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`, `tests/core/schemas/test_oa_result.py`, `tests/core/f1/test_read_oa.py`, `tests/fixtures/case_missing_citation/*.json`
+- 만들 함수·칸: `RejectionKind`(`novelty`/`inventive_step`/`clarity`/`other`), `kind_of_article(article: str | None) -> RejectionKind`(규칙, 모델 안 씀: `29-1-1`·`29-1-2`·`29-1-1|29-1-2` → novelty, `29-2` → inventive_step, `42-4-2` → clarity, 그 밖·조문 모름 → other), `Rejection.kind`(필수 칸, `build_rejection`이 조문에서 채우고 사람이 넣지 못함, 조문과 안 맞으면 거부). 조문이 unverified면 kind는 other이되 supported·flags·status 규칙은 그대로
+- 테스트할 경우: 조문 코드마다 / 조문 모름·충돌 → other / 호 여럿 / kind를 직접 넣으면 TypeError / 조문과 안 맞는 kind는 거부 / read_oa 결과에 kind가 붙음
+- 확인 방법: `uv run pytest tests/core -q` → 모두 통과
+- 먼저: task-4
+
+### task-6: 청구항 줄 `claim_rows`와 명확성 표현 (11/19 승인)
+- 담당: 재아
+- 합격 기준: requirements.md 1·3·9 (정답 형식 2.4 청구항 줄, 3절 애매한 경우 1~11, 4절 JSON)
+- 고칠 파일: `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `src/patent_ai/core/f1_oa_reader/{rules,read_oa,extraction}.py`, 새 파일 `src/patent_ai/core/f1_oa_reader/claim_rows.py`(줄 대조), `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2 JSON·필드 출처 표), `docs/data-model.md`(① 줄), `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`, `tests/fixtures/case_missing_citation/*.json`(`build_*` 도우미로 다시 만듦)
+- 만들 칸·함수 모양: `ClaimRow{claim, rejection(=Rejection.no), citations: 라벨 목록, locations: {라벨: 정답 꼴 위치 목록}, same_as: [`claim:<n>`·`rejection:<n>`], clarity_terms, clarity_reason, raw_text, page, status}`, `OAResult.claim_rows`. 모델 추출 `OAExtraction.claim_rows`(청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현 원문, 같은 취지 원문, 명확성 표현 원문, 판단이 적힌 원문 글자·쪽). 코드가 원문 대조: 행 `raw_text`가 그 쪽에 있어야 confirmed, 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 값 안 씀), 명확성 표현은 따옴표 안 글자이고 원문에 있어야 함, 청구항 번호는 `expand_claims`. 대조 실패 → 그 행 `unverified(not_extracted)`, 값 버림
+- 정답 3절과 대응: 1 같은 취지 → locations 비우고 same_as만 / 2 짝 없는 같은 취지 → 펼친 목록 / 3 자기 위치 + 같은 취지 둘 다 / 4 위치 없음 → `위치 없음 (<OA 표현>)` / 5 도면 부호만 → 부호 그대로(`parse_cited_locations`에 부호 꼴 추가) / 6 `[16, 38, 78]` → `[0016]`… (task-4에서 됨) / 7 결합 진보성 → citations `D1`+`D2`, 위치는 짚은 것만 / 8 "1-1에서 본 바와 같이" → same_as `rejection:1` / 9 지원 안 하는 이유 → 거절이유 표에만, 줄 없음 / 10 묶어서 짚은 청구항 → 5·6·7 줄에 같은 위치 / 11 따옴표 없는 명확성 → clarity_terms 빈 목록
+- 결과 status 모으기·검토할 사항: `claim_rows` 행을 넣는다 (행 unverified → 그 행 경로 한 줄, 지원 안 하는 이유 행은 없음)
+- 테스트할 경우: 평소(청구항 1이 이유 둘) / 3절 1~11 / 대조 실패(원문에 없는 글자·없는 쪽) → 그 행만 unverified / 스키마 검사 / 모으기·검토할 사항. 프롬프트 문구는 테스트하지 않음
+- 확인 방법: `uv run pytest -q` → 모두 통과
+- 먼저: task-5
+
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
 - 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
@@ -304,10 +303,13 @@ graph LR
 - [x] task-2
 - [x] task-3
 - [x] task-4
+- [x] task-5
+- [x] task-6
 - 다음: tune 점수 (#20·#22 뒤), /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
 ### 끝난 뒤 (11/19)
 - 된 것: 규칙 추출(rules.py: 번호·날짜 글자·조문·청구항·통지 종류 initial/final/unknown, 본문 속 최후 언급 거름, 조의N 거부), 원문 대조·합치기(verify.py: 값은 원문 글자에서 다시 뽑음, 한쪽이라도 애매하면 확인되지 않음), 지원 표(support.py: 29-1-1·29-1-2·29-2·42-4-2, 나라 판정), `read_oa(pages, document_id, oa_id, run_id, *, ctx)` + OAExtraction·프롬프트·config/f1.yaml. 조문을 모르면 결과 status에 넣고 힌트 칸 누락을 확인되지 않음으로(공유 스키마 oa_result.py 규칙 변경, 문서 맞춤). `uv run pytest -q` 289 passed. /check: 증거 통과, 이슈 리뷰 막음 없음. 진짜 모델 호출 없음(FakeTransport 답만).
 - 안 된 것·사람 판단: tune 점수(#20·#22 뒤). 프롬프트가 진짜 모델에서 도는지(scripts/record_llm.py, 비용 작음, 사람 확인 뒤). 코드(테스트 제외) 약 660줄로 400줄 기준을 넘음. 값 모양은 task-4에서 맞춤, 구조 차이(claim_rows·clarity_terms·kind)는 work/gold_diff_f1.md 4절. 호 없는 "제29조제1항"은 지원 안 함으로 둠(Claude 판단). 칸 제목 표기·인용 표기·OA 쪽 수는 [가정](#22 표본으로).
+- 11/19 2차: task-5 kind(조문 코드 → novelty/inventive_step/clarity/other), task-6 claim_rows·clarity_terms(정답 2.4·3절 1~11). 리뷰 막음(줄 빠짐·엇붙음, 인용 언급 규칙) 고침, 재리뷰 2회 다 씀 — 마지막 고침(b52d3a4)은 3회차 리뷰 없이 사람 확인. 남은 정답 차이는 work/gold_diff_f1.md 4절.
 - 다음 이슈로: config/f1.yaml max_input_tokens, 가격 키(비용 기록).
