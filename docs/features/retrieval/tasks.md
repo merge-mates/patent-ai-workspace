@@ -93,11 +93,11 @@ graph LR
 - 진짜 BM25·벡터 구현, 색인 스크립트, 청킹 (→ #66·#67). `hybrid` 구현.
 
 ### 진행
-- [ ] task-1
+- [x] task-1
 - [ ] task-2
 - [ ] task-3
 - [ ] task-4
-- 다음: 계획 승인 뒤 `/implement docs/features/retrieval/tasks.md m2-i1`. 머지되면 은진 님에게 "#66 시작 가능" 알림
+- 다음: task-2·task-3 (동시). 머지되면 은진 님에게 "#66 시작 가능" 알림
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
