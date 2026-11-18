@@ -169,3 +169,24 @@ def test_같은_이름에_다른_클래스를_또_등록하면_오류():
     _register("t", lambda: [])
     with pytest.raises(ValueError, match="이미 등록"):
         _register("t", lambda: [])
+
+
+def test_impl_이름으로_구현_모듈을_그때_import한다(monkeypatch):
+    # design 7-1: impl: fake → patent_ai.retrieval.fake를 import하고, 그 모듈이 자기를 등록한다
+    import sys
+
+    monkeypatch.delitem(sys.modules, "patent_ai.retrieval.fake", raising=False)
+    assert "fake" not in contract._REGISTRY
+    s = get_searcher("fake", FakeRepo(), {"index_version": IV})
+    assert isinstance(s, contract.CheckedSearcher)
+    assert "fake" in contract._REGISTRY
+
+
+def test_모듈이_없는_impl은_UnknownImplError():
+    with pytest.raises(UnknownImplError, match="nothere"):
+        get_searcher("nothere", FakeRepo(), {"index_version": IV})
+
+
+def test_점이나_슬래시가_든_impl은_import하지_않는다():
+    with pytest.raises(UnknownImplError):
+        get_searcher("os.path", FakeRepo(), {"index_version": IV})

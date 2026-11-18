@@ -3,6 +3,8 @@
 core를 import하지 않는다 (부르는 방향이 core -> retrieval).
 """
 
+import importlib
+import re
 from collections.abc import Callable
 from datetime import date
 from typing import Protocol, get_args
@@ -104,8 +106,33 @@ class CheckedSearcher:
         return result
 
 
+_IMPL_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _import_impl(impl: str) -> None:
+    """impl 이름으로 구현 모듈 patent_ai.retrieval.<impl>을 import한다 (design 7-1).
+
+    그 모듈이 @register_impl("<impl>")로 자기를 등록한다. 모듈이 없으면 아무것도 안 하고
+    get_searcher가 UnknownImplError를 낸다. 모듈 안의 다른 import 오류는 그대로 올린다.
+    """
+    if not _IMPL_NAME.match(impl):
+        return  # 점·슬래시가 든 이름으로 엉뚱한 모듈을 부르지 않게
+    name = f"patent_ai.retrieval.{impl}"
+    try:
+        module = importlib.import_module(name)
+    except ModuleNotFoundError as e:
+        if e.name != name:
+            raise
+        return
+    if impl not in _REGISTRY:
+        # 이미 import된 모듈이면 등록 코드가 다시 돌지 않으므로 한 번 다시 읽는다
+        importlib.reload(module)
+
+
 def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher:
     """이름으로 구현을 골라 CheckedSearcher로 감싸 돌려준다."""
+    if impl not in _REGISTRY:
+        _import_impl(impl)
     if impl not in _REGISTRY:
         raise UnknownImplError(f"없는 impl {impl!r}. 쓸 수 있는 이름: {sorted(_REGISTRY)}")
     if not settings.get("index_version"):
