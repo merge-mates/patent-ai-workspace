@@ -9,9 +9,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from patent_ai.core.llm.cache import Cache, make_cache_key
+from patent_ai.core.llm.cache import Cache, FileCache, make_cache_key
 from patent_ai.core.llm.config import REPO_ROOT, load_step_config
-from patent_ai.core.llm.errors import ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
 from patent_ai.core.llm.prompts import render_prompt
 from patent_ai.core.llm.transport import Transport, TransportResponse
 
@@ -37,7 +37,7 @@ def call_model(
     attempt: int = 1,
     *,
     transport: Transport | None = None,
-    cache: Cache | None = None,
+    cache: Cache | bool | None = None,
     config_dir: Path | None = None,
     root: Path | None = None,
 ) -> ModelResult:
@@ -45,15 +45,25 @@ def call_model(
     cfg = load_step_config(step, config_dir)
     prompt = render_prompt(cfg.prompt, variables, root)
 
+    # 진짜 전송층이면 기본 파일 캐시를 쓴다 (과금 방지). 끄려면 cache=False
+    if cache is None and transport is None:
+        cache = FileCache()
+    if cache is False:
+        cache = None
+
     # 캐시 키: 프롬프트 파일 원문 해시 + 변수 + 설정 값 + attempt
-    key = make_cache_key(
-        model=cfg.model,
-        prompt_template=(root / cfg.prompt).read_text(encoding="utf-8"),
-        variables=variables,
-        temperature=cfg.temperature,
-        max_tokens=cfg.max_tokens,
-        attempt=attempt,
-    )
+    try:
+        key = make_cache_key(
+            step=step,
+            model=cfg.model,
+            prompt_template=(root / cfg.prompt).read_text(encoding="utf-8"),
+            variables=variables,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
+            attempt=attempt,
+        )
+    except TypeError as e:
+        raise ModelConfigError(f"변수를 JSON으로 바꿀 수 없음: {e}") from e
     hit = cache.get(key) if cache is not None else None
 
     if hit is None and transport is None:
@@ -98,7 +108,9 @@ def call_model(
 
     # 가격 설정이 둘 다 있을 때만 비용을 계산한다
     cost = None
-    if cfg.price_per_mtok_input is not None and cfg.price_per_mtok_output is not None:
+    if hit is not None:
+        cost = 0.0  # 캐시 적중은 과금 없음
+    elif cfg.price_per_mtok_input is not None and cfg.price_per_mtok_output is not None:
         cost = (
             resp.input_tokens * cfg.price_per_mtok_input
             + resp.output_tokens * cfg.price_per_mtok_output

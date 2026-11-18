@@ -13,6 +13,7 @@ DEFAULT_CACHE_DIR = REPO_ROOT / "work" / "llm_cache"
 
 def make_cache_key(
     *,
+    step: str,
     model: str,
     prompt_template: str,
     variables: dict,
@@ -20,11 +21,12 @@ def make_cache_key(
     max_tokens: int,
     attempt: int,
 ) -> str:
-    """(모델, 프롬프트 파일 내용 해시, 변수, 설정 값, attempt)의 sha256.
+    """(단계, 모델, 프롬프트 파일 내용 해시, 변수, 설정 값, attempt)의 sha256.
 
     하나라도 바뀌면 다른 키가 된다.
     """
     parts = {
+        "step": step,
         "model": model,
         "prompt_sha256": hashlib.sha256(prompt_template.encode("utf-8")).hexdigest(),
         "variables": variables,
@@ -32,7 +34,8 @@ def make_cache_key(
         "max_tokens": max_tokens,
         "attempt": attempt,
     }
-    raw = json.dumps(parts, sort_keys=True, ensure_ascii=False, default=str)
+    # 변수가 JSON으로 안 바뀌면 TypeError (호출한 쪽에서 설정 오류로 바꿈)
+    raw = json.dumps(parts, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
