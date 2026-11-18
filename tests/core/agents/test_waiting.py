@@ -36,6 +36,9 @@ def _answer(drop_numbers: bool) -> TransportResponse:
     return TransportResponse(json.dumps(d, ensure_ascii=False), 100, 50)
 
 
+out_steps: list = []  # 마지막 _go의 단계 기록
+
+
 def _go(
     tmp_path,
     *,
@@ -65,7 +68,10 @@ def _go(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     case = CaseInput(case_id="c_new", oa_document=pdf, oa_document_id="d_1", materials=["자료"])
-    return run_case(case, "oa_1", "r_1", store, cfg, ctx=ctx, steps=MemoryStepRecorder())
+    steps = MemoryStepRecorder()
+    out = run_case(case, "oa_1", "r_1", store, cfg, ctx=ctx, steps=steps)
+    out_steps[:] = steps.records
+    return out
 
 
 def test_출원번호_없는_통지서는_사람을_기다리며_멈춘다(tmp_path):
@@ -100,6 +106,11 @@ def test_같은_OA가_이미_있으면_failed와_기존_ID(tmp_path):
     }
     assert out.case_id == "c_old"
     assert "cut_to_oa" not in out.results
+    assert (out_steps[-1].step_kind, out_steps[-1].tool_name, out_steps[-1].outcome) == (
+        "check",
+        "check_oa",
+        "failed",
+    )
 
 
 def test_기존_사건의_다음_OA면_최종_case_id가_기존_사건(tmp_path):

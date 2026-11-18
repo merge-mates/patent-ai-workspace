@@ -48,22 +48,30 @@ def notice_pages(monkeypatch):
     return pages
 
 
-def _go(tmp_path, plan="fixed_order", responses=None):
+def _go(
+    tmp_path,
+    plan="fixed_order",
+    responses=None,
+    order="extract_pages, read_oa",
+    max_steps=10,
+    recorder=None,
+    run_id="r_1",
+):
     cfg = tmp_path / "o.yaml"
     cfg.write_text(
-        f"plan: {plan}\nfixed_order: [extract_pages, read_oa]\nmax_steps: 10\n", encoding="utf-8"
+        f"plan: {plan}\nfixed_order: [{order}]\nmax_steps: {max_steps}\n", encoding="utf-8"
     )
     ctx = RunContext(
         run_id="r_1",
         budget=CallBudget(),
-        recorder=MemoryRecorder(),
+        recorder=recorder or MemoryRecorder(),
         transport=FakeTransport(responses if responses is not None else {"f1.read_oa": [_basic()]}),
     )
     case = CaseInput(
         case_id="c_1", oa_document=tmp_path / "oa.pdf", oa_document_id="d_1", materials=["자료"]
     )
     steps = MemoryStepRecorder()
-    out = run_case(case, "oa_1", "r_1", _Store(), cfg, ctx=ctx, steps=steps)
+    out = run_case(case, "oa_1", run_id, _Store(), cfg, ctx=ctx, steps=steps)
     return out, steps
 
 
@@ -98,9 +106,10 @@ def test_agent_모드는_지휘_판단_이유를_기록한다(tmp_path, notice_p
     assert all(r.model_call_count == 1 for r in steps.records if r.step_kind == "decide")
 
 
-def test_인용문헌_하나_없으면_보류_목록에_뜨고_실행은_성공이다(tmp_path, notice_pages):
+def test_빠진_자료는_fixture_사건으로_보류_목록을_잰다_run_결과로는_54에서(tmp_path, notice_pages):
     out, _ = _go(tmp_path)
     assert out.state == "succeeded"
+    # (#54에서 cut_to_oa가 자료를 묶으면 run 결과로 다시 잰다)
     # cut_to_oa 몸통이 #54 전까지 가짜라 빠진 자료는 #14 fixture 사건으로 확인한다
     oa = OAResult.model_validate_json((CASE / "oa_result.json").read_text("utf-8"))
     materials = CaseMaterials.model_validate_json((CASE / "case_materials.json").read_text("utf-8"))
@@ -149,3 +158,89 @@ def test_번호를_몰라_멈춘_것도_기록한다(tmp_path, monkeypatch):
     out, steps = _go(tmp_path, responses=resp)
     assert out.state == "waiting_for_human"
     assert steps.records[-1].outcome == "waiting"
+
+
+def test_run_case_OAResult는_read_oa를_직접_돌린_것과_같다(tmp_path, notice_pages):
+    from patent_ai.core.f1_oa_reader.read_oa import read_oa
+
+    out, _ = _go(tmp_path)
+    ctx = RunContext(
+        run_id="r_1",
+        budget=CallBudget(),
+        recorder=MemoryRecorder(),
+        transport=FakeTransport({"f1.read_oa": [_basic()]}),
+    )
+    expected = read_oa(notice_pages, "d_1", "oa_1", "r_1", ctx=ctx)
+    assert out.results["read_oa"].model_dump() == expected.model_dump()
+
+
+def test_run_id가_ctx와_다르면_ValueError(tmp_path, notice_pages):
+    with pytest.raises(ValueError, match="run_id"):
+        _go(tmp_path, run_id="r_other")
+
+
+def _last(steps):
+    return steps.records[-1]
+
+
+def test_agent_잘못된_도구_선택은_decide_failed(tmp_path, notice_pages):
+    out, steps = _go(tmp_path, plan="agent", responses={"agents.orchestrator": [_decision("없음")]})
+    assert out.error["code"] == "invalid_tool_choice"
+    assert (_last(steps).step_kind, _last(steps).outcome) == ("decide", "failed")
+
+
+def test_agent_read_oa_없이_stop이면_decide_failed(tmp_path, notice_pages):
+    out, steps = _go(tmp_path, plan="agent", responses={"agents.orchestrator": [_decision("stop")]})
+    assert out.error["code"] == "no_oa_result"
+    assert (_last(steps).step_kind, _last(steps).outcome) == ("decide", "failed")
+
+
+def test_agent_max_steps는_decide_failed(tmp_path, notice_pages):
+    resp = {"agents.orchestrator": [_decision("extract_pages")] * 5}
+    out, steps = _go(tmp_path, plan="agent", responses=resp, max_steps=2)
+    assert out.error["code"] == "max_steps"
+    assert (_last(steps).step_kind, _last(steps).outcome) == ("decide", "failed")
+
+
+def test_fixed_order에서도_잘못된_이름은_decide_failed_한_줄(tmp_path, notice_pages):
+    out, steps = _go(tmp_path, order="extract_pages, 없음")
+    assert out.error["code"] == "invalid_tool_choice"
+    decides = [r for r in steps.records if r.step_kind == "decide"]
+    assert [(r.tool_name, r.outcome, r.reason) for r in decides] == [
+        ("없음", "failed", "고정 순서")
+    ]
+
+
+def test_fixed_order_max_steps는_decide_failed(tmp_path, notice_pages):
+    out, steps = _go(tmp_path, max_steps=1)
+    assert out.error["code"] == "max_steps"
+    assert (_last(steps).step_kind, _last(steps).outcome) == ("decide", "failed")
+
+
+def test_셀_수_없는_기록기면_모델_호출_수는_None(tmp_path, notice_pages):
+    class Opaque:
+        def record(self, rec):
+            pass
+
+    _, steps = _go(tmp_path, recorder=Opaque())
+    assert [r.model_call_count for r in steps.records] == [None, None, None]
+
+
+def test_StepRecord는_result_id_칸이_있고_기본은_None(tmp_path, notice_pages):
+    _, steps = _go(tmp_path)
+    assert all(r.result_id is None for r in steps.records)
+
+
+def test_core가_서버용_타입을_내보낸다():
+    from patent_ai import core
+
+    for name in (
+        "run_case",
+        "CaseInput",
+        "RunOutcome",
+        "CaseStore",
+        "StepRecorder",
+        "MemoryStepRecorder",
+        "WaitingFor",
+    ):
+        assert hasattr(core, name)
