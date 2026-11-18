@@ -33,7 +33,7 @@ def ids(res):
 
 
 def test_데모_한_공보_안_상위_k():
-    repo = InMemoryChunkRepository.from_jsonl("cite", "tests/fixtures/retrieval/chunks_cite.jsonl")
+    repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
     s = get_searcher("fake", repo, {"index_version": "cite-idx-v1"})
     res = s.search("기판 가열", "cite", "bm25", 3, doc_ids=[KR])
     assert {h.doc_id for h in res.hits} == {KR}
@@ -81,6 +81,19 @@ def test_겹치는_낱말_없으면_not_found_in_scope와_scope():
     assert res.status == "not_found_in_scope"
     assert res.status_reason is None
     assert res.scope.doc_ids == [KR] and res.scope.k == 3
+    # 찾아본 범위: 말뭉치·색인 판·거를 문헌·기준일
+    assert res.corpus == "cite" and res.index_version == "cite-idx-v1"
+    assert res.scope.as_of is None
+
+
+def test_기준일로_다_빠지면_not_found_in_scope와_판본모름_셈():
+    # 2010년엔 시행 중인 판본이 없다 → 없음이 아니라 "조회 범위 내 없음"
+    res = law().search("진보성 판단", "law", "bm25", 5, as_of=date(2010, 1, 1))
+    assert res.hits == []
+    assert res.status == "not_found_in_scope"
+    assert res.scope.as_of == date(2010, 1, 1)
+    assert res.corpus == "law" and res.index_version == "law-idx-v1"
+    assert res.skipped_unverified_edition == 1
 
 
 def test_없는_공보는_unverified_text_missing():
