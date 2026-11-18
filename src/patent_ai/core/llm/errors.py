@@ -15,3 +15,7 @@ class ModelCallFailed(Exception):
 
 class ModelCallLimitExceeded(Exception):
     """호출 상한을 넘음 (task-3에서 사용)."""
+
+
+class RecordingMissing(Exception):
+    """녹화한 답 파일이 없음. 조용히 진짜 호출하지 않고 멈춘다."""

@@ -1,6 +1,6 @@
 """모델 호출의 유일한 입구. 설정·프롬프트 파일을 거쳐 전송층을 부른다.
 
-캐시(task-2)와 호출 상한·기록(task-3)은 이 함수 안에 나중에 끼운다.
+캐시는 cache 인자로 받는다(없으면 안 씀). 호출 상한·기록(task-3)은 이 함수 안에 나중에 끼운다.
 """
 
 import json
@@ -9,10 +9,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from patent_ai.core.llm.cache import Cache, make_cache_key
 from patent_ai.core.llm.config import REPO_ROOT, load_step_config
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.prompts import render_prompt
-from patent_ai.core.llm.transport import Transport
+from patent_ai.core.llm.transport import Transport, TransportResponse
 
 
 class ModelResult(BaseModel):
@@ -36,6 +37,7 @@ def call_model(
     attempt: int = 1,
     *,
     transport: Transport | None = None,
+    cache: Cache | None = None,
     config_dir: Path | None = None,
     root: Path | None = None,
 ) -> ModelResult:
@@ -43,19 +45,34 @@ def call_model(
     cfg = load_step_config(step, config_dir)
     prompt = render_prompt(cfg.prompt, variables, root)
 
-    if transport is None:
+    # 캐시 키: 프롬프트 파일 원문 해시 + 변수 + 설정 값 + attempt
+    key = make_cache_key(
+        model=cfg.model,
+        prompt_template=(root / cfg.prompt).read_text(encoding="utf-8"),
+        variables=variables,
+        temperature=cfg.temperature,
+        max_tokens=cfg.max_tokens,
+        attempt=attempt,
+    )
+    hit = cache.get(key) if cache is not None else None
+
+    if hit is None and transport is None:
         from patent_ai.core.llm.transport import AnthropicTransport
 
         transport = AnthropicTransport()
 
     start = time.monotonic()
-    resp = transport.complete(
-        step=step,
-        model=cfg.model,
-        prompt=prompt,
-        temperature=cfg.temperature,
-        max_tokens=cfg.max_tokens,
-    )
+    if hit is not None:
+        # 캐시 적중: 전송층을 부르지 않는다
+        resp = TransportResponse(hit["text"], hit["input_tokens"], hit["output_tokens"])
+    else:
+        resp = transport.complete(
+            step=step,
+            model=cfg.model,
+            prompt=prompt,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
+        )
     elapsed_ms = int((time.monotonic() - start) * 1000)
 
     # 스키마가 있으면 답을 JSON으로 읽어 Pydantic 검사한다
@@ -67,6 +84,17 @@ def call_model(
             raise ModelOutputInvalid(f"답이 JSON이 아님: {e}") from e
         except ValidationError as e:
             raise ModelOutputInvalid(f"스키마 검사 실패: {e}") from e
+
+    # 검사를 통과한 답만 캐시에 쓴다 (위에서 예외가 나면 여기까지 오지 않음)
+    if cache is not None and hit is None:
+        cache.put(
+            key,
+            {
+                "text": resp.text,
+                "input_tokens": resp.input_tokens,
+                "output_tokens": resp.output_tokens,
+            },
+        )
 
     # 가격 설정이 둘 다 있을 때만 비용을 계산한다
     cost = None
@@ -84,5 +112,5 @@ def call_model(
         output_tokens=resp.output_tokens,
         cost=cost,
         elapsed_ms=elapsed_ms,
-        from_cache=False,
+        from_cache=hit is not None,
     )
