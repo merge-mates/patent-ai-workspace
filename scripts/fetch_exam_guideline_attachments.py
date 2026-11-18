@@ -81,7 +81,11 @@ for f in sorted(glob.glob(str(RAW_DIR / "body_특허실용신안_심사기준_*.
             remote_bytes=remote,
             status="기존 파일과 같음(새로 안 받음)"
             if same
-            else "기존 파일 있음, 크기 다름(새로 안 받음)",
+            else (
+                "기존 파일 있음, 크기 확인 못 함(새로 안 받음)"
+                if remote is None
+                else "기존 파일 있음, 크기 다름(새로 안 받음)"
+            ),
         )
         log.append(row)
         print(rid, row["status"], old)

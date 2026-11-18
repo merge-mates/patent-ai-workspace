@@ -37,8 +37,8 @@ PREC_DIR = Path("data/raw/prec")
 LOG1 = PREC_DIR / "_download_log_1118.json"
 LOG2 = PREC_DIR / "_download_log_1118_v2.json"
 TARGET_Y = 15
-# '제29조 제1항', '제29조제1항', '29조 1항' 등을 모두 잡는다
-PAT = re.compile(r"29조\s*제?\s*1항")
+# '제29조 제1항', '제29조제1항', '29조 1항' 등을 잡는다. 앞에 숫자가 붙은 '제129조 제1항'은 뺀다
+PAT = re.compile(r"(?<!\d)29조\s*제?\s*1항")
 EXCLUDE_MARK = ("(상)", "(디)", "(실)")
 
 if LOG2.exists():

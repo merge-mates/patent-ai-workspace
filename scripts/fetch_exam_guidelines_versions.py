@@ -1,6 +1,6 @@
 """특허·실용신안 심사기준 옛 판 본문 받기 (지정한 행정규칙일련번호만).
 
-- 방식은 scripts/fetch_exam_guidelines_body.py 와 같다:
+- 방식은 scripts/fetch_exam_guidelines_body.py(이 PR에 없음, 은진 로컬 feat/law-chunker)와 같다:
   lawService.do (target=admrul, ID=<행정규칙일련번호>, type=JSON)
 - 저장: data/raw/body_특허실용신안_심사기준_<ID>_<시행일>.json
 - 이미 있는 파일은 덮어쓰지 않고 멈춘다. 저장 파일 안의 인증키는 *** 로 가린다.

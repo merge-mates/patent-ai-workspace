@@ -69,7 +69,9 @@ def search_all(org: str) -> dict:
             "sort": "ddes",
         }
         resp = get(SEARCH_URL, params)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            # raise_for_status()는 인증키가 든 URL을 찍으므로 상태 코드만 보인다
+            sys.exit(f"목록 요청 실패 org={org} page={page}: HTTP {resp.status_code}")
         body = resp.json()["PrecSearch"]
         first = first or {k: v for k, v in body.items() if k != "prec"}
         got = body.get("prec", [])
