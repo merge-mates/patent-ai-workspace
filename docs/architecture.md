@@ -15,10 +15,12 @@
 ## 2. 기술 선택
 | 칸 | 고른 것 | 버린 것 | 이유 | 결정 문서 |
 |---|---|---|---|---|
-| 백엔드 | | | | |
-| 프론트 | | | | |
-| DB | Postgres 하나 (pgvector + 그래프 표) | Neo4j (2주 뒤 옮기기 검토) | 둘 데이터를 한 곳에서, 설치 하나. 그래프는 인터페이스 뒤라 옮기기 쉬움 | ADR 0003 (작성 예정) |
-| 배포 | | | | |
+| 백엔드 | FastAPI, 패키지 uv | Spring | AI 코어와 같은 Python. Pydantic 스키마에서 OpenAPI 자동 | [ADR 0003](decisions/0003-tech-stack.md) |
+| 프론트 | React + TypeScript (Vite) | Streamlit 등 Python 화면 | 화면 반응성, 사건·결과 다시 열기. TS 타입은 OpenAPI에서 | [ADR 0003](decisions/0003-tech-stack.md) |
+| DB | Postgres 하나 (표 + jsonb + pgvector, 그래프 표) | 별도 벡터 DB, Neo4j | 자료를 한 곳에서, 판본 거르기와 벡터 검색을 한 쿼리로. 그래프는 인터페이스 뒤라 옮기기 쉬움 | [ADR 0003](decisions/0003-tech-stack.md) |
+| 에이전트 | LangGraph, 실행 기록 Langfuse(compose 안) | SDK 도구 루프 직접, Claude Agent SDK, LangSmith | 지휘·서브·검증·사람 확인 전 멈춤을 상태 흐름으로. 기록이 밖으로 안 나감 | [ADR 0003](decisions/0003-tech-stack.md) |
+| 모델 | 전부 Haiku 5.5 시작, 저지 OpenAI. 이름은 설정 파일 | Sonnet 기본 | 예산 안에서 많이 돌려 봄. 성능은 프롬프트·에이전트 설계로 | [ADR 0003](decisions/0003-tech-stack.md) |
+| 배포 | 로컬 docker compose (Postgres·pgvector·Langfuse)로 시작. 발표용 웹 주소는 발표 형태 정할 때 | - (아직 비교 안 함) | 둘이 같은 개발 환경 | [ADR 0003](decisions/0003-tech-stack.md) |
 
 ## 3. 폴더
 코드 폴더 모양은 프레임워크를 정할 때 같이 정한다.
