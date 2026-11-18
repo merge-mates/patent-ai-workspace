@@ -165,10 +165,10 @@ graph LR
 - 채점기 (→ m2-i3), 색인 스크립트·실제 조각 (→ #66·#67).
 
 ### 진행
-- [ ] task-1
+- [x] task-1
 - [ ] task-2
 - [ ] task-3
-- 다음: m2-i1 머지 뒤 `/implement docs/features/retrieval/tasks.md m2-i2`
+- 다음: task-2·task-3 (동시).
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
