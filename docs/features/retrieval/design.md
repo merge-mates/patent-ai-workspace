@@ -37,7 +37,8 @@ flowchart LR
    - `index_version`이 그 말뭉치 표에 있는지
    - 정답 파일이 있고 1줄 이상인지
    - 질의에 그 줄 정답 위치 표기가 있는지 (7-3 누출 검사)
-   - 설정의 `goldset_version`이 `data/goldsets/VERSION`과 같은지, `gold:` 경로가 `goldset:` 세트 폴더(`data/goldsets/<goldset>/`) 안인지. 정답 파일은 `gold:` 경로로 읽는다.
+   - 설정의 `goldset_version`이 `<goldsets_root>/VERSION`과 같은지. 정답 파일은 `<goldsets_root>/<goldset>/<gold>`로 읽고, `gold:`에 `..`이나 절대 경로가 있으면 멈춘다 (세트 폴더 밖을 못 가리키게).
+   - CQ 출력 폴더(`--cq-dir`)가 git에 들어갈 수 있는 경로면 멈춘다. CQ 후보에 정답 위치·질의가 들어가기 때문이다. 판정: 저장소 밖이면 통과, 저장소 안이면 `git check-ignore`로 무시되는 경로여야 통과 (기본 `work/retrieval/<실험>/`은 통과).
    - `--chunks`(메모리 저장소)로 돌리는데 출력 폴더가 `experiments/` 아래면 멈춘다. 가짜 조각 점수가 실험 표에 섞이지 않게 하려는 것이다 (7-1 채점기).
    - 하나라도 걸리면 `RetrievalEvalError`로 끝나고 종료 코드는 1이다.
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다.
@@ -199,7 +200,7 @@ MATCHERS: dict[Corpus, Matcher]   # "cite": CiteMatcher, "law": LawMatcher
   - `--scores-dir`, `--cq-dir`: 출력 폴더 (기본 `experiments/<실험>/`, `work/retrieval/<실험>/`).
   - **`--chunks`로 돌리면 출력은 `work/retrieval/<실험>/` 아래로만 간다.** `--scores-dir`의 기본값도 `work/retrieval/<실험>/`로 바뀐다. `experiments/` 아래를 주면 실행 전에 멈춘다 (가짜 조각 점수가 실험 표 `experiments/index.md`에 섞이지 않게).
   - 종료 코드: 성공 0, `RetrievalEvalError`(실행 전 검사, 남은 줄 0개, 색인 판 섞임, 줄 검색 예외) 1.
-  - 함수 모양: `score(cfg, repo, goldsets_root) -> ScoreReport`. CLI `main(argv) -> int`가 저장소를 고르고 파일을 쓴다. 채점기를 만드는 구현 task에서 이 명령을 루트 CLAUDE.md "채점 명령" 줄에 더한다 (명령이 생기기 전에는 적지 않음).
+  - 함수 모양: `score(cfg, repo, goldsets_root, commit) -> ScoreReport`. CLI `main(argv, commit: str | None = None) -> int`가 저장소를 고르고 파일을 쓴다. `commit`이 None이면 `git rev-parse HEAD`, 실패하면 `"unknown"` (테스트는 값을 넘김). 채점기를 만드는 구현 task에서 이 명령을 루트 CLAUDE.md "채점 명령" 줄에 더한다 (명령이 생기기 전에는 적지 않음).
 - 실험 설정 (기존 `experiments/_template/config.yaml`에 더하는 키):
 ```yaml
 corpus: cite
@@ -207,14 +208,14 @@ index_version: cite-idx-v1
 mode: bm25
 impl: fake
 k: [1, 3, 5, 10]
-gold: data/goldsets/tune/retrieval/gold.jsonl
+gold: retrieval/gold.jsonl          # <goldsets_root>/<goldset>/ 기준 상대 경로 (기본이면 data/goldsets/tune/retrieval/gold.jsonl)
 law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7-4)
 ```
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
   - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_text_missing`, `excluded_edition_unverified`, `cq_candidates`, `recall_ratio_undefined`.
   - 위 표에 더하는 칸: `corpus`, `index_version`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
-  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `git rev-parse HEAD`(못 읽으면 `"unknown"`, 테스트는 인자로 넣음), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
+  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
   - 줄 ID·질의·정답 위치는 넣지 않는다.
 - **E (정답 파일 버전 기록)**: `scores.json`의 `goldset_version`(`data/goldsets/VERSION` 정수)과 `gold_sha256`(정답 파일 해시)으로 남긴다. CQ 후보 줄마다 같은 두 값을 넣는다. 버전이 같아도 해시가 다르면 다른 정답으로 보고, CQ 모으기는 멈춘다.
 
@@ -321,6 +322,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - 색인 판 없음·섞임 → 실패
   - 정답 0줄 → 실패, 남은 줄 0개 → 실패 (종료 코드 1)
   - `--chunks`로 돌리며 `--scores-dir`이 `experiments/` 아래 → 실행 전 실패
+  - `--cq-dir`이 git 안 경로(무시되지 않음) → 실행 전 실패
   - 누출 → 실패, 종속항 → 통과
   - CQ 0건 경고
   - CQ 모으기: 교집합, 버전 다름 → 멈춤
