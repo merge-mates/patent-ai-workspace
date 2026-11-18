@@ -124,6 +124,21 @@ _TITLE = re.compile(r"의\s*견\s*제\s*출\s*통\s*지\s*서")
 _INITIAL_CHECKED = "최후 표시 없음, 모든 쪽 글자를 봄"
 
 
+# [가정] 본문 문장 속 언급("...통지에 해당하지 않음", "앞선 ...통지에 대한 보정")은
+# 표시가 아니다. 규칙: 바로 뒤에 한글 조사·서술이 붙거나(단 제목 끝 "서"는 허용),
+# 바로 앞 6글자에 앞선·이전·종전이 있으면 뺀다. 표본 OA로 확인 (#22).
+_PAST_WORDS = ("앞선", "이전", "종전")
+
+
+def _is_mark(text: str, m: re.Match[str]) -> bool:
+    before = text[max(0, m.start() - 6) : m.start()]
+    if any(w in before for w in _PAST_WORDS):
+        return False
+    after = text[m.end() : m.end() + 1]
+    # 뒤가 한글이면 문장의 일부 ("에", "를", "의" ...). 홀로 있거나 괄호·줄바꿈·"서"면 표시
+    return not ("가" <= after <= "힣" and after != "서")
+
+
 def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
     """통지 종류. 최후 표시가 어느 쪽에든 있으면 final(원문·쪽) /
     머리말에 `의견제출통지서` 제목이 있고 최후 표시는 없으면 initial /
@@ -132,7 +147,7 @@ def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
     header = "\n".join(first.text.splitlines()[:HEADER_LINES]) if first else ""
     # 1) 모든 쪽에서 최후 표시를 찾는다 (쪽 순서대로 처음 것)
     for page in pages.pages:
-        m = _FINAL_MARK.search(page.text)
+        m = next((m for m in _FINAL_MARK.finditer(page.text) if _is_mark(page.text, m)), None)
         if m:
             return ExtractedValue[NoticeKind](
                 value=NoticeKind.FINAL,
