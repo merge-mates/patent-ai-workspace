@@ -238,3 +238,52 @@ def test_chunks와_experiments_scores_dir이면_1과_파일_없음(tmp_path, gol
     ]
     assert main(argv, commit="abc") == 1
     assert not target.exists()
+
+
+# ---- 제외 건수 키 ------------------------------------------------------
+
+
+def test_text_missing_건수가_1이다(tmp_path, goldsets_root):
+    # 점수에 드는 줄 하나(gold_ok와 같음) + 조각이 없는 공보 줄 하나
+    cfg = load_config(make_config(tmp_path, "gold_cite_counts.jsonl"))
+    repo = InMemoryChunkRepository.from_jsonl("cite", CHECK_CHUNKS)
+    report = score(
+        cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq"
+    )
+    assert report.scores["n"] == 1
+    assert report.scores["failures"]["excluded_text_missing"] == 1
+    assert report.scores["failures"]["excluded_edition_unverified"] == 0
+
+
+def test_edition_unverified_건수가_1이다(tmp_path, goldsets_root):
+    # 판본 확인된 줄 하나 + 판본 모름 줄 하나
+    cfg = load_config(make_config(tmp_path, "gold_law_counts.jsonl", base="config_law_ok.yaml"))
+    repo = InMemoryChunkRepository.from_jsonl("law", FIX / "chunks_law.jsonl")
+    report = score(
+        cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq"
+    )
+    assert report.scores["n"] == 1
+    assert report.scores["failures"]["excluded_edition_unverified"] == 1
+    assert report.scores["failures"]["excluded_text_missing"] == 0
+
+
+def test_기준일로_범위가_비면_row_id만_담아_멈춘다(tmp_path, goldsets_root, capsys):
+    """[사람 판단 대기] design 2절과 다름: 지금은 멈춘다 (행동을 고정해 둔 테스트)."""
+    cfg = make_config(tmp_path, "gold_law_scope_empty.jsonl", base="config_law_ok.yaml")
+    repo = InMemoryChunkRepository.from_jsonl("law", FIX / "chunks_law.jsonl")
+    with pytest.raises(RetrievalEvalError) as ei:
+        score(
+            load_config(cfg),
+            repo,
+            goldsets_root,
+            "abc",
+            scores_dir=tmp_path / "out",
+            cq_dir=tmp_path / "cq",
+        )
+    assert "cnt-law-early" in str(ei.value)
+    assert "진보성 판단" not in str(ei.value)
+    # main도 1을 돌려주고 질의 글자를 찍지 않는다
+    assert run_main(tmp_path, goldsets_root, chunks=FIX / "chunks_law.jsonl", cfg=cfg) == 1
+    err = capsys.readouterr().err
+    assert "cnt-law-early" in err and "진보성 판단" not in err
+    assert not (tmp_path / "out" / "scores.json").exists()
