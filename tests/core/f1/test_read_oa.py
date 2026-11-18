@@ -25,6 +25,14 @@ def _pages(name: str) -> PageText:
     return PageText.model_validate_json((FIXTURES / f"{name}.pages.json").read_text("utf-8"))
 
 
+def _pages_replaced(name: str, old: str, new: str) -> PageText:
+    """fixture 글자 일부를 바꾼 쪽 글자 (다른 표기·다른 조문 시험용)."""
+    data = json.loads((FIXTURES / f"{name}.pages.json").read_text("utf-8"))
+    for page in data["pages"]:
+        page["text"] = page["text"].replace(old, new)
+    return PageText.model_validate(data)
+
+
 def _answer(name: str):
     return json.loads((FIXTURES / "llm" / f"{name}.json").read_text("utf-8"))
 
@@ -138,7 +146,7 @@ def test_심사관_힌트_칸이_없으면_없음이고_확인됨():
     for v in (claims, note):
         assert v.page is None and v.raw_text is None
         assert v.status.value == StatusValue.CONFIRMED
-        assert v.status.checked == "원문에 칸 없음"
+        assert v.status.checked == "원문에 칸 없음, 모든 쪽 글자를 봄"
     assert result.status.value == StatusValue.CONFIRMED
 
 
@@ -189,6 +197,7 @@ def test_글자_층이_없으면_모델을_안_부르고_필드_전부_input_unv
         assert v.status.reason == UnverifiedReason.INPUT_UNVERIFIED
         assert v.raw_text is None and v.page is None
     assert result.status.value == StatusValue.UNVERIFIED  # failed로 끝내지 않고 결과를 돌려줌
+    assert result.status.reason == UnverifiedReason.INPUT_UNVERIFIED
     assert result.rejections == []
 
 
@@ -219,6 +228,8 @@ def test_모델이_애매로_표시한_대상_청구항은_값_없이_확인되�
     assert claims.value is None
     assert claims.status.value == StatusValue.UNVERIFIED
     assert claims.status.reason == UnverifiedReason.AMBIGUOUS
+    assert (claims.raw_text, claims.page) == ("제1항 내지 제4항", 2)  # 대조 통과한 글자·쪽은 남음
+    assert result.status.value == StatusValue.UNVERIFIED  # 결과 전체도 나쁜 쪽으로
 
 
 def test_거절이유가_0개면_경고를_남기고_결과는_확인되지_않음(caplog):
@@ -275,3 +286,64 @@ def test_지원_안_하는_이유_안의_나쁜_칸은_결과_status를_안_바�
 def test_칸_하나가_충돌이면_결과_전체가_충돌():
     result, _ = _run("notice_basic", _ok("conflict"))
     assert result.status.value == StatusValue.CONFLICT
+
+
+# ---- 리뷰 반영: 조문을 모르면 결과에 드러남, 힌트 칸이 있는데 모델이 null이면 확인되지 않음 ----
+def test_조문을_모델이_못_뽑으면_그_거절이유는_직접_검토_필요이고_결과는_확인되지_않음():
+    answer = _answer("basic")
+    for r in answer["rejections"]:
+        r["article"] = None
+    result, _ = _run("notice_basic", _text(answer))
+    for r in result.rejections:
+        assert not r.supported and Flag.NEEDS_HUMAN_REVIEW in r.flags
+        assert r.article.status.value == StatusValue.UNVERIFIED
+    assert result.status.value == StatusValue.UNVERIFIED
+
+
+def test_대조_통과한_지원_표_밖_조문은_결과_status를_안_바꾼다():
+    pages = _pages_replaced("notice_unsupported", "제42조제3항", "제99조제9항")
+    answer = json.loads(
+        json.dumps(_answer("unsupported"), ensure_ascii=False).replace("제42조제3항", "제99조제9항")
+    )
+    transport = FakeTransport({STEP: _text(answer)})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    result = read_oa(pages, "d_1", "oa_1", "r_1", ctx=ctx)
+    second = result.rejections[1]
+    assert second.article.value == "99-9" and not second.supported
+    assert Flag.NEEDS_HUMAN_REVIEW in second.flags
+    assert result.status.value == StatusValue.CONFIRMED
+
+
+def test_힌트_칸이_있는데_모델이_null이면_확인되지_않음():
+    answer = _answer("basic")
+    answer["allowable_claims"] = None
+    answer["amendment_note"] = None
+    result, _ = _run("notice_basic", _text(answer))
+    for v in (result.examiner_hints.allowable_claims, result.examiner_hints.amendment_note):
+        assert v.status.value == StatusValue.UNVERIFIED
+        assert v.status.reason == UnverifiedReason.NOT_EXTRACTED
+    assert result.status.value == StatusValue.UNVERIFIED
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("「특허 가능한 청구항」", "특 허 가 능 한\n청 구 항"),  # 글자 사이 공백·줄바꿈
+        ("【보정에 관한 참고사항】", "보정서 제출시 참고사항"),  # 다른 표기
+    ],
+)
+def test_힌트_제목의_다른_표기도_찾아서_모델_null이면_확인되지_않음(old, new):
+    pages = _pages_replaced("notice_basic", old, new)
+    answer = _answer("basic")
+    answer["allowable_claims"] = None
+    answer["amendment_note"] = None
+    transport = FakeTransport({STEP: _text(answer)})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    result = read_oa(pages, "d_1", "oa_1", "r_1", ctx=ctx)
+    hints = result.examiner_hints
+    target = hints.allowable_claims if "가능" in old else hints.amendment_note
+    assert target.status.value == StatusValue.UNVERIFIED

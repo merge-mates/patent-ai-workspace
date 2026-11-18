@@ -31,7 +31,7 @@ def ev(value, raw="원문", page: int | None = 1, status: Status = OK):
 
 def rej_fields(article="29-2", claims=(1, 2), supported=True, flags=(), **extra):
     data = {
-        "article": ev(article),
+        "article": article if isinstance(article, dict) else ev(article),
         "supported": supported,
         "claims": ev(list(claims)),
         "citations": [],
@@ -391,3 +391,43 @@ def test_지원_안_하는_나라는_ask_upload_false면_통과():
 def test_조회_결과_세_값_밖은_거부():
     with pytest.raises(ValidationError):
         CaseMaterials(case_id="c_1", missing=[missing(lookup_result="whatever")])
+
+
+# ---------- 조문을 모르는 거절이유는 결과 status에 넣는다 (11/18 리뷰) ----------
+
+
+def test_조문을_모르는_거절이유는_supported_false여도_결과_status에_들어감():
+    unknown_article = rejection(
+        supported=False,
+        flags=[Flag.NEEDS_HUMAN_REVIEW],
+        article=ev(None, None, None, BAD),
+    )
+    assert unknown_article.status.value == StatusValue.UNVERIFIED
+    assert oa([rejection(), unknown_article]).status.value == StatusValue.UNVERIFIED
+
+
+def test_조문이_충돌인_거절이유도_결과_status에_들어감():
+    conflicted = build_rejection(
+        document_id="d_1",
+        **rej_fields(supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW], article=conflict_value()),
+    )
+    assert oa([rejection(), conflicted]).status.value == StatusValue.CONFLICT
+
+
+def test_거절이유_0개인데_위쪽_필드가_모두_input_unverified면_이유도_input_unverified(caplog):
+    bad = ev(None, None, None, Status(value="unverified", reason="input_unverified"))
+    kind = {**bad, "value": "unknown"}
+    empty = {"value": [], "raw_text": None, "page": None, "status": bad["status"]}
+    fields = oa_fields(
+        [],
+        application_number=bad,
+        dispatch_number=bad,
+        notice_date=bad,
+        response_due=bad,
+        notice_kind=kind,
+        examiner_hints=ExaminerHints(allowable_claims=empty, amendment_note=bad),
+    )
+    with caplog.at_level(logging.WARNING):
+        s = summarize_status(**fields)
+    assert s.reason == UnverifiedReason.INPUT_UNVERIFIED
+    assert not any("거절이유 0개" in r.getMessage() for r in caplog.records)
