@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # v8부터 메이저 태그(v10)가 없다
       - run: uv sync --frozen
       - run: uv run ruff check
       - run: uv run ruff format --check
@@ -36,7 +36,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://patent:patent@localhost:5432/patent_ai
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # v8부터 메이저 태그(v10)가 없다
       - run: uv sync --frozen
       - run: uv run pytest -m db
 
