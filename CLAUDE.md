@@ -1,8 +1,12 @@
 # 팀 규칙: Patent Professional AI Workspace
 
 ## 명령
-- 테스트·채점 명령은 프레임워크와 코드 폴더를 정한 뒤 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
+- 앱 실행(DB·서버·화면): `make up`. 화면 http://localhost:5173, 서버 http://localhost:8000/health. DB만: `make db`. 목록 `make help`, 안내 [docs/team/local-db.md](docs/team/local-db.md).
+- 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
+- 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
+- 채점 명령은 `eval/`을 만들 때 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
+- PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더
 - 사람이 읽는 문서는 전부 `docs/`. 무엇을 어디에 둘지는 [`docs/README.md`](docs/README.md) 표를 따른다. 새 문서를 만들기 전에 그 표를 본다.
@@ -10,6 +14,8 @@
 - `eval/` 채점기. 평가 세트(정답)는 git 밖 `data/goldsets/`에 둔다. 앱 코드는 `data/goldsets/`를 불러오지 않는다 (채점기만 읽는다).
 - `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 Claude가 읽지 않는다 (채점기만 읽는다). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
+- DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
+- 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
 
 ## 진행 단위
 - 지금 위치와 문서 지도: @docs/README.md (맨 위 `지금`)
@@ -41,7 +47,7 @@
 - `main`에 직접 푸시하지 않는다. Claude는 `git add -f`로 gitignore된 파일을 넣지 않는다 (settings로 막힘). 브랜치: `<type>/<이슈번호>-<짧은설명>` (예: `feat/12-<기능>-baseline`). 둘이 같은 기능을 각자 구현할 때만 뒤에 사람: `feat/12-<기능>-<사람>`.
 - 커밋 제목: `<type>(<영역>): <한국어 한 줄>`. type은 `feat` `fix` `test` `refactor` `docs` `chore`, 영역은 `backend` `frontend` `ai` `eval` `docs` `infra`. 자세한 건 `.claude/rules/git.md`.
 - PR 하나 = 이슈 하나. 제목은 커밋 제목 모양 (squash 머지로 main 커밋이 된다). 본문은 `.github/pull_request_template.md` 칸을 채우고 `Closes #N`.
-- 이슈 일은 `/start <이슈번호>`로 시작한다. 진행 보드(Projects 탭) 카드는 훅이 옮긴다: 브랜치 만들면 In Progress, PR 만들면 In Review, 머지되면 Done. 보드 번호·id는 적지 않는다 (`.claude/scripts/board-status.sh`가 찾음).
+- 이슈 일은 `/start <이슈번호>`로 시작한다. 진행 보드(Projects 탭) 카드는 스킬이 옮긴다: `/start`는 In Progress, `/pr-draft`는 PR을 만든 뒤 In Review, 머지되면 Done(보드 규칙). 훅은 쓰지 않는다. 보드 번호·id는 적지 않는다 (`.claude/scripts/board-status.sh`가 찾음).
 - 남의 브랜치를 merge·rebase하지 않는다. 커밋은 Claude가 해도 된다. push와 PR 생성은 매번 사람이 승인한다 (확인 창). 사람이 `/pr-draft` 초안을 보고 OK하면 Claude가 한다. `main`에 직접 push하지 않는다. 머지는 사람이 한다.
 
 ## 코드 규칙 (공통)
@@ -51,7 +57,7 @@
 - 테스트는 네트워크·API 키 없이 돈다. 외부 API 응답은 저장해 둔 파일(녹화 응답)로 테스트한다.
 - 프롬프트는 코드와 분리한 파일로 둔다. 실험할 값(모델, 하이퍼파라미터)은 실험 설정(config) 파일에서 읽는다. 각자 구현은 같은 인터페이스 뒤에 두고 config의 `impl`로 고른다 (전략 패턴).
 - 목록이 0개처럼 비면 경고를 남긴다. 실패했는데 성공 종료하거나 이유 없이 끝나지 않는다.
-- `.env`에는 비밀 키만. `.env`는 읽지도 출력하지도 않는다.
+- `.env`에는 비밀 키와 컴퓨터마다 다른 값(포트·`DATABASE_URL`)만. 모델·실험 값은 설정 파일(`config/`)에. `.env`는 읽지도 출력하지도 않는다.
 
 ## 리뷰 심각도 (사람·에이전트 공통)
 - 막음: 합격 기준 못 지킴, 테스트 실패, 위 규칙 위반, 평소 입력에서 결과가 틀림, 조용한 실패, 비공개 내용·키가 새는 경로.
@@ -60,7 +66,7 @@
 - 재리뷰는 막음이 있었을 때만, 바뀐 부분만, 최대 2회.
 
 ## 하위 규칙
-- 코드 폴더별 `CLAUDE.md`는 폴더를 만들 때(프레임워크를 정한 뒤) 둔다. `eval/`·`experiments/` 규칙은 `.claude/rules/eval.md`(그 경로를 다룰 때만).
+- 코드 폴더별 `CLAUDE.md`는 폴더를 만들 때(프레임워크를 정한 뒤) 둔다. 앱 폴더(`src/patent_ai/api/`, `web/`)는 그 폴더 `CLAUDE.md` 규칙을 따른다 (테스트 먼저 대신 API 테스트 몇 개). AI 코어(`src/patent_ai/core/`)는 위 "일하는 순서" 그대로. `eval/`·`experiments/` 규칙은 `.claude/rules/eval.md`(그 경로를 다룰 때만).
 - 이 파일은 200줄 아래로 둔다 (공식 문서 권장). 한 기능에만 맞는 내용은 여기 말고 `docs/features/<기능>/design.md`에.
 - 절차는 스킬로 부른다. 목록·순서·쓰임은 [`.claude/skills/README.md`](.claude/skills/README.md).
 - 개인 규칙은 각자 `CLAUDE.local.md`(git 제외). 팀 규칙과 부딪히면 이 파일이 이긴다.
