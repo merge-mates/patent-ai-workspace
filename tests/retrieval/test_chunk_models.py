@@ -88,5 +88,7 @@ def test_오프라인_SQL에_두_CHECK_문구가_있다(offline_sql):
 
 
 def test_인덱스가_있다(offline_sql):
-    assert "(index_version, doc_id)" in offline_sql
+    # 표마다 따로 본다 (한 표 인덱스만 있어도 통과하지 않게)
+    assert "ON law_chunks (index_version, doc_id)" in offline_sql
+    assert "ON cite_chunks (index_version, doc_id)" in offline_sql
     assert "ON law_chunks (index_version, edition_effective_from)" in offline_sql
