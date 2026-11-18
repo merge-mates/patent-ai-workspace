@@ -10,7 +10,7 @@
 Docker Desktop이 켜져 있어야 한다. docker 명령을 직접 칠 일은 없다. 자세한 표는 [local-db.md](local-db.md).
 - 띄우기·스키마 맞추기: `make db` (Postgres + pgvector를 띄우고 `alembic upgrade head`까지). `git pull` 뒤에도 이것 한 줄. 서버도 켜질 때 upgrade 한다.
 - 끄기: `make db-down` (데이터는 남는다). 처음부터 다시: `make db-reset` (데이터를 지운다).
-- 검색 색인 받기: 팀 드라이브 색인 폴더에서 지금 판(`idx-<판>.dump`, 실험 설정의 `index_version`과 같은 것)을 받아 `data/index/`에 두고 `make index-load DUMP=data/index/idx-<판>.dump`.
+- 검색 색인 받기: 팀 드라이브 색인 폴더에서 말뭉치마다 지금 색인 판(`<말뭉치>-idx-<색인 판>.dump`, 예 `law-idx-v1.dump`. 실험 설정의 `index_version`과 같은 것)을 받아 `data/index/`에 두고 `make index-load DUMP=data/index/<말뭉치>-idx-<색인 판>.dump`.
 - 검색 색인 새로 만들어 나누기: 색인 스크립트 → `make index-dump` → 드라이브에 올리고 실험 설정 `index_version`을 바꾸는 PR (스크립트·덤프 규칙은 이슈 #65).
 - 규칙: 스키마는 마이그레이션으로만, DB를 손으로 고치지 않는다. 자세한 건 [`src/patent_ai/db/CLAUDE.md`](../../src/patent_ai/db/CLAUDE.md).
 - 막히면: `make db-reset` 뒤 `make index-load`. 그래도 안 되면 `docs/troubleshooting/`에 남긴다.
