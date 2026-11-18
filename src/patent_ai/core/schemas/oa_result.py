@@ -78,19 +78,14 @@ class Rejection(ResultBase):
     def _검사(self) -> Rejection:
         if not self.supported and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
             raise ValueError("supported=false면 flags에 needs_human_review가 필요")
-        expected = summarize_rejection_status(**self.model_dump_fields())
+        expected = summarize_rejection_status(**self._status_fields())
         if self.status.value != expected.value:
             raise ValueError(f"status {self.status.value}가 칸을 모은 값 {expected.value}와 다름")
         return self
 
-    def model_dump_fields(self) -> dict[str, Any]:
-        """summarize에 넘길 칸 (객체 그대로, dump하지 않음)."""
-        return {
-            "article": self.article,
-            "claims": self.claims,
-            "citations": self.citations,
-            "examiner_reasoning": self.examiner_reasoning,
-        }
+    def _status_fields(self) -> dict[str, Any]:
+        """status를 모을 때 넘길 칸 (객체 그대로, dump하지 않음)."""
+        return {k: getattr(self, k) for k in _REJECTION_FIELD_NAMES}
 
 
 class ExaminerHints(BaseModel):
@@ -129,6 +124,8 @@ class OAResult(ResultBase):
         return self
 
 
+# status를 모을 때 쓰는 칸 이름. 모르는 이름은 summarize_*가 TypeError로 거부한다
+_REJECTION_FIELD_NAMES = ("article", "claims", "citations", "examiner_reasoning")
 _OA_FIELD_NAMES = (
     "oa_id",
     "application_number",
@@ -153,7 +150,6 @@ def summarize_rejection_status(
     claims: ExtractedValue,
     citations: list[Citation],
     examiner_reasoning: ExtractedValue,
-    **_ignored: Any,
 ) -> Status:
     """거절이유 하나의 status: 그 안 칸들 중 가장 나쁜 값 (칸만 받는다, status는 필요 없음).
 
@@ -181,7 +177,6 @@ def summarize_status(
     examiner_hints: ExaminerHints,
     rejections: list[Rejection],
     examined_claim_version: ExtractedValue | None = None,
-    **_ignored: Any,
 ) -> Status:
     """결과 전체 status: 칸들 중 가장 나쁜 값 (순서: 식별 정보 -> 통지 -> 거절이유 -> 힌트).
 
@@ -212,11 +207,11 @@ def summarize_status(
 
 
 def _evidence_of(values: list[ExtractedValue], document_id: str) -> list[Evidence]:
-    # 쪽이 있는 값만 근거로 둔다 (쪽 없는 confirmed 값은 근거 위치가 없음)
+    # 대조에 통과한 것(confirmed)이고 쪽이 있는 값만 근거로 둔다
     return [
         Evidence(document_id=document_id, page=v.page, raw_text=v.raw_text)
         for v in values
-        if v.page is not None
+        if v.page is not None and v.status.value == StatusValue.CONFIRMED
     ]
 
 
@@ -244,16 +239,31 @@ def collect_evidence(result: Rejection | OAResult, document_id: str) -> list[Evi
     return found
 
 
+def _check_names(model: type[BaseModel], fields: dict[str, Any]) -> None:
+    """모르는 칸 이름(또는 직접 넣은 status·evidence)은 TypeError."""
+    unknown = set(fields) - (set(model.model_fields) - {"status", "evidence"})
+    if unknown:
+        raise TypeError(f"{model.__name__}에 없는(또는 직접 못 넣는) 칸: {sorted(unknown)}")
+
+
 def build_rejection(*, document_id: str, **fields: Any) -> Rejection:
     """status·evidence 없이 칸만으로 만든다. 둘은 여기서 칸에서 모아 채운다."""
-    draft = Rejection(
-        **fields,
-        status=summarize_rejection_status(**fields),
-    )
+    _check_names(Rejection, fields)
+    summary = {k: fields[k] for k in _REJECTION_FIELD_NAMES if k in fields}
+    draft = Rejection(**fields, status=summarize_rejection_status(**summary))
     return draft.model_copy(update={"evidence": collect_evidence(draft, document_id)})
 
 
 def build_oa_result(*, document_id: str, **fields: Any) -> OAResult:
-    """status·evidence 없이 칸만으로 만든다. 거절이유는 build_rejection으로 만든 것을 넣는다."""
-    draft = OAResult(**fields, status=summarize_status(**fields))
+    """status·evidence 없이 칸만으로 만든다. 거절이유는 Rejection이나 칸 dict(여기서 만듦)."""
+    _check_names(OAResult, fields)
+    fields = {
+        **fields,
+        "rejections": [
+            build_rejection(document_id=document_id, **r) if isinstance(r, dict) else r
+            for r in fields.get("rejections", [])
+        ],
+    }
+    summary = {k: fields[k] for k in _OA_FIELD_NAMES if k in fields}
+    draft = OAResult(**fields, status=summarize_status(**summary))
     return draft.model_copy(update={"evidence": collect_evidence(draft, document_id)})

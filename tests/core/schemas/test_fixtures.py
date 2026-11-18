@@ -64,7 +64,7 @@ def test_검토할_사항은_빠진_인용문헌_하나와_직접_검토_하나(
     assert items == [
         ReviewItem(
             kind="needs_human_review",
-            target="oa_result.rejections[2]",
+            target="oa_result[0].rejections[2]",
             label="42-3",
             reason="지원 안 하는 거절이유 42-3",
         ),

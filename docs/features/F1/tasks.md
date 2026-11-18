@@ -61,7 +61,7 @@ graph LR
 - 합격 기준: requirements.md 4, F5 3, data-model 3절 규칙 1·2
 - 고칠 파일: `src/patent_ai/core/schemas/propagation.py`, `tests/core/schemas/test_propagation.py`
 - 만들 함수·인터페이스 모양: `propagate(depends_on: list[Status]) -> Status` (기대는 입력이 `confirmed`가 아니면 `unverified(input_unverified)`), `mark_recheck(result, reason) -> result` (덮어쓰지 않고 새 값), `ReviewItem{kind: unverified|conflict|needs_recheck|needs_human_judgment|needs_human_review|missing_material, target, reason}`, `collect_review_items(results: list[ResultBase], materials: CaseMaterials) -> list[ReviewItem]`
-- 테스트할 경우: 평소(앞 결과 `unverified` → 뒤 결과가 검토할 사항에 뜸, 빠진 자료가 뜸) / 빈 입력(결과 0개 → 빈 목록 + 경고 로그. 결과는 있는데 검토할 사항 0건 → 빈 목록, 경고 없음) / 기대지 않는 입력은 영향 없음 / `needs_recheck`가 status를 바꾸지 않음
+- 테스트할 경우: 평소(앞 결과 `unverified` → 뒤 결과가 검토할 사항에 뜸, 빠진 자료가 뜸) / 빈 입력(결과 0개 → 결과 줄은 없고 경고 로그, 빠진 자료 줄은 남음. 결과는 있는데 검토할 사항 0건 → 빈 목록, 경고 없음) / 기대지 않는 입력은 영향 없음 / `needs_recheck`가 status를 바꾸지 않음
 - 확인 방법: `uv run pytest tests/core/schemas/test_propagation.py -q` → 모두 통과
 - 먼저: task-2
 

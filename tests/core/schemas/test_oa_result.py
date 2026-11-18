@@ -182,8 +182,10 @@ def test_지원하는_거절이유가_나쁘면_결과도_나쁨():
 
 
 def test_summarize는_칸만_받아_모은다():
-    assert summarize_rejection_status(**rej_fields()).value == StatusValue.CONFIRMED
-    bad = rej_fields(examiner_reasoning=bad_reasoning())
+    only = ("article", "claims", "citations", "examiner_reasoning")  # 이 네 칸만 받는다
+    ok = {k: v for k, v in rej_fields().items() if k in only}
+    assert summarize_rejection_status(**ok).value == StatusValue.CONFIRMED
+    bad = {k: v for k, v in rej_fields(examiner_reasoning=bad_reasoning()).items() if k in only}
     assert summarize_rejection_status(**bad).value == StatusValue.UNVERIFIED
     assert summarize_status(**oa_fields([rejection()])).value == StatusValue.CONFIRMED
 

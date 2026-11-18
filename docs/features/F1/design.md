@@ -101,7 +101,7 @@ flowchart LR
      "supported": true,
      "claims": {"value": [1, 2, 3, 4], "raw_text": "제1항 내지 제4항", "page": 2, "status": {"...": "..."}},
      "citations": [{"number": {"value": "KR10-0000001", "raw_text": "...", "page": 2, "status": {"...": "..."}},
-                    "country": "KR", "country_supported": true,
+                    "country": {"value": "KR", "raw_text": "KR10-0000001", "page": 2, "status": {"...": "..."}}, "country_supported": true,
                     "cited_paragraphs": {"value": ["0023", "0031"], "raw_text": "식별번호 [0023], [0031]", "page": 2, "status": {"...": "..."}}}],
      "examiner_reasoning": {"value": "…요지…", "raw_text": "…원문…", "page": 2, "status": {"...": "..."}},
      "status": {"...": "..."}, "evidence": [], "origin": "ai_generated", "needs_recheck": false, "recheck_reason": null, "flags": []}
