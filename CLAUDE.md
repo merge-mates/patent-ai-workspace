@@ -1,8 +1,12 @@
 # 팀 규칙: Patent Professional AI Workspace
 
 ## 명령
-- 테스트·채점 명령은 프레임워크와 코드 폴더를 정한 뒤 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
+- 앱 실행(DB·서버·화면): `make up`. 화면 http://localhost:5173, 서버 http://localhost:8000/health. DB만: `make db`. 목록 `make help`, 안내 [docs/team/local-db.md](docs/team/local-db.md).
+- 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
+- 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
+- 채점 명령은 `eval/`을 만들 때 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
+- PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더
 - 사람이 읽는 문서는 전부 `docs/`. 무엇을 어디에 둘지는 [`docs/README.md`](docs/README.md) 표를 따른다. 새 문서를 만들기 전에 그 표를 본다.
@@ -10,6 +14,8 @@
 - `eval/` 채점기. 평가 세트(정답)는 git 밖 `data/goldsets/`에 둔다. 앱 코드는 `data/goldsets/`를 불러오지 않는다 (채점기만 읽는다).
 - `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 Claude가 읽지 않는다 (채점기만 읽는다). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
+- DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
+- 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
 
 ## 진행 단위
 - 지금 위치와 문서 지도: @docs/README.md (맨 위 `지금`)
@@ -58,7 +64,7 @@
 - 재리뷰는 막음이 있었을 때만, 바뀐 부분만, 최대 2회.
 
 ## 하위 규칙
-- 코드 폴더별 `CLAUDE.md`는 폴더를 만들 때(프레임워크를 정한 뒤) 둔다. `eval/`·`experiments/` 규칙은 `.claude/rules/eval.md`(그 경로를 다룰 때만).
+- 코드 폴더별 `CLAUDE.md`는 폴더를 만들 때(프레임워크를 정한 뒤) 둔다. 앱 폴더(`src/patent_ai/api/`, `web/`)는 그 폴더 `CLAUDE.md` 규칙을 따른다 (테스트 먼저 대신 API 테스트 몇 개). AI 코어(`src/patent_ai/core/`)는 위 "일하는 순서" 그대로. `eval/`·`experiments/` 규칙은 `.claude/rules/eval.md`(그 경로를 다룰 때만).
 - 이 파일은 200줄 아래로 둔다 (공식 문서 권장). 한 기능에만 맞는 내용은 여기 말고 `docs/features/<기능>/design.md`에.
 - 절차는 스킬로 부른다. 목록·순서·쓰임은 [`.claude/skills/README.md`](.claude/skills/README.md).
 - 개인 규칙은 각자 `CLAUDE.local.md`(git 제외). 팀 규칙과 부딪히면 이 파일이 이긴다.

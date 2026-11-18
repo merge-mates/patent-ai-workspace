@@ -20,10 +20,15 @@
 (시연 화면·영상, 11/27 시연 뒤)
 
 ## 기술 스택
-(프레임워크·모델 결정 뒤)
+FastAPI(uv, Python 3.12) · React+TypeScript(Vite, Node 22) · Postgres+pgvector · LangGraph. 이유는 [ADR 0003](docs/decisions/0003-tech-stack.md).
 
 ## 실행 방법
-(코드 폴더가 생긴 뒤)
+Docker Desktop, uv, Node 22가 있으면 된다.
+```
+cp .env.example .env   # 키는 각자 채움 (없어도 뜬다)
+make up                # DB·서버·화면, 서버가 켜질 때 마이그레이션 자동
+```
+화면 http://localhost:5173, 서버 http://localhost:8000/health. 테스트 `make test`, 린트 `make lint`, 명령 목록 `make help`. DB 켜기·끄기·다시 만들기·덤프 불러오기는 [docs/team/local-db.md](docs/team/local-db.md).
 
 ## 팀
 2인 팀 프로젝트. 일하는 방식은 [docs/team/getting-started.md](docs/team/getting-started.md), 문서 지도는 [docs/README.md](docs/README.md).
