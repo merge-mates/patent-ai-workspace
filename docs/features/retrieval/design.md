@@ -277,7 +277,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 법령 정답 판본 = OA 발송일 시행판 | 판본 무시 줄도 / #66에 미룸 | #9 B "판본까지 맞아야 맞음" | 설계 | |
 | 검색 결과 스키마를 `retrieval/schemas.py`에 | `core/schemas/` | `retrieval`이 `core`를 import하면 부르는 방향이 거꾸로 됨 | 설계 | ADR 0003 폴더 |
 | 누출 검사에서 청구항·요약 항목 제외 | 전부 검사 | 질의 자신의 "제1항에 있어서"와 구별 불가. 한계로 남김 | 설계 (doc-review 2회차) | |
-| 저장소는 `retrieval/`, ORM은 `db/`, `retrieval → db` 방향 추가 | 저장소를 `db/`에 | 검색 계약과 거르기 규칙을 한곳에. `db`는 표 정의만 | 설계 (design doc-review, 11/18 재아 허용) | ADR 0003 폴더 |
+| 저장소는 `retrieval/`, ORM은 `db/`, `retrieval → db` 방향 추가 | 저장소를 `db/`에 | 검색 계약과 거르기 규칙을 한곳에. `db`는 표 정의만 | 설계 (design doc-review, 11/18 허용) | ADR 0003 폴더 |
 
 - ADR 세 조건을 다 맞는 결정은 없다고 본다. 표 나누기는 되돌릴 때 마이그레이션 하나와 덤프 다시 뽑기라 "되돌리기 어렵다"가 약하다.
 
