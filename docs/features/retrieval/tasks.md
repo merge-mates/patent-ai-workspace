@@ -103,7 +103,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m2-i2  (11/20)  상태: 초안  (A2, 이슈 번호는 승인 뒤)
+## m2-i2  (11/20)  상태: 승인  (A2, 이슈 번호는 아침에. 11/18 승인, 상대 리뷰는 PR에서)
 **구현할 design 부분**: design.md 5-1 표·Postgres 저장소, 5-2   **맡은 합격 기준**: requirements.md 2, 6(있으면 좋음), 7(있으면 좋음)
 **목표** (한 줄): 조각 표 두 개를 마이그레이션으로 만들고, Postgres 저장소와 말뭉치별 덤프·받기를 채운다.
 **끝나면 보여 줄 것** (데모 한 줄): `make db` 뒤 `make test-db` 통과, `make index-dump CORPUS=cite`가 `data/index/cite-idx-v1.dump`와 `.revision`을 만든다.
