@@ -14,4 +14,4 @@ description: 지금 브랜치의 PR 제목과 본문 초안을 팀 틀에 맞춰
    git push -u origin <브랜치>
    gh pr create --title "<제목>" --body-file work/pr-draft.md --assignee @me
    ```
-6. PR을 만들면 훅(`.claude/hooks/board-sync.sh`)이 이슈 #N 카드를 **In Review**로 옮긴다. 훅 메시지("보드: #N → In Review")가 안 보이면 `.claude/scripts/board-status.sh N "In Review"`를 직접 돌리고, 실패하면 이유를 사람에게 전한다.
+6. PR을 만들면 늘 이슈 #N 카드를 **In Review**로 옮긴다: `.claude/scripts/board-status.sh N "In Review"`. 출력("보드: #N → In Review")을 사람에게 보여 주고, 실패하면 이유를 사람에게 전한다.
