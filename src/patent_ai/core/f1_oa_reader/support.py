@@ -42,6 +42,8 @@ _KEY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     (re.compile(r"(?<![A-Za-z])US\s*(\d{4})\s*/\s*(\d{7})\s*(A[1-9])(?!\d)"), "US{0}{1}{2}"),
     (re.compile(r"(?<![A-Za-z])JP\s*(\d{4})-?(\d{6})\s*(A)(?![A-Za-z])"), "JP{0}{1}{2}"),
+    # 특개(공개)·특표(공표)는 정의상 종류 코드 A
+    (re.compile(r"특[개표]\s*(\d{4})-?(\d{6})\s*호?"), "JP{0}{1}A"),
 ]
 
 

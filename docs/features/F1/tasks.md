@@ -233,6 +233,7 @@ graph LR
 graph LR
     task-1 --> task-3
     task-2 --> task-3
+    task-3 --> task-4
 ```
 
 ### task-1: 규칙 추출 (번호·날짜 글자·조문·청구항 범위·통지 종류)
@@ -262,6 +263,14 @@ graph LR
 - 확인 방법: `uv run pytest tests/core/f1/test_read_oa.py -q` → 모두 통과 (API 키 없이)
 - 먼저: task-1, task-2, #13 task-3
 
+### task-4: 결과 값 모양을 정답 형식에 맞추기 (11/19 결정)
+- 담당: 재아
+- 합격 기준: requirements.md 1·2·9 (값 모양이 정답 형식과 같아야 채점기가 비교함)
+- 고칠 파일: `src/patent_ai/core/f1_oa_reader/{rules,support,read_oa,extraction}.py`, `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `prompts/f1/read_oa.md`, `docs/features/F1/design.md`, `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/`
+- 만든 함수·칸: `support.citation_key(text) -> str | None`(인용문헌 키 꼴: KR·US·JP, 종류 코드가 없으면 None), `rules.parse_cited_locations(raw) -> list[str] | None`(식별번호 `[0016]`·`[0080]-[0081]`·`도 4c`·`청구항 9`·`요약`·`3:5-10`), `OAResult.examined_claims`(심사 대상 청구항, `청구항 전항` 펼칠 때 씀), `Rejection.no`, `Citation.label`, 출원·발송번호 숫자만, 조문 호 여럿 `29-1-1|29-1-2`
+- 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과
+- 먼저: task-3
+
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
 - 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
@@ -271,10 +280,11 @@ graph LR
 - [x] task-1
 - [x] task-2
 - [x] task-3
+- [x] task-4
 - 다음: tune 점수 (#20·#22 뒤), /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
 ### 끝난 뒤 (11/19)
 - 된 것: 규칙 추출(rules.py: 번호·날짜 글자·조문·청구항·통지 종류 initial/final/unknown, 본문 속 최후 언급 거름, 조의N 거부), 원문 대조·합치기(verify.py: 값은 원문 글자에서 다시 뽑음, 한쪽이라도 애매하면 확인되지 않음), 지원 표(support.py: 29-1-1·29-1-2·29-2·42-4-2, 나라 판정), `read_oa(pages, document_id, oa_id, run_id, *, ctx)` + OAExtraction·프롬프트·config/f1.yaml. 조문을 모르면 결과 status에 넣고 힌트 칸 누락을 확인되지 않음으로(공유 스키마 oa_result.py 규칙 변경, 문서 맞춤). `uv run pytest -q` 289 passed. /check: 증거 통과, 이슈 리뷰 막음 없음. 진짜 모델 호출 없음(FakeTransport 답만).
-- 안 된 것·사람 판단: tune 점수(#20·#22 뒤). 프롬프트가 진짜 모델에서 도는지(scripts/record_llm.py, 비용 작음, 사람 확인 뒤). 코드(테스트 제외) 약 660줄로 400줄 기준을 넘음. 정답 형식과 값 모양 차이(출원번호 하이픈, 조문 kind, 인용 key, 식별번호 범위 `[0080]-[0081]`, 청구항 줄 단위 위치, "청구항 전항", "제1호 및 제2호") — 채점기 #20 전에 정함. 호 없는 "제29조제1항"은 지원 안 함으로 둠(Claude 판단). 칸 제목 표기·인용 표기·OA 쪽 수는 [가정](#22 표본으로).
+- 안 된 것·사람 판단: tune 점수(#20·#22 뒤). 프롬프트가 진짜 모델에서 도는지(scripts/record_llm.py, 비용 작음, 사람 확인 뒤). 코드(테스트 제외) 약 660줄로 400줄 기준을 넘음. 값 모양은 task-4에서 맞춤, 구조 차이(claim_rows·clarity_terms·kind)는 work/gold_diff_f1.md 4절. 호 없는 "제29조제1항"은 지원 안 함으로 둠(Claude 판단). 칸 제목 표기·인용 표기·OA 쪽 수는 [가정](#22 표본으로).
 - 다음 이슈로: config/f1.yaml max_input_tokens, 가격 키(비용 기록).

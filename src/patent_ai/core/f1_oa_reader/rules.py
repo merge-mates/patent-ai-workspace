@@ -191,12 +191,14 @@ def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
 # ---- 인용 위치(식별번호 칸) ----
 # 정답 형식(f1-oa-gold.md 2.4): 문단 `[0016]`, 범위 `[0080]-[0081]`, 도면 `도 4c`,
 # 인용문헌 청구항 `청구항 9`, `요약`, 미국 칼럼·줄 `3:5-10`
-_LOC_NOISE = re.compile(r"식별번호|단락\s*번호|단락|문단|paragraphs?|para\.?", re.IGNORECASE)
+_LOC_NOISE = re.compile(
+    r"등\s*참조|참조|식별번호|단락\s*번호|단락|문단|paragraphs?|para\.?", re.IGNORECASE
+)
 _LOC_TOKEN = re.compile(
     r"""
     (?P<range>\[\s*(?P<ra>\d+)\s*\]\s*(?:-|~|내지)\s*\[\s*(?P<rb>\d+)\s*\])
     |\[(?P<group>[\d\s,~\-]+)\]
-    |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?)
+    |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?(?:\s*(?:,|및)\s*\d+[A-Za-z]?(?![\d:A-Za-z]|\s*:))*)
     |청구항\s*제?\s*(?P<claim>\d+)\s*항?
     |(?P<abstract>요약)
     |(?:col\.?\s*)?(?P<col>\d+)\s*(?::|,\s*ll?\.?)\s*(?P<l1>\d+)(?:\s*[-~]\s*(?P<l2>\d+))?
@@ -248,7 +250,7 @@ def parse_cited_locations(raw: str) -> list[str] | None:
         elif m.group("group") is not None:
             found = _paragraph_group(m.group("group"))
         elif m.group("fig"):
-            found = [f"도 {m.group('fig')}"]
+            found = [f"도 {n}" for n in re.findall(r"\d+[A-Za-z]?", m.group("fig"))]
         elif m.group("claim"):
             found = [f"청구항 {int(m.group('claim'))}"]
         elif m.group("abstract"):
