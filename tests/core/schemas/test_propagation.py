@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+from pydantic import ValidationError
 
 from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult, MissingMaterial
 from patent_ai.core.schemas.common import (
@@ -107,6 +108,28 @@ def test_결과_0개면_빈_목록과_경고(caplog):
     assert caplog.records
 
 
+def test_결과_0개여도_빠진_자료_줄은_남고_경고도_남음(caplog):
+    m = CaseMaterials(
+        case_id="c1",
+        missing=[
+            MissingMaterial(
+                what="인용문헌 2",
+                lookup_result=LookupResult.BODY_MISSING,
+                ask_upload=True,
+            )
+        ],
+    )
+    with caplog.at_level(logging.WARNING):
+        items = collect_review_items([], m)
+    assert [i.kind for i in items] == ["missing_material"]
+    assert caplog.records
+
+
+def test_ReviewItem은_모르는_칸을_거부():
+    with pytest.raises(ValidationError):
+        ReviewItem(kind="unverified", target="t", label="l", reason="r", extra="x")
+
+
 def test_결과는_있는데_검토할_사항_0건이면_경고_없음(caplog):
     with caplog.at_level(logging.WARNING):
         assert collect_review_items([ResultBase(status=OK)], _empty_materials()) == []
@@ -130,38 +153,42 @@ def _citation(number, country, supported, flags=(), country_status=OK):
     }
 
 
+def _rej_fields(article, supported=True, citations=(), flags=()):
+    return {
+        "article": _ev(article),
+        "supported": supported,
+        "claims": _ev([1]),
+        "citations": list(citations),
+        "examiner_reasoning": _ev("요지"),
+        "flags": list(flags),
+    }
+
+
 def _rej(article, supported=True, citations=(), flags=()):
-    return build_rejection(
-        document_id="d_1",
-        article=_ev(article),
-        supported=supported,
-        claims=_ev([1]),
-        citations=list(citations),
-        examiner_reasoning=_ev("요지"),
-        flags=list(flags),
-    )
+    return build_rejection(document_id="d_1", **_rej_fields(article, supported, citations, flags))
 
 
-def _oa(rejections):
+def _oa(rejections, **override):
     none_value = {
         "value": None,
         "raw_text": None,
         "page": None,
         "status": Status(value=StatusValue.CONFIRMED, checked="원문에 칸 없음"),
     }
-    return build_oa_result(
-        document_id="d_1",
-        oa_id="oa_1",
-        application_number=_ev("10-2099-0000001"),
-        dispatch_number=_ev("9-5-2099-000000001"),
-        notice_date=_ev(None, "2099.01.26"),
-        response_due=_ev(None, "2099.03.26"),
-        notice_kind={**none_value, "value": "initial"},
-        examiner_hints=ExaminerHints(
+    fields = {
+        "oa_id": "oa_1",
+        "application_number": _ev("10-2099-0000001"),
+        "dispatch_number": _ev("9-5-2099-000000001"),
+        "notice_date": _ev(None, "2099.01.26"),
+        "response_due": _ev(None, "2099.03.26"),
+        "notice_kind": {**none_value, "value": "initial"},
+        "examiner_hints": ExaminerHints(
             allowable_claims={**none_value, "value": []}, amendment_note=none_value
         ),
-        rejections=rejections,
-    )
+        "rejections": rejections,
+    }
+    fields.update(override)
+    return build_oa_result(document_id="d_1", **fields)
 
 
 def test_OAResult_안쪽_지원_안_하는_거절이유와_나라가_직접_검토_필요로_뜸():
@@ -176,70 +203,148 @@ def test_OAResult_안쪽_지원_안_하는_거절이유와_나라가_직접_검�
     assert items == [
         ReviewItem(
             kind="needs_human_review",
-            target="oa_result.rejections[1]",
+            target="oa_result[0].rejections[1]",
             label="42-3",
             reason="지원 안 하는 거절이유 42-3",
         ),
         ReviewItem(
             kind="needs_human_review",
-            target="oa_result.rejections[1].citations[0]",
+            target="oa_result[0].rejections[1].citations[0]",
             label="JP 2099-1",
             reason="지원 안 하는 나라 JP",
         ),
     ]
 
 
-def test_OAResult_인용문헌_나라를_못_정하면_원인_한_곳에만_줄이_뜸():
-    unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
-    c = _citation("US 2099/0000001", None, False, [Flag.NEEDS_HUMAN_REVIEW], unknown)
-    items = collect_review_items([_oa([_rej("29-2", citations=[c])])], _empty_materials())
-    target = "oa_result.rejections[0].citations[0]"
-    # 위 거절이유·OAResult의 unverified는 같은 원인이라 다시 세지 않는다
-    assert items == [
-        ReviewItem(kind="unverified", target=target, label="US 2099/0000001", reason="ambiguous"),
+def test_제출기일과_거절이유_청구항이_확인되지_않으면_필드마다_한_줄():
+    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    rej = build_rejection(
+        document_id="d_1",
+        article=_ev("29-2"),
+        supported=True,
+        claims=_ev(None, status=bad),
+        citations=[],
+        examiner_reasoning=_ev("요지"),
+    )
+    oa = _oa([rej], response_due=_ev(None, "2099.03.26", status=bad))
+    assert collect_review_items([oa], _empty_materials()) == [
+        ReviewItem(
+            kind="unverified",
+            target="oa_result[0].response_due",
+            label="oa_1",
+            reason="not_extracted",
+        ),
+        ReviewItem(
+            kind="unverified",
+            target="oa_result[0].rejections[0].claims",
+            label="29-2",
+            reason="not_extracted",
+        ),
+    ]
+
+
+def test_청구항_못_뽑음과_인용_나라_못_정함은_필드마다_따로_한_줄씩():
+    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    amb = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+    c = _citation("US 2099/0000001", None, False, [Flag.NEEDS_HUMAN_REVIEW], amb)
+    rej = build_rejection(
+        document_id="d_1",
+        article=_ev("29-2"),
+        supported=True,
+        claims=_ev(None, status=bad),
+        citations=[c],
+        examiner_reasoning=_ev("요지"),
+    )
+    target = "oa_result[0].rejections[0]"
+    assert collect_review_items([_oa([rej])], _empty_materials()) == [
+        ReviewItem(
+            kind="unverified", target=f"{target}.claims", label="29-2", reason="not_extracted"
+        ),
+        ReviewItem(
+            kind="unverified",
+            target=f"{target}.citations[0].country",
+            label="US 2099/0000001",
+            reason="ambiguous",
+        ),
         ReviewItem(
             kind="needs_human_review",
-            target=target,
+            target=f"{target}.citations[0]",
             label="US 2099/0000001",
             reason="나라를 못 정함 (원문)",
         ),
     ]
 
 
-def test_거절이유_자기_칸이_원인이면_그_거절이유_줄_하나와_OAResult_줄은_안_셈():
-    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+def test_지원_안_하는_거절이유_안의_확인되지_않은_필드도_한_줄씩():
+    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
     rej = build_rejection(
         document_id="d_1",
-        article=_ev("29-2", status=bad),
-        supported=True,
-        claims=_ev([1]),
+        article=_ev("42-3"),
+        supported=False,
+        claims=_ev(None, status=bad),
         citations=[],
         examiner_reasoning=_ev("요지"),
+        flags=[Flag.NEEDS_HUMAN_REVIEW],
     )
-    items = collect_review_items([_oa([rej])], _empty_materials())
-    assert items == [
+    assert collect_review_items([_oa([rej])], _empty_materials()) == [
         ReviewItem(
-            kind="unverified", target="oa_result.rejections[0]", label="29-2", reason="ambiguous"
+            kind="unverified",
+            target="oa_result[0].rejections[0].claims",
+            label="42-3",
+            reason="not_extracted",
+        ),
+        ReviewItem(
+            kind="needs_human_review",
+            target="oa_result[0].rejections[0]",
+            label="42-3",
+            reason="지원 안 하는 거절이유 42-3",
+        ),
+    ]
+
+
+def test_충돌_필드는_conflict_한_줄():
+    cands = [
+        {"value": v, "raw_text": v, "page": 1, "source": s}
+        for v, s in (("a", "rule"), ("b", "model"))
+    ]
+    conflict = {
+        "value": None,
+        "raw_text": None,
+        "page": None,
+        "status": Status(value=StatusValue.CONFLICT),
+        "candidates": cands,
+    }
+    oa = _oa([_rej("29-2")], application_number=conflict)
+    assert collect_review_items([oa], _empty_materials()) == [
+        ReviewItem(
+            kind="conflict",
+            target="oa_result[0].application_number",
+            label="oa_1",
+            reason="값이 서로 충돌",
         )
     ]
 
 
-def test_OAResult_자기_칸이_원인이면_OAResult_줄_하나():
-    oa = _oa([_rej("29-2")])
+def test_OAResult_결과가_여럿이어도_경로는_늘_oa_result_인덱스():
     bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
-    fields = {k: getattr(oa, k) for k in ("oa_id", "notice_date", "response_due", "notice_kind")}
-    oa2 = build_oa_result(
-        document_id="d_1",
-        **{**fields, "notice_kind": oa.notice_kind},
-        application_number=_ev("10-2099-0000001", status=bad),
-        dispatch_number=oa.dispatch_number,
-        examiner_hints=oa.examiner_hints,
-        rejections=oa.rejections,
-    )
-    items = collect_review_items([oa2], _empty_materials())
-    assert items == [
-        ReviewItem(kind="unverified", target="oa_result", label="oa_1", reason="not_extracted")
+    oa = _oa([_rej("29-2")], response_due=_ev(None, "2099.03.26", status=bad))
+    items = collect_review_items([_oa([_rej("29-2")]), oa], _empty_materials())
+    assert [i.target for i in items] == ["oa_result[1].response_due"]
+
+
+def test_OAResult_다시_확인_표시는_결과_자리에서_한_줄():
+    oa = mark_recheck(_oa([_rej("29-2")]), "앞 입력이 바뀜")
+    assert collect_review_items([oa], _empty_materials()) == [
+        ReviewItem(
+            kind="needs_recheck", target="oa_result[0]", label="oa_1", reason="앞 입력이 바뀜"
+        )
     ]
+
+
+def test_build_oa_result는_거절이유를_dict로_받아도_됨():
+    oa = _oa([_rej_fields("29-2")])
+    assert oa.rejections[0].article.value == "29-2"
+    assert oa.rejections[0].evidence  # build_rejection으로 만들어짐
 
 
 def test_OAResult가_멀쩡하면_검토할_사항_없음():

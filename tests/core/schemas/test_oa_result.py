@@ -258,6 +258,28 @@ def test_쪽이_있는_값마다_document_id_page_raw_text를_모은다():
     assert rejection().evidence  # 거절이유 하나도 같은 규칙
 
 
+def test_evidence는_확인됨이고_쪽이_있는_값만():
+    bad_claims = ev([1], raw="제1항", page=2, status=BAD)
+    fields = rej_fields()
+    fields["claims"] = bad_claims
+    r = build_rejection(document_id="d_1", **fields)
+    raws = [e.raw_text for e in r.evidence]
+    assert "제1항" not in raws  # unverified 값은 대조에 통과하지 못함
+    assert "원문" in raws  # confirmed + 쪽 있는 값은 들어감
+
+
+def test_summarize는_모르는_필드_이름이면_TypeError():
+    with pytest.raises(TypeError):
+        summarize_rejection_status(
+            article=ev("29-2"), claims=ev([1]), citations=[], examiner_reasoning=ev("x"), oops=1
+        )
+
+
+def test_build_rejection은_모르는_필드_이름이면_TypeError():
+    with pytest.raises(TypeError):
+        build_rejection(document_id="d_1", **rej_fields(), oops=1)
+
+
 # ---------- 빈 입력 ----------
 
 
