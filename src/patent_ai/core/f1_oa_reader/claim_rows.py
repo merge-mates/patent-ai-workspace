@@ -55,7 +55,7 @@ def _need(item: Item | None, pages: PageText) -> str:
 
 
 def _all_items(r: ClaimRowExtraction) -> list[Item | None]:
-    items: list[Item | None] = [r.claims, r.judgment, *r.same_as, *r.clarity_terms]
+    items: list[Item | None] = [r.claims, r.judgment, r.no_location, *r.same_as, *r.clarity_terms]
     for c in r.citations:
         items += [c.number, c.location, c.no_location]
     return items
@@ -184,6 +184,17 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
         if found:
             locations[label] = _unique([*locations.get(label, []), *found])
     out["label_note"] = noted
+    if r.no_location is not None:
+        # 인용이 하나도 없는 줄의 위치 없음: 표현이 이 줄 판단 원문 안에 있어야 한다
+        expression = _need(r.no_location, pages).strip(_QUOTE_CHARS)
+        if not expression or _squash(expression) not in _squash(judgment):
+            raise _Fail()
+        if citations:
+            logger.warning(
+                "인용이 있는 줄의 줄 단위 위치 없음은 쓰지 않음 (인용 안 no_location 사용)"
+            )
+        else:
+            out["no_location"] = f"{_NO_LOCATION} ({expression})"
     out["citations"] = _unique(citations)
     out["locations"] = locations
     return out

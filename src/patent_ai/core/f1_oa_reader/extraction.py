@@ -55,6 +55,7 @@ class ClaimRowExtraction(BaseModel):
     claims: Item | None = None  # 청구항 번호 원문 (제5-7항이면 줄 셋으로 펼침)
     rejection: int | None = None  # 거절이유 표 순번
     citations: list[RowCitationExtraction] = []
+    no_location: Item | None = None  # 인용이 하나도 없는 줄의 위치 없음 표현 원문 (설계 사항 등)
     same_as: list[Item] = []  # 같은 취지 대상 원문 (제1항과 동일한 취지, 1-1에서 본 바와 같이)
     clarity_terms: list[Item] = []  # 명확성 문제 표현 원문 (따옴표 안 글자)
     clarity_reason: str | None = None  # 참고용 한 구

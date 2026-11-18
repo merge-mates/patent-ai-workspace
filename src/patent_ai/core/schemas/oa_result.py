@@ -125,6 +125,7 @@ class Rejection(ResultBase):
         return {k: getattr(self, k) for k in _REJECTION_FIELD_NAMES}
 
 
+_NO_LOCATION_FORM = re.compile(r"위치 없음 \(.+\)")
 _SAME_AS_FORM = re.compile(r"(claim|rejection):[1-9]\d*")  # 같은 취지 대상 꼴
 
 
@@ -146,6 +147,8 @@ class ClaimRow(BaseModel):
     clarity_terms: list[str] = Field(default_factory=list)  # 명확성 줄의 문제 표현 (따옴표 안 글자)
     clarity_reason: str | None = None  # 참고용 한 구 (모델이 쓴 글, 원문 대조 안 함, 채점 밖)
     clarity_reason_origin: Origin | None = None  # 이유가 있으면 ai_generated
+    # 인용이 하나도 없는 줄의 `위치 없음 (<OA 표현>)` (3절 4). 인용이 있는 줄은 locations[라벨]
+    no_location: str | None = None
     raw_text: str | None = None  # 이 줄 판단이 적힌 원문 글자
     page: int | None = None
     status: Status
@@ -162,6 +165,11 @@ class ClaimRow(BaseModel):
             raise ValueError(
                 "clarity_reason이 있으면 clarity_reason_origin은 ai_generated, 없으면 null"
             )
+        if self.no_location is not None:
+            if not _NO_LOCATION_FORM.fullmatch(self.no_location):
+                raise ValueError("no_location은 `위치 없음 (<OA 표현>)` 꼴")
+            if self.locations or self.clarity_terms:
+                raise ValueError("no_location은 locations·clarity_terms와 같이 둘 수 없음")
         if set(self.locations) - set(self.citations):
             raise ValueError("locations의 라벨은 citations에 있어야 함")
         if self.status.value == StatusValue.CONFIRMED:
@@ -170,7 +178,11 @@ class ClaimRow(BaseModel):
         elif self.status.value == StatusValue.UNVERIFIED:
             kept = (self.citations, self.locations, self.same_as, self.clarity_terms)
             has_values = (
-                any(kept) or self.clarity_reason is not None or bool(self.raw_text) or self.page
+                any(kept)
+                or self.clarity_reason is not None
+                or self.no_location is not None
+                or bool(self.raw_text)
+                or self.page
             )
             if self.status.reason == UnverifiedReason.AMBIGUOUS:
                 # 애매한 줄(예: 인용이 여럿인데 판단 원문에 인용 번호가 없음)은 값·원문·쪽을 남겨

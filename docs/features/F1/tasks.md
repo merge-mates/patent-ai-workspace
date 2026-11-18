@@ -316,8 +316,8 @@ graph LR
 - [x] task-4
 - [x] task-5
 - [x] task-6
-- [ ] task-7
-- 다음: task-7 (11/19 아침), tune 점수 (#20·#22 뒤), /pr-draft
+- [x] task-7
+- 다음: tune 점수 (#20·#22 뒤), /pr-draft
 - 막힌 것: 
 
 ### 끝난 뒤 (11/19)
