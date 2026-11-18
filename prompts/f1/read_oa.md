@@ -29,7 +29,25 @@
     }
   ],
   "allowable_claims": {"value": null, "raw_text": "「특허 가능한 청구항」 칸의 청구항 글자", "page": 3, "ambiguous": false},
-  "amendment_note": {"value": null, "raw_text": "【보정에 관한 참고사항】 칸의 글자", "page": 3, "ambiguous": false}
+  "amendment_note": {"value": null, "raw_text": "【보정에 관한 참고사항】 칸의 글자", "page": 3, "ambiguous": false},
+  "claim_rows": [
+    {
+      "claims": {"value": null, "raw_text": "제5-7항", "page": 4, "ambiguous": false},
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": {"value": null, "raw_text": "[0069]", "page": 4, "ambiguous": false},
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {"value": null, "raw_text": "그 청구항 판단이 적힌 문장 그대로", "page": 4, "ambiguous": false}
+    }
+  ]
 }
 
 - 인용문헌 번호(number)는 통지서의 표기를 그대로 옮깁니다 (예: 공개특허공보 제10-2099-0000001호, US 2020/0123456 A1). 번호 꼴을 바꾸거나 종류 코드를 덧붙이지 마세요.
@@ -38,6 +56,15 @@
 - 인용문헌에 식별번호(인용 문단)가 없으면 cited_paragraphs는 null입니다.
 - 「특허 가능한 청구항」 칸과 보정 참고사항 칸이 통지서에 없으면 해당 값은 null입니다. 보정 참고사항 칸의 제목은 【보정에 관한 참고사항】 또는 「보정서 제출시 참고사항」으로 적혀 있을 수 있습니다. 칸이 있으면 반드시 그 내용을 뽑으세요.
 - 거절이유가 하나도 없으면 rejections는 빈 목록입니다.
+청구항 줄(claim_rows) 규칙: 한 줄 = 청구항 하나 x 거절이유 하나. 심사관이 청구항 판단을 적은 곳마다 줄을 만듭니다.
+- 거절이유가 없는 청구항은 줄을 만들지 않습니다. 청구항이 아닌 곳(발명의 설명 등)이 대상인 이유도 줄을 만들지 않습니다.
+- claims는 그 판단이 가리키는 청구항 글자 그대로입니다. 여러 청구항을 한 번에 짚으면(제5-7항) 줄 하나에 그 글자를 적고 번호로 펼치지 마세요.
+- rejection은 거절이유 표의 순번(숫자)입니다. judgment는 그 청구항 판단이 적힌 문장을 한 글자도 바꾸지 말고 옮깁니다.
+- 인용문헌은 라벨(인용발명 1이면 D1, 인용발명 2면 D2) 또는 인용 원문(number)으로 적습니다. 결합이면(인용발명 1 내지 2의 결합) 인용을 둘 다 적고, 위치는 심사관이 짚은 인용에만 적습니다.
+- location은 심사관이 짚은 위치 글자 그대로입니다(문단 번호, 도면, 청구항, 요약, 도면 부호). 번호 꼴을 고치지 마세요. 위치를 안 짚고 "단순 부가", "설계 사항"처럼만 적었으면 location은 null이고 no_location에 그 표현을 적습니다.
+- 다른 청구항·거절이유를 가리키기만 하면(제1항과 동일한 취지, 거절이유 2와 같고, 1-1에서 본 바와 같이) same_as에 그 대상 글자를 적고 위치는 비웁니다. 자기 위치도 같이 적혀 있으면 둘 다 적습니다.
+- 명확성 거절이유의 줄은 인용 대신 clarity_terms에 심사관이 따옴표로 짚은 표현 글자를 적고, clarity_reason에 이유를 짧게 적습니다. 따옴표로 짚지 않았으면 clarity_terms는 빈 목록입니다.
+
 - examiner_reasoning만 value에 요약을 적습니다. 나머지 value는 null로 둬도 됩니다.
 
 통지서 글자

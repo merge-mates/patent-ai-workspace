@@ -9,6 +9,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from patent_ai.core.f1_oa_reader.claim_rows import build_claim_rows
 from patent_ai.core.f1_oa_reader.extraction import (
     CitationExtraction,
     Item,
@@ -250,6 +251,9 @@ def read_oa(
     rejections = [
         _rejection(i, r, pages, examined, labels) for i, r in enumerate(model.rejections, start=1)
     ]
+    claim_rows = build_claim_rows(model.claim_rows, rejections, pages, _claims_parser(examined))
+    if not claim_rows and any(r["supported"] for r in rejections):
+        logger.warning("read_oa %s: 모델이 청구항 줄(claim_rows)을 하나도 주지 않음", oa_id)
     return build_oa_result(
         document_id=document_id,
         oa_id=oa_id,
@@ -281,4 +285,5 @@ def read_oa(
             amendment_note=_hint_note(model.amendment_note, pages),
         ),
         rejections=rejections,
+        claim_rows=claim_rows,
     )

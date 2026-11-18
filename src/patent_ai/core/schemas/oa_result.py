@@ -5,6 +5,7 @@ status는 칸들에서 모은 값과 같아야 한다 (검사로 강제). 만드
 """
 
 import logging
+import re
 from enum import StrEnum
 from typing import Any
 
@@ -123,6 +124,51 @@ class Rejection(ResultBase):
         return {k: getattr(self, k) for k in _REJECTION_FIELD_NAMES}
 
 
+_SAME_AS_FORM = re.compile(r"(claim|rejection):[1-9]\d*")  # 같은 취지 대상 꼴
+
+
+class ClaimRow(BaseModel):
+    """청구항 줄 하나 = 청구항 x 거절이유 (정답 형식 2.4, 채점 단위).
+
+    값은 원문 대조를 통과했을 때만 둔다. 대조에 떨어지면 status가 unverified이고 값은 비어 있다
+    (청구항·거절이유 번호만 어느 줄인지 알리려고 남길 수 있음).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim: int | None  # OA 시점 청구항 번호 (못 읽으면 null + unverified)
+    rejection: int | None  # Rejection.no
+    citations: list[str] = Field(default_factory=list)  # 라벨. 결합이면 여럿
+    # 라벨 -> 정답 꼴 위치. 위치 없음이면 ["위치 없음 (<OA 표현>)"], 짚지 않은 인용은 키 없음
+    locations: dict[str, list[str]] = Field(default_factory=dict)
+    same_as: list[str] = Field(default_factory=list)  # `claim:<n>`·`rejection:<n>`
+    clarity_terms: list[str] = Field(default_factory=list)  # 명확성 줄의 문제 표현 (따옴표 안 글자)
+    clarity_reason: str | None = None  # 참고용 한 구
+    raw_text: str | None = None  # 이 줄 판단이 적힌 원문 글자
+    page: int | None = None
+    status: Status
+
+    @model_validator(mode="after")
+    def _검사(self) -> ClaimRow:
+        if self.page is not None and (self.raw_text is None or not self.raw_text.strip()):
+            raise ValueError("page가 있으면 raw_text는 비어 있지 않아야 함")
+        if any(not _SAME_AS_FORM.fullmatch(x) for x in self.same_as):
+            raise ValueError("same_as는 `claim:<번호>`·`rejection:<번호>` 꼴")
+        if set(self.locations) - set(self.citations):
+            raise ValueError("locations의 라벨은 citations에 있어야 함")
+        if self.status.value == StatusValue.CONFIRMED:
+            if None in (self.claim, self.rejection, self.raw_text, self.page):
+                raise ValueError("confirmed 줄은 청구항·거절이유 번호와 원문 글자·쪽이 있어야 함")
+        elif self.status.value == StatusValue.UNVERIFIED:
+            # 대조에 떨어진 줄은 값을 남기지 않는다 (지어내지 않음)
+            kept = (self.citations, self.locations, self.same_as, self.clarity_terms)
+            if any(kept) or self.clarity_reason is not None or self.raw_text or self.page:
+                raise ValueError("unverified 줄은 값·원문 글자·쪽을 비워 둬야 함")
+        else:
+            raise ValueError("청구항 줄 status는 confirmed 또는 unverified")
+        return self
+
+
 class ExaminerHints(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -141,9 +187,11 @@ class OAResult(ResultBase):
     examined_claim_version: ExtractedValue[str] | None = None  # F1은 안 채움 (#16·#54)
     examiner_hints: ExaminerHints
     rejections: list[Rejection] = Field(default_factory=list)
+    claim_rows: list[ClaimRow] = Field(default_factory=list)  # 정답 형식 2.4 청구항 줄
 
     @model_validator(mode="after")
     def _모양_검사(self) -> OAResult:
+        self._줄_검사()
         # 날짜·기한은 원문 글자만 둔다
         for name in ("notice_date", "response_due"):
             if getattr(self, name).value is not None:
@@ -159,6 +207,23 @@ class OAResult(ResultBase):
             raise ValueError(f"status {self.status.value}가 칸을 모은 값 {expected.value}와 다름")
         return self
 
+    def _줄_검사(self) -> None:
+        """청구항 줄은 지원하는 거절이유만 가리키고, 명확성 줄과 그 밖의 줄은 칸이 다르다."""
+        by_no = {r.no: r for r in self.rejections}
+        for row in self.claim_rows:
+            if row.rejection is None:
+                continue
+            rej = by_no.get(row.rejection)
+            if rej is None:
+                raise ValueError(f"청구항 줄이 없는 거절이유 {row.rejection}을 가리킴")
+            if not rej.supported:
+                raise ValueError("지원 안 하는 거절이유는 청구항 줄을 만들지 않음")
+            if rej.kind == RejectionKind.CLARITY:  # 명확성 줄은 인용 대신 표현
+                if row.citations or row.locations:
+                    raise ValueError("명확성 줄에는 인용·위치를 두지 않음")
+            elif row.clarity_terms or row.clarity_reason is not None:
+                raise ValueError("명확성이 아닌 줄에는 명확성 표현을 두지 않음")
+
 
 # status를 모을 때 쓰는 칸 이름. 모르는 이름은 summarize_*가 TypeError로 거부한다
 _REJECTION_FIELD_NAMES = ("article", "claims", "citations", "examiner_reasoning")
@@ -173,6 +238,7 @@ _OA_FIELD_NAMES = (
     "examined_claim_version",
     "examiner_hints",
     "rejections",
+    "claim_rows",
 )
 
 
@@ -220,8 +286,11 @@ def summarize_status(
     examiner_hints: ExaminerHints,
     rejections: list[Rejection],
     examined_claim_version: ExtractedValue | None = None,
+    claim_rows: list[ClaimRow] | None = None,
 ) -> Status:
-    """결과 전체 status: 칸들 중 가장 나쁜 값 (순서: 식별 정보 -> 통지 -> 거절이유 -> 힌트).
+    """결과 전체 status: 칸들 중 가장 나쁜 값.
+
+    순서: 식별 정보 -> 통지 -> 거절이유 -> 청구항 줄 -> 힌트.
 
     지원 안 하는 거절이유(supported=false)는 빼고 모은다. 거절이유가 0개면
     unverified(not_extracted)로 두고 경고를 남긴다.
@@ -262,6 +331,7 @@ def summarize_status(
         statuses.append(examined_claim_version.status)
     # 지원 안 하는 이유는 조문이 확인됨일 때만 뺀다. 조문을 모르면(unverified·conflict) 넣는다
     statuses += [r.status for r in rejections if not _excluded(r)]
+    statuses += [_as(ClaimRow, row).status for row in claim_rows or []]
     statuses += [examiner_hints.allowable_claims.status, examiner_hints.amendment_note.status]
     return worst_status(statuses, ALL_CHECKED)
 
@@ -297,6 +367,11 @@ def collect_evidence(result: Rejection | OAResult, document_id: str) -> list[Evi
     found = _evidence_of(values, document_id)
     for r in result.rejections:  # 거절이유 안의 근거도 모은다
         found += collect_evidence(r, document_id)
+    found += [  # 확인된 청구항 줄의 판단 원문
+        Evidence(document_id=document_id, page=row.page, raw_text=row.raw_text)
+        for row in result.claim_rows
+        if row.page is not None and row.status.value == StatusValue.CONFIRMED
+    ]
     return found
 
 
@@ -327,6 +402,7 @@ def build_oa_result(*, document_id: str, **fields: Any) -> OAResult:
             build_rejection(document_id=document_id, **r) if isinstance(r, dict) else r
             for r in fields.get("rejections", [])
         ],
+        "claim_rows": [_as(ClaimRow, row) for row in fields.get("claim_rows", [])],
     }
     summary = {k: fields[k] for k in _OA_FIELD_NAMES if k in fields}
     draft = OAResult(**fields, status=summarize_status(**summary))

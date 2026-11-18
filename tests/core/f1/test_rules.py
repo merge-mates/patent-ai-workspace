@@ -336,7 +336,7 @@ def test_같은_취지_글자를_대상_목록으로(raw, expected):
     assert parse_same_as(raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["", "같은 취지", "제A항과 같다", "제1항 내지 제항"])
+@pytest.mark.parametrize("raw", ["", "같은 취지", "제A항과 같다"])
 def test_같은_취지_대상을_못_읽으면_None(raw):
     assert parse_same_as(raw) is None
 

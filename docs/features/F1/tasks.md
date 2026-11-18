@@ -95,7 +95,7 @@ graph LR
 ### task-6: 청구항 줄 `claim_rows`와 명확성 표현 (11/19 승인)
 - 담당: 재아
 - 합격 기준: requirements.md 1·3·9 (정답 형식 2.4 청구항 줄, 3절 애매한 경우 1~11, 4절 JSON)
-- 고칠 파일: `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `src/patent_ai/core/f1_oa_reader/{rules,read_oa,extraction}.py`, `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2 JSON·필드 출처 표), `docs/data-model.md`(① 줄), `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`, `tests/fixtures/case_missing_citation/*.json`(`build_*` 도우미로 다시 만듦)
+- 고칠 파일: `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `src/patent_ai/core/f1_oa_reader/{rules,read_oa,extraction}.py`, 새 파일 `src/patent_ai/core/f1_oa_reader/claim_rows.py`(줄 대조), `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2 JSON·필드 출처 표), `docs/data-model.md`(① 줄), `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`, `tests/fixtures/case_missing_citation/*.json`(`build_*` 도우미로 다시 만듦)
 - 만들 칸·함수 모양: `ClaimRow{claim, rejection(=Rejection.no), citations: 라벨 목록, locations: {라벨: 정답 꼴 위치 목록}, same_as: [`claim:<n>`·`rejection:<n>`], clarity_terms, clarity_reason, raw_text, page, status}`, `OAResult.claim_rows`. 모델 추출 `OAExtraction.claim_rows`(청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현 원문, 같은 취지 원문, 명확성 표현 원문, 판단이 적힌 원문 글자·쪽). 코드가 원문 대조: 행 `raw_text`가 그 쪽에 있어야 confirmed, 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 값 안 씀), 명확성 표현은 따옴표 안 글자이고 원문에 있어야 함, 청구항 번호는 `expand_claims`. 대조 실패 → 그 행 `unverified(not_extracted)`, 값 버림
 - 정답 3절과 대응: 1 같은 취지 → locations 비우고 same_as만 / 2 짝 없는 같은 취지 → 펼친 목록 / 3 자기 위치 + 같은 취지 둘 다 / 4 위치 없음 → `위치 없음 (<OA 표현>)` / 5 도면 부호만 → 부호 그대로(`parse_cited_locations`에 부호 꼴 추가) / 6 `[16, 38, 78]` → `[0016]`… (task-4에서 됨) / 7 결합 진보성 → citations `D1`+`D2`, 위치는 짚은 것만 / 8 "1-1에서 본 바와 같이" → same_as `rejection:1` / 9 지원 안 하는 이유 → 거절이유 표에만, 줄 없음 / 10 묶어서 짚은 청구항 → 5·6·7 줄에 같은 위치 / 11 따옴표 없는 명확성 → clarity_terms 빈 목록
 - 결과 status 모으기·검토할 사항: `claim_rows` 행을 넣는다 (행 unverified → 그 행 경로 한 줄, 지원 안 하는 이유 행은 없음)
@@ -114,7 +114,7 @@ graph LR
 - [x] task-3
 - [x] task-4
 - [x] task-5
-- [ ] task-6
+- [x] task-6
 - [x] task-5
 - 다음: /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 

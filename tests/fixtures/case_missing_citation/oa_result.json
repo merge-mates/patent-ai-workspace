@@ -145,6 +145,27 @@
       "raw_text": "실시할 수 있",
       "edition": null,
       "checked_on": null
+    },
+    {
+      "document_id": "doc_oa_1",
+      "page": 2,
+      "raw_text": "쉽게 발명할 수 있",
+      "edition": null,
+      "checked_on": null
+    },
+    {
+      "document_id": "doc_oa_1",
+      "page": 2,
+      "raw_text": "쉽게 발명할 수 있",
+      "edition": null,
+      "checked_on": null
+    },
+    {
+      "document_id": "doc_oa_1",
+      "page": 3,
+      "raw_text": "불명확",
+      "edition": null,
+      "checked_on": null
     }
   ],
   "origin": "ai_generated",
@@ -615,6 +636,71 @@
           "searched_scope": null
         },
         "candidates": []
+      }
+    }
+  ],
+  "claim_rows": [
+    {
+      "claim": 1,
+      "rejection": 1,
+      "citations": [
+        "D1",
+        "D2"
+      ],
+      "locations": {
+        "D1": [
+          "[0023]",
+          "[0031]"
+        ]
+      },
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "raw_text": "쉽게 발명할 수 있",
+      "page": 2,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "2쪽 원문 대조",
+        "searched_scope": null
+      }
+    },
+    {
+      "claim": 2,
+      "rejection": 1,
+      "citations": [
+        "D1"
+      ],
+      "locations": {},
+      "same_as": [
+        "claim:1"
+      ],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "raw_text": "쉽게 발명할 수 있",
+      "page": 2,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "2쪽 원문 대조",
+        "searched_scope": null
+      }
+    },
+    {
+      "claim": 1,
+      "rejection": 2,
+      "citations": [],
+      "locations": {},
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "raw_text": "불명확",
+      "page": 3,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "3쪽 원문 대조",
+        "searched_scope": null
       }
     }
   ]

@@ -201,6 +201,7 @@ _LOC_TOKEN = re.compile(
     |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?(?:\s*(?:,|및)\s*\d+[A-Za-z]?(?![\d:A-Za-z]|\s*:))*)
     |청구항\s*제?\s*(?P<claim>\d+)\s*항?
     |(?P<abstract>요약)
+    |(?P<sign>[가-힣A-Za-z]+\s*\(\s*\d+[A-Za-z]?(?:\s*,\s*\d+[A-Za-z]?)*\s*\))
     |(?:col\.?\s*)?(?P<col>\d+)\s*(?::|,\s*ll?\.?)\s*(?P<l1>\d+)(?:\s*[-~]\s*(?P<l2>\d+))?
     """,
     re.VERBOSE,
@@ -255,6 +256,8 @@ def parse_cited_locations(raw: str) -> list[str] | None:
             found = [f"청구항 {int(m.group('claim'))}"]
         elif m.group("abstract"):
             found = ["요약"]
+        elif m.group("sign"):
+            found = [" ".join(m.group("sign").split())]  # 도면 부호만 짚음: 부호를 그대로 (3절 5)
         else:
             end = f"-{m.group('l2')}" if m.group("l2") else ""
             found = [f"{m.group('col')}:{m.group('l1')}{end}"]
@@ -264,3 +267,40 @@ def parse_cited_locations(raw: str) -> list[str] | None:
     if _LOC_SEPARATOR.sub("", text[pos:]):
         return None
     return out or None
+
+
+# ---- 청구항 줄: 같은 취지 대상, 따옴표 안 글자 ----
+_SAME_REJECTION = re.compile(r"거절\s*이유\s*(?:제\s*)?(\d+)")
+_SAME_SECTION = re.compile(r"(\d+)\s*-\s*\d+\s*에서\s*본\s*바와")  # "1-1에서 본 바와 같이"
+_CLAIM_LIST = re.compile(
+    r"(?:청구항\s*)?제?\s*\d+\s*항?(?:\s*(?:내지|~|-|,|및)\s*(?:청구항\s*)?제?\s*\d+\s*항?)*"
+)
+
+
+def parse_same_as(raw: str) -> list[str] | None:
+    """같은 취지 대상 글자 -> `claim:<n>` / `rejection:<n>` 목록 (정답 형식 3절 1·2·3·8).
+
+    `거절이유 2와 같고` -> [rejection:2], `1-1에서 본 바와 같이` -> [rejection:1],
+    `청구항 제1항 내지 제3항과 같` -> [claim:1, claim:2, claim:3] (묶음은 펼침).
+    대상을 못 읽으면 None (지어내지 않는다).
+    """
+    by_rejection = [f"rejection:{n}" for n in _SAME_REJECTION.findall(raw)]
+    if by_rejection:
+        return by_rejection
+    m = _SAME_SECTION.search(raw)
+    if m:
+        return [f"rejection:{m.group(1)}"]
+    for m in _CLAIM_LIST.finditer(raw):
+        if "항" not in m.group(0):  # 번호만 있는 조각(날짜 등)은 청구항이 아님
+            continue
+        numbers = expand_claims(m.group(0))
+        return [f"claim:{n}" for n in numbers] if numbers else None
+    return None
+
+
+_QUOTED = re.compile(r"[\'\"‘“「『](.+?)[\'\"’”」』]")
+
+
+def quoted_segments(text: str) -> list[str]:
+    """글자 속 따옴표 안 글자들 (명확성 문제 표현 후보, 정답 형식 2.4)."""
+    return [m.group(1).strip() for m in _QUOTED.finditer(text) if m.group(1).strip()]
