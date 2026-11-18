@@ -13,6 +13,9 @@ from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "f1"
 APP = "10-2099-0000001"
 DISPATCH = "9-5-2099-000000001"
+# 결과 value는 정답 형식대로 숫자만 (저장소 조회도 이 값으로 함)
+APP_VALUE = "1020990000001"
+DISPATCH_VALUE = "952099000000001"
 
 
 class FakeStore:
@@ -92,7 +95,7 @@ def test_번호가_확인되고_저장소에_없으면_끝까지_돈다(tmp_path
     assert out.state == "succeeded"
     assert out.waiting_for is None
     assert out.case_id == "c_new"
-    assert ("find_oa", APP, DISPATCH) in store.calls
+    assert ("find_oa", APP_VALUE, DISPATCH_VALUE) in store.calls
 
 
 def test_같은_OA가_이미_있으면_failed와_기존_ID(tmp_path):
