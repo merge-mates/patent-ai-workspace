@@ -20,10 +20,10 @@
 (시연 화면·영상, 11/27 시연 뒤)
 
 ## 기술 스택
-FastAPI(uv, Python 3.12) · React+TypeScript(Vite, Node 22) · Postgres+pgvector · LangGraph. 이유는 [ADR 0003](docs/decisions/0003-tech-stack.md).
+FastAPI(uv, Python 3.14) · React+TypeScript(Vite, Node 26) · Postgres+pgvector · LangGraph. 이유는 [ADR 0003](docs/decisions/0003-tech-stack.md).
 
 ## 실행 방법
-Docker Desktop, uv, Node 22가 있으면 된다.
+Docker(Desktop·OrbStack·colima 중 하나), uv, Node 26이 있으면 된다.
 ```
 cp .env.example .env   # 키는 각자 채움 (없어도 뜬다)
 make up                # DB·서버·화면, 서버가 켜질 때 마이그레이션 자동
