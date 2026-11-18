@@ -2,6 +2,8 @@
 
 import pytest
 
+from patent_ai.core.llm import cache as llm_cache
+from patent_ai.core.llm import limits
 from patent_ai.core.llm import transport as llm_transport
 
 
@@ -16,3 +18,13 @@ def _진짜_모델_호출_막기(monkeypatch):
         raise RuntimeError("테스트에서 AnthropicTransport를 만들 수 없음 (진짜 호출 막힘)")
 
     monkeypatch.setattr(llm_transport.AnthropicTransport, "__init__", blocked)
+
+
+@pytest.fixture(autouse=True)
+def _전역_상태_격리(monkeypatch, tmp_path):
+    # 기본 캐시 폴더를 임시 폴더로 (work/llm_cache를 건드리지 않음)
+    monkeypatch.setattr(llm_cache, "DEFAULT_CACHE_DIR", tmp_path / "default_llm_cache")
+    # 호출 상한 공용 객체는 테스트마다 비운다
+    limits.DEFAULT_BUDGET.reset()
+    yield
+    limits.DEFAULT_BUDGET.reset()

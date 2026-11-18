@@ -9,6 +9,7 @@
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,10 +21,37 @@ from patent_ai.core.llm.recorded import recording_key, save_recording
 DEFAULT_OUT = REPO_ROOT / "work" / "llm_recordings"
 
 
-def is_under_data_dir(path: Path, repo_root: Path = REPO_ROOT) -> bool:
-    """경로가 저장소 data/ 아래로 풀리면 True (.. 와 심볼릭 링크는 풀어서 본다)."""
-    resolved = Path(path).resolve()
-    return resolved.is_relative_to((Path(repo_root) / "data").resolve())
+def repo_roots(git_common_dir: str | None = None) -> list[Path]:
+    """data/ 를 검사할 저장소 루트들: 이 worktree와 메인 checkout(git 공통 폴더의 부모)."""
+    roots = [REPO_ROOT]
+    if git_common_dir is None:
+        try:
+            out = subprocess.run(
+                ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            git_common_dir = out.stdout.strip()
+        except OSError, subprocess.CalledProcessError:
+            git_common_dir = None
+    if git_common_dir:
+        roots.append(Path(git_common_dir).parent)
+    return roots
+
+
+def is_under_data_dir(path: Path, roots: list[Path] | None = None) -> bool:
+    """경로가 어느 루트의 data/ 아래로 풀리면 True.
+
+    .. 와 심볼릭 링크는 풀고, 대소문자는 가리지 않는다 (맥은 DATA/ 도 같은 폴더).
+    """
+    target = Path(str(Path(path).resolve()).casefold())
+    for root in roots if roots is not None else repo_roots():
+        data = Path(str((Path(root) / "data").resolve()).casefold())
+        if target.is_relative_to(data):
+            return True
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -216,3 +216,28 @@ def test_data_아래_변수_파일이면_종료코드_1과_이유(capsys):
 
 def test_스크립트_도움말에_지어낸_통지서만_녹화한다고_적혀_있다():
     assert "지어낸" in load_script().__doc__
+
+
+def test_메인_checkout의_data_아래도_거부(tmp_path):
+    s = load_script()
+    main_root = tmp_path / "main_checkout"
+    roots = [REPO_ROOT, main_root]
+    assert s.is_under_data_dir(main_root / "data" / "raw" / "oa.json", roots) is True
+    assert s.is_under_data_dir(main_root / "tests" / "v.json", roots) is False
+
+
+def test_data_대소문자가_달라도_거부(tmp_path):
+    s = load_script()
+    assert s.is_under_data_dir(REPO_ROOT / "DATA" / "x.json") is True
+    assert s.is_under_data_dir(tmp_path / "Main" / "Data" / "x.json", [tmp_path / "main"]) is True
+
+
+def test_git_공통_폴더의_부모를_메인_checkout으로_본다():
+    s = load_script()
+    roots = s.repo_roots(git_common_dir="/a/b/repo/.git")
+    assert Path("/a/b/repo") in roots
+    assert REPO_ROOT in roots
+
+
+def test_기본_캐시_폴더는_테스트마다_임시_폴더(tmp_path):
+    assert cache_mod.DEFAULT_CACHE_DIR.is_relative_to(tmp_path)
