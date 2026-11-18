@@ -90,11 +90,11 @@ graph LR
 
 ### 진행
 - [x] task-1
-- [ ] task-2
-- [ ] task-3
+- [x] task-2
+- [x] task-3
 - [ ] task-4
 - [ ] task-5
-- 다음: task-2
+- 다음: task-4
 - 막힌 것: 
 
 ### 끝난 뒤 (이슈가 끝난 날)
