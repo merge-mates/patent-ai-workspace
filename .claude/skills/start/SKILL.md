@@ -15,7 +15,7 @@ argument-hint: "<이슈번호> [-<사람>]"
    git fetch origin main
    git switch -c <브랜치> origin/main
    ```
-   이미 같은 이름 브랜치가 있으면 새로 만들지 않고 `git switch <브랜치>`로 이어서 한다 (보드는 아래 6번에서 직접 옮긴다).
+   이미 같은 이름 브랜치가 있으면 새로 만들지 않고 `git switch <브랜치>`로 이어서 한다 (보드는 아래 6번에서 직접 옮긴다). 같은 이슈의 다음 계획이면 새 브랜치를 만들고 짧은설명에 계획 이름을 넣는다 (예: `feat/65-m2-i2-db-dump`).
 6. 브랜치를 만들었거나 이어서 하면 늘 보드 카드를 **In Progress**로 옮긴다: `.claude/scripts/board-status.sh $0 "In Progress"`. 출력("보드: #$0 → In Progress")을 사람에게 보여 준다. 실패하면 이유를 사람에게 그대로 전한다 (예: project 권한 없음 → `gh auth refresh -s project`). 훅은 쓰지 않는다 (명령 글자로 이슈를 짐작하다 엉뚱한 카드를 옮겨서 뺐다, 이슈 #83).
 7. 다음 할 일을 한 줄로 알린다: 이슈에 구현 계획(tasks.md 이슈 계획)이 있으면 `/implement <tasks.md> <이터레이션>`, 문서 이슈면 그 문서를 쓰고 `/pr-draft`.
 

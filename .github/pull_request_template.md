@@ -2,8 +2,8 @@
 
 ## 무엇을
 <!-- 한두 줄. 이슈·구현 계획 링크 -->
-Closes #
-구현 계획: docs/features/<기능>/tasks.md#mN-iN  (이 PR = 이슈 하나)
+Closes #   <!-- 이슈의 마지막 PR이면 Closes, 남은 계획이 있으면 Refs -->
+구현 계획: docs/features/<기능>/tasks.md#mN-iN  (이 PR = 계획 하나)
 /check 결과: (문서 대조 표 붙이기)
 
 ## 합격 기준
