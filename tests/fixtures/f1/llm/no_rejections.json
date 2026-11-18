@@ -23,5 +23,11 @@
     "raw_text": "청구항 5의 종속 관계를 정리하세요.",
     "page": 3,
     "ambiguous": false
+  },
+  "examined_claims": {
+    "value": null,
+    "raw_text": "제1항 내지 제7항",
+    "page": 1,
+    "ambiguous": false
   }
 }

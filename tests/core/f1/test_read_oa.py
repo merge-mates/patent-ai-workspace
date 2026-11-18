@@ -62,6 +62,7 @@ def _all_confirmed(result) -> bool:
         result.notice_date,
         result.response_due,
         result.notice_kind,
+        result.examined_claims,
         result.examiner_hints.allowable_claims,
         result.examiner_hints.amendment_note,
     ]
@@ -79,10 +80,12 @@ def test_기본_통지서는_모든_필드가_확인됨이고_쪽이_붙는다()
     assert _all_confirmed(result)
     assert result.status.value == StatusValue.CONFIRMED
     assert (result.application_number.value, result.application_number.page) == (
-        "10-2099-0000001",
+        "1020990000001",
         1,
     )
-    assert result.dispatch_number.value == "9-5-2099-000000001"
+    assert result.application_number.raw_text == "10-2099-0000001"  # 원문 그대로
+    assert result.dispatch_number.value == "952099000000001"
+    assert result.dispatch_number.raw_text == "9-5-2099-000000001"
     # 날짜는 값 없이 원문 글자만
     assert (result.notice_date.value, result.notice_date.raw_text) == (None, "2099.01.26.")
     assert (result.response_due.value, result.response_due.raw_text) == (None, "2099.03.26.")
@@ -101,8 +104,13 @@ def test_기본_통지서의_거절이유는_청구항_1이_둘에_들어간다(
     assert 1 in first.claims.value and 1 in second.claims.value  # 합치지 않고 따로 둠
     numbers = [(c.number.value, c.country.value, c.cited_paragraphs.value) for c in first.citations]
     assert numbers == [
-        ("KR10-0000001", "KR", ["0023", "0031"]),
-        ("US 2099/0000001", "US", ["0045"]),
+        ("KR20990000001A", "KR", ["[0023]", "[0031]"]),
+        ("US20990000001A1", "US", ["[0045]"]),
+    ]
+    # 번호 글자는 원문 표기 그대로
+    assert [c.number.raw_text for c in first.citations] == [
+        "공개특허공보 제10-2099-0000001호",
+        "US 2099/0000001 A1",
     ]
     assert all(c.country_supported for c in first.citations)
     # 요지는 모델 글, 원문 글자·쪽은 대조를 통과한 것
@@ -189,6 +197,7 @@ def test_글자_층이_없으면_모델을_안_부르고_필드_전부_input_unv
         result.notice_date,
         result.response_due,
         result.notice_kind,
+        result.examined_claims,
         result.examiner_hints.allowable_claims,
         result.examiner_hints.amendment_note,
     ]
@@ -216,8 +225,8 @@ def test_모델_출원번호가_규칙과_다르면_충돌로_둘_다_남긴다(
     app = result.application_number
     assert app.status.value == StatusValue.CONFLICT and app.value is None
     assert {(c.source, c.value) for c in app.candidates} == {
-        ("rule", "10-2099-0000001"),
-        ("model", "10-2099-0000999"),
+        ("rule", "1020990000001"),
+        ("model", "1020990000999"),
     }
     assert result.status.value == StatusValue.CONFLICT
 
@@ -347,3 +356,112 @@ def test_힌트_제목의_다른_표기도_찾아서_모델_null이면_확인되
     hints = result.examiner_hints
     target = hints.allowable_claims if "가능" in old else hints.amendment_note
     assert target.status.value == StatusValue.UNVERIFIED
+
+
+# ---- #18: 값 모양을 정답 형식(f1-oa-gold.md)에 맞춘다 ----
+def _run_with(pages: PageText, answer):
+    transport = FakeTransport({STEP: _text(answer)})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    return read_oa(pages, "d_1", "oa_1", "r_1", ctx=ctx)
+
+
+def _swap(name: str, answer_name: str, old: str, new: str):
+    """쪽 글자와 모델 답 양쪽의 같은 글자를 바꾼다 (원문 대조를 통과하도록)."""
+    pages = _pages_replaced(name, old, new)
+    answer = json.loads(json.dumps(_answer(answer_name), ensure_ascii=False).replace(old, new))
+    return pages, answer
+
+
+def test_심사_대상_청구항은_펼친_번호로_원문과_쪽이_붙는다():
+    result, _ = _run("notice_basic", _ok("basic"))
+    ec = result.examined_claims
+    assert ec.value == [1, 2, 3, 4, 5, 6, 7]
+    assert (ec.raw_text, ec.page) == ("제1항 내지 제7항", 1)
+    assert ec.status.value == StatusValue.CONFIRMED
+
+
+def test_심사_대상_청구항을_못_뽑으면_확인되지_않음이고_결과도_나쁜_쪽():
+    answer = _answer("basic")
+    answer["examined_claims"] = None
+    result = _run_with(_pages("notice_basic"), answer)
+    assert result.examined_claims.value is None
+    assert result.examined_claims.status.value == StatusValue.UNVERIFIED
+    assert result.status.value == StatusValue.UNVERIFIED
+
+
+def test_청구항_전항은_심사_대상_청구항_전부로_펼친다():
+    pages, answer = _swap("notice_basic", "basic", "제1항 내지 제4항", "청구항 전항")
+    answer["examined_claims"]["raw_text"] = "제1항 내지 제7항"
+    result = _run_with(pages, answer)
+    first = result.rejections[0]
+    assert first.claims.value == [1, 2, 3, 4, 5, 6, 7]
+    assert first.claims.raw_text == "청구항 전항"
+    assert first.claims.status.value == StatusValue.CONFIRMED
+
+
+def test_청구항_전항인데_심사_대상을_모르면_펼치지_못해_확인되지_않음():
+    pages, answer = _swap("notice_basic", "basic", "제1항 내지 제4항", "청구항 전항")
+    answer["examined_claims"] = None
+    result = _run_with(pages, answer)
+    claims = result.rejections[0].claims
+    assert claims.value is None and claims.status.value == StatusValue.UNVERIFIED
+
+
+def test_거절이유는_순번_인용문헌은_나온_순서로_라벨이_붙고_같은_문헌은_같은_라벨():
+    pages = _pages_replaced(
+        "notice_basic", "[첨 부]", "인용발명 1: 공개특허공보 제10-2099-0000001호 (도 4c)\n[첨 부]"
+    )
+    answer = _answer("basic")
+    answer["rejections"][1]["citations"] = [
+        {
+            "number": {"raw_text": "공개특허공보 제10-2099-0000001호", "page": 3},
+            "cited_paragraphs": {"raw_text": "도 4c", "page": 3},
+        }
+    ]
+    result = _run_with(pages, answer)
+    assert [r.no for r in result.rejections] == [1, 2]
+    first, second = result.rejections
+    assert [c.label for c in first.citations] == ["D1", "D2"]
+    assert [c.label for c in second.citations] == ["D1"]  # 같은 문헌
+    assert second.citations[0].cited_paragraphs.value == ["도 4c"]
+
+
+def test_논문은_번호_값_없이_확인되지_않음_애매이고_직접_검토_필요():
+    old = "US 2099/0000001 A1"
+    new = "Kim, Fake Sensors, 2099 학회 논문"
+    pages, answer = _swap("notice_basic", "basic", old, new)
+    result = _run_with(pages, answer)
+    npl = result.rejections[0].citations[1]
+    assert npl.number.value is None
+    assert npl.number.status.value == StatusValue.UNVERIFIED
+    assert npl.number.status.reason == UnverifiedReason.AMBIGUOUS
+    assert npl.number.raw_text == new  # 원문 표기는 남긴다
+    assert not npl.country_supported and Flag.NEEDS_HUMAN_REVIEW in npl.flags
+
+
+def test_못_읽는_식별번호_조각이_있으면_그_칸만_확인되지_않음_애매():
+    old, new = "(식별번호 [0045])", "(식별번호 [0045], 어딘가)"
+    pages, answer = _swap("notice_basic", "basic", old, new)
+    answer["rejections"][0]["citations"][1]["cited_paragraphs"]["raw_text"] = (
+        "식별번호 [0045], 어딘가"
+    )
+    result = _run_with(pages, answer)
+    first, second = result.rejections[0].citations
+    assert first.cited_paragraphs.value == ["[0023]", "[0031]"]
+    p = second.cited_paragraphs
+    assert p.value is None
+    assert p.status.value == StatusValue.UNVERIFIED
+    assert p.status.reason == UnverifiedReason.AMBIGUOUS
+    assert p.raw_text == "식별번호 [0045], 어딘가"
+
+
+def test_호가_여럿인_조문은_세로줄로_이어_모두_지원이면_지원():
+    pages, answer = _swap(
+        "notice_basic", "basic", "특허법 제29조제2항", "특허법 제29조제1항제1호 및 제2호"
+    )
+    result = _run_with(pages, answer)
+    first = result.rejections[0]
+    assert first.article.value == "29-1-1|29-1-2"
+    assert first.supported and Flag.NEEDS_HUMAN_REVIEW not in first.flags

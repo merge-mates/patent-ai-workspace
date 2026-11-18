@@ -28,8 +28,8 @@
       "citations": [
         {
           "number": {
-            "value": "KR10-0000001",
-            "raw_text": "KR10-0000001",
+            "value": "공개특허공보 제10-2099-0000001호",
+            "raw_text": "공개특허공보 제10-2099-0000001호",
             "page": 2,
             "ambiguous": false
           },
@@ -43,7 +43,7 @@
         {
           "number": {
             "value": null,
-            "raw_text": "US 2099/0000001",
+            "raw_text": "US 2099/0000001 A1",
             "page": 2,
             "ambiguous": false
           },
@@ -85,5 +85,11 @@
     }
   ],
   "allowable_claims": null,
-  "amendment_note": null
+  "amendment_note": null,
+  "examined_claims": {
+    "value": null,
+    "raw_text": "제1항 내지 제7항",
+    "page": 1,
+    "ambiguous": false
+  }
 }

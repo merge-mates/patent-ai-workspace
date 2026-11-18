@@ -5,8 +5,11 @@ import pytest
 from patent_ai.core.f1_oa_reader.rules import (
     expand_claims,
     extract_by_rules,
+    normalize_application_number,
     normalize_article,
+    normalize_dispatch_number,
     notice_kind_of,
+    parse_cited_locations,
 )
 from patent_ai.core.f1_oa_reader.verify import Found
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
@@ -41,10 +44,10 @@ HEADER = (
 def test_번호와_날짜_글자를_뽑는다():
     f = extract_by_rules(_pages(HEADER))
     assert f.application_number == Found(
-        value="10-2099-0001234", raw_text="10-2099-0001234", page=1, ambiguous=False
+        value="1020990001234", raw_text="10-2099-0001234", page=1, ambiguous=False
     )
     assert f.dispatch_number is not None
-    assert f.dispatch_number.value == "9-5-2099-012345678"
+    assert f.dispatch_number.value == "952099012345678"
     # 날짜는 값으로 바꾸지 않고 글자 그대로 (value는 비움)
     assert f.notice_date is not None
     assert f.notice_date.value is None
@@ -54,10 +57,10 @@ def test_번호와_날짜_글자를_뽑는다():
     assert f.response_due.raw_text == "2099.03.26."
 
 
-def test_하이픈_없는_출원번호는_하이픈_값으로_글자는_그대로():
+def test_하이픈_없는_출원번호도_숫자만_값으로_글자는_그대로():
     f = extract_by_rules(_pages("출원번호 1020990001234\n"))
     assert f.application_number is not None
-    assert f.application_number.value == "10-2099-0001234"
+    assert f.application_number.value == "1020990001234"
     assert f.application_number.raw_text == "1020990001234"
 
 
@@ -76,7 +79,7 @@ def test_같은_칸에_다른_번호가_둘이면_ambiguous():
     f = extract_by_rules(_pages("출원번호 10-2099-0001234\n출원번호 10-2099-0005678\n"))
     assert f.application_number is not None
     assert f.application_number.ambiguous is True
-    assert f.application_number.value == "10-2099-0001234"
+    assert f.application_number.value == "1020990001234"
 
 
 def test_빈_쪽과_쪽_없음은_모두_None():
@@ -228,3 +231,67 @@ def test_제목_줄_괄호_안_표시는_final():
     k = notice_kind_of(_pages("의견제출통지서 (최후거절이유통지)\n출원번호 10-2099-0001234\n"))
     assert k.value == NoticeKind.FINAL
     assert k.page == 1
+
+
+# ---- 번호 값 꼴: 하이픈 없는 숫자 (정답 형식 f1-oa-gold.md 4절) ----
+def test_출원번호_값은_하이픈_없는_숫자():
+    assert normalize_application_number("출원번호 10-2099-0000001") == "1020990000001"
+    assert normalize_application_number("1020990000001") == "1020990000001"
+    assert normalize_application_number("10-2099-00") is None
+
+
+def test_발송번호_값은_숫자만():
+    assert normalize_dispatch_number("9-5-2099-000000001") == "952099000000001"
+    assert normalize_dispatch_number("952099000000001") == "952099000000001"
+    assert normalize_dispatch_number("9-5-2099") is None
+
+
+# ---- 호가 여럿인 조문 ----
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("특허법 제29조제1항제1호 및 제2호", "29-1-1|29-1-2"),
+        ("특허법 제29조 제1항 제1호, 제2호", "29-1-1|29-1-2"),
+        ("특허법 제42조제4항제1호 및 제2호", "42-4-1|42-4-2"),
+    ],
+)
+def test_호가_여럿이면_세로줄로_잇는다(text, expected):
+    assert normalize_article(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text", ["제29조제1호 및 제2호", "제29조제1항제A호 및 제2호", "제1호 및 제2호"]
+)
+def test_호가_여럿이어도_조나_항이_깨졌으면_None(text):
+    assert normalize_article(text) is None
+
+
+# ---- 식별번호(인용 위치) 값 꼴 ----
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("식별번호 [0023], [0031]", ["[0023]", "[0031]"]),
+        ("[16, 38, 78]", ["[0016]", "[0038]", "[0078]"]),
+        ("[0080]-[0081]", ["[0080]-[0081]"]),
+        ("[0080-0081]", ["[0080]-[0081]"]),  # 이 꼴로는 안 내보낸다
+        ("[80~81]", ["[0080]-[0081]"]),
+        ("[0014], [0056], 도 4b", ["[0014]", "[0056]", "도 4b"]),
+        ("도 4c", ["도 4c"]),
+        ("도4c", ["도 4c"]),
+        ("청구항 9", ["청구항 9"]),
+        ("청구항 제9항", ["청구항 9"]),
+        ("요약", ["요약"]),
+        ("3:5-10", ["3:5-10"]),
+        ("col. 3, ll. 5-10", ["3:5-10"]),
+    ],
+)
+def test_식별번호를_정답_꼴로_바꾼다(raw, expected):
+    assert parse_cited_locations(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["", "식별번호", "[0023], 어딘가", "[0081]-[0080]", "[12345]", "[abc]", "도 4c 내지 도 4f"],
+)
+def test_못_읽는_조각이_있으면_None_지어내지_않는다(raw):
+    assert parse_cited_locations(raw) is None

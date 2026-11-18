@@ -57,8 +57,8 @@
         "citations": [
           {
             "number": {
-              "value": "KR10-0000001",
-              "raw_text": "KR10-0000001",
+              "value": "공개특허공보 제10-2099-0000001호",
+              "raw_text": "공개특허공보 제10-2099-0000001호",
               "page": 2,
               "ambiguous": false
             },
@@ -72,7 +72,7 @@
           {
             "number": {
               "value": null,
-              "raw_text": "US 2099/0000001",
+              "raw_text": "US 2099/0000001 A1",
               "page": 2,
               "ambiguous": false
             },

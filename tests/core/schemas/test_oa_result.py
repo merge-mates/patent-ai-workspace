@@ -31,6 +31,7 @@ def ev(value, raw="원문", page: int | None = 1, status: Status = OK):
 
 def rej_fields(article="29-2", claims=(1, 2), supported=True, flags=(), **extra):
     data = {
+        "no": 1,
         "article": article if isinstance(article, dict) else ev(article),
         "supported": supported,
         "claims": ev(list(claims)),
@@ -78,6 +79,7 @@ def oa_fields(rejections, **extra):
             "page": None,
             "status": Status(value="confirmed", checked="최후 표시 없음, 1쪽 머리말을 봄"),
         },
+        "examined_claims": ev([1, 2, 3, 4, 5, 6, 7], "제1항 내지 제7항"),
         "examiner_hints": hints(),
         "rejections": rejections,
     }
@@ -122,10 +124,11 @@ def test_notice_kind_값은_셋():
 
 def cit(country="KR", supported=True, flags=(), country_status=OK, **extra):
     data = {
-        "number": ev("KR10-0000001"),
+        "label": "D1",
+        "number": ev("KR20990000001A"),
         "country": ev(country, status=country_status),
         "country_supported": supported,
-        "cited_paragraphs": ev(["0023"]),
+        "cited_paragraphs": ev(["[0023]"]),
         "flags": list(flags),
     }
     data.update(extra)
@@ -425,9 +428,46 @@ def test_거절이유_0개인데_위쪽_필드가_모두_input_unverified면_이
         notice_date=bad,
         response_due=bad,
         notice_kind=kind,
+        examined_claims=ev(None, None, None, Status(value="unverified", reason="input_unverified")),
         examiner_hints=ExaminerHints(allowable_claims=empty, amendment_note=bad),
     )
     with caplog.at_level(logging.WARNING):
         s = summarize_status(**fields)
     assert s.reason == UnverifiedReason.INPUT_UNVERIFIED
     assert not any("거절이유 0개" in r.getMessage() for r in caplog.records)
+
+
+# ---------- #18: 정답 형식에 맞춘 칸 ----------
+
+
+def test_OAResult에_심사_대상_청구항_칸이_있고_직렬화에_나온다():
+    dumped = oa([rejection()]).model_dump(mode="json")
+    assert dumped["examined_claims"]["value"] == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_심사_대상_청구항이_확인되지_않으면_결과도_확인되지_않음():
+    bad = ev(None, None, None, Status(value="unverified", reason="not_extracted"))
+    r = oa([rejection()], examined_claims=bad)
+    assert r.status.value == StatusValue.UNVERIFIED
+
+
+def test_심사_대상_청구항이_확인됨이면_결과_evidence에_든다():
+    raws = [e.raw_text for e in oa([rejection()]).evidence]
+    assert "제1항 내지 제7항" in raws
+
+
+def test_거절이유는_순번_인용문헌은_라벨이_필수():
+    fields = rej_fields()
+    del fields["no"]
+    with pytest.raises(ValueError):
+        build_rejection(document_id="d_1", **fields)
+    data = cit().model_dump()
+    del data["label"]
+    with pytest.raises(ValueError):
+        Citation(**data)
+
+
+def test_순번과_라벨_값이_그대로_직렬화된다():
+    r = rejection(citations=[cit(label="D2")], no=3)
+    assert r.no == 3
+    assert r.citations[0].label == "D2"

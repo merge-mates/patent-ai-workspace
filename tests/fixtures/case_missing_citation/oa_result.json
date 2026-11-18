@@ -36,6 +36,13 @@
     },
     {
       "document_id": "doc_oa_1",
+      "page": 1,
+      "raw_text": "제1항 내지 제5항",
+      "edition": null,
+      "checked_on": null
+    },
+    {
+      "document_id": "doc_oa_1",
       "page": 4,
       "raw_text": "특허 가능한 청구항 5",
       "edition": null,
@@ -86,7 +93,7 @@
     {
       "document_id": "doc_oa_1",
       "page": 2,
-      "raw_text": "US 2099/0000001",
+      "raw_text": "US 2099/0000001 A1",
       "edition": null,
       "checked_on": null
     },
@@ -146,7 +153,7 @@
   "flags": [],
   "oa_id": "oa_1",
   "application_number": {
-    "value": "10-2099-0000001",
+    "value": "1020990000001",
     "raw_text": "10-2099-0000001",
     "page": 1,
     "status": {
@@ -158,7 +165,7 @@
     "candidates": []
   },
   "dispatch_number": {
-    "value": "9-5-2099-000000001",
+    "value": "952099000000001",
     "raw_text": "9-5-2099-000000001",
     "page": 1,
     "status": {
@@ -206,6 +213,24 @@
     "candidates": []
   },
   "examined_claim_version": null,
+  "examined_claims": {
+    "value": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "raw_text": "제1항 내지 제5항",
+    "page": 1,
+    "status": {
+      "value": "confirmed",
+      "reason": null,
+      "checked": "원문 대조",
+      "searched_scope": null
+    },
+    "candidates": []
+  },
   "examiner_hints": {
     "allowable_claims": {
       "value": [
@@ -236,6 +261,7 @@
   },
   "rejections": [
     {
+      "no": 1,
       "status": {
         "value": "confirmed",
         "reason": null,
@@ -288,7 +314,7 @@
         {
           "document_id": "doc_oa_1",
           "page": 2,
-          "raw_text": "US 2099/0000001",
+          "raw_text": "US 2099/0000001 A1",
           "edition": null,
           "checked_on": null
         },
@@ -336,8 +362,9 @@
       },
       "citations": [
         {
+          "label": "D1",
           "number": {
-            "value": "KR 10-2099-0000001",
+            "value": "KR20990000001A",
             "raw_text": "공개특허공보 제10-2099-0000001호",
             "page": 2,
             "status": {
@@ -363,8 +390,8 @@
           "country_supported": true,
           "cited_paragraphs": {
             "value": [
-              "0023",
-              "0031"
+              "[0023]",
+              "[0031]"
             ],
             "raw_text": "식별번호 [0023], [0031]",
             "page": 2,
@@ -379,9 +406,10 @@
           "flags": []
         },
         {
+          "label": "D2",
           "number": {
-            "value": "US 2099/0000001",
-            "raw_text": "US 2099/0000001",
+            "value": "US20990000001A1",
+            "raw_text": "US 2099/0000001 A1",
             "page": 2,
             "status": {
               "value": "confirmed",
@@ -433,6 +461,7 @@
       }
     },
     {
+      "no": 2,
       "status": {
         "value": "confirmed",
         "reason": null,
@@ -508,6 +537,7 @@
       }
     },
     {
+      "no": 3,
       "status": {
         "value": "confirmed",
         "reason": null,
