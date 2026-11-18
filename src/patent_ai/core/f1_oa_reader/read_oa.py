@@ -16,7 +16,9 @@ from patent_ai.core.f1_oa_reader.extraction import (
 from patent_ai.core.f1_oa_reader.rules import (
     expand_claims,
     extract_by_rules,
+    normalize_application_number,
     normalize_article,
+    normalize_dispatch_number,
     notice_kind_of,
 )
 from patent_ai.core.f1_oa_reader.support import country_of, is_supported
@@ -55,22 +57,6 @@ def _found(item: Item | None) -> Found | None:
 
 
 # ---- 원문 글자에서 값을 다시 뽑는 함수들 (모델이 준 value는 믿지 않는다) ----
-def _app_no_of(raw: str) -> str | None:
-    m = re.search(r"10-?\d{4}-?\d{7}(?!\d)", raw)
-    if not m:
-        return None
-    d = m.group(0).replace("-", "")
-    return f"{d[:2]}-{d[2:6]}-{d[6:]}"
-
-
-def _dispatch_no_of(raw: str) -> str | None:
-    m = re.search(r"9-?5-?\d{4}-?\d{9}(?!\d)", raw)
-    if not m:
-        return None
-    d = m.group(0).replace("-", "")
-    return f"{d[:1]}-{d[1:2]}-{d[2:6]}-{d[6:]}"
-
-
 def _paragraphs_of(raw: str) -> list[str] | None:
     """`식별번호 [0023], [0031]` -> ["0023", "0031"]. 하나도 없으면 None."""
     found = re.findall(r"\[(\d+)\]", raw)
@@ -85,11 +71,6 @@ def _number_of(raw: str) -> str | None:
 
 def _unverified(reason: UnverifiedReason) -> ExtractedValue:
     return ExtractedValue(status=Status(value=StatusValue.UNVERIFIED, reason=reason))
-
-
-def _no_field() -> Status:
-    # 칸이 원문에 없어서 "없음"으로 정한 값 (확인되지 않음과 다름)
-    return Status(value=StatusValue.CONFIRMED, checked="원문에 칸 없음")
 
 
 # ---- 글자 층 없음: 모델을 안 부르고 전부 input_unverified ----
@@ -166,15 +147,39 @@ def _rejection(r: RejectionExtraction, pages: PageText) -> dict:
     }
 
 
+def _loose(title: str) -> re.Pattern[str]:
+    """제목 글자 사이에 공백·줄바꿈이 끼어도 찾는 정규식."""
+    return re.compile(r"\s*".join(re.escape(ch) for ch in title if not ch.isspace()))
+
+
+# 힌트 칸 제목 (표기가 둘 이상일 수 있음). [가정] 표본 OA로 확인 (#22)
+_CLAIMS_TITLES = [_loose("특허 가능한 청구항")]
+_NOTE_TITLES = [_loose("보정에 관한 참고사항"), _loose("보정서 제출시 참고사항")]
+
+
+def _has_title(pages: PageText, titles: list[re.Pattern[str]]) -> bool:
+    return any(t.search(p.text) for p in pages.pages for t in titles)
+
+
+def _hint_missing(pages: PageText, titles: list[re.Pattern[str]]) -> Status:
+    """모델이 null을 준 힌트. 쪽 글자에 칸 제목이 있으면 못 뽑은 것, 없을 때만 "칸 없음"."""
+    if _has_title(pages, titles):
+        return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    return Status(value=StatusValue.CONFIRMED, checked="원문에 칸 없음, 모든 쪽 글자를 봄")
+
+
 def _hint_claims(item: Item | None, pages: PageText) -> ExtractedValue:
-    if item is None:  # 칸이 없음 -> 값 [] + confirmed("원문에 칸 없음")
-        return ExtractedValue(value=[], status=_no_field())
+    if item is None:
+        status = _hint_missing(pages, _CLAIMS_TITLES)
+        return ExtractedValue(
+            value=[] if status.value == StatusValue.CONFIRMED else None, status=status
+        )
     return merge(None, _found(item), pages, derive=expand_claims, field="allowable_claims")
 
 
 def _hint_note(item: Item | None, pages: PageText) -> ExtractedValue:
     if item is None:
-        return ExtractedValue(status=_no_field())
+        return ExtractedValue(status=_hint_missing(pages, _NOTE_TITLES))
     return merge(None, _found(item), pages, compare_by="raw_text", field="amendment_note")
 
 
@@ -204,14 +209,14 @@ def read_oa(
             rules.application_number,
             _found(model.application_number),
             pages,
-            derive=_app_no_of,
+            derive=normalize_application_number,
             field="application_number",
         ),
         dispatch_number=merge(
             rules.dispatch_number,
             _found(model.dispatch_number),
             pages,
-            derive=_dispatch_no_of,
+            derive=normalize_dispatch_number,
             field="dispatch_number",
         ),
         # 날짜는 규칙만, value 없이 글자만 비교

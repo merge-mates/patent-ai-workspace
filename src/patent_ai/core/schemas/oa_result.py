@@ -17,6 +17,7 @@ from patent_ai.core.schemas.common import (
     ResultBase,
     Status,
     StatusValue,
+    UnverifiedReason,
     worst_status,
 )
 
@@ -166,6 +167,11 @@ def summarize_rejection_status(
     return worst_status(statuses, ALL_CHECKED)
 
 
+def _excluded(r: Rejection) -> bool:
+    """결과 status 모으기에서 뺄 거절이유: 지원 표 밖인데 조문은 원문 대조로 확인된 것만."""
+    return not r.supported and r.article.status.value == StatusValue.CONFIRMED
+
+
 def summarize_status(
     *,
     oa_id: str = "",
@@ -190,6 +196,13 @@ def summarize_status(
     examiner_hints = _as(ExaminerHints, examiner_hints)
     examined_claim_version = _as(ExtractedValue, examined_claim_version)
     if not rejections:
+        upper = [application_number, dispatch_number, notice_date, response_due, notice_kind]
+        if all(
+            v.status.value == StatusValue.UNVERIFIED
+            and v.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+            for v in upper
+        ):  # 글자 층이 없어 못 읽은 것: 거절이유 0개 경고 없이 그 이유를 그대로
+            return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.INPUT_UNVERIFIED)
         logger.warning("OAResult %s: 거절이유 0개 -> unverified(not_extracted)", oa_id)
         return worst_status([], ALL_CHECKED)
     statuses = [
@@ -201,7 +214,8 @@ def summarize_status(
     ]
     if examined_claim_version is not None:
         statuses.append(examined_claim_version.status)
-    statuses += [r.status for r in rejections if r.supported]
+    # 지원 안 하는 이유는 조문이 확인됨일 때만 뺀다. 조문을 모르면(unverified·conflict) 넣는다
+    statuses += [r.status for r in rejections if not _excluded(r)]
     statuses += [examiner_hints.allowable_claims.status, examiner_hints.amendment_note.status]
     return worst_status(statuses, ALL_CHECKED)
 

@@ -45,6 +45,18 @@ def _hyphenate_dispatch(raw: str) -> str:
     return f"{d[:1]}-{d[1:2]}-{d[2:6]}-{d[6:]}"
 
 
+def normalize_application_number(text: str) -> str | None:
+    """글자 속 출원번호(`10-YYYY-NNNNNNN`, 하이픈 있어도 없어도)를 하이픈 꼴로. 없으면 None."""
+    m = re.search(r"10-?\d{4}-?\d{7}(?!\d)", text)
+    return _hyphenate_app(m.group(0)) if m else None
+
+
+def normalize_dispatch_number(text: str) -> str | None:
+    """글자 속 발송번호(`9-5-YYYY-NNNNNNNNN`)를 하이픈 꼴로. 없으면 None."""
+    m = re.search(r"9-?5-?\d{4}-?\d{9}(?!\d)", text)
+    return _hyphenate_dispatch(m.group(0)) if m else None
+
+
 def _find(pages: PageText, pattern: re.Pattern[str], normalize=None) -> Found | None:
     """쪽 순서대로 보아 처음 찾은 쪽의 첫 값을 돌려준다. 같은 쪽에 다른 값이 또 있으면 ambiguous."""
     for page in pages.pages:
