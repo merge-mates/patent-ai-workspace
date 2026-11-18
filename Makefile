@@ -10,7 +10,7 @@ help: ## 명령 목록
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-11s %s\n", $$1, $$2}'
 
 up: ## DB·서버·화면을 다 띄운다 (서버가 켜질 때 마이그레이션 자동). 끝내려면 Ctrl+C 뒤 make down
-	$(COMPOSE) up --build
+	$(COMPOSE) up --build --renew-anon-volumes
 
 down: ## 다 끈다 (DB 데이터는 남는다)
 	$(COMPOSE) down

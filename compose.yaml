@@ -1,4 +1,4 @@
-# 개발 환경: `make up`(= docker compose up --build) 한 줄로 DB·서버·화면을 띄운다. 안내: docs/team/local-db.md
+# 개발 환경: `make up`(= docker compose up --build --renew-anon-volumes) 한 줄로 DB·서버·화면을 띄운다. 안내: docs/team/local-db.md
 # Langfuse는 M2 시작 때 더한다 (ADR 0003).
 name: patent-ai
 
