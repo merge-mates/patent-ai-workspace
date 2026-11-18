@@ -44,6 +44,7 @@ flowchart LR
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다.
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
    - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`text_missing`)면 그 줄을 빼고 `excluded_text_missing`에 센다.
+   - 기준일 범위 내 판본 없음: 문헌 조각은 있는데 `as_of`로 거르고 나면 검색 범위 조각이 0개인 줄(N = 0)은 무작위 기준선을 정할 수 없으므로 채점 전체를 멈추지 않고 그 줄만 빼고 `excluded_no_edition_in_scope`에 센다 (11/19 결정). 법령 판본 모름 조각만 있거나, OA 발송일이 색인의 가장 이른 법령 판본보다 앞서는 경우다.
    - 결과에 다른 색인 판 조각이 있으면 실패로 끝난다. 판정은 조각마다 `hit.index_version`이 설정의 `index_version`과 같은지로 한다 (공통 래퍼가 먼저 보고, 채점기가 한 번 더 봄).
 5. 3·4번에서 빼고 남은 줄이 0개면 실패로 끝난다 (종료 코드 1, `RetrievalEvalError`). 빈 평균으로 성공 종료하지 않는다.
 6. 결과 조각마다 그 말뭉치 `Matcher`로 정답 항목과 맞는지 본다.
@@ -51,7 +52,7 @@ flowchart LR
 8. 결과 저장: `<scores 폴더>/scores.json`(모은 숫자, 기본 `experiments/<실험>/`), `<cq 폴더>/cq_candidates.jsonl`(CQ 후보, 기본 `work/retrieval/<실험>/`).
 - 실패하면: 실행 전 검사가 막는다. 줄 하나의 검색이 예외를 내면 그 줄에서 멈추고 실패로 끝난다 (조용히 건너뛰지 않음).
 - 메시지 규칙 (requirements "실패할 때"): 터미널 실패·경고 메시지에는 `row_id`와 건수를 쓸 수 있다. 질의·청구항·정답 원문 글자는 쓰지 않는다. git에 들어가는 `scores.json`에는 `row_id`도 쓰지 않는다.
-- 비면: 검색 결과 0개는 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다. 거른 문헌 조각이 0개면 `unverified(text_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
+- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다. 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(text_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
 - 느리면: 가짜 구현만 있는 이 이슈에는 해당 없음. 진짜 구현의 상한은 #66·#67 설정에 둔다.
 
 ### 2-1. 흐름 방식
@@ -158,6 +159,7 @@ def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher  
 - 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.
+- `get_searcher`는 설정 `impl` 이름으로 구현 모듈 `patent_ai.retrieval.<impl>`을 그때 import한다 (등록표에 이미 있으면 import하지 않음). 그래서 구현 파일 이름 = `impl` 이름이고(예 `impl: fake` → `retrieval/fake.py`), 그 모듈이 `@register_impl("<impl>")`로 자기를 등록한다. 모듈이 없거나 import 뒤에도 이름이 없으면 `UnknownImplError` (11/19 결정).
 - `hybrid`를 넣기로 하면 인터페이스는 그대로 두고, 구현과 래퍼의 막는 줄만 바꾼다.
 - 같은 점수의 순서는 `chunk_id` 오름차순이다 (다시 돌려도 같은 순서).
 
@@ -216,7 +218,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 ```
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
-  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_text_missing`, `excluded_edition_unverified`, `cq_candidates`, `recall_ratio_undefined`.
+  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_text_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
   - 위 표에 더하는 칸: `corpus`, `index_version`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
   - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
   - 줄 ID·질의·정답 위치는 넣지 않는다.
@@ -301,6 +303,8 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 저장소는 `retrieval/`, ORM은 `db/`, `retrieval → db` 방향 추가 | 저장소를 `db/`에 | 검색 계약과 거르기 규칙을 한곳에. `db`는 표 정의만 | 설계 (design doc-review, 11/18 허용) | ADR 0003 폴더 |
 | 공통 검사는 `get_searcher`가 감싸는 래퍼 `CheckedSearcher` | 구현마다 검사 | #66·#67이 빠뜨릴 수 있음 | 설계 (plan-reviewer, 11/18) | |
 | `--chunks`(메모리)로 돌리면 출력은 `work/`만 | 어디든 씀 | 가짜 조각 점수가 실험 표에 섞이지 않게 | 설계 (plan-reviewer, 11/18) | |
+| 기준일로 범위 조각이 0개인 줄은 빼고 셈 (`excluded_no_edition_in_scope`) | 채점 전체를 멈춤 / Hit 0으로 셈 | 줄 하나 때문에 tune 점수가 안 나오지 않게. N=0이면 무작위 기준선을 못 정함 | 구현 중 문제 (11/19) | |
+| `get_searcher`가 `impl` 이름으로 구현 모듈을 import | `retrieval/__init__`에 구현 목록 / 설정에 `impl_module` | #66·#67이 계약 파일을 안 고치고 새 파일만 더함 | 구현 중 문제 (11/19) | |
 | 이슈 셋으로 나눔 (A1·A2·B) | 둘 (A·B) | A가 400줄 규칙을 넘음. B·#66·#67은 A1만 필요 | 설계 (plan-reviewer, 11/18) | |
 
 - ADR 세 조건을 다 맞는 결정은 없다고 본다. 표 나누기는 되돌릴 때 마이그레이션 하나와 덤프 다시 뽑기라 "되돌리기 어렵다"가 약하다.
