@@ -709,3 +709,20 @@ def test_명확성_이유가_있으면_AI가_쓴_글_표시가_꼭_있고_없으
     with pytest.raises(ValidationError):
         ClaimRow(**{**base, "clarity_reason_origin": "human_edited"})
     assert ClaimRow(**{**base, "clarity_reason_origin": "ai_generated"}).clarity_reason
+
+
+def test_애매한_확인되지_않음_줄은_값과_원문_쪽을_남길_수_있다():
+    ambiguous = Status(value="unverified", reason="ambiguous")
+    row = ClaimRow(**row_fields(status=ambiguous))
+    assert row.citations == ["D1"] and row.page == 3
+    r = oa([rejection("29-2", [1, 2])], claim_rows=[row_fields(status=ambiguous)])
+    assert (
+        r.status.value == StatusValue.UNVERIFIED and r.status.reason == UnverifiedReason.AMBIGUOUS
+    )
+
+
+def test_애매가_아닌_확인되지_않음_줄은_여전히_값을_못_남긴다():
+    with pytest.raises(ValidationError):
+        ClaimRow(**row_fields(status=NOT_EXTRACTED))
+    with pytest.raises(ValidationError):  # 애매여도 번호는 있어야 어느 줄인지 안다
+        ClaimRow(**row_fields(claim=None, status=Status(value="unverified", reason="ambiguous")))

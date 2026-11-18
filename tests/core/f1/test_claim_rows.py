@@ -60,13 +60,20 @@ def _with_row(index: int, **change) -> dict:
 
 
 # ---- 평소 ----
-def test_평소_줄은_청구항_x_거절이유_하나씩이고_모두_확인됨():
+def test_평소_줄은_청구항_x_거절이유_하나씩이고_인용_언급이_없는_여섯_줄만_애매():
     result = _read()
-    assert result.status.value == StatusValue.CONFIRMED
-    assert all(r.status.value == StatusValue.CONFIRMED for r in result.claim_rows)
     # 거절이유 2는 청구항 1~13 줄, 1은 청구항 1, 3은 청구항 6·7. 4번(지원 안 함)은 줄 없음
     keys = sorted((r.claim, r.rejection) for r in result.claim_rows)
     assert keys == sorted([(1, 1), *[(c, 2) for c in range(1, 14)], (6, 3), (7, 3)])
+    # 거절이유 2는 인용이 둘인데 3·5·6·7·9·10항 판단 원문에 인용발명 번호가 없어 애매
+    ambiguous = {(r.claim, r.rejection) for r in result.claim_rows if r.status.reason}
+    assert ambiguous == {(c, 2) for c in (3, 5, 6, 7, 9, 10)}
+    assert all(
+        r.status.value == StatusValue.CONFIRMED
+        for r in result.claim_rows
+        if (r.claim, r.rejection) not in ambiguous
+    )
+    assert result.status.value == StatusValue.UNVERIFIED
 
 
 def test_청구항_하나에_거절이유가_여럿이면_줄도_여럿():
@@ -328,21 +335,31 @@ def test_거절이유에_없는_인용_라벨은_그_줄이_확인되지_않음(
     _assert_dropped(_row(_read(answer), 1, 1))
 
 
-def test_판단_원문에_인용_언급이_없고_거절이유_인용이_여럿이면_모델_라벨을_받고_checked에_남김():
-    result = _read()
-    for claim in (3, 9, 10):  # 같은 취지 줄: 정답 모양대로 citations D1
-        row = _row(result, claim, 2)
-        assert row.citations == ["D1"] and row.status.value == StatusValue.CONFIRMED
-        assert "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨" in row.status.checked
-    five = _row(result, 5, 2)  # 3절 10: "제5-7항 ... [0069]에 개시" (인용발명 언급 없음)
-    assert (
-        five.locations == {"D1": ["[0069]"]}
-        and "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨" in five.status.checked
+def test_인용이_여럿인데_판단_원문에_인용_언급이_없으면_모델_라벨을_남기고_애매():
+    answer = _answer()
+    answer["claim_rows"][3]["citations"][0]["label"] = (
+        "D2"  # 3항 같은 취지 줄 (거절이유 2의 인용은 D1·D2)
     )
-    assert (
-        "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨"
-        not in _row(result, 1, 1).status.checked
-    )  # 언급이 있는 줄은 메모 없음
+    result = _read(answer)
+    row = _row(result, 3, 2)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS
+    assert row.citations == ["D2"] and row.same_as == ["claim:1"]  # ambiguous면 값·원문·쪽을 남김
+    assert row.page == 3 and row.raw_text
+    assert result.status.value == StatusValue.UNVERIFIED
+    items = collect_review_items([result], CaseMaterials(case_id="c_1"))
+    idx = result.claim_rows.index(row)
+    assert any(
+        i.target == f"oa_result[0].claim_rows[{idx}]" and i.reason == "ambiguous" for i in items
+    )
+
+
+def test_5_7항_줄은_정답_값_그대로이고_status만_애매():
+    result = _read()
+    for claim in (5, 6, 7):  # 3절 10: "제5-7항 ... [0069]에 개시" (인용발명 언급 없음, 인용 둘)
+        row = _row(result, claim, 2)
+        assert row.citations == ["D1"] and row.locations == {"D1": ["[0069]"]}
+        assert row.status.reason == UnverifiedReason.AMBIGUOUS
 
 
 def _single_citation_variant():
@@ -360,7 +377,6 @@ def test_판단_원문에_인용_언급이_없어도_거절이유_인용이_하�
     row = _row(_read(answer, pages), 1, 1)
     assert row.status.value == StatusValue.CONFIRMED and row.citations == ["D1"]
     assert row.locations == {"D1": ["[0014]", "[0056]", "도 4b"]}
-    assert "판단 원문에 인용 언급 없음, 거절이유의 인용 중 모델 라벨" not in row.status.checked
 
 
 def test_판단_원문이_거절이유_밖_인용을_언급하면_확인되지_않음():
