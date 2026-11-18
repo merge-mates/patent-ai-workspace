@@ -1,6 +1,7 @@
 """원문 대조·합치기 (design.md 2절 ⑤). 규칙 값과 모델 값을 원문 쪽 글자와 맞춰 합친다."""
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -65,48 +66,70 @@ def merge(
     pages: PageText,
     *,
     compare_by: Literal["value", "raw_text"] = "value",
+    derive: Callable[[str], Any] | None = None,
+    field: str = "",
 ) -> ExtractedValue:
     """규칙 값과 모델 값을 원문 대조 뒤 합친다 (design.md 필드 출처 표).
 
     compare_by="raw_text": 날짜처럼 value 없이 글자만 비교하는 필드.
+    derive: 있으면 쓸 값은 원문 글자에서 다시 뽑는다 (넘어온 value는 무시, None이면 그쪽은 못 씀).
+    field: 로그에 찍을 필드 이름 (값 글자는 찍지 않는다).
     """
-    # 1) 안 뽑은 것(None)은 뺀다
-    given = [("rule", f) for f in (rule,) if f] + [("model", f) for f in (model,) if f]
+    given = [("rule", rule), ("model", model)]
+    given = [(s, f) for s, f in given if f is not None]
+    # 1) 둘 다 안 뽑았다
     if not given:
         return _unverified(UnverifiedReason.NOT_EXTRACTED)
 
-    # 2) 애매 표시가 아니고, value 비교면 value도 있으며, 원문 대조를 통과한 것만 "쓸 수 있는 값"
-    usable = []
-    for source, f in ((("rule", rule)), ("model", model)):
-        if f is None or f.ambiguous or not _passes(f, pages):
+    # 2) 한쪽이라도 애매 표시면 다른 쪽이 통과해도 확인되지 않음.
+    #    글자·쪽은 대조에 통과한 쪽 것 (애매 쪽 먼저)
+    ambiguous = [f for _, f in given if f.ambiguous]
+    if ambiguous:
+        others = [f for _, f in given if not f.ambiguous]
+        for f in ambiguous + others:
+            if _passes(f, pages):
+                return _unverified(UnverifiedReason.AMBIGUOUS, f, keep_location=True)
+        return _unverified(UnverifiedReason.AMBIGUOUS)
+
+    # 3) 쓸 값: 원문 대조 통과 + (값은 원문 글자에서 나온 것이어야 함)
+    usable: list[tuple[Literal["rule", "model"], Found, Any]] = []
+    for source, f in given:
+        if not _passes(f, pages):
+            logger.info("원문 대조 실패로 버림: field=%s source=%s page=%s", field, source, f.page)
             continue
-        if compare_by == "value" and f.value is None:
+        if compare_by == "raw_text":
+            value = None
+        elif derive is not None:
+            value = derive(f.raw_text or "")  # 글자에서 다시 뽑는다
+        elif f.value is not None and _squash(str(f.value)) in _squash(f.raw_text or ""):
+            value = f.value
+        else:
+            value = None
+        if compare_by == "value" and value is None:
+            logger.info(
+                "값이 원문 글자와 안 맞아 버림: field=%s source=%s page=%s", field, source, f.page
+            )
             continue
-        usable.append((source, f))
+        usable.append((source, f, value))
 
     if not usable:
-        # 3) 쓸 수 있는 값이 없다: 애매 표시가 있으면 ambiguous, 아니면 못 뽑음
-        for _, f in given:
-            if f.ambiguous:
-                return _unverified(UnverifiedReason.AMBIGUOUS, f, keep_location=_passes(f, pages))
         return _unverified(UnverifiedReason.NOT_EXTRACTED)
 
-    def key(f: Found) -> Any:
-        return _squash(f.raw_text or "") if compare_by == "raw_text" else f.value
+    def key(item: tuple[str, Found, Any]) -> Any:
+        return _squash(item[1].raw_text or "") if compare_by == "raw_text" else item[2]
 
-    first = usable[0][1]
-    if len(usable) == 2 and key(usable[0][1]) != key(usable[1][1]):
+    _, first, first_value = usable[0]
+    if len(usable) == 2 and key(usable[0]) != key(usable[1]):
         # 4) 둘 다 통과했는데 다르면 충돌: 값은 비우고 둘 다 남긴다
         return ExtractedValue(
             status=Status(value=StatusValue.CONFLICT),
             candidates=[
-                Candidate(value=f.value, raw_text=f.raw_text, page=f.page, source=s)  # type: ignore[arg-type]
-                for s, f in usable
+                Candidate(value=v, raw_text=f.raw_text, page=f.page, source=s) for s, f, v in usable
             ],
         )
     # 5) 같거나 하나만 통과: 그 값 (둘이면 규칙 쪽 글자·쪽)
     return ExtractedValue(
-        value=None if compare_by == "raw_text" else first.value,
+        value=first_value,
         raw_text=first.raw_text,
         page=first.page,
         status=Status(value=StatusValue.CONFIRMED, checked=f"{first.page}쪽 원문 대조"),

@@ -4,10 +4,11 @@ import re
 
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue, UnverifiedReason
 
-# 신규성(29-1)·진보성(29-2)·명확성(42-4-2)만 지원. 그 밖은 직접 검토 필요.
-SUPPORTED_ARTICLES = {"29-1", "29-2", "42-4-2"}
+# 신규성(29조 1항 1·2호)·진보성(29-2)·명확성(42-4-2)만 지원. 호 없는 "29-1"은 29조 1항 본문
+# (산업상 이용가능성)과 구분이 안 되므로 지원 안 함 -> 직접 검토 필요.
+SUPPORTED_ARTICLES = {"29-1-1", "29-1-2", "29-2", "42-4-2"}
 
-# 위에서부터 먼저 맞는 나라. 영문 코드는 앞뒤에 영문자가 없을 때만 (다른 단어 속 글자 방지)
+# 나라마다 표기 모양. 영문 코드는 앞뒤에 영문자가 없을 때만 (다른 단어 속 글자 방지)
 _COUNTRY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "KR",
@@ -33,14 +34,15 @@ def country_of(text: str, page: int | None = None) -> ExtractedValue[str]:
     # 글자가 비면 쪽도 남기지 않는다 (쪽이 있으면 글자도 있어야 함)
     raw_text = text if has_text else None
     page = page if has_text else None
-    for country, pattern in _COUNTRY_PATTERNS:
-        if has_text and pattern.search(text):
-            return ExtractedValue(
-                value=country,
-                raw_text=raw_text,
-                page=page,
-                status=Status(value=StatusValue.CONFIRMED, checked="인용 표기에서 나라 판정"),
-            )
+    # 맞는 나라를 모두 모은다. 하나일 때만 정하고, 둘 이상이면 애매 (순서로 고르지 않는다)
+    found = {c for c, pattern in _COUNTRY_PATTERNS if has_text and pattern.search(text)}
+    if len(found) == 1:
+        return ExtractedValue(
+            value=found.pop(),
+            raw_text=raw_text,
+            page=page,
+            status=Status(value=StatusValue.CONFIRMED, checked="인용 표기에서 나라 판정"),
+        )
     return ExtractedValue(
         value=None,
         raw_text=raw_text,
