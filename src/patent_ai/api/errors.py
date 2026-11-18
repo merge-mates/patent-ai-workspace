@@ -1,9 +1,13 @@
 """오류 본문을 {code, message} 한 형식으로 맞춘다 (docs/api/README.md 2절)."""
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger(__name__)
 
 _HTTP_CODES = {
     400: "bad_request",
@@ -43,7 +47,14 @@ async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResp
     return _body(422, "validation_error", message)
 
 
+async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    # 예상 못 한 예외: 내용은 로그에만 남기고, 응답 본문에는 내부 정보를 넣지 않는다
+    logger.exception("처리하지 못한 예외: %s %s", request.method, request.url.path, exc_info=exc)
+    return _body(500, "internal_error", "서버 오류가 났습니다")
+
+
 def add_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _app_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
+    app.add_exception_handler(Exception, _unhandled_error)

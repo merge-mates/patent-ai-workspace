@@ -46,3 +46,18 @@ def test_validation_error_uses_code_and_message():
     body = res.json()
     assert set(body) == {"code", "message"}
     assert body["code"] == "validation_error"
+
+
+def test_unhandled_error_hides_details():
+    app = create_app()
+    router = APIRouter()
+
+    @router.get("/_test/crash")
+    def crash():
+        raise RuntimeError("비밀 내부 정보")
+
+    app.include_router(router)
+    res = TestClient(app, raise_server_exceptions=False).get("/_test/crash")
+
+    assert res.status_code == 500
+    assert res.json() == {"code": "internal_error", "message": "서버 오류가 났습니다"}
