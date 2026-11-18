@@ -1,0 +1,4 @@
+{"row_id": "leak-para", "corpus": "cite", "query": "가짜 청구항: 문단 [0023]에 적힌 가열 처리 방법", "doc_ids": ["KR1000000001A"], "as_of": null, "gold_edition": null, "items": [{"kind": "paragraph", "start": 22, "end": 25, "label": "[0022-0025]"}], "exclude": null}
+{"row_id": "leak-fig", "corpus": "cite", "query": "가짜 청구항: 도 3 의 기판 구조", "doc_ids": ["KR1000000001A"], "as_of": null, "gold_edition": null, "items": [{"kind": "figure", "figures": [3], "label": "도 3"}], "exclude": null}
+{"row_id": "leak-law", "corpus": "law", "query": "가짜 질의: 제29조 제2항 에 따른 거절", "doc_ids": null, "as_of": "2020-05-04", "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"}, "items": [{"kind": "article", "label": "제29조 제2항"}], "exclude": null}
+{"row_id": "clean", "corpus": "cite", "query": "가짜 청구항: 온도 300℃에서 처리", "doc_ids": ["KR1000000001A"], "as_of": null, "gold_edition": null, "items": [{"kind": "paragraph", "start": 5, "end": 5, "label": "[0005]"}], "exclude": null}
