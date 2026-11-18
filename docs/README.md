@@ -21,7 +21,7 @@
 | `data/<출처>.md` | 데이터 카드: 출처·이용 조건, 필드, 품질 숫자, 가공 단계 (`data/_template.md`) | 원문, 개인정보 |
 | `troubleshooting/YYYY-MM-DD-<제목>.md` | 팀원도 겪을 문제의 정제본 | 개인 상세 기록 (→ 각자 노트) |
 | 루트 `CLAUDE.md`, 폴더별 `CLAUDE.md`, `.claude/rules/` | 팀 규칙과 그 예외, 폴더 규칙 | 규칙 후보 (→ `team/`). `docs/` 문서 안에는 규칙을 쓰지 않는다 |
-| `team/` | 회고, 팀 규칙 후보, 질문 (`team/README.md`) | 개인 하루 로그, 개인 규칙 후보 |
+| `team/` | 회고, 팀 규칙 후보, 질문, 회의록(`meetings/YYYY-MM-DD.md`: 정한 것 / 할 일 / 다음에 볼 것, 결정만 짧게) (`team/README.md`) | 개인 하루 로그, 개인 규칙 후보 |
 | `assumptions.md` | 재 보지 않은 숫자 ([가정]) | |
 | 저장소 어디에도 | | 원본 데이터, 비공개 샘플, 답 원문 로그 (→ `data/`, `work/`), `.env` |
 
