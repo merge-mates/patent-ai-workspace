@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+from patent_ai.core.agents.steps import MemoryStepRecorder
 from pydantic import BaseModel, ValidationError
 from reportlab.pdfgen import canvas
 
@@ -75,7 +76,13 @@ def _go(tmp_path, plan, responses, max_steps=10):
         materials=["자료1"],
     )
     outcome = run_case(
-        case, "oa_1", "r_1", _EmptyStore(), _config(tmp_path, plan, max_steps), ctx=ctx
+        case,
+        "oa_1",
+        "r_1",
+        _EmptyStore(),
+        _config(tmp_path, plan, max_steps),
+        ctx=ctx,
+        steps=MemoryStepRecorder(),
     )
     return outcome, transport
 

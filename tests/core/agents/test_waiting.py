@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from patent_ai.core.agents.steps import MemoryStepRecorder
 from reportlab.pdfgen import canvas
 
 from patent_ai.core.agents.orchestrator import CaseInput, WaitingFor, run_case
@@ -64,7 +65,7 @@ def _go(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     case = CaseInput(case_id="c_new", oa_document=pdf, oa_document_id="d_1", materials=["자료"])
-    return run_case(case, "oa_1", "r_1", store, cfg, ctx=ctx)
+    return run_case(case, "oa_1", "r_1", store, cfg, ctx=ctx, steps=MemoryStepRecorder())
 
 
 def test_출원번호_없는_통지서는_사람을_기다리며_멈춘다(tmp_path):
@@ -151,7 +152,7 @@ def test_store가_None이면_ValueError(tmp_path):
     )
     case = CaseInput(case_id="c", oa_document=tmp_path / "x.pdf", oa_document_id="d")
     with pytest.raises(ValueError, match="store"):
-        run_case(case, "oa_1", "r_1", None, cfg, ctx=ctx)
+        run_case(case, "oa_1", "r_1", None, cfg, ctx=ctx, steps=MemoryStepRecorder())
 
 
 def _decision(name: str) -> TransportResponse:
