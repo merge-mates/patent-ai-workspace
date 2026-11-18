@@ -44,8 +44,8 @@ graph LR
 ### task-3: 멈추는 조건과 사람 기다림 (멈춤까지)
 - 담당: 재아
 - 합격 기준: #15 "최대 횟수에 닿으면 확인되지 않음과 찾아본 범위", "사람 확인이 필요하면 멈추고 그 상태가 저장된다"(돌려주는 상태까지, 저장은 #57), requirements "출원번호를 끝내 못 읽을 때", "같은 OA"
-- 고칠 파일: `src/patent_ai/core/agents/orchestrator.py`, `src/patent_ai/core/agents/waiting.py`, `tests/core/agents/test_waiting.py`
-- 만들 함수·인터페이스 모양: `max_steps` (설정 키. 재조회 `max_retries`는 F2·F3 붙을 때). `WaitingFor`(`application_number`, `direction_selection`). 출원번호 `unverified`·`conflict` → `state=waiting_for_human`, `waiting_for=application_number`, F1 결과는 그대로 돌려줌. `store.find_oa(...)`가 있으면 `state=failed`, `error={code: "oa_already_exists", case_id, oa_id}`. 같은 출원번호의 다른 OA면 `RunOutcome.case_id` = 기존 사건
+- 고칠 파일: `src/patent_ai/core/agents/orchestrator.py`, `tests/core/agents/test_waiting.py`
+- 만들 함수·인터페이스 모양: `max_steps` (설정 키. 재조회 `max_retries`는 F2·F3 붙을 때). `WaitingFor`(`application_number`, `dispatch_number`, `direction_selection`). 출원번호 `unverified`·`conflict` → `state=waiting_for_human`, `waiting_for=application_number`, F1 결과는 그대로 돌려줌. 출원번호는 확인됐는데 발송번호가 `unverified`·`conflict`면 같은 OA인지 판정할 수 없어 `waiting_for=dispatch_number` (11/19). 기다리는 동안 자르기·저장소 조회는 하지 않음. `store.find_oa(...)`가 있으면 `state=failed`, `error={code: "oa_already_exists", case_id, oa_id}`. 같은 출원번호의 다른 OA면 `RunOutcome.case_id` = 기존 사건
 - 테스트할 경우: 평소(출원번호 없는 통지서 → 멈춤) / 경계(`max_steps` 도달 → `failed`(code `max_steps`) + 찾아본 도구 목록) / 같은 OA → `failed` + 기존 ID / 기존 사건의 다음 OA → 최종 `case_id`
 - 확인 방법: `uv run pytest tests/core/agents/test_waiting.py -q` → 모두 통과
 - 먼저: task-2
@@ -64,11 +64,11 @@ graph LR
 - F2~F4 서브에이전트(자리만), 근거 검토 에이전트, Langfuse. `cut_to_oa`의 진짜 몸통(#54). 서버의 실행 상태 저장·폴링(#57).
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- 다음: 
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- 다음: /check 이슈
 - 막힌 것: 
 
 ### 끝난 뒤 (이슈가 끝난 날)
