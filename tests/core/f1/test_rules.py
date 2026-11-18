@@ -3,12 +3,12 @@
 import pytest
 
 from patent_ai.core.f1_oa_reader.rules import (
-    RuleCandidate,
     expand_claims,
     extract_by_rules,
     normalize_article,
     notice_kind_of,
 )
+from patent_ai.core.f1_oa_reader.verify import Found
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import Page, PageText
 from patent_ai.core.schemas.oa_result import NoticeKind
@@ -40,7 +40,7 @@ HEADER = (
 # ---- extract_by_rules ----
 def test_번호와_날짜_글자를_뽑는다():
     f = extract_by_rules(_pages(HEADER))
-    assert f.application_number == RuleCandidate(
+    assert f.application_number == Found(
         value="10-2099-0001234", raw_text="10-2099-0001234", page=1, ambiguous=False
     )
     assert f.dispatch_number is not None
@@ -154,11 +154,11 @@ def test_머리말을_읽었는데_표시가_없으면_initial():
     assert k.raw_text is None
     assert k.page is None
     assert k.status.value == StatusValue.CONFIRMED
-    assert k.status.checked == "최후 표시 없음, 1쪽 머리말·거절이유 표 아래·[첨 부] 앞을 봄"
+    assert k.status.checked == "최후 표시 없음, 모든 쪽 글자를 봄"
 
 
 def test_머리말_잘림은_unknown과_not_extracted():
-    # 1쪽에 통지서 제목 같은 머리말 글자가 없음
+    # 1쪽에 통지서 제목(의견제출통지서)이 없음
     k = notice_kind_of(_pages("특허청"))
     assert k.value == NoticeKind.UNKNOWN
     assert k.status.value == StatusValue.UNVERIFIED
@@ -172,6 +172,37 @@ def test_빈_쪽과_쪽_없음은_unknown():
         assert k.status.reason == UnverifiedReason.NOT_EXTRACTED
 
 
-def test_최후_표시가_머리말_밖_둘째_쪽에만_있으면_initial():
-    k = notice_kind_of(_pages(HEADER, "최후거절이유통지"))
+def test_최후_표시가_둘째_쪽에만_있으면_final_쪽_2():
+    k = notice_kind_of(_pages(HEADER, "본문\n최후거절이유통지"))
+    assert k.value == NoticeKind.FINAL
+    assert k.page == 2
+    assert k.raw_text == "최후거절이유통지"
+
+
+def test_1쪽_16줄째의_최후_표시도_final():
+    text = HEADER + "\n".join(f"줄{i}" for i in range(12)) + "\n최후 거절이유\n통지"
+    assert len(text.splitlines()) > 15
+    k = notice_kind_of(_pages(text))
+    assert k.value == NoticeKind.FINAL
+    assert k.page == 1
+
+
+def test_띄어_쓴_제목도_머리말을_읽은_것():
+    k = notice_kind_of(_pages("의 견 제 출 통 지 서\n출원번호 10-2099-0001234"))
     assert k.value == NoticeKind.INITIAL
+    assert k.status.checked == "최후 표시 없음, 모든 쪽 글자를 봄"
+
+
+def test_본문에_거절이유통지_안내만_있고_제목_없으면_unknown():
+    k = notice_kind_of(_pages("거절이유통지에 대한 안내\n출원번호 10-2099-0001234"))
+    assert k.value == NoticeKind.UNKNOWN
+    assert k.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+@pytest.mark.parametrize("text", ["특허법 제29조의2", "특허법 제29조의2 제1항"])
+def test_조의N은_None(text):
+    assert normalize_article(text) is None
+
+
+def test_제29조제1항제1호는_그대로():
+    assert normalize_article("제29조제1항제1호") == "29-1-1"
