@@ -589,6 +589,7 @@ def test_청구항_줄은_정답_형식_칸을_가진다():
         "clarity_terms",
         "clarity_reason",
         "clarity_reason_origin",
+        "no_location",
         "raw_text",
         "page",
         "status",
@@ -726,3 +727,34 @@ def test_애매가_아닌_확인되지_않음_줄은_여전히_값을_못_남긴
         ClaimRow(**row_fields(status=NOT_EXTRACTED))
     with pytest.raises(ValidationError):  # 애매여도 번호는 있어야 어느 줄인지 안다
         ClaimRow(**row_fields(claim=None, status=Status(value="unverified", reason="ambiguous")))
+
+
+# ---------- #18 task-7: 인용 없는 줄의 no_location ----------
+NO_LOC = "위치 없음 (설계 사항)"
+
+
+def test_인용_없는_줄은_no_location을_가질_수_있다():
+    row = ClaimRow(**row_fields(citations=[], locations={}, no_location=NO_LOC))
+    assert row.model_dump(mode="json")["no_location"] == NO_LOC
+    assert ClaimRow(**row_fields()).no_location is None  # 기본은 null
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"locations": {"D1": ["[0014]"]}},  # 위치와 같이
+        {"citations": [], "locations": {}, "clarity_terms": ["약"]},  # 명확성 표현과 같이
+        {"citations": [], "locations": {}, "no_location": "설계 사항"},  # 꼴이 틀림
+        {"citations": [], "locations": {}, "no_location": "위치 없음 ()"},
+    ],
+)
+def test_no_location이_위치_명확성_표현과_같이_있거나_꼴이_틀리면_거부(bad):
+    data = row_fields(citations=[], locations={}, no_location=NO_LOC)
+    data.update(bad)
+    with pytest.raises(ValidationError):
+        ClaimRow(**data)
+
+
+def test_애매가_아닌_확인되지_않음_줄은_no_location도_못_남긴다():
+    with pytest.raises(ValidationError):
+        ClaimRow(**{**unverified_row(), "no_location": NO_LOC})

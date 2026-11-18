@@ -441,3 +441,43 @@ def test_claim_rows_칸이_없는_모델_답도_받지만_줄이_빠진_것으�
     result = _read(answer)
     assert len(result.claim_rows) == 16
     assert all(r.status.value == StatusValue.UNVERIFIED for r in result.claim_rows)
+
+
+# ---- task-7: 인용이 하나도 없는 줄의 `위치 없음 (<OA 표현>)` ----
+def _no_citation_variant(expression: str = "설계 사항"):
+    """8항 줄을 `단순 부가` 대신 `설계 사항`만 적고 인용은 안 짚은 줄로 바꾼 통지서와 답."""
+    answer = _answer()
+    row = answer["claim_rows"][6]
+    row["citations"] = []
+    row["judgment"]["raw_text"] = row["judgment"]["raw_text"].replace("인용발명 1에 비추어 ", "")
+    row["judgment"]["raw_text"] = row["judgment"]["raw_text"].replace("단순 부가", "설계 사항")
+    row["no_location"] = {"value": None, "raw_text": expression, "page": 4, "ambiguous": False}
+    pages = _pages(("인용발명 1에 비추어 단순 부가에 해당", "설계 사항에 해당"))
+    return answer, pages
+
+
+def test_인용_없는_줄은_위치_없음_표현을_no_location에_담는다():
+    answer, pages = _no_citation_variant()
+    row = _row(_read(answer, pages), 8, 2)
+    assert row.status.value == StatusValue.CONFIRMED
+    assert row.no_location == "위치 없음 (설계 사항)"
+    assert row.citations == [] and row.locations == {}
+
+
+def test_위치_없음_표현이_판단_원문_안에_없으면_그_줄은_확인되지_않음():
+    answer, pages = _no_citation_variant("불명확")  # 4쪽 어딘가엔 있지만 이 줄 판단 문장엔 없음
+    _assert_dropped(_row(_read(answer, pages), 8, 2))
+
+
+def test_위치_없음_표현이_원문_어디에도_없으면_그_줄은_확인되지_않음():
+    answer, pages = _no_citation_variant("지어낸 표현")
+    _assert_dropped(_row(_read(answer, pages), 8, 2))
+
+
+def test_인용_있는_줄의_위치_없음은_그대로_locations_라벨_아래():
+    row = _row(_read(), 8, 2)
+    assert row.locations == {"D1": ["위치 없음 (단순 부가)"]} and row.no_location is None
+
+
+def test_평소_줄은_no_location이_비어_있다():
+    assert all(r.no_location is None for r in _read().claim_rows)
