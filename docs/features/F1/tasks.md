@@ -224,7 +224,7 @@ graph LR
 - 안 된 것·사람 판단: 코드(테스트 제외) 약 790줄로 400줄 기준을 넘음. record_llm.py는 call_model을 거치지 않음(루트 CLAUDE.md 예외 문구는 scripts/fetch_*만) — 예외에 넣을지. 실행 하나의 시간·비용 상한(ADR 0003)은 없음(#15에서). DB 기록기·api_cache 테이블은 #55 뒤. 이슈 #13 본문에서 지울 두 줄은 아직 그대로(본문은 고치지 않기로 함).
 - 다음 이슈로: RecordedTransport는 지금 손 확인용이라 쓰는 곳이 적음 — 계속 둘지.
 
-## m1-i2-18  (11/19)  상태: 끝  (이슈 #18)
+## m1-i2-18  (11/19)  상태: 승인  (이슈 #18)
 **구현할 design 부분**: design.md 2절 ③④⑤⑥과 필드 출처 표, 3-2 `OAExtraction`, 7절, 9절   **맡은 합격 기준**: requirements.md 1·2·3·5·6 (9번 tune 점수는 데이터 뒤 따로)
 **목표** (한 줄): 쪽 글자에서 OA 필드·거절이유를 뽑아 원문 대조를 거친 `OAResult`를 만든다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run pytest tests/core/f1 -q` 통과 (가짜 통지서 글자 + 가짜 전송층).
@@ -236,6 +236,7 @@ graph LR
     task-3 --> task-4
     task-4 --> task-5
     task-5 --> task-6
+    task-6 --> task-7
 ```
 
 ### task-1: 규칙 추출 (번호·날짜 글자·조문·청구항 범위·통지 종류)
@@ -293,6 +294,16 @@ graph LR
 - 확인 방법: `uv run pytest -q` → 모두 통과
 - 먼저: task-5
 
+### task-7: 인용 없는 줄의 `위치 없음 (<OA 표현>)` (11/19 승인, 구현은 11/19 아침)
+- 담당: 재아
+- 합격 기준: requirements.md 1·3 (정답 형식 3절 4번: 인용 위치가 없으면 `위치 없음 (<OA 표현>)`), 정답 4절 JSON
+- 왜: 지금은 `위치 없음 (…)`을 인용 라벨 아래(`locations[라벨]`)에만 담을 수 있어, 인용이 하나도 없는 줄(예: "설계 사항"만 적은 줄)은 담을 자리가 없다 (work/gold_diff_f1.md 4절 3번)
+- 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`(`ClaimRow`), `src/patent_ai/core/f1_oa_reader/{claim_rows,extraction}.py`, `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2·필드 출처 표), `tests/core/f1/test_claim_rows.py`, `tests/core/schemas/test_oa_result.py`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`
+- 만들 칸·함수 모양: `ClaimRow.no_location: str | None` — 인용 없는 줄의 `위치 없음 (<OA 표현>)`. 모델 추출에 줄 단위 `no_location` 원문 칸을 더하고, 코드가 판단 원문(`judgment.raw_text`) 안에 그 표현이 있는지 대조(모델 값 안 씀). 인용이 있는 줄은 지금처럼 `locations[라벨]`. 정답 JSON으로 낼 때의 키 이름은 #20 채점기와 맞춘다
+- 테스트할 경우: 인용 없는 줄 + "설계 사항" → `no_location = "위치 없음 (설계 사항)"`, confirmed / 표현이 판단 원문에 없음 → 그 줄 unverified(not_extracted) / 인용 있는 줄의 위치 없음은 그대로 `locations` / 스키마: `no_location`과 `locations`·`clarity_terms`를 같이 두면 거부
+- 확인 방법: `uv run pytest tests/core/f1/test_claim_rows.py -q` → 모두 통과
+- 먼저: task-6
+
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
 - 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
@@ -305,7 +316,8 @@ graph LR
 - [x] task-4
 - [x] task-5
 - [x] task-6
-- 다음: tune 점수 (#20·#22 뒤), /pr-draft (아침, 사람 확인 뒤)
+- [ ] task-7
+- 다음: task-7 (11/19 아침), tune 점수 (#20·#22 뒤), /pr-draft
 - 막힌 것: 
 
 ### 끝난 뒤 (11/19)
