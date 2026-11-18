@@ -21,6 +21,11 @@ def repo():
 
 
 @pytest.fixture
+def law_repo():
+    return InMemoryChunkRepository.from_jsonl("law", FIX / "chunks_law.jsonl")
+
+
+@pytest.fixture
 def goldsets_root(tmp_path):
     """임시 폴더에 정답 세트 구조(VERSION, tune/retrieval/)를 만든다."""
     root = tmp_path / "goldsets"
@@ -75,6 +80,11 @@ def test_빼는_줄_파일도_누출_없으면_통과(repo, goldsets_root, tmp_p
     run_preflight(cfg, repo, goldsets_root, gold_name="gold_excluded.jsonl", tmp=tmp_path)
 
 
+def test_법령_빼는_줄_파일도_누출_없으면_통과(law_repo, goldsets_root, tmp_path):
+    cfg = load_config(FIX / "config_law_ok.yaml")
+    run_preflight(cfg, law_repo, goldsets_root, gold_name="gold_law_excluded.jsonl", tmp=tmp_path)
+
+
 @pytest.mark.parametrize(
     "query,item",
     [
@@ -87,6 +97,7 @@ def test_빼는_줄_파일도_누출_없으면_통과(repo, goldsets_root, tmp_p
         ("제1항에 있어서, 상기 기판은", PARA),
         ("기판(110)과 전극(23)을 포함", PARA),
         ("도 3.5 mm 두께", FIG3),
+        ("protocol 3 을 따른다", COL),  # 영문 낱말 끝의 col은 앞말이 아니다
     ],
 )
 def test_평소_청구항_글자는_누출로_안_본다(query, item):
@@ -110,6 +121,9 @@ def test_평소_청구항_글자는_누출로_안_본다(query, item):
         ("29조 2항에 따라", ART),
         ("col. 3, l. 10", COL),
         ("칼럼 4 참조", COL),
+        ("문단 【0023】에 있다", PARA),
+        ("문단 ［0023］에 있다", PARA),
+        ("도 3. 다음 단계", FIG3),  # 문장 끝 마침표는 소수점이 아니라 누출
     ],
 )
 def test_정답_위치_표기는_누출(query, item):
@@ -119,6 +133,18 @@ def test_정답_위치_표기는_누출(query, item):
 def test_다른_번호는_누출_아님():
     assert find_leaks(row("도 4 의 구조 [0030]", FIG3)) == []
     assert find_leaks(row("도 4 의 구조 [0030]", PARA)) == []
+
+
+def test_문단_정렬키가_null이면_label_글자가_질의에_있을_때_누출():
+    item = GoldItem(kind="paragraph", start=None, end=None, label="[0023]")
+    assert len(find_leaks(row("문단 [0023]에 있다", item))) == 1
+    assert find_leaks(row("문단 [0030]에 있다", item)) == []
+
+
+def test_칼럼줄_정렬키가_null이면_label_글자가_질의에_있을_때_누출():
+    item = GoldItem(kind="column_line", start=None, end=None, label="3:50-4:5")
+    assert len(find_leaks(row("위치는 3:50-4:5 이다", item))) == 1
+    assert find_leaks(row("위치는 3:51 이다", item)) == []
 
 
 def test_누출_결과에_질의_글자가_없다():
@@ -169,11 +195,33 @@ def test_누출_줄이_있으면_실패하고_row_id와_건수만_말한다(repo
     with pytest.raises(RetrievalEvalError) as e:
         run_preflight(cfg, repo, goldsets_root, gold_name="gold_leak.jsonl", tmp=tmp_path)
     msg = str(e.value)
-    assert "3" in msg  # 누출 줄 3건
-    assert "leak-para" in msg and "leak-fig" in msg and "leak-law" in msg
+    assert "2" in msg  # 누출 줄 2건
+    assert "leak-para" in msg and "leak-fig" in msg
     assert "clean" not in msg
     for secret in ["가열 처리 방법", "기판 구조", "거절", "[0023]", "제29조"]:
         assert secret not in msg
+
+
+def test_법령_누출_줄도_실패(law_repo, goldsets_root, tmp_path):
+    cfg = load_config(FIX / "config_law_ok.yaml")
+    with pytest.raises(RetrievalEvalError, match="leak-law"):
+        run_preflight(cfg, law_repo, goldsets_root, gold_name="gold_law_leak.jsonl", tmp=tmp_path)
+
+
+def test_인용문헌_줄에_doc_ids가_없으면_실패하고_row_id만_말한다(repo, goldsets_root, tmp_path):
+    cfg = load_config(FIX / "config_ok.yaml")
+    with pytest.raises(RetrievalEvalError, match="doc_ids") as e:
+        run_preflight(cfg, repo, goldsets_root, gold_name="gold_cite_no_docids.jsonl", tmp=tmp_path)
+    msg = str(e.value)
+    assert "no-docids" in msg and "300" not in msg
+
+
+def test_설정_말뭉치와_다른_정답_줄이_있으면_실패(repo, goldsets_root, tmp_path):
+    # cite 설정에 law 줄이 든 파일을 주면 조용히 빼지 않고 멈춘다
+    cfg = load_config(FIX / "config_ok.yaml")
+    with pytest.raises(RetrievalEvalError, match="corpus") as e:
+        run_preflight(cfg, repo, goldsets_root, gold_name="gold_law_excluded.jsonl", tmp=tmp_path)
+    assert "ex-edition" in str(e.value)
 
 
 def test_chunks_모드에서_scores_dir이_experiments_아래면_실패(repo, goldsets_root, tmp_path):
@@ -219,6 +267,11 @@ def test_cq_dir이_저장소_안_무시되는_경로면_통과(repo, goldsets_ro
 
 
 # ---- 설정 읽기 ----
+def test_설정_YAML_문법이_틀리면_RetrievalEvalError(tmp_path):
+    with pytest.raises(RetrievalEvalError, match="config_bad_yaml.yaml"):
+        load_config(FIX / "config_bad_yaml.yaml")
+
+
 def test_설정_칸을_읽는다():
     cfg = load_config(FIX / "config_ok.yaml")
     assert (cfg.corpus, cfg.index_version, cfg.mode, cfg.impl) == (

@@ -30,7 +30,11 @@ def load_config(path: str | Path) -> RetrievalEvalConfig:
     p = Path(path)
     if not p.is_file():
         raise RetrievalEvalError(f"설정 파일이 없다: {p.name}")
-    data = yaml.safe_load(p.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        # 원인 글자는 찍지 않고 파일 이름만
+        raise RetrievalEvalError(f"설정 파일 YAML 문법이 틀리다: {p.name}") from None
     if not isinstance(data, dict):
         raise RetrievalEvalError(f"설정 파일이 비었거나 모양이 틀리다: {p.name}")
     try:

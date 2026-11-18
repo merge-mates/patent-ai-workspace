@@ -17,14 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # 번호 뒤에 숫자·소수점+숫자·℃·%·°가 오면 도면 번호가 아니다 ("도 3.5", "도 3%")
 _NOT_AFTER_NUM = r"(?!\d|\.\d|[℃%°])"
-# 괄호 속 문단 번호: [0023], [0022-0025], [23]
-_BRACKET = re.compile(r"\[\s*(\d+)\s*(?:[-~]\s*(\d+)\s*)?\]")
+# 괄호 속 문단 번호: [0023], [0022-0025], [23] (전각 【0023】·［0023］도)
+_BRACKET = re.compile(r"[\[［【]\s*(\d+)\s*(?:[-~]\s*(\d+)\s*)?[\]］】]")
 
 
 def _paragraph_leak(query: str, item: GoldItem) -> bool:
     """대괄호 문단 표기만 본다. 맨 숫자 0023은 소수와 구별이 안 돼 보지 않는다."""
     if item.start is None:
-        return False
+        # 정렬 키가 없으면 정답 라벨 글자가 질의에 그대로 있는지로 대신 본다
+        return bool(item.label) and item.label in query
     end = item.end if item.end is not None else item.start
     for m in _BRACKET.finditer(query):
         lo = int(m.group(1))
@@ -56,10 +57,12 @@ def _article_leak(query: str, item: GoldItem) -> bool:
 def _column_leak(query: str, item: GoldItem) -> bool:
     """칼럼 번호는 앞말(col., 칼럼)이 있을 때만 본다. 맨 3:10은 비율과 구별이 안 된다."""
     if item.start is None:
-        return False
+        return bool(item.label) and item.label in query
     end = item.end if item.end is not None else item.start
     for col in range(item.start // 10000, end // 10000 + 1):
-        if re.search(rf"(?:col\.?|column|칼럼|컬럼)\s*{col}(?!\d)", query, re.IGNORECASE):
+        if re.search(
+            rf"(?<![A-Za-z])(?:col\.?|column|칼럼|컬럼)\s*{col}(?!\d)", query, re.IGNORECASE
+        ):
             return True
     return False
 
@@ -137,6 +140,20 @@ def preflight(
     # 정답 0줄
     if not gold:
         raise RetrievalEvalError("정답 줄이 0개다")
+
+    # 정답 줄 점검: 정답 파일은 말뭉치마다 나눈다. 다른 말뭉치 줄은 조용히 빼지 않고 멈춘다
+    wrong_corpus = [row.row_id for row in gold if row.corpus != cfg.corpus]
+    if wrong_corpus:
+        raise RetrievalEvalError(
+            f"설정 corpus({cfg.corpus})와 다른 corpus의 정답 줄 {len(wrong_corpus)}건: "
+            + ", ".join(wrong_corpus)
+        )
+    # 인용문헌 줄은 doc_ids가 있어야 그 공보 안에서 채점된다 (없으면 점수가 부풀음)
+    no_docs = [row.row_id for row in gold if row.corpus == "cite" and row.doc_ids is None]
+    if no_docs:
+        raise RetrievalEvalError(
+            f"cite 줄에 doc_ids가 없다 {len(no_docs)}건: " + ", ".join(no_docs)
+        )
 
     # 질의 누출: 걸린 줄의 row_id와 건수만 알린다
     leaked = {row.row_id: n for row in gold if (n := len(find_leaks(row)))}
