@@ -17,8 +17,10 @@
 | `data-model.md` | 엔티티·관계, 공통 속성, 결과 스키마, DB 모델 | 기능 하나의 세부 (→ features) |
 | `decisions/NNNN-<제목>.md` | ADR: 세 조건이 다 맞는 결정만 (되돌리기 어렵다 / 이유를 모르면 이상해 보인다 / 진짜 선택지가 있었다). 제안(비교 중) → 확정 → 대체됨 | 하나라도 아닌 선택 (→ 그 기능 design.md 결정 칸) |
 | `features/<기능>/` | `requirements.md`(무엇) → `design.md`(어떻게) → `tasks.md`(구현 계획 + 진행) | 코드 (→ 코드 폴더) |
+| `evaluation/` | 평가 세부: 지표 정의, 정답 뽑는 법, LLM 저지 루브릭과 예시·애매한 경우, 사람 검수 방법 (목차 `evaluation/README.md`, 단계마다 한 파일로 나눠도 된다) | 평가 원칙 (→ `product.md` 6절), 정답 원문 (→ `data/goldsets/`), 점수 (→ `experiments/`), 저지 프롬프트 원문 (→ `eval/` 프롬프트 파일) |
 | `data/<출처>.md` | 데이터 카드: 출처·이용 조건, 필드, 품질 숫자, 가공 단계 (`data/_template.md`) | 원문, 개인정보 |
 | `troubleshooting/YYYY-MM-DD-<제목>.md` | 팀원도 겪을 문제의 정제본 | 개인 상세 기록 (→ 각자 노트) |
+| 루트 `CLAUDE.md`, 폴더별 `CLAUDE.md`, `.claude/rules/` | 팀 규칙과 그 예외, 폴더 규칙 | 규칙 후보 (→ `team/`). `docs/` 문서 안에는 규칙을 쓰지 않는다 |
 | `team/` | 회고, 팀 규칙 후보, 질문 (`team/README.md`) | 개인 하루 로그, 개인 규칙 후보 |
 | `assumptions.md` | 재 보지 않은 숫자 ([가정]) | |
 | 저장소 어디에도 | | 원본 데이터, 비공개 샘플, 답 원문 로그 (→ `data/`, `work/`), `.env` |
