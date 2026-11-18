@@ -1,0 +1,31 @@
+{
+  "document_id": "d_1",
+  "pages": [
+    {
+      "page": 1,
+      "text": "",
+      "status": {
+        "value": "unverified",
+        "reason": "body_missing",
+        "checked": null,
+        "searched_scope": null
+      }
+    },
+    {
+      "page": 2,
+      "text": "",
+      "status": {
+        "value": "unverified",
+        "reason": "body_missing",
+        "checked": null,
+        "searched_scope": null
+      }
+    }
+  ],
+  "status": {
+    "value": "unverified",
+    "reason": "body_missing",
+    "checked": null,
+    "searched_scope": null
+  }
+}

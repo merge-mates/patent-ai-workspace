@@ -1,0 +1,27 @@
+{
+  "application_number": {
+    "value": "10-2099-0000001",
+    "raw_text": "10-2099-0000001",
+    "page": 1,
+    "ambiguous": false
+  },
+  "dispatch_number": {
+    "value": "9-5-2099-000000001",
+    "raw_text": "9-5-2099-000000001",
+    "page": 1,
+    "ambiguous": false
+  },
+  "rejections": [],
+  "allowable_claims": {
+    "value": null,
+    "raw_text": "청구항 5, 7",
+    "page": 3,
+    "ambiguous": false
+  },
+  "amendment_note": {
+    "value": null,
+    "raw_text": "청구항 5의 종속 관계를 정리하세요.",
+    "page": 3,
+    "ambiguous": false
+  }
+}
