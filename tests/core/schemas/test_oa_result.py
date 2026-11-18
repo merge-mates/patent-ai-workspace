@@ -13,6 +13,9 @@ from patent_ai.core.schemas.oa_result import (
     NoticeKind,
     OAResult,
     Rejection,
+    build_oa_result,
+    build_rejection,
+    collect_evidence,
     summarize_rejection_status,
     summarize_status,
 )
@@ -26,18 +29,22 @@ def ev(value, raw="원문", page: int | None = 1, status: Status = OK):
     return {"value": value, "raw_text": raw, "page": page, "status": status}
 
 
-def rejection(article="29-2", claims=(1, 2), supported=True, flags=(), status=OK, **extra):
+def rej_fields(article="29-2", claims=(1, 2), supported=True, flags=(), **extra):
     data = {
         "article": ev(article),
         "supported": supported,
         "claims": ev(list(claims)),
         "citations": [],
         "examiner_reasoning": ev("요지"),
-        "status": status,
         "flags": list(flags),
     }
     data.update(extra)
-    return Rejection(**data)
+    return data
+
+
+def rejection(**kw):
+    """status·evidence는 도우미가 칸에서 모아 채운다."""
+    return build_rejection(document_id="d_1", **rej_fields(**kw))
 
 
 def conflict_value():
@@ -55,10 +62,10 @@ def hints():
         "page": None,
         "status": Status(value="confirmed", checked="원문에 칸 없음"),
     }
-    return ExaminerHints(allowable_claims={**none_value, "value": []}, amendment_notes=none_value)
+    return ExaminerHints(allowable_claims={**none_value, "value": []}, amendment_note=none_value)
 
 
-def oa(rejections, **extra):
+def oa_fields(rejections, **extra):
     data = {
         "oa_id": "oa_1",
         "application_number": ev("10-2099-0000001"),
@@ -73,10 +80,13 @@ def oa(rejections, **extra):
         },
         "examiner_hints": hints(),
         "rejections": rejections,
-        "status": OK,
     }
     data.update(extra)
-    return OAResult(**data)
+    return data
+
+
+def oa(rejections, **extra):
+    return build_oa_result(document_id="d_1", **oa_fields(rejections, **extra))
 
 
 # ---------- 평소 ----------
@@ -94,7 +104,7 @@ def test_쪽_없는_confirmed_값_통지종류_initial과_힌트_없음():
     assert r.notice_kind.value == NoticeKind.INITIAL
     assert r.notice_kind.page is None
     assert r.examiner_hints.allowable_claims.value == []
-    assert r.examiner_hints.amendment_notes.value is None
+    assert r.examiner_hints.amendment_note.value is None
 
 
 def test_직렬화하면_status는_네_키():
@@ -110,8 +120,24 @@ def test_notice_kind_값은_셋():
 # ---------- 결과 전체 status 모으기 ----------
 
 
+def cit(country="KR", supported=True, flags=(), country_status=OK, **extra):
+    data = {
+        "number": ev("KR10-0000001"),
+        "country": ev(country, status=country_status),
+        "country_supported": supported,
+        "cited_paragraphs": ev(["0023"]),
+        "flags": list(flags),
+    }
+    data.update(extra)
+    return Citation(**data)
+
+
+def bad_reasoning(status=BAD):
+    return ev("요지", status=status)
+
+
 def test_모두_confirmed면_모든_칸_원문_대조():
-    s = summarize_status(oa([rejection()]))
+    s = oa([rejection()]).status
     assert s.value == StatusValue.CONFIRMED
     assert s.checked == "모든 칸 원문 대조"
 
@@ -119,26 +145,23 @@ def test_모두_confirmed면_모든_칸_원문_대조():
 def test_가장_나쁜_값을_모은다_충돌이_확인되지_않음보다_나쁨():
     r = oa(
         [
-            rejection(examiner_reasoning=ev("요지", status=BAD)),
+            rejection(examiner_reasoning=bad_reasoning()),
             rejection(examiner_reasoning=conflict_value()),
         ],
     )
-    assert summarize_status(r).value == StatusValue.CONFLICT
+    assert r.status.value == StatusValue.CONFLICT
 
 
 def test_같은_등급이면_앞_칸의_reason_식별정보가_거절이유보다_앞():
     r = oa(
         [
             rejection(
-                examiner_reasoning=ev(
-                    "요지", status=Status(value="unverified", reason="body_missing")
-                )
+                examiner_reasoning=bad_reasoning(Status(value="unverified", reason="body_missing"))
             )
         ],
         application_number=ev(None, None, None, Status(value="unverified", reason="lookup_failed")),
     )
-    s = summarize_status(r)
-    assert s.reason == UnverifiedReason.LOOKUP_FAILED
+    assert r.status.reason == UnverifiedReason.LOOKUP_FAILED
 
 
 def test_지원_안_하는_거절이유의_칸은_모으지_않는다():
@@ -146,33 +169,88 @@ def test_지원_안_하는_거절이유의_칸은_모으지_않는다():
         article="46",
         supported=False,
         flags=[Flag.NEEDS_HUMAN_REVIEW],
-        status=BAD,
+        examiner_reasoning=bad_reasoning(),
     )
+    assert unsupported.status.value == StatusValue.UNVERIFIED  # 그 거절이유 자체는 나쁨
     r = oa([rejection(), unsupported])
-    assert summarize_status(r).value == StatusValue.CONFIRMED  # flags로만 표시
+    assert r.status.value == StatusValue.CONFIRMED  # 결과 전체는 flags로만 표시
 
 
 def test_지원하는_거절이유가_나쁘면_결과도_나쁨():
-    r = oa([rejection(), rejection(examiner_reasoning=ev("요지", status=BAD))])
-    assert summarize_status(r).value == StatusValue.UNVERIFIED
+    r = oa([rejection(), rejection(examiner_reasoning=bad_reasoning())])
+    assert r.status.value == StatusValue.UNVERIFIED
 
 
-def test_거절이유_status도_같은_규칙으로_안_칸을_모은다():
-    rej = rejection(examiner_reasoning=ev("요지", status=BAD))
-    assert summarize_rejection_status(rej).value == StatusValue.UNVERIFIED
-    assert summarize_rejection_status(rejection()).value == StatusValue.CONFIRMED
+def test_summarize는_칸만_받아_모은다():
+    assert summarize_rejection_status(**rej_fields()).value == StatusValue.CONFIRMED
+    bad = rej_fields(examiner_reasoning=bad_reasoning())
+    assert summarize_rejection_status(**bad).value == StatusValue.UNVERIFIED
+    assert summarize_status(**oa_fields([rejection()])).value == StatusValue.CONFIRMED
 
 
-def test_지원_안_하는_나라_인용문헌은_거절이유_status를_나쁘게_하지_않음():
-    cit = Citation(
-        number=ev("JP 2000-1", status=BAD),
-        country="JP",
-        country_supported=False,
-        cited_paragraphs=ev(["0001"], status=BAD),
+def test_지원_안_하는_나라_확인됨_인용문헌은_모으기에서_빠짐():
+    jp = cit(
+        "JP",
+        supported=False,
         flags=[Flag.NEEDS_HUMAN_REVIEW],
+        number=ev("JP 2000-1", status=BAD),
+        cited_paragraphs=ev(["0001"], status=BAD),
     )
-    rej = rejection(citations=[cit])
-    assert summarize_rejection_status(rej).value == StatusValue.CONFIRMED
+    assert rejection(citations=[jp]).status.value == StatusValue.CONFIRMED
+
+
+def test_나라를_못_정한_인용문헌은_unverified가_거절이유_status에_늘_들어감():
+    unknown = cit(
+        None,
+        supported=False,
+        flags=[Flag.NEEDS_HUMAN_REVIEW],
+        country_status=Status(value="unverified", reason="ambiguous"),
+    )
+    s = rejection(citations=[unknown]).status
+    assert s.value == StatusValue.UNVERIFIED
+    assert s.reason == UnverifiedReason.AMBIGUOUS
+
+
+def test_KR_US는_supported_true_그_밖은_false():
+    with pytest.raises(ValidationError):
+        cit("JP", supported=True)
+    with pytest.raises(ValidationError):
+        cit("KR", supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW])
+    with pytest.raises(ValidationError):
+        cit("US", supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW])
+    assert cit("US").country_supported is True
+
+
+# ---------- 저장된 status와 모은 값의 일치 ----------
+
+
+def test_거절이유_0개인데_confirmed인_OAResult는_거부():
+    with pytest.raises(ValidationError):
+        OAResult(**oa_fields([]), status=OK)
+
+
+def test_Rejection_status가_안쪽_칸과_다르면_거부():
+    with pytest.raises(ValidationError):
+        Rejection(**rej_fields(examiner_reasoning=bad_reasoning()), status=OK)
+
+
+def test_OAResult_status가_칸을_모은_값과_다르면_거부():
+    bad_rej = rejection(examiner_reasoning=bad_reasoning())
+    with pytest.raises(ValidationError):
+        OAResult(**oa_fields([bad_rej]), status=OK)
+
+
+# ---------- 결과 단위 evidence ----------
+
+
+def test_쪽이_있는_값마다_document_id_page_raw_text를_모은다():
+    r = oa([rejection(article="29-2")])
+    assert r.evidence
+    assert all(e.document_id == "d_1" and e.page is not None for e in r.evidence)
+    # 쪽 없는 값(통지 종류 initial, 힌트 없음)은 들어가지 않음
+    assert all(e.raw_text is not None for e in r.evidence)
+    assert collect_evidence(r, "d_1") == r.evidence
+    assert rejection().evidence  # 거절이유 하나도 같은 규칙
 
 
 # ---------- 빈 입력 ----------
@@ -180,7 +258,7 @@ def test_지원_안_하는_나라_인용문헌은_거절이유_status를_나쁘�
 
 def test_거절이유_0개면_unverified_not_extracted와_경고(caplog):
     with caplog.at_level(logging.WARNING):
-        s = summarize_status(oa([]))
+        s = oa([]).status
     assert s.value == StatusValue.UNVERIFIED
     assert s.reason == UnverifiedReason.NOT_EXTRACTED
     assert caplog.records
@@ -221,17 +299,21 @@ def test_supported_false와_needs_human_review가_같이_있으면_통과():
 
 def test_country_supported_false인데_needs_human_review_없으면_거부():
     with pytest.raises(ValidationError):
-        Citation(
-            number=ev("JP 2000-1"),
-            country="JP",
-            country_supported=False,
-            cited_paragraphs=ev([]),
-        )
+        cit("JP", supported=False)
 
 
 def test_status_네_값_밖은_거부():
     with pytest.raises(ValidationError):
-        oa([rejection()], status={"value": "maybe"})
+        OAResult(**oa_fields([rejection()]), status={"value": "maybe"})
+
+
+def test_모르는_키는_조용히_버리지_않고_거부():
+    with pytest.raises(ValidationError):
+        OAResult(**oa_fields([rejection()]), status=OK, surprise=1)
+    with pytest.raises(ValidationError):
+        Status(value="conflict", surprise=1)
+    with pytest.raises(ValidationError):
+        CaseMaterials(case_id="c_1", surprise=1)
 
 
 # ---------- CaseMaterials ----------

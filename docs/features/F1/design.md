@@ -95,7 +95,7 @@ flowchart LR
   "notice_kind":  {"value": "final", "raw_text": "최후거절이유통지", "page": 1, "status": {"value": "confirmed", "checked": "..."}},
   "examined_claim_version": null,
   "examiner_hints": {"allowable_claims": {"value": [5, 7], "raw_text": "청구항 5, 7", "page": 3, "status": {"...": "..."}},
-                     "amendment_notes": {"value": null, "raw_text": "…", "page": 3, "status": {"...": "..."}}},
+                     "amendment_note": {"value": null, "raw_text": "…", "page": 3, "status": {"...": "..."}}},
   "rejections": [
     {"article": {"value": "29-2", "raw_text": "특허법 제29조제2항", "page": 2, "status": {"...": "..."}},
      "supported": true,
@@ -206,7 +206,7 @@ flowchart LR
 | `notice_final.pages.json` | 최후거절이유통지 | `notice_kind=final` | 6 |
 | `notice_no_kind.pages.json` | 머리말은 있는데 최후 표시 없음 | `notice_kind=initial`, `page=null`, `confirmed`(본 범위) | 6 |
 | `notice_header_cut.pages.json` | 1쪽 머리말이 잘림 | `notice_kind=unknown`, `unverified(not_extracted)` | 6 |
-| `notice_no_hints.pages.json` | 심사관 힌트 칸 없음 | `allowable_claims=[]`·`amendment_notes=null`, `page=null`, `confirmed`("원문에 칸 없음") | 1 |
+| `notice_no_hints.pages.json` | 심사관 힌트 칸 없음 | `allowable_claims=[]`·`amendment_note=null`, `page=null`, `confirmed`("원문에 칸 없음") | 1 |
 | `notice_missing_fields.pages.json` | 제출기일·식별번호 없음 | 그 필드 `unverified(not_extracted)`, 값·쪽 없음 | 2 |
 | `notice_unsupported.pages.json` | 42조 3항 + JP 인용문헌 | `supported=false`·`country_supported=false` + `needs_human_review` | 5 |
 | `notice_scanned.pages.json` | 쪽은 있는데 글자 없음 | 필드 전부 `unverified(input_unverified)`, failed 아님 | 2 |

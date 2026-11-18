@@ -51,7 +51,7 @@ graph LR
 - 담당: 재아
 - 합격 기준: requirements.md 1·3·5·6, 4 (빠진 자료·보류 모양)
 - 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`, `src/patent_ai/core/schemas/case_materials.py`, `tests/core/schemas/test_oa_result.py`
-- 만들 함수·인터페이스 모양: `OAResult`, `Rejection{article, supported, claims, citations, examiner_reasoning}`, `Citation{number, country, country_supported, cited_paragraphs}`, `ExaminerHints{allowable_claims, amendment_notes}`, `NoticeKind`(`initial`/`final`/`unknown`, 정답 형식 f1-oa-gold.md와 같은 코드), `CaseMaterials{case_id, documents, missing[{what, depends_on_tasks, lookup_result, ask_upload}], held_tasks[{task, waiting_for}], review_items_count}` (design.md 3-2 그대로)
+- 만들 함수·인터페이스 모양: `OAResult`, `Rejection{article, supported, claims, citations, examiner_reasoning}`, `Citation{number, country, country_supported, cited_paragraphs}`, `ExaminerHints{allowable_claims, amendment_note}`, `NoticeKind`(`initial`/`final`/`unknown`, 정답 형식 f1-oa-gold.md와 같은 코드), `CaseMaterials{case_id, documents, missing[{what, depends_on_tasks, lookup_result, ask_upload}], held_tasks[{task, waiting_for}], review_items_count}` (design.md 3-2 그대로)
 - 테스트할 경우: 평소(청구항 1이 거절이유 둘에 들어간 결과, 쪽 없는 `confirmed` 값: 통지 종류 `initial`·힌트 "없음") / 빈 입력(거절이유 0개 → 결과 status `unverified(not_extracted)`) / 실패(`notice_kind=unknown`인데 `confirmed` → 거부, 날짜 칸에 `value`를 넣음 → 거부, `supported=false`인데 `needs_human_review` 없음 → 거부, 지원 안 하는 나라인데 `ask_upload=true` → 거부)
 - 확인 방법: `uv run pytest tests/core/schemas/test_oa_result.py -q` → 모두 통과
 - 먼저: task-1
