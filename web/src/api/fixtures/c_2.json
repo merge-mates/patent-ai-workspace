@@ -1,0 +1,767 @@
+{
+  "case_id": "c_2",
+  "case_name": "가상의 센서 장치",
+  "last_opened_at": "2099-01-28T14:05:00",
+  "oa_id": "oa_2",
+  "run_id": "r_oa_2",
+  "oa_result": {
+    "status": {
+      "value": "confirmed",
+      "reason": null,
+      "checked": "모든 칸 원문 대조",
+      "searched_scope": null
+    },
+    "evidence": [
+      {
+        "document_id": "d_2",
+        "page": 1,
+        "raw_text": "10-2099-0000001",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 1,
+        "raw_text": "9-5-2099-000000001",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 1,
+        "raw_text": "2099.01.26.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 1,
+        "raw_text": "2099.03.26.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 1,
+        "raw_text": "제1항 내지 제7항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 3,
+        "raw_text": "청구항 5, 7",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 3,
+        "raw_text": "청구항 5의 종속 관계를 정리하세요.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "특허법 제29조제2항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "제1항 내지 제4항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "공개특허공보 제10-2099-0000001호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "공개특허공보 제10-2099-0000001호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "식별번호 [0023], [0031]",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "JP2099-000001 A",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "JP2099-000001 A",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "식별번호 [0045]",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 3,
+        "raw_text": "특허법 제42조제3항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 3,
+        "raw_text": "제1항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 3,
+        "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_2",
+        "page": 2,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "edition": null,
+        "checked_on": null
+      }
+    ],
+    "origin": "ai_generated",
+    "needs_recheck": false,
+    "recheck_reason": null,
+    "flags": [],
+    "oa_id": "oa_2",
+    "application_number": {
+      "value": "1020990000001",
+      "raw_text": "10-2099-0000001",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "dispatch_number": {
+      "value": "952099000000001",
+      "raw_text": "9-5-2099-000000001",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_date": {
+      "value": null,
+      "raw_text": "2099.01.26.",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "response_due": {
+      "value": null,
+      "raw_text": "2099.03.26.",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_kind": {
+      "value": "initial",
+      "raw_text": null,
+      "page": null,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "최후 표시 없음, 모든 쪽 글자를 봄",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claims": {
+      "value": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "raw_text": "제1항 내지 제7항",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claim_version": null,
+    "examiner_hints": {
+      "allowable_claims": {
+        "value": [
+          5,
+          7
+        ],
+        "raw_text": "청구항 5, 7",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "3쪽 원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      },
+      "amendment_note": {
+        "value": null,
+        "raw_text": "청구항 5의 종속 관계를 정리하세요.",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "3쪽 원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      }
+    },
+    "rejections": [
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "특허법 제29조제2항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "제1항 내지 제4항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "공개특허공보 제10-2099-0000001호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "공개특허공보 제10-2099-0000001호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "식별번호 [0023], [0031]",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "JP2099-000001 A",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "JP2099-000001 A",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 2,
+            "raw_text": "식별번호 [0045]",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "no": 1,
+        "kind": "inventive_step",
+        "article": {
+          "value": "29-2",
+          "raw_text": "특허법 제29조제2항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "2쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "raw_text": "제1항 내지 제4항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "2쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [
+          {
+            "label": "D1",
+            "number": {
+              "value": "KR20990000001A",
+              "raw_text": "공개특허공보 제10-2099-0000001호",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "KR",
+              "raw_text": "공개특허공보 제10-2099-0000001호",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "인용 표기에서 나라 판정",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": true,
+            "cited_paragraphs": {
+              "value": [
+                "[0023]",
+                "[0031]"
+              ],
+              "raw_text": "식별번호 [0023], [0031]",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": []
+          },
+          {
+            "label": "D2",
+            "number": {
+              "value": "JP2099000001A",
+              "raw_text": "JP2099-000001 A",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "JP",
+              "raw_text": "JP2099-000001 A",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "인용 표기에서 나라 판정",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": false,
+            "cited_paragraphs": {
+              "value": [
+                "[0045]"
+              ],
+              "raw_text": "식별번호 [0045]",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": [
+              "needs_human_review"
+            ]
+          }
+        ],
+        "examiner_reasoning": {
+          "value": "센서 구성이 인용발명 1과 같아 쉽게 만들 수 있다는 판단",
+          "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "2쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      },
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "d_2",
+            "page": 3,
+            "raw_text": "특허법 제42조제3항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 3,
+            "raw_text": "제1항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_2",
+            "page": 3,
+            "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [
+          "needs_human_review"
+        ],
+        "no": 2,
+        "kind": "other",
+        "article": {
+          "value": "42-3",
+          "raw_text": "특허법 제42조제3항",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "3쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": false,
+        "claims": {
+          "value": [
+            1
+          ],
+          "raw_text": "제1항",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "3쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [],
+        "examiner_reasoning": {
+          "value": "'약' 표현이 불명확하다는 판단",
+          "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "3쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      }
+    ],
+    "claim_rows": [
+      {
+        "claim": 1,
+        "rejection": 1,
+        "citations": [
+          "D1",
+          "D2"
+        ],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 2,
+        "rejection": 1,
+        "citations": [
+          "D1",
+          "D2"
+        ],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 3,
+        "rejection": 1,
+        "citations": [
+          "D1",
+          "D2"
+        ],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 4,
+        "rejection": 1,
+        "citations": [
+          "D1",
+          "D2"
+        ],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
+          "searched_scope": null
+        }
+      }
+    ]
+  },
+  "materials": {
+    "case_id": "c_2",
+    "documents": [
+      {
+        "document_id": "d_2",
+        "kind": "oa",
+        "source": "uploaded"
+      }
+    ],
+    "missing": [
+      {
+        "what": "D2 JP2099000001A 본문",
+        "depends_on_tasks": [
+          "F3 대비: D2 JP2099000001A"
+        ],
+        "lookup_result": "unsupported_country",
+        "ask_upload": false
+      }
+    ],
+    "held_tasks": [
+      {
+        "task": "F3 대비: D2 JP2099000001A",
+        "waiting_for": "D2 JP2099000001A 본문"
+      }
+    ],
+    "review_items_count": 3
+  },
+  "review_items": [
+    {
+      "kind": "needs_human_review",
+      "target": "oa_result[0].rejections[0].citations[1]",
+      "label": "JP2099000001A",
+      "reason": "지원 안 하는 나라 JP"
+    },
+    {
+      "kind": "needs_human_review",
+      "target": "oa_result[0].rejections[1]",
+      "label": "42-3",
+      "reason": "지원 안 하는 거절이유 42-3"
+    },
+    {
+      "kind": "missing_material",
+      "target": "materials.missing[0]",
+      "label": "D2 JP2099000001A 본문",
+      "reason": "unsupported_country"
+    }
+  ],
+  "document": {
+    "document_id": "d_2",
+    "pages": [
+      {
+        "page": 1,
+        "text": "의견제출통지서\n출원번호 10-2099-0000001\n발송번호 9-5-2099-000000001\n발송일자 2099.01.26.\n심사 대상 청구항 제1항 내지 제7항\n제출기일 2099.03.26.\n출원인 가나다 주식회사\n발명의 명칭 가상의 센서 장치\n분할 원출원 10-2099-0000999\n이 출원에 대한 심사 결과 아래와 같은 거절이유가 있어 통지합니다.",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "글자 있음",
+          "searched_scope": null
+        },
+        "tables": []
+      },
+      {
+        "page": 2,
+        "text": "[거절이유]\n1. 이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.\n인용발명 1: 공개특허공보 제10-2099-0000001호 (식별번호 [0023], [0031])\n인용발명 2: JP2099-000001 A (식별번호 [0045])\n심사관 판단: 청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "글자 있음",
+          "searched_scope": null
+        },
+        "tables": []
+      },
+      {
+        "page": 3,
+        "text": "2. 이 출원의 청구항 제1항은 특허법 제42조제3항에 해당하여 특허를 받을 수 없습니다.\n심사관 판단: 청구항 제1항의 '약'이라는 표현이 불명확합니다.\n「특허 가능한 청구항」 청구항 5, 7\n【보정에 관한 참고사항】 청구항 5의 종속 관계를 정리하세요.\n[첨 부]",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "글자 있음",
+          "searched_scope": null
+        },
+        "tables": []
+      }
+    ],
+    "status": {
+      "value": "confirmed",
+      "reason": null,
+      "checked": "글자 있는 쪽",
+      "searched_scope": null
+    }
+  }
+}
