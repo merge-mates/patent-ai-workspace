@@ -5,6 +5,7 @@
 
 import hashlib
 import json
+import logging
 import shutil
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import pytest
 
 from eval.retrieval import score as score_mod
 from eval.retrieval.config import load_config
+from eval.retrieval.cq import write_cq
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.score import default_cq_dir, default_scores_dir, main, score
 from patent_ai.retrieval.repository import InMemoryChunkRepository
@@ -354,7 +356,7 @@ def test_not_in_scope_법령_정답_판이_범위에_없으면_빼고_센다(tmp
     """정답 판(구판)이 발송일 범위(신판)에 없으면 그 항목은 맞힐 수 없다.
 
     항목이 모두 범위 밖인 줄은 줄째 빼고(Hit·Recall·CQ 밖), 일부만 범위 밖이면
-    그 항목만 빼고 남은 항목으로 채점한다 (은진 11/19, 재아 확인 필요).
+    그 항목만 빼고 남은 항목으로 채점한다 (은진 11/19, 재아 #138 리뷰 동의).
     """
     report = _score_fixture(tmp_path, goldsets_root, "gold_law_not_in_scope.jsonl", "law")
     f = report.scores["failures"]
@@ -392,3 +394,26 @@ def test_not_in_scope_인용문헌_정답_문단이_조각에_없으면_그_항�
     assert second.row.row_id == "10-2020-0000105:r1:c1:KR2000000001A"
     assert [i.label for i in second.row.items] == ["[0022]-[0025]"]
     assert second.match_sizes == [4]
+    # CQ 파일에도 남은 항목만 간다 (이 픽스처는 둘 다 맞혀서 후보 0건이라 줄을 직접 넘긴다)
+    second.found_by_rank = [set() for _ in second.found_by_rank]  # 못 맞힌 줄로 만든다
+    report.rows = [second]
+    out = tmp_path / "cq" / "cq_candidates.jsonl"
+    assert write_cq(report, out) == 1
+    (line,) = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
+    assert [i["label"] for i in line["items"]] == ["[0022]-[0025]"]
+
+
+def test_not_in_scope_뺀_줄과_항목은_row_id와_수를_경고로_남긴다(tmp_path, goldsets_root, caplog):
+    """뺀 흔적이 scores.json 건수뿐이면 matcher가 망가져도 소리 없이 빠진다 (재아 #138 리뷰).
+
+    경고에는 row_id와 뺀 항목 수만 쓰고 질의 원문은 쓰지 않는다 (design 2절 메시지 규칙).
+    """
+    with caplog.at_level(logging.WARNING, logger="eval.retrieval.score"):
+        _score_fixture(tmp_path, goldsets_root, "gold_law_not_in_scope.jsonl", "law")
+    msgs = [r.getMessage() for r in caplog.records if r.name == "eval.retrieval.score"]
+    # 줄째 뺀 204, 항목 하나를 뺀 205
+    assert any("10-2020-0000204:r1" in m and "1/1" in m for m in msgs)
+    assert any("10-2020-0000205:r1" in m and "1/2" in m for m in msgs)
+    # 범위 안에 정답이 있는 202는 경고하지 않는다
+    assert not any("10-2020-0000202:r1" in m for m in msgs)
+    assert "가짜 질의" not in caplog.text
