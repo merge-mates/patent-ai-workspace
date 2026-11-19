@@ -195,7 +195,7 @@ flowchart LR
 - 재아: 규칙으로 되는 것(번호·조문·청구항 범위·날짜 글자·통지 종류 문구)은 정규식 코드, 블록 나누기와 관계 잇기·요지·힌트만 모델 한 번. 모델 출력은 원문 글자를 같이 받아 코드로 대조한다 (지어낸 값 0건의 장치).
 - 모델 호출: `core/llm/` (#13)에서만, OA마다 한 번 (+ 출력 검사 실패 때 한 번). 두 번째 호출 프롬프트에는 첫 답의 검사 오류 문구를 넣고(`$retry_note`), 두 번째 답은 목록 칸의 문자열만 받아 두는 `LooseOAExtraction`으로 검사한다 (문자열은 `Item`으로 바꾸지 않음, 그 줄은 확인되지 않음). 그 밖의 검사 실패는 `ModelOutputInvalid`.
 - 프롬프트 파일: `prompts/f1/read_oa.md`
-- 실험 설정: `config/f1.yaml`의 `read_oa.model`, `read_oa.temperature`, `read_oa.prompt` (모델은 [ADR 0003](../../decisions/0003-tech-stack.md)대로 Haiku 5.5로 시작).
+- 실험 설정: `config/f1.yaml`의 `read_oa.model`, `read_oa.effort`, `read_oa.prompt` (temperature는 API에서 빠져 설정에 두지 않는다, #134) (모델은 [ADR 0003](../../decisions/0003-tech-stack.md)대로 Haiku 5.5로 시작).
 
 ## 8. 이 기능 안의 결정
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |
