@@ -154,7 +154,8 @@ graph LR
 
 ### 끝난 뒤 (11/19)
 - 된 것: `extract_pages(pdf_path, document_id) -> PageText` (pdfplumber, 쪽마다 status·글자 수, 모든 쪽이 글자 없을 때만 문서 unverified, 0쪽 경고, 읽기 실패는 PdfReadError), `scripts/check_pages.py`. `uv run pytest -q` 157 passed. /check: 증거 통과, 이슈 리뷰 막음 없음.
-- 안 된 것: tune 통지서 묶음 실제 확인(#21 데이터 뒤, 표가 깨지면 Docling 비교). 머리말만 글자인 스캔 쪽은 지금 confirmed — 글자 수 하한을 둘지 사람 판단(tune 묶음을 본 뒤).
+- tune 통지서 묶음 실제 확인 (11/19, PR #109 리뷰): 10/10 confirmed, 3~7쪽, 2,335~8,816자. 정답의 원문 글자+쪽 73개 중 72개가 같은 쪽 텍스트에 있음(공백 무시). 물리 쪽 번호 = OA에 찍힌 쪽 번호.
+- 안 된 것: 글자 수 하한은 지금 두지 않음 (tune 최소 21자 쪽이 정상 본문 끝 쪽이라 하한을 두면 정상 쪽을 내림). 머리말만 글자인 스캔 쪽이 채점용 세트에서 나오면 그때 정함 (쪽 `checked`에 글자 수가 남음).
 - 다음 이슈로: OCR은 범위 밖([가정]).
 
 ## m1-i2-13  (11/18~11/19)  상태: 끝  (이슈 #13)
