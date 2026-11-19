@@ -1,6 +1,9 @@
-"""BM25 검색 구현 (cite-search design 7-2절).
+"""BM25 검색 구현 (cite-search design 7-2절). 인용문헌·법령이 같이 쓴다.
 
-검색 범위(doc_ids) 문헌의 조각만으로 bm25s 색인을 검색 때마다 만든다 (IDF가 그 범위 안에서 센다).
+검색 범위(doc_ids, 기준일 판) 조각만으로 bm25s 색인을 검색 때마다 만든다
+(IDF가 그 범위 안에서 센다).
+그래서 옛 판 법령 조각이 같이 있어도 idf가 흔들리지 않는다.
+낱말 자르기는 settings.tokenizer(kiwi 기본 / char_bigram / whitespace)로 고른다.
 core를 import하지 않는다. 모델 호출 없음.
 """
 
@@ -12,7 +15,7 @@ from patent_ai.retrieval.contract import Embed, register_impl
 from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
-from patent_ai.retrieval.tokenizer import KiwiTokenizer
+from patent_ai.retrieval.tokenizer import make_tokenizer
 
 _DEFAULTS = {"method": "lucene", "k1": 1.5, "b": 0.75}
 
@@ -22,10 +25,9 @@ class Bm25Searcher:
     def __init__(self, repo: ChunkRepository, settings: dict, embed: Embed | None = None) -> None:
         self._repo = repo
         self._index_version: str = settings["index_version"]
-        name = settings.get("tokenizer", "kiwi")
-        if name != "kiwi":
-            raise ValueError(f"모르는 tokenizer {name!r} (kiwi만 지원)")
-        self._tokenizer = KiwiTokenizer(settings.get("pos_tags"))
+        self._tokenizer = make_tokenizer(
+            settings.get("tokenizer", "kiwi"), settings.get("pos_tags")
+        )
         self._bm25 = {**_DEFAULTS, **(settings.get("bm25") or {})}
         # 조각 글을 질의마다 다시 분석하지 않게 chunk_id별로 기억한다
         self._token_cache: dict[str, list[str]] = {}
