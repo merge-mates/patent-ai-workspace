@@ -186,3 +186,28 @@ def test_jsonl이_git_밖_경로면_조각을_쓴다(env):
         assert len(rows) == 4
     finally:
         out.unlink(missing_ok=True)
+
+
+def test_보고에_뺀_줄_수와_경고_문구가_남는다(env):
+    # 리뷰 지적: removed_lines 값과 경고 이유를 보고에서 볼 수 있어야 한다 (요구 3)
+    cfg, _, ext, _, _ = env
+    body = ["청구항 1", "가 장치.", "청구항 2", "나 장치.", "청구항 3", "다 장치."]
+    ext.by_name["KR100A.pdf"] = [
+        PageText(
+            page=i,
+            lines=[
+                "공개특허 10-2099-0000001",
+                *(["청구범위"] if i == 1 else []),
+                *body[2 * (i - 1) : 2 * i],
+                f"- {i} -",
+            ],
+        )
+        for i in (1, 2, 3)
+    ]
+    _, report = build_index(cfg, ext)
+    r = report.to_dict()
+    assert r["docs"]["KR100A"]["removed_lines"] == 6
+    assert r["totals"]["removed_lines"] == 6
+    warns = r["docs"]["KR100A"]["warnings"]
+    assert isinstance(warns, list)
+    assert any("식별번호 없음" in w for w in warns)

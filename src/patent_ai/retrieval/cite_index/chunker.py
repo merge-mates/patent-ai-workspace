@@ -37,16 +37,22 @@ class ChunkingConfig:
     figdesc_heading: re.Pattern
     section_headings: list[re.Pattern]
 
+    @classmethod
+    def from_dict(cls, cfg: dict) -> ChunkingConfig:
+        # 설정 파일의 chunking 칸 -> 정규식. 색인 명령과 기본 경로가 이 하나만 쓴다
+        return cls(
+            claims_heading=re.compile(cfg["claims_heading"]),
+            abstract_heading=re.compile(cfg["abstract_heading"]),
+            rep_figure=re.compile(cfg["rep_figure"]),
+            figdesc_heading=re.compile(cfg["figdesc_heading"]),
+            section_headings=[re.compile(p) for p in cfg["section_headings"]],
+        )
+
 
 @lru_cache(maxsize=4)
 def load_chunking_config(path: Path = DEFAULT_CONFIG) -> ChunkingConfig:
-    cfg = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["chunking"]
-    return ChunkingConfig(
-        claims_heading=re.compile(cfg["claims_heading"]),
-        abstract_heading=re.compile(cfg["abstract_heading"]),
-        rep_figure=re.compile(cfg["rep_figure"]),
-        figdesc_heading=re.compile(cfg["figdesc_heading"]),
-        section_headings=[re.compile(p) for p in cfg["section_headings"]],
+    return ChunkingConfig.from_dict(
+        yaml.safe_load(Path(path).read_text(encoding="utf-8"))["chunking"]
     )
 
 

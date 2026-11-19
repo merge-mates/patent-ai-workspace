@@ -66,14 +66,7 @@ def _resolve(path: str) -> Path:
 
 
 def _chunking_config(cfg: dict) -> ChunkingConfig:
-    c = cfg["chunking"]
-    return ChunkingConfig(
-        claims_heading=re.compile(c["claims_heading"]),
-        abstract_heading=re.compile(c["abstract_heading"]),
-        rep_figure=re.compile(c["rep_figure"]),
-        figdesc_heading=re.compile(c["figdesc_heading"]),
-        section_headings=[re.compile(p) for p in c["section_headings"]],
-    )
+    return ChunkingConfig.from_dict(cfg["chunking"])
 
 
 def _sha256(path: Path) -> str:
@@ -155,7 +148,8 @@ def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], Index
             "pages": len(pages),
             "chunks": dict(Counter(c.chunk_kind for c in doc_chunks)),
             "removed_lines": removed,
-            "warnings": len(warns),
+            # 이유를 보고에서 가를 수 있게 문구 그대로 (doc_id·키만 들어 있음)
+            "warnings": list(warns),
         }
 
     out = _resolve(cfg["report_dir"]) / iv / "index_report.json"

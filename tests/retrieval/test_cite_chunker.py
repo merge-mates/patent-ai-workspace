@@ -195,3 +195,36 @@ def test_청구항_점과_띄어쓴_제목():
     pages = [PageText(page=1, lines=["청 구 범 위", "청구항 20.", "가 나", "청구항 21.", "다"])]
     chunks, _ = chunk_document(DOC, pages, IV)
     assert [c.chunk_id.split(":", 2)[2] for c in chunks] == ["claim20", "claim21"]
+
+
+def test_괄호_붙은_부호의_설명_제목에서_도면_설명이_끝남():
+    # 리뷰 지적: "<부호의 설명>" 꼴 제목을 몰라 부호 목록이 마지막 도면 조각에 붙었다
+    for heading in ("<부호의 설명>", "【부호의 설명】", "도면의 주요 부분에 대한 부호의 설명"):
+        pages = [
+            PageText(
+                page=1,
+                lines=[
+                    "도면의 간단한 설명",
+                    "도 1은 가 장치다.",
+                    "도 2는 나 장치다.",
+                    heading,
+                    "10: 몸체",
+                ],
+            )
+        ]
+        chunks, _ = chunk_document(DOC, pages, IV)
+        fig2 = _by_key(chunks)["fig2"]
+        assert "몸체" not in fig2.text, heading
+
+
+def test_설정은_dict와_파일이_같은_로더를_씀():
+    import yaml
+
+    from patent_ai.retrieval.cite_index.chunker import (
+        DEFAULT_CONFIG,
+        ChunkingConfig,
+        load_chunking_config,
+    )
+
+    raw = yaml.safe_load(DEFAULT_CONFIG.read_text(encoding="utf-8"))["chunking"]
+    assert ChunkingConfig.from_dict(raw) == load_chunking_config(DEFAULT_CONFIG)
