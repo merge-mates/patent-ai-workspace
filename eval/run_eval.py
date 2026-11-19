@@ -14,10 +14,12 @@ if __package__ in (None, ""):
 
 import yaml  # noqa: E402
 
+from eval.f1.score import main as f1_main  # noqa: E402
 from eval.retrieval.score import main as retrieval_main  # noqa: E402
 
-# feature 이름 -> 채점기 main(argv) -> 종료 코드. F1은 명령이 생길 때(task 5) 더한다
+# feature 이름 -> 채점기 main(argv) -> 종료 코드
 SCORERS = {
+    "f1": f1_main,
     "retrieval": retrieval_main,
 }
 

@@ -1,27 +1,43 @@
-"""F1 채점 (이슈 #20 task 3). 정답 꼴 예측 대 정답 꼴 정답.
+"""F1 채점 (이슈 #20 task 3·5). 정답 꼴 예측 대 정답 꼴 정답.
 
 점수 단위는 칸 하나 = 맞음/틀림 하나 (기본 8, 거절이유마다 4, 인용마다 2, 청구항 줄마다 3~4).
-OA 한 통마다 정확도를 내고 그 평균이 주 점수다. 파일은 쓰지 않는다 (쓰기는 명령 쪽, task 5).
+OA 한 통마다 정확도를 내고 그 평균이 주 점수다. score_f1은 파일을 쓰지 않는다 (쓰기는 main).
 scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건수와 비율만).
+
+명령: uv run python eval/run_eval.py --config <설정> --predictions <폴더> [--pages <폴더>]
+- 예측: <폴더>/<출원번호>_<발송번호>.json (read_oa가 낸 OAResult JSON)
+- 쪽 글자: <폴더>/<출원번호>_<발송번호>.pages.json (extract_pages가 낸 PageText JSON)
 """
 
+import argparse
+import hashlib
 import logging
+import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from eval.common.errors import EvalError
-from eval.f1.config import F1EvalConfig
-from eval.f1.gold import F1Gold
+from eval.common.goldset import check_goldset_version, gold_path
+from eval.common.paths import REPO_ROOT, check_experiment_name, git_commit, is_git_ignored
+from eval.common.scores import write_scores
+from eval.f1.adapt import to_pred
+from eval.f1.config import F1EvalConfig, load_config
+from eval.f1.gold import F1Gold, load_f1_gold
 from eval.f1.metrics import (
     cite_key,
     clarity_match,
     location_pairs,
-    norm_text,
     page_in,
     same_as_match,
     text_eq,
 )
+from eval.f1.on_page import text_on_page
 from eval.f1.pred import F1Pred
+from patent_ai.core.schemas.document import PageText
+from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +128,14 @@ def _score_rejections(g: F1Gold, p: F1Pred, s: OAScore) -> None:
         )
         s.fabricated += _extra(pr.targets.value, gr.targets.value)
     gold_nos = {r.no for r in g.rejections}
-    s.fabricated += sum(1 for r in p.rejections if r.no not in gold_nos)
+    # 정답에 없는 거절이유는 확인된 칸이 하나라도 있을 때만 지어낸 값
+    # (전부 확인되지 않음이면 앱이 안 낸 것)
+    s.fabricated += sum(
+        1
+        for r in p.rejections
+        if r.no not in gold_nos
+        and (r.kind is not None or r.article is not None or r.targets.value is not None)
+    )
 
 
 def _score_citations(g: F1Gold, p: F1Pred, s: OAScore) -> None:
@@ -126,7 +149,8 @@ def _score_citations(g: F1Gold, p: F1Pred, s: OAScore) -> None:
         s.add("citations", pc.key is not None and cite_key(pc.key) == cite_key(gc.key))
         s.add("citations", set(pc.rejections) == set(gc.rejections))
     gold_labels = {c.label for c in g.citations}
-    s.fabricated += sum(1 for c in p.citations if c.label not in gold_labels)
+    # 정답에 없는 인용은 번호(key)가 확인됐을 때만 지어낸 값
+    s.fabricated += sum(1 for c in p.citations if c.label not in gold_labels and c.key is not None)
 
 
 def _score_claim_rows(g: F1Gold, p: F1Pred, s: OAScore) -> None:
@@ -189,18 +213,12 @@ def _missing_oa(g: F1Gold) -> OAScore:
     return s
 
 
-def _on_page(text: str, page: int | None, page_end: int | None, pages: list[str]) -> bool:
-    """원문 글자가 그 쪽(~끝 쪽) 글자에 공백·줄바꿈만 무시하고 그대로 있나."""
-    if page is None or page < 1 or page > len(pages):
-        return False
-    end = min(page_end or page, len(pages))
-    body = norm_text("".join(pages[page - 1 : end])) or ""
-    return (norm_text(text) or "") in body
+def count_unverified(p: F1Pred, pages: PageText) -> int:
+    """원문 글자를 낸 값 중 붙은 쪽 글자에 없는 것의 수 (requirements 9번).
 
-
-def count_unverified(p: F1Pred, pages: list[str]) -> int:
-    """원문 글자를 낸 값 중 붙은 쪽 글자에 없는 것의 수 (requirements 9번 뜻)."""
-    checks: list[tuple[str, int | None, int | None]] = []
+    대조 규칙은 on_page.py (앱 원문 대조와 같음).
+    """
+    checks: list[tuple[str, int | None]] = []
     for v in (
         p.application_number,
         p.dispatch_number,
@@ -212,18 +230,18 @@ def count_unverified(p: F1Pred, pages: list[str]) -> int:
         p.amendment_note,
     ):
         if v.text:
-            checks.append((v.text, v.page, None))
+            checks.append((v.text, v.page))
     for r in p.rejections:
         for t in (r.article, r.targets.text):
             if t:
-                checks.append((t, r.page, None))
+                checks.append((t, r.page))
     for c in p.citations:
         if c.text:
-            checks.append((c.text, c.page, None))
+            checks.append((c.text, c.page))
     for row in p.claim_rows:
         if row.text:
-            checks.append((row.text, row.page, row.page_end))
-    return sum(1 for text, page, end in checks if not _on_page(text, page, end, pages))
+            checks.append((row.text, row.page))  # 두 쪽에 걸치면 시작 쪽 (앱과 같음)
+    return sum(1 for text, page in checks if not text_on_page(pages, page, text))
 
 
 def _mean(xs: list[float]) -> float | None:
@@ -234,7 +252,7 @@ def score_f1(
     cfg: F1EvalConfig,
     golds: list[F1Gold],
     preds: dict[str, F1Pred],
-    pages: dict[str, list[str]] | None,
+    pages: dict[str, PageText] | None,
     *,
     commit: str,
     gold_sha256: str,
@@ -314,3 +332,113 @@ def score_f1(
             "seconds": round(time.monotonic() - started, 3),
         },
     }
+
+
+# ---- 명령 (파일 읽기·쓰기)
+
+
+def _gold_sha256(folder: Path) -> str:
+    """정답 파일들을 이름 순서로 이어 붙인 해시 (정답이 바뀌었는지 scores에 남긴다)."""
+    h = hashlib.sha256()
+    for f in sorted(folder.glob("*.json")):
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+def default_scores_dir(goldsets_root: Path, experiment: str) -> Path:
+    """진짜 정답 폴더(…/data/goldsets)면 experiments/<실험>/, 아니면 work/f1/<실험>/.
+
+    가짜 정답으로 돌린 점수가 experiments/에 남아 점수 표에 섞이지 않게 한다.
+    """
+    if Path(goldsets_root).resolve().parts[-2:] == ("data", "goldsets"):
+        return REPO_ROOT / "experiments" / experiment
+    return REPO_ROOT / "work" / "f1" / experiment
+
+
+def load_predictions(folder: Path) -> dict[str, F1Pred]:
+    """예측 폴더의 <키>.json(OAResult)을 읽어 정답 꼴로 바꾼다. 틀린 파일은 순번만 말하고 멈춘다."""
+    if not folder.is_dir():
+        raise EvalError("F1 예측 폴더가 없다")
+    files = sorted(f for f in folder.glob("*.json") if not f.name.endswith(".pages.json"))
+    preds: dict[str, F1Pred] = {}
+    for i, f in enumerate(files, start=1):
+        try:
+            oa = OAResult.model_validate_json(f.read_text(encoding="utf-8"))
+        except ValidationError:
+            # 파일 이름(출원번호)과 원문 글자는 메시지에 넣지 않는다
+            raise EvalError(f"예측 파일 {i}번째: OAResult 모양이 아니다") from None
+        try:
+            preds[f.stem] = to_pred(oa)
+        except ValidationError:
+            # OAResult는 맞는데 정답 꼴로 못 바꿈 (예: 라벨 꼴). 값 글자는 메시지에 넣지 않는다
+            raise EvalError(f"예측 파일 {i}번째: 정답 꼴로 바꿀 수 없다 (라벨·번호 꼴)") from None
+    return preds
+
+
+def load_pages(folder: Path) -> dict[str, PageText]:
+    # 쪽 글자를 주었는데 못 읽으면 오타일 수 있어 멈춘다 (안 준 것은 지표를 빼고 계속, #20 Q5)
+    if not folder.is_dir():
+        raise EvalError("쪽 글자 폴더가 없다")
+    pages: dict[str, PageText] = {}
+    for i, f in enumerate(sorted(folder.glob("*.pages.json")), start=1):
+        try:
+            pt = PageText.model_validate_json(f.read_text(encoding="utf-8"))
+        except ValidationError:
+            raise EvalError(f"쪽 글자 파일 {i}번째: PageText 모양이 아니다") from None
+        pages[f.name.removesuffix(".pages.json")] = pt
+    return pages
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="eval.f1.score")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--goldsets-root", default="data/goldsets")
+    ap.add_argument("--predictions", required=True, help="read_oa 결과 OAResult JSON 폴더 (git 밖)")
+    ap.add_argument("--pages", default=None, help="extract_pages 결과 PageText JSON 폴더 (git 밖)")
+    ap.add_argument(
+        "--scores-dir",
+        default=None,
+        help="기본: 진짜 정답이면 experiments/<실험>/, 아니면 work/f1/<실험>/",
+    )
+    args = ap.parse_args(argv)
+
+    try:
+        cfg = load_config(args.config)
+        check_experiment_name(cfg.experiment)
+        pred_dir = Path(args.predictions)
+        pages_dir = Path(args.pages) if args.pages else None
+        # 예측·쪽 글자에는 OA 원문 글자가 있어 git에 들어갈 수 있는 경로면 멈춘다
+        for d in (pred_dir, pages_dir):
+            if d is not None and not is_git_ignored(d):
+                msg = "예측·쪽 글자 폴더가 git에 들어갈 수 있는 경로다"
+                raise EvalError(msg + " (저장소 밖이나 무시되는 경로만)")
+        root = Path(args.goldsets_root)
+        check_goldset_version(root, cfg.goldset_version)
+        folder = gold_path(root, cfg.goldset, cfg.gold)
+        golds = load_f1_gold(folder, expected_version=cfg.goldset_version)
+        preds = load_predictions(pred_dir)
+        extra = set(preds) - {oa_key(g) for g in golds}
+        if extra:
+            logger.warning("정답에 없는 예측 %d건 (채점에서 뺌)", len(extra))
+        pages = load_pages(pages_dir) if pages_dir is not None else None
+        if pages is not None and not set(pages) & {oa_key(g) for g in golds}:
+            raise EvalError(
+                "쪽 글자 파일이 정답 OA와 하나도 맞지 않는다"
+                " (이름: <출원번호>_<발송번호>.pages.json)"
+            )
+        scores = score_f1(
+            cfg, golds, preds, pages, commit=git_commit(), gold_sha256=_gold_sha256(folder)
+        )
+        scores_dir = (
+            Path(args.scores_dir) if args.scores_dir else default_scores_dir(root, cfg.experiment)
+        )
+        write_scores(scores_dir, scores)
+    except EvalError as e:
+        print(f"채점 실패: {e}", file=sys.stderr)
+        return 1
+    print(f"scores.json 저장: n={scores['n']}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -14,9 +14,10 @@ def _진짜_모델_호출_막기(monkeypatch):
 
     # 진짜 전송층을 만드는 순간 예외 (테스트는 가짜·녹화 전송층만 쓴다)
     def blocked(self, *args, **kwargs):
-        raise RuntimeError("테스트에서 AnthropicTransport를 만들 수 없음 (진짜 호출 막힘)")
+        raise RuntimeError("테스트에서 진짜 전송층을 만들 수 없음 (진짜 호출 막힘)")
 
     monkeypatch.setattr(llm_transport.AnthropicTransport, "__init__", blocked)
+    monkeypatch.setattr(llm_transport.OpenAIEmbedTransport, "__init__", blocked)
 
 
 @pytest.fixture(autouse=True)

@@ -18,10 +18,10 @@ Docker Desktop이 켜져 있어야 한다. docker 명령을 직접 칠 일은 �
 ## 하루에 일하는 순서 (이슈 하나)
 일감은 전부 GitHub 이슈로 있다 (M1·M2·M3 마일스톤, 저장소 Projects 탭의 진행 보드). 카드는 손으로 옮기지 않는다.
 1. **고르기**: 보드에서 `Todo` 카드 중 지금 마일스톤 것, 본문 `먼저 끝나야 할 것`이 다 끝난 것을 고른다. 상대와 겹치지 않게 담당자를 자기로 넣는다.
-2. **시작**: 저장소 폴더에서 `git switch main && git pull` → `claude` → `/start <이슈번호>`. 최신 main에서 `<type>/<번호>-<설명>` 브랜치가 생기고 카드가 `In Progress`로 간다.
-3. **일하기**: 구현 이슈는 `/implement <tasks.md> <m1-i3>` (구현 계획이 있어야 한다), 문서 이슈는 문서를 쓰고 `/doc-review <문서>`.
+2. **시작**: 저장소 폴더에서 `git switch main && git pull` → `claude` → `/start <이슈번호>`. 최신 main에서 `<type>/<번호>-<설명>` 브랜치가 `../wt/<번호>-<설명>`(저장소 폴더 옆)에 생기고 세션이 그리로 옮겨 가며, 카드가 `In Progress`로 간다. 원래 폴더는 main 그대로라 세션을 여러 개 열어 이슈를 동시에 해도 서로 안 건드린다. 처음 한 번 원래 폴더의 `.env`를 그 폴더로 복사하거나 링크한다. DB는 원래 폴더에서 띄운 것 하나를 같이 쓴다 (worktree에서 `make up` 하지 않는다). 지금 폴더에서 브랜치만 바꾸려면 `/start <이슈번호> --here`.
+3. **일하기**: 구현 이슈는 `/implement <tasks.md> <m1-i3>` (구현 계획이 있어야 한다), tasks.md 없는 작은 이슈는 `/implement <이슈번호>` (이슈 본문 task 체크리스트와 확인 명령이 계획), 문서 이슈는 문서를 쓰고 `/doc-review <문서>`.
 4. **올리기**: `/pr-draft` → 초안 보고 OK → Claude가 push·PR 생성 (`Closes #번호` 자동). 카드가 `In Review`로 간다.
-5. **리뷰·머지**: 상대가 `/pr-review <PR번호>` → 승인되면 올린 사람이 머지(merge commit) → 이슈가 닫히고 카드가 `Done`. 브랜치는 머지 화면에서 지운다.
+5. **리뷰·머지**: 상대가 `/pr-review <PR번호>` → 승인되면 올린 사람이 머지(merge commit) → 이슈가 닫히고 카드가 `Done`. 브랜치는 머지 화면에서 지운다. 원래 폴더에서 `git worktree remove ../wt/<번호>-<설명>` → `git branch -d <브랜치>`.
 6. 규칙·스킬(`.claude/`, `CLAUDE.md`)이 바뀐 PR이 머지되면 둘 다 `git pull` 하고 Claude Code를 새로 연다 (설정은 세션을 열 때 읽는다).
 - 카드가 안 움직이면 Claude가 이유를 알려 준다. 대개 `gh auth refresh -s project`로 풀린다. 손으로 옮길 때는 `.claude/scripts/board-status.sh <이슈번호> "In Progress"`.
 

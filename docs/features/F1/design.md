@@ -207,7 +207,7 @@ flowchart LR
 | 규칙·모델 값이 다르면 `conflict`로 둘 다 남김 | 하나를 골라 씀 | 고르는 것은 사람 | 설계 | product.md 5절 F5 |
 | 지원 조문 표는 코드 상수 | 설정 파일 | 실험 값이 아니라 범위 결정 (product.md 3.2) | 설계 | — |
 | 통지 종류는 규칙만 (`initial`/`final`/`unknown`) | 규칙 + 모델 비교 | 표시 문구 하나로 정해지는 일. 정답 형식과 같은 코드 | 11/18 (정답 형식 PR #91) + Claude (모델 뺌) | docs/evaluation/f1-oa-gold.md 2.1 |
-| PDF 글자 추출은 `extract_pages` 인터페이스 뒤에 둠. 도구는 미정 (지금 코드는 pdfplumber) | Docling (비교에서 뺌) | 라이선스는 기준에서 뺌(개인 프로젝트), 도구는 tune 품질과 Upstage 비교 뒤 정함. 11/19 OA 3건에서 pdfplumber·pymupdf4llm은 쪽·청구항·단락 번호가 같았고, 둘 다 쪽을 넘어간 거절이유 표 칸을 잇지 못함 | 11/18, 11/19 고침 | #17 |
+| PDF 글자 추출은 `extract_pages` 인터페이스 뒤에 두고 pdfplumber 유지 (#122) | pymupdf4llm, Upstage Document Parse(standard·enhanced), Docling(비교에서 뺌) | tune 5건에서 pdfplumber(표 칸 대조 + 쪽 넘은 칸 이어 붙이기)와 Upstage enhanced가 같음: task-1 거절이유 표 10/10, task-2 원문 대조 58/58. 쪽당 0.07초 vs enhanced 3초, 외부 호출 없음. 라이선스는 학술 과제라 기준에서 뺌(PyMuPDF AGPL 포함). 한계: 쪽 중간에서 잘린 표 칸은 tune에 1건뿐. 스캔본(글자층 없는 PDF)은 pdfplumber가 못 읽음 → 글자층 없는 PDF만 Upstage enhanced를 대체 경로 후보로 둠. 인용문헌 PDF는 F3 범위라 거기서 정함 | 11/18, 11/19 고침, 11/19 #122 비교 뒤 정함 | #17, #122, experiments/m1-i3-f1-pdf-tool/card.md |
 | 보내도 되는 자료 검사 코드 없음 | `MaterialKind` 표 코드·거부 테스트 (이슈 #13 원래 기준) | architecture.md 7절(11/17 확정): 받지 않는 자료는 규칙으로 막음 | 11/18 | architecture.md 7절 |
 | 출원번호·발송번호 결정 4개 (임시 자리, 같은 사건에 붙이기, 409, 중복 임시 사건 숨김) | 올릴 때 출원번호 입력 / 못 읽으면 거절 / 중복을 200으로 붙임 | "PDF 하나만 올림" 흐름 유지, 실수로 올린 것을 알림 | 설계 (11/18 인터뷰) | requirements "실패할 때" |
 | 순서: F1 읽기 → 자동 조회 + 자르기 | 자르기 먼저 (architecture 8절 그림) | 출원번호를 F1이 읽어야 조회할 수 있음 | 설계 (doc-review) | 4절 |

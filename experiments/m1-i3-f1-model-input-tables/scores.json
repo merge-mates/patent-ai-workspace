@@ -1,0 +1,86 @@
+{
+  "experiment": "m1-i3-f1-model-input-tables",
+  "commit": "1ead44ef813bdfb2ddb682bdf47f518402fcef91",
+  "goldset": "tune/f1_jaea",
+  "goldset_version": 2,
+  "gold_used": false,
+  "n": 5,
+  "metrics": {
+    "raw.confirmed": 99,
+    "raw.unverified_not_extracted": 27,
+    "raw.unverified_ambiguous": 5,
+    "raw.warn_claim_number_unread": 5,
+    "raw.warn_claim_number_unread_cut_case": 4,
+    "tables_md.confirmed": 94,
+    "tables_md.unverified_not_extracted": 26,
+    "tables_md.unverified_ambiguous": 11,
+    "tables_md.warn_claim_number_unread": 0,
+    "tables_md.warn_claim_number_unread_cut_case": 0
+  },
+  "per_case": {
+    "case1": {
+      "raw": {
+        "confirmed": 20,
+        "unverified.not_extracted": 2,
+        "unverified.ambiguous": 1
+      },
+      "tables_md": {
+        "confirmed": 22,
+        "unverified.not_extracted": 1
+      }
+    },
+    "case2": {
+      "raw": {
+        "confirmed": 13,
+        "unverified.not_extracted": 10,
+        "unverified.ambiguous": 3
+      },
+      "tables_md": {
+        "confirmed": 11,
+        "unverified.not_extracted": 5,
+        "unverified.ambiguous": 10
+      }
+    },
+    "case3": {
+      "raw": {
+        "confirmed": 28,
+        "unverified.not_extracted": 7
+      },
+      "tables_md": {
+        "confirmed": 30,
+        "unverified.not_extracted": 5
+      }
+    },
+    "case4": {
+      "raw": {
+        "confirmed": 12
+      },
+      "tables_md": {
+        "confirmed": 11,
+        "unverified.not_extracted": 1
+      }
+    },
+    "case5": {
+      "raw": {
+        "confirmed": 26,
+        "unverified.not_extracted": 8,
+        "unverified.ambiguous": 1
+      },
+      "tables_md": {
+        "confirmed": 20,
+        "unverified.not_extracted": 14,
+        "unverified.ambiguous": 1
+      }
+    }
+  },
+  "failures": {
+    "tables_md.invalid_output_retry": 1
+  },
+  "cost": {
+    "external_calls": 6,
+    "input_tokens": 58855,
+    "output_tokens": 52153,
+    "usd": 0.032
+  },
+  "outputs_sha256": "21aeec64d893e56f3da653116af553b32bf4651ec43cc11b038cf037b592900a"
+}

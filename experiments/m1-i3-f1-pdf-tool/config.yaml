@@ -1,0 +1,28 @@
+# F1 OA PDF 글자·표 추출 도구 비교 (이슈 #122 task-1·task-2). 설정 비교: 도구만 바꾼다
+experiment: m1-i3-f1-pdf-tool
+baseline: pdfplumber      # 앱이 지금 쓰는 도구 (core/f1_oa_reader/pages.py)
+goldset: tune/f1_jaea
+goldset_version: 2        # data/goldsets/VERSION. 정답 파일 안의 gold_version은 tune-f1-v0
+inputs:                   # tune 5건. 출원번호는 저장소에 안 넣는 규칙(docs/evaluation/f1-oa-gold.md)이라 이름표 case1~5(m1-i3-f1-model-input-tables와 같은 순서). 이름표 ↔ 번호는 git 밖 work/pdf_score_out/inputs.txt에만
+  - "case1"
+  - "case2"
+  - "case3"
+  - "case4"
+  - "case5"
+tools:
+  - name: pdfplumber      # extract_text + extract_tables (앱과 같은 길)
+  - name: pymupdf4llm     # to_markdown(page_chunks=True)
+  - name: upstage_standard
+    api: document-parse   # POST /v1/document-digitization, output_formats=["markdown"]
+    mode: standard
+  - name: upstage_enhanced
+    api: document-parse
+    mode: enhanced
+scoring:
+  task2: 정답의 원문 글자+쪽이 그 도구의 같은 쪽에 있나. 공백·줄바꿈만 무시 (verify._squash)
+  task1: 거절이유 표 줄 (tables.rejection_rows). 법조항은 normalize_article, 대상 청구항은 expand_claims로 비교
+  merge_rule: tables._is_fragment (#18 규칙). merge_off는 이것만 끈다
+script: work/pdf_score.py   # git 밖 일회용. 캐시만 읽음 (work/pdf_compare_out/)
+budget:
+  max_usd: null            # Upstage 요금은 콘솔 기준, 여기선 쪽 수만 기록
+  max_external_calls: 18   # 9건 × 2모드 (pdf_compare.py에서 이미 부름, 이 채점은 0회)
