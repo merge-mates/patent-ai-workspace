@@ -30,13 +30,12 @@ from eval.f1.metrics import (
     cite_key,
     clarity_match,
     location_pairs,
-    norm_text,
     page_in,
     same_as_match,
     text_eq,
 )
+from eval.f1.on_page import text_on_page
 from eval.f1.pred import F1Pred
-from patent_ai.core.f1_oa_reader.tables import cells_from_page
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
 
@@ -206,18 +205,12 @@ def _missing_oa(g: F1Gold) -> OAScore:
     return s
 
 
-def _on_page(text: str, page: int | None, page_end: int | None, pages: list[str]) -> bool:
-    """원문 글자가 그 쪽(~끝 쪽) 글자에 공백·줄바꿈만 무시하고 그대로 있나."""
-    if page is None or page < 1 or page > len(pages):
-        return False
-    end = min(page_end or page, len(pages))
-    body = norm_text("".join(pages[page - 1 : end])) or ""
-    return (norm_text(text) or "") in body
+def count_unverified(p: F1Pred, pages: PageText) -> int:
+    """원문 글자를 낸 값 중 붙은 쪽 글자에 없는 것의 수 (requirements 9번).
 
-
-def count_unverified(p: F1Pred, pages: list[str]) -> int:
-    """원문 글자를 낸 값 중 붙은 쪽 글자에 없는 것의 수 (requirements 9번 뜻)."""
-    checks: list[tuple[str, int | None, int | None]] = []
+    대조 규칙은 on_page.py (앱 원문 대조와 같음).
+    """
+    checks: list[tuple[str, int | None]] = []
     for v in (
         p.application_number,
         p.dispatch_number,
@@ -229,18 +222,18 @@ def count_unverified(p: F1Pred, pages: list[str]) -> int:
         p.amendment_note,
     ):
         if v.text:
-            checks.append((v.text, v.page, None))
+            checks.append((v.text, v.page))
     for r in p.rejections:
         for t in (r.article, r.targets.text):
             if t:
-                checks.append((t, r.page, None))
+                checks.append((t, r.page))
     for c in p.citations:
         if c.text:
-            checks.append((c.text, c.page, None))
+            checks.append((c.text, c.page))
     for row in p.claim_rows:
         if row.text:
-            checks.append((row.text, row.page, row.page_end))
-    return sum(1 for text, page, end in checks if not _on_page(text, page, end, pages))
+            checks.append((row.text, row.page))  # 두 쪽에 걸치면 시작 쪽 (앱과 같음)
+    return sum(1 for text, page in checks if not text_on_page(pages, page, text))
 
 
 def _mean(xs: list[float]) -> float | None:
@@ -251,7 +244,7 @@ def score_f1(
     cfg: F1EvalConfig,
     golds: list[F1Gold],
     preds: dict[str, F1Pred],
-    pages: dict[str, list[str]] | None,
+    pages: dict[str, PageText] | None,
     *,
     commit: str,
     gold_sha256: str,
@@ -344,21 +337,6 @@ def _gold_sha256(folder: Path) -> str:
     return h.hexdigest()
 
 
-def _page_texts(pt: PageText) -> list[str]:
-    """쪽 번호 순 글자 목록. 그 쪽에서 시작하는 표 칸 글자도 붙인다.
-
-    앱 원문 대조(f1_oa_reader/verify.py raw_text_on_page)와 같은 규칙이다: 다음 쪽으로 넘어간
-    거절이유 표 칸은 cells_from_page가 시작 쪽에 이어 붙인다. 다르게 하면 앱이 확인한 값이
-    채점에서 가짜로 '확인하지 않은 위치'가 된다.
-    """
-    n = max((p.page for p in pt.pages), default=0)
-    out = [""] * n
-    for p in pt.pages:
-        cells = " ".join(cells_from_page(pt, p.page))
-        out[p.page - 1] = p.text + ("\n" + cells if cells else "")
-    return out
-
-
 def default_scores_dir(goldsets_root: Path, experiment: str) -> Path:
     """진짜 정답 폴더(…/data/goldsets)면 experiments/<실험>/, 아니면 work/f1/<실험>/.
 
@@ -389,14 +367,14 @@ def load_predictions(folder: Path) -> dict[str, F1Pred]:
     return preds
 
 
-def load_pages(folder: Path) -> dict[str, list[str]]:
-    pages: dict[str, list[str]] = {}
+def load_pages(folder: Path) -> dict[str, PageText]:
+    pages: dict[str, PageText] = {}
     for i, f in enumerate(sorted(folder.glob("*.pages.json")), start=1):
         try:
             pt = PageText.model_validate_json(f.read_text(encoding="utf-8"))
         except ValidationError:
             raise EvalError(f"쪽 글자 파일 {i}번째: PageText 모양이 아니다") from None
-        pages[f.name.removesuffix(".pages.json")] = _page_texts(pt)
+        pages[f.name.removesuffix(".pages.json")] = pt
     return pages
 
 

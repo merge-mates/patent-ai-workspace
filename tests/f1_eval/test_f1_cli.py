@@ -123,29 +123,6 @@ def test_예측_폴더가_없으면_실패(setup, capsys):
     assert "예측 폴더" in capsys.readouterr().err
 
 
-def test_쪽을_넘은_표_칸은_시작_쪽에서_이어_붙여_찾는다():
-    # 앱 원문 대조(cells_from_page)와 같은 규칙: 잘린 칸을 시작 쪽에 이어 붙인다
-    from eval.f1.metrics import norm_text
-    from eval.f1.score import _page_texts
-
-    head = ["순번", "거절이유가 있는 부분", "관련 법조항"]
-    pt = PageText(
-        document_id="d",
-        pages=[
-            Page(
-                page=1,
-                text="본문",
-                status=OK,
-                tables=[[head, ["1", "청구항 제1항 내지", "특허법 제29조제2항"]]],
-            ),
-            Page(page=2, text="본문", status=OK, tables=[[["", "제3항", ""]]]),
-        ],
-        status=OK,
-    )
-    texts = _page_texts(pt)
-    assert norm_text("청구항 제1항 내지 제3항") in norm_text(texts[0])
-
-
 def test_가짜_정답으로_돌리면_기본_출력은_work_아래(setup):
     from eval.f1.score import default_scores_dir
 
