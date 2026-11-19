@@ -8,6 +8,8 @@
 - 인용 없는 줄의 no_location(`위치 없음 (…)`)은 위치 채점에서 어차피 빠지므로 옮기지 않는다.
 """
 
+import logging
+
 from eval.f1.pred import (
     F1Pred,
     PCitation,
@@ -21,6 +23,8 @@ from eval.f1.pred import (
 )
 from patent_ai.core.schemas.common import ExtractedValue, StatusValue
 from patent_ai.core.schemas.oa_result import OAResult
+
+logger = logging.getLogger(__name__)
 
 
 def _ok(v: ExtractedValue | None) -> bool:
@@ -76,6 +80,10 @@ def to_pred(oa: OAResult) -> F1Pred:
             if entry["key"] is None and _ok(c.number):
                 # 앞 거절이유에서는 확인되지 않았고 여기서 확인됐으면 이쪽 번호를 쓴다
                 entry.update(key=_value(c.number), text=_text(c.number), page=_page(c.number))
+            elif _ok(c.number) and _value(c.number) != entry["key"]:
+                # 앱은 같은 문헌에 같은 라벨을 준다. 다르면 앱 쪽 문제라 알린다
+                # (번호 글자는 남기지 않는다)
+                logger.warning("인용 %s: 확인된 번호가 둘 이상이다 (앞 것을 씀)", c.label)
             if r.no not in entry["rejections"]:
                 entry["rejections"].append(r.no)
 

@@ -140,3 +140,54 @@ def test_같은_라벨이_여러_거절이유에_있으면_확인된_키를_쓴�
     assert d1.key == "KR20990000001A"
     assert d1.page == 2
     assert d1.rejections == [1, 2]
+
+
+def test_확인된_칸이_없는_정답_밖_거절이유는_지어낸_값이_아니다(make_oa):
+    # 앱이 원문 대조에 떨어뜨려 '확인되지 않음'으로 낸 줄은 지어낸 것이 아니다 (#119 재아 리뷰)
+    from patent_ai.core.schemas.oa_result import build_rejection
+
+    oa = make_oa()
+    extra = build_rejection(
+        document_id="doc-1",
+        no=4,
+        article=ev("29-2", "특허법 제29조제2항", 1, AMBIGUOUS),
+        supported=True,
+        claims=ev([1], "청구항 제1항", 1, AMBIGUOUS),
+        citations=[],
+        examiner_reasoning=ev(None, status=AMBIGUOUS),
+    )
+    oa = oa.model_copy(update={"rejections": [*oa.rejections, extra]})
+    assert _score(oa)["metrics"]["fabricated_values"] == 0
+
+
+def test_확인된_번호가_없는_정답_밖_인용은_지어낸_값이_아니다(make_oa):
+    from patent_ai.core.schemas.oa_result import Citation
+
+    oa = make_oa()
+    r1 = oa.rejections[0]
+    d3 = Citation(
+        label="D3",
+        number=ev("KR20990000003A", "공개특허공보 제10-2099-0000003호", 2, AMBIGUOUS),
+        country=ev("KR"),
+        country_supported=True,
+        cited_paragraphs=ev([]),
+    )
+    r1 = r1.model_copy(update={"citations": [*r1.citations, d3]})
+    oa = oa.model_copy(update={"rejections": [r1, *oa.rejections[1:]]})
+    assert _score(oa)["metrics"]["fabricated_values"] == 0
+
+
+def test_같은_라벨에_확인된_번호가_둘이면_경고(make_oa, caplog):
+    import logging
+
+    from f1_oa_builder import D1, _citation
+
+    oa = make_oa()
+    r1, r2, r3 = oa.rejections
+    other = _citation(*D1).model_copy(update={"number": ev("KR20990000009A", "다른 번호", 2)})
+    r2 = r2.model_copy(update={"citations": [other]})
+    with caplog.at_level(logging.WARNING):
+        p = to_pred(oa.model_copy(update={"rejections": [r1, r2, r3]}))
+    assert next(c for c in p.citations if c.label == "D1").key == "KR20990000001A"
+    assert "D1" in caplog.text
+    assert "KR20990000009A" not in caplog.text  # 번호 글자는 남기지 않는다

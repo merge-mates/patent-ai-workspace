@@ -128,7 +128,14 @@ def _score_rejections(g: F1Gold, p: F1Pred, s: OAScore) -> None:
         )
         s.fabricated += _extra(pr.targets.value, gr.targets.value)
     gold_nos = {r.no for r in g.rejections}
-    s.fabricated += sum(1 for r in p.rejections if r.no not in gold_nos)
+    # 정답에 없는 거절이유는 확인된 칸이 하나라도 있을 때만 지어낸 값
+    # (전부 확인되지 않음이면 앱이 안 낸 것)
+    s.fabricated += sum(
+        1
+        for r in p.rejections
+        if r.no not in gold_nos
+        and (r.kind is not None or r.article is not None or r.targets.value is not None)
+    )
 
 
 def _score_citations(g: F1Gold, p: F1Pred, s: OAScore) -> None:
@@ -142,7 +149,8 @@ def _score_citations(g: F1Gold, p: F1Pred, s: OAScore) -> None:
         s.add("citations", pc.key is not None and cite_key(pc.key) == cite_key(gc.key))
         s.add("citations", set(pc.rejections) == set(gc.rejections))
     gold_labels = {c.label for c in g.citations}
-    s.fabricated += sum(1 for c in p.citations if c.label not in gold_labels)
+    # 정답에 없는 인용은 번호(key)가 확인됐을 때만 지어낸 값
+    s.fabricated += sum(1 for c in p.citations if c.label not in gold_labels and c.key is not None)
 
 
 def _score_claim_rows(g: F1Gold, p: F1Pred, s: OAScore) -> None:
@@ -368,6 +376,9 @@ def load_predictions(folder: Path) -> dict[str, F1Pred]:
 
 
 def load_pages(folder: Path) -> dict[str, PageText]:
+    # 쪽 글자를 주었는데 못 읽으면 오타일 수 있어 멈춘다 (안 준 것은 지표를 빼고 계속, #20 Q5)
+    if not folder.is_dir():
+        raise EvalError("쪽 글자 폴더가 없다")
     pages: dict[str, PageText] = {}
     for i, f in enumerate(sorted(folder.glob("*.pages.json")), start=1):
         try:
@@ -410,6 +421,11 @@ def main(argv: list[str] | None = None) -> int:
         if extra:
             logger.warning("정답에 없는 예측 %d건 (채점에서 뺌)", len(extra))
         pages = load_pages(pages_dir) if pages_dir is not None else None
+        if pages is not None and not set(pages) & {oa_key(g) for g in golds}:
+            raise EvalError(
+                "쪽 글자 파일이 정답 OA와 하나도 맞지 않는다"
+                " (이름: <출원번호>_<발송번호>.pages.json)"
+            )
         scores = score_f1(
             cfg, golds, preds, pages, commit=git_commit(), gold_sha256=_gold_sha256(folder)
         )

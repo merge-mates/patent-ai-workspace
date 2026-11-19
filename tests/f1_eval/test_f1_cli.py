@@ -146,3 +146,21 @@ def test_변환에서_틀리면_순번만_말하고_실패(setup, make_oa, capsy
     err = capsys.readouterr().err
     assert "예측 파일 1번째" in err
     assert "인용1" not in err
+
+
+def test_쪽_글자_폴더가_없으면_실패(setup, capsys):
+    # 주지 않은 것(지표 뺌)과 달리, 주었는데 못 읽은 것은 오타일 수 있어 멈춘다 (#119 재아 리뷰)
+    assert main(setup["args"] + ["--pages", str(setup["tmp"] / "nope")]) == 1
+    assert "쪽 글자 폴더가 없다" in capsys.readouterr().err
+    assert not (setup["out"] / "scores.json").exists()
+
+
+def test_쪽_글자_파일이_정답_OA와_하나도_안_맞으면_실패(setup, capsys):
+    d = setup["tmp"] / "pages"
+    _pages_file(d)
+    # 이름을 .pages.json 대신 .json으로 저장한 경우
+    (d / f"{KEY}.pages.json").rename(d / f"{KEY}.json")
+    assert main(setup["args"] + ["--pages", str(d)]) == 1
+    err = capsys.readouterr().err
+    assert "쪽 글자 파일이 정답 OA와 하나도 맞지 않는다" in err
+    assert KEY not in err
