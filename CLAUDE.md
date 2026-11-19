@@ -5,7 +5,7 @@
 - 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
 - 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
-- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다. 지금 `retrieval`만, `f1`은 #20에서 더함. 그 밖의 명령은 짐작해서 돌리지 않는다). 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
+- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다: `retrieval`·`f1`. 그 밖의 명령은 짐작해서 돌리지 않는다). F1은 `--predictions <폴더>`(read_oa가 낸 OAResult JSON, git 밖)가 필요하고 `--pages <폴더>`(쪽 글자)는 고를 수 있다. 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
 - PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더
@@ -16,6 +16,7 @@
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 - DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
 - 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
+- 부르는 방향은 `api → core → retrieval·law_api·db`, 그리고 `retrieval → db`만이다 ([ADR 0003](docs/decisions/0003-tech-stack.md)). `db/`에는 표 정의(ORM 모델)만 두고 core·retrieval을 import하지 않는다. core 타입을 DB에 쓰고 읽는 저장소(repository)는 부르는 쪽(core 또는 retrieval)에 둔다.
 
 ## 진행 단위
 - 지금 위치와 문서 지도: @docs/README.md (맨 위 `지금`)
