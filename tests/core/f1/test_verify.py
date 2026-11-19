@@ -32,6 +32,27 @@ def test_없는_글자나_없는_쪽_번호는_False():
 
 
 # ---- merge ----
+def test_쪽을_넘어_이어_붙인_표_칸_글자는_시작_쪽에서_통과한다():
+    ok = Status(value=StatusValue.CONFIRMED, checked="글자 있음")
+    head = ["순번", "거절이유가 있는 부분", "관련 법조항"]
+    pages = PageText(
+        document_id="d_1",
+        pages=[
+            Page(
+                page=1,
+                text="3 청구항 제1항 내지 제8항 내지 특허법 제29조제2항\n1/6",
+                status=ok,
+                tables=[[head, ["3", "청구항 제1항 내지 제8항 내지", "특허법 제29조제2항"]]],
+            ),
+            Page(page=2, text="10-2099-0000001\n제10항", status=ok, tables=[[["", "제10항", ""]]]),
+        ],
+        status=ok,
+    )
+    assert raw_text_on_page(pages, 1, "청구항 제1항 내지 제8항 내지 제10항")  # 이어 붙인 칸
+    assert not raw_text_on_page(pages, 2, "청구항 제1항 내지 제8항 내지 제10항")  # 시작 쪽만
+    assert not raw_text_on_page(pages, 1, "청구항 제1항 내지 제9항")  # 어느 칸에도 없음
+
+
 def test_규칙과_모델이_같은_값이면_confirmed():
     f = Found("10-2099-0000001", "10-2099-0000001", 1)
     r = merge(f, Found("10-2099-0000001", "10-2099-0000001", 1), PAGES)

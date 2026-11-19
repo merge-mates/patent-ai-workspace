@@ -27,6 +27,7 @@ from patent_ai.core.f1_oa_reader.rules import (
     parse_cited_locations,
 )
 from patent_ai.core.f1_oa_reader.support import citation_key, country_of, is_supported
+from patent_ai.core.f1_oa_reader.tables import RejectionRow, rejection_rows
 from patent_ai.core.f1_oa_reader.verify import Found, merge, unverified
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid
@@ -173,9 +174,20 @@ def _rejection(
     pages: PageText,
     examined: ExtractedValue,
     labels: dict[str, str],
+    row: RejectionRow | None = None,
 ) -> dict:
-    article = merge(None, _found(r.article), pages, derive=normalize_article, field="article")
-    claims = merge(None, _found(r.claims), pages, derive=_claims_parser(examined), field="claims")
+    # 거절이유 표 줄(row)이 있으면 조문·대상 청구항의 규칙 쪽 값으로 쓴다 (모델 값과 대조).
+    # 다음 쪽으로 잘렸을 수 있는 줄(조각을 못 찾음)은 쓰지 않는다:
+    # 잘린 앞부분만으로 확인됨이 되지 않게
+    use = row is not None and not row.may_be_cut
+    rule_article = Found(None, row.article, row.page) if use else None
+    rule_claims = Found(None, row.part, row.page) if use else None
+    article = merge(
+        rule_article, _found(r.article), pages, derive=normalize_article, field="article"
+    )
+    claims = merge(
+        rule_claims, _found(r.claims), pages, derive=_claims_parser(examined), field="claims"
+    )
     # 요지: 원문 글자만 대조하고, 요지 글(value)은 대조 통과 때만 붙인다
     reasoning = merge(
         None, _found(r.examiner_reasoning), pages, compare_by="raw_text", field="reasoning"
@@ -248,8 +260,22 @@ def read_oa(
         None, _found(model.examined_claims), pages, derive=expand_claims, field="examined_claims"
     )
     labels: dict[str, str] = {}  # 인용문헌 라벨 (거절이유를 건너 같은 문헌은 같은 라벨)
+    # 거절이유 표 줄 (쪽을 넘어간 칸은 이어 붙임, task-8). 순번으로 모델 거절이유와 짝짓는다
+    table = {row.no: row for row in rejection_rows(pages)}
+    if not table and any(p.tables for p in pages.pages):
+        logger.warning(
+            "read_oa %s: 표는 있는데 거절이유 표 머리 줄을 못 찾음 (모델 값만 씀)", oa_id
+        )
+    if table and len(table) != len(model.rejections):
+        logger.warning(
+            "read_oa %s: 거절이유 표 줄 %d개와 모델 거절이유 %d개가 다름",
+            oa_id,
+            len(table),
+            len(model.rejections),
+        )
     rejections = [
-        _rejection(i, r, pages, examined, labels) for i, r in enumerate(model.rejections, start=1)
+        _rejection(i, r, pages, examined, labels, table.get(i))
+        for i, r in enumerate(model.rejections, start=1)
     ]
     claim_rows = build_claim_rows(model.claim_rows, rejections, pages, _claims_parser(examined))
     if not claim_rows and any(r["supported"] for r in rejections):

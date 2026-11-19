@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from patent_ai.core.f1_oa_reader.tables import cells_from_page
 from patent_ai.core.schemas.common import (
     Candidate,
     ExtractedValue,
@@ -33,13 +34,20 @@ def _squash(text: str) -> str:
 
 
 def raw_text_on_page(pages: PageText, page: int, raw_text: str) -> bool:
-    """raw_text가 그 쪽 글자에 실제로 있나. 없는 쪽 번호면 False."""
+    """raw_text가 그 쪽 글자에 실제로 있나. 없는 쪽 번호면 False.
+
+    쪽 글자에 없으면 그 쪽에서 시작하는 표 칸(다음 쪽으로 넘어간 칸은 이어 붙인 것)에서도 찾는다.
+    칸 글자도 PDF에서 뽑은 원문이라 지어낸 값은 여기서도 통과하지 못한다.
+    """
+
     needle = _squash(raw_text)
     if not needle:
         return False
     for p in pages.pages:
         if p.page == page:
-            return needle in _squash(p.text)
+            if needle in _squash(p.text):
+                return True
+            return any(needle in _squash(cell) for cell in cells_from_page(pages, page))
     return False
 
 

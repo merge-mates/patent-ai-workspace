@@ -467,3 +467,91 @@ def test_호가_여럿인_조문은_세로줄로_이어_모두_지원이면_지�
     first = result.rejections[0]
     assert first.article.value == "29-1-1|29-1-2"
     assert first.supported and Flag.NEEDS_HUMAN_REVIEW not in first.flags
+
+
+# ---- task-8: 쪽을 넘어간 거절이유 표 칸 ----
+_HEAD = ["순번", "거절이유가 있는 부분", "관련 법조항"]
+
+
+def _pages_with_split_table() -> PageText:
+    """notice_basic 1쪽 끝에 거절이유 표를 두고, 1번 줄 대상 청구항 칸이 2쪽 맨 위로 넘어간 모양.
+
+    2쪽 첫 표: 순번이 빈 이어지는 줄 + 2번 줄 (tune OA에서 본 모양, 이슈 #18 댓글).
+    """
+    data = json.loads((FIXTURES / "notice_basic.pages.json").read_text("utf-8"))
+    data["pages"][0]["text"] += (
+        "\n순번 거절이유가 있는 부분 관련 법조항\n1 청구항 제1항 내지 특허법 제29조제2항\n1/3"
+    )
+    data["pages"][0]["tables"] = [[_HEAD, ["1", "청구항 제1항 내지", "특허법 제29조제2항"]]]
+    # 2쪽 본문 속 "제1항 내지 제4항"은 지워, 쪽 글자만으로는 대상 청구항을 대조할 수 없게 한다
+    body = data["pages"][1]["text"].replace("청구항 제1항 내지 제4항은", "청구항은")
+    data["pages"][1]["text"] = (
+        "10-2099-0000001\n제4항\n2 청구항 제1항 특허법 제42조제4항제2호\n" + body
+    )
+    data["pages"][1]["tables"] = [
+        [["", "제4항", ""], ["2", "청구항 제1항", "특허법 제42조제4항제2호"]]
+    ]
+    return PageText.model_validate(data)
+
+
+def _run_pages(pages: PageText, answer):
+    transport = FakeTransport({STEP: _text(answer)})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    return read_oa(pages, "d_1", "oa_1", "r_1", ctx=ctx)
+
+
+def test_쪽을_넘어간_대상_청구항_칸은_이어_붙여_확인됨이고_시작_쪽이다():
+    answer = _answer("basic")
+    # 모델은 표 칸을 이어 읽어 1쪽 글자로 줬다 (쪽 글자만으로는 두 쪽에 걸쳐 대조가 안 됨)
+    answer["rejections"][0]["claims"] = {
+        "value": None,
+        "raw_text": "청구항 제1항 내지 제4항",
+        "page": 1,
+        "ambiguous": False,
+    }
+    result = _run_pages(_pages_with_split_table(), answer)
+    claims = result.rejections[0].claims
+    assert claims.status.value == StatusValue.CONFIRMED
+    assert claims.value == [1, 2, 3, 4]
+    assert claims.page == 1
+    assert result.rejections[0].article.value == "29-2"
+
+
+def test_모델이_대상_청구항을_못_줘도_표_줄에서_확인됨():
+    answer = _answer("basic")
+    answer["rejections"][0]["claims"] = None
+    result = _run_pages(_pages_with_split_table(), answer)
+    claims = result.rejections[0].claims
+    assert claims.value == [1, 2, 3, 4]
+    assert claims.status.value == StatusValue.CONFIRMED
+    assert claims.page == 1  # 줄이 시작한 쪽
+    assert claims.raw_text == "청구항 제1항 내지 제4항"  # 이어 붙인 칸 글자
+
+
+def test_다음_쪽_조각을_못_찾은_쪽_끝_줄은_규칙_값을_안_써서_잘린_값이_확인됨이_되지_않는다():
+    data = json.loads(_pages_with_split_table().model_dump_json())
+    # 칸이 "…제3항" | ", 제4항"처럼 잘려 1쪽 칸 끝에 이음말이 없는 모양
+    data["pages"][0]["tables"] = [[_HEAD, ["1", "청구항 제1항 내지 제3항", "특허법 제29조제2항"]]]
+    data["pages"][1]["tables"] = []  # 2쪽 조각이 표로 안 잡힘
+    answer = _answer("basic")
+    answer["rejections"][0]["claims"] = None
+    result = _run_pages(PageText.model_validate(data), answer)
+    claims = result.rejections[0].claims
+    assert claims.status.value == StatusValue.UNVERIFIED  # [1,2,3]으로 확인됨이 되지 않음
+    assert claims.value is None
+
+
+def test_표_줄과_모델의_대상_청구항이_다르면_conflict():
+    answer = _answer("basic")
+    answer["rejections"][0]["claims"] = {
+        "value": None,
+        "raw_text": "제1항",
+        "page": 3,
+        "ambiguous": False,
+    }
+    result = _run_pages(_pages_with_split_table(), answer)
+    claims = result.rejections[0].claims
+    assert claims.status.value == StatusValue.CONFLICT
+    assert sorted(tuple(c.value) for c in claims.candidates) == [(1,), (1, 2, 3, 4)]
