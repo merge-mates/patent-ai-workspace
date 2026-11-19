@@ -1,6 +1,6 @@
 {
   "experiment": "m2-i1-cite-search-bm25-baseline",
-  "commit": "b2c22ca9c3e1d55a6f0fb56f5e0adb178ebd29e7",
+  "commit": "9c2db29409935b98bd455f389224df979075ed17",
   "goldset": "tune",
   "goldset_version": 2,
   "gold_sha256": "90637221adc8a1be2c1e961c3d3e76a849d19fc7c1f60d0fdc0706bc1d0a8f43",
@@ -51,6 +51,6 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "external_calls": 0,
-    "seconds": 4.121
+    "seconds": 4.015
   }
 }
