@@ -3,14 +3,11 @@
 - chunks: 이미 있는 판(예 law-idx-v1)의 조각 JSONL → 새 판(law-idx-v2) JSONL.
   글·위치·판본은 그대로 두고 index_version·chunk_id 앞말만 새 판, embedding을 채운다.
   같은 글은 한 번만 임베딩한다 (법령은 판마다 같은 조문이 많아 1만 조각에 글은 1천여 개).
-- queries: 법령 정답 파일의 질의 → {질의: 벡터} 파일 (vector 검색기의 settings.query_vectors).
-  질의 글이 들어 있어 git 밖(work/)에 둔다.
+- 질의 벡터는 정답 파일을 읽어야 해서 채점기 쪽 `eval/retrieval/embed_queries.py`가 만든다
+  (앱 코드는 data/goldsets/를 읽지 않는다). 여기에는 글 목록 → 벡터 함수만 둔다.
 
 실행:
   uv run python -m patent_ai.core.index_embed chunks --config config/index/law-idx-v2.yaml
-  uv run python -m patent_ai.core.index_embed queries --config config/index/law-idx-v2.yaml \
-      --gold <goldsets_root>/tune/retrieval/law_gold.jsonl \
-      --out work/retrieval/<실험>/query_vectors.json
 """
 
 import argparse
@@ -33,12 +30,15 @@ logger = logging.getLogger(__name__)
 
 _VERSION = re.compile(r"^(law|cite)-idx-v[0-9]+$")
 
+# 실패하면 한 줄로 알리고 1로 끝낼 오류들 (성공 종료하지 않음)
+RUN_ERRORS = (ValueError, OSError, ModelConfigError, ModelCallFailed, ModelCallLimitExceeded)
+
 
 class IndexEmbedError(ValueError):
     """색인에 벡터를 채울 수 없다."""
 
 
-def _unique(texts: list[str]) -> list[str]:
+def unique(texts: list[str]) -> list[str]:
     # 처음 나온 순서를 지켜 중복을 뺀다 (같은 입력이면 같은 호출 순서)
     return list(dict.fromkeys(texts))
 
@@ -63,21 +63,24 @@ def embed_chunks(
         raise IndexEmbedError(f"같은 판({to_version})에 덮어쓰지 않는다. 새 판 이름을 준다")
     if from_version.split("-")[0] != to_version.split("-")[0]:
         raise IndexEmbedError(f"말뭉치가 다르다: {from_version} → {to_version}")
-
-    texts = _unique([c.text for c in chunks])
-    vectors = dict(zip(texts, embed(step, texts, ctx=ctx, config_dir=config_dir), strict=True))
     prefix = from_version + ":"
-    out = []
-    for c in chunks:
-        out.append(
-            c.model_copy(
-                update={
-                    "index_version": to_version,
-                    "chunk_id": to_version + ":" + c.chunk_id.removeprefix(prefix),
-                    "embedding": vectors[c.text],
-                }
-            )
+    bad = [c.chunk_id for c in chunks if not c.chunk_id.startswith(prefix)]
+    if bad:
+        # 앞말이 없으면 새 chunk_id가 '<새 판>:<옛 id>'처럼 엉뚱해진다
+        raise IndexEmbedError(f"chunk_id가 {prefix}로 시작하지 않는 조각 {len(bad)}개: {bad[0]}")
+
+    texts = unique([c.text for c in chunks])
+    vectors = dict(zip(texts, embed(step, texts, ctx=ctx, config_dir=config_dir), strict=True))
+    out = [
+        c.model_copy(
+            update={
+                "index_version": to_version,
+                "chunk_id": to_version + ":" + c.chunk_id.removeprefix(prefix),
+                "embedding": vectors[c.text],
+            }
         )
+        for c in chunks
+    ]
     logger.info("조각 %d개, 임베딩한 글 %d개", len(out), len(texts))
     return out
 
@@ -86,7 +89,7 @@ def embed_queries(
     queries: list[str], step: str, ctx: RunContext, config_dir: Path | None = None
 ) -> dict[str, list[float]]:
     """질의 → 벡터. 같은 질의는 한 번만."""
-    uniq = _unique(queries)
+    uniq = unique(queries)
     return dict(zip(uniq, embed(step, uniq, ctx=ctx, config_dir=config_dir), strict=True))
 
 
@@ -99,7 +102,8 @@ def write_query_vectors(vectors: dict[str, list[float]], out: str | Path) -> Non
     p.write_text(json.dumps(vectors, ensure_ascii=False), encoding="utf-8")
 
 
-def _report(ctx: RunContext) -> str:
+def call_report(ctx: RunContext) -> str:
+    """기록기(MemoryRecorder)에 쌓인 호출 수·입력 토큰·비용 한 줄."""
     recs = ctx.recorder.records  # type: ignore[attr-defined]
     calls = sum(r.outcome == "ok" for r in recs)
     tokens = sum(r.input_tokens for r in recs)
@@ -107,44 +111,38 @@ def _report(ctx: RunContext) -> str:
     return f"호출 {calls}번, 입력 토큰 {tokens}, 비용 ${cost:.4f}"
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="색인 조각·질의에 벡터 채우기")
-    ap.add_argument("what", choices=["chunks", "queries"])
+def new_context(name: str) -> RunContext:
+    # 실행마다 새 상한·기록. 전송층·캐시를 안 주면 진짜 전송층 + 기본 파일 캐시 (설정의 상한 필수)
+    return RunContext(name, CallBudget(), MemoryRecorder())
+
+
+def main(
+    argv: list[str] | None = None,
+    ctx: RunContext | None = None,
+    config_dir: Path | None = None,
+) -> int:
+    """ctx·config_dir은 테스트가 가짜 전송층과 임시 설정을 넣을 때만 준다."""
+    ap = argparse.ArgumentParser(description="색인 조각에 벡터 채우기")
+    ap.add_argument("what", choices=["chunks"])
     ap.add_argument("--config", required=True, help="config/index/<판>.yaml")
-    ap.add_argument("--gold", help="queries: 정답 jsonl")
-    ap.add_argument("--out", help="queries: 질의 벡터 json")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    # 실행마다 새 상한·기록. 전송층·캐시를 안 주면 진짜 전송층 + 기본 파일 캐시 (설정의 상한 필수)
-    ctx = RunContext(f"index-embed-{cfg['index_version']}", CallBudget(), MemoryRecorder())
     try:
-        if args.what == "chunks":
-            chunks = read_chunks_jsonl(cfg["from"])
-            out = embed_chunks(chunks, cfg["index_version"], cfg["embed_step"], ctx)
-            write_jsonl(out, cfg["out"])
-            logger.info("만듦: %s (조각 %d개). %s", cfg["out"], len(out), _report(ctx))
-        else:
-            if not args.gold or not args.out:
-                ap.error("queries에는 --gold와 --out이 필요하다")
-            lines = Path(args.gold).read_text(encoding="utf-8").splitlines()
-            queries = [json.loads(line)["query"] for line in lines if line.strip()]
-            if not queries:
-                raise IndexEmbedError("정답 파일에 질의가 0개다")
-            write_query_vectors(embed_queries(queries, cfg["embed_step"], ctx), args.out)
-            # 질의 글은 로그에 안 남긴다 (개수만)
-            logger.info("만듦: %s (질의 %d개). %s", args.out, len(set(queries)), _report(ctx))
-    except (
-        IndexEmbedError,
-        ValueError,
-        OSError,
-        ModelConfigError,
-        ModelCallFailed,
-        ModelCallLimitExceeded,
-    ) as e:
-        # 실패는 한 줄로 알리고 1로 끝낸다 (성공 종료하지 않음)
+        cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+        out_path = Path(cfg["out"])
+        # 돈을 쓰기 전에 덮어쓰기를 먼저 막는다
+        if out_path.exists():
+            raise IndexEmbedError(
+                f"이미 있는 파일이라 덮어쓰지 않는다 (새 설정이면 새 판): {out_path}"
+            )
+        ctx = ctx or new_context(f"index-embed-{cfg['index_version']}")
+        chunks = read_chunks_jsonl(cfg["from"])
+        out = embed_chunks(chunks, cfg["index_version"], cfg["embed_step"], ctx, config_dir)
+        write_jsonl(out, out_path)
+    except RUN_ERRORS as e:
         logger.error("%s", e)
         return 1
+    logger.info("만듦: %s (조각 %d개). %s", out_path, len(out), call_report(ctx))
     return 0
 
 

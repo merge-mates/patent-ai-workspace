@@ -9,6 +9,7 @@ from patent_ai.core.index_embed import (
     IndexEmbedError,
     embed_chunks,
     embed_queries,
+    main,
     write_query_vectors,
 )
 from patent_ai.core.llm.embed_transport import FakeEmbedTransport
@@ -118,3 +119,45 @@ def test_질의_벡터_파일은_덮어쓰지_않는다(tmp_path):
     assert json.loads(out.read_text(encoding="utf-8")) == {"가나": [1.0]}
     with pytest.raises(IndexEmbedError):
         write_query_vectors({"가나": [2.0]}, out)
+
+
+def test_chunk_id_앞말이_판과_다르면_멈춘다(cfg):
+    odd = _chunk("d", 1, "가").model_copy(update={"chunk_id": "엉뚱:d:1"})
+    t = FakeEmbedTransport(vec_of)
+    with pytest.raises(IndexEmbedError, match="시작하지 않는"):
+        embed_chunks([odd], "law-idx-v2", STEP, ctx_of(t), cfg)
+    assert t.calls == []
+
+
+def _idx_files(tmp_path):
+    src = tmp_path / "v1.jsonl"
+    write_jsonl(V1, src)
+    conf = tmp_path / "idx.yaml"
+    out = tmp_path / "v2.jsonl"
+    conf.write_text(
+        f"index_version: law-idx-v2\nfrom: {src}\nembed_step: {STEP}\nout: {out}\n",
+        encoding="utf-8",
+    )
+    return conf, out
+
+
+def test_chunks_명령은_v2_파일을_만들고_0으로_끝난다(cfg, tmp_path):
+    conf, out = _idx_files(tmp_path)
+    assert (
+        main(
+            ["chunks", "--config", str(conf)],
+            ctx=ctx_of(FakeEmbedTransport(vec_of)),
+            config_dir=cfg,
+        )
+        == 0
+    )
+    repo = InMemoryChunkRepository.from_jsonl("law", out)
+    assert repo.count_chunks("law", "law-idx-v2") == 3
+
+
+def test_chunks_명령은_출력_파일이_있으면_돈_쓰기_전에_1로_멈춘다(cfg, tmp_path):
+    conf, out = _idx_files(tmp_path)
+    out.write_text("old", encoding="utf-8")
+    t = FakeEmbedTransport(vec_of)
+    assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 1
+    assert t.calls == [] and out.read_text(encoding="utf-8") == "old"
