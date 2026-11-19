@@ -1,8 +1,10 @@
 import { createBrowserRouter, redirect } from 'react-router'
 import { AppShell } from './layout/AppShell'
-import { casesLoader } from './loaders'
+import { CaseShell } from './layout/CaseShell'
+import { caseLoader, casesLoader, oaLoader } from './loaders'
 import { CaseListPage } from './pages/CaseListPage'
 import { RouteError } from './pages/RouteError'
+import { WorkbenchPage } from './pages/workbench/WorkbenchPage'
 
 // 화면 경로. 데이터는 각 경로의 loader가 미리 받는다
 export const router = createBrowserRouter([
@@ -13,6 +15,15 @@ export const router = createBrowserRouter([
     children: [
       { index: true, loader: () => redirect('/cases') },
       { path: 'cases', loader: casesLoader, element: <CaseListPage />, errorElement: <RouteError /> },
+      { path: 'cases/:caseId', loader: caseLoader, errorElement: <RouteError /> },
+      {
+        id: 'oa',
+        path: 'oas/:oaId',
+        loader: oaLoader,
+        element: <CaseShell />,
+        errorElement: <RouteError />,
+        children: [{ index: true, element: <WorkbenchPage /> }],
+      },
     ],
   },
 ])
