@@ -1,0 +1,145 @@
+{
+  "application_number": {
+    "value": "10-2099-0000001",
+    "raw_text": "10-2099-0000001",
+    "page": 1,
+    "ambiguous": false
+  },
+  "dispatch_number": {
+    "value": "9-5-2099-000000001",
+    "raw_text": "9-5-2099-000000001",
+    "page": 1,
+    "ambiguous": false
+  },
+  "rejections": [
+    {
+      "article": {
+        "value": "29-2",
+        "raw_text": "특허법 제29조제2항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제1항 내지 제4항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "citations": [
+        {
+          "number": {
+            "value": "공개특허공보 제10-2099-0000001호",
+            "raw_text": "공개특허공보 제10-2099-0000001호",
+            "page": 2,
+            "ambiguous": false
+          },
+          "cited_paragraphs": {
+            "value": null,
+            "raw_text": "식별번호 [0023], [0031]",
+            "page": 2,
+            "ambiguous": false
+          }
+        },
+        {
+          "number": {
+            "value": null,
+            "raw_text": "US 2099/0000001 A1",
+            "page": 2,
+            "ambiguous": false
+          },
+          "cited_paragraphs": {
+            "value": null,
+            "raw_text": "식별번호 [0045]",
+            "page": 2,
+            "ambiguous": false
+          }
+        }
+      ],
+      "examiner_reasoning": {
+        "value": "센서 구성이 인용발명 1과 같아 쉽게 만들 수 있다는 판단",
+        "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "article": {
+        "value": null,
+        "raw_text": "특허법 제42조제4항제2호",
+        "page": 3,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제1항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "citations": [],
+      "examiner_reasoning": {
+        "value": "'약' 표현이 불명확하다는 판단",
+        "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    }
+  ],
+  "allowable_claims": {
+    "value": null,
+    "raw_text": "청구항 5, 7",
+    "page": 3,
+    "ambiguous": false
+  },
+  "amendment_note": {
+    "value": null,
+    "raw_text": "청구항 5의 종속 관계를 정리하세요.",
+    "page": 3,
+    "ambiguous": false
+  },
+  "examined_claims": {
+    "value": null,
+    "raw_text": "제1항 내지 제7항",
+    "page": 1,
+    "ambiguous": false
+  },
+  "claim_rows": [
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항 내지 제4항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "rejection": 1,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "이 출원의 청구항 제1항은 특허법 제42조제4항제2호에 해당하여 특허를 받을 수 없습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    }
+  ]
+}
