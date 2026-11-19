@@ -54,7 +54,7 @@ flowchart LR
 | 대상 청구항 | 거절이유 표 줄의 거절이유가 있는 부분 (순번으로 짝, 쪽을 넘은 칸은 이어 붙임) | 블록마다 원문 | 둘 다 대조 뒤 ③ `expand_claims`로 펼침 (`청구항 전항`은 심사 대상 청구항 값으로, 청구항이 아닌 부분은 규칙 쪽 못 씀). 같음 → `confirmed` / 다름 → `conflict` / 하나만 통과 → 그 값 |
 | 인용문헌 번호, 인용 식별번호 | 안 뽑음 | 블록마다 원문 | 대조 뒤 번호는 ⑥ `citation_key`로 키 꼴(나라와 맞아야 함), 식별번호는 `parse_cited_locations`로 정답 꼴, 나라는 ⑥ 정규식 |
 | 심사관 논리 요지 | 안 뽑음 | 요지 + 원문 | 원문 `raw_text`만 대조 (요지 글은 대조하지 않음, `origin: ai_generated`) |
-| 청구항 줄 `claim_rows`(청구항 x 거절이유) | 안 뽑음 | 줄마다 청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현(인용 안 또는 줄 단위), 같은 취지 원문, 명확성 표현 원문, 판단 원문 글자·쪽 | 판단 원문이 그 쪽에 있어야 `confirmed`(없으면 그 줄만 `unverified(not_extracted)`, 값 버림). 청구항은 `expand_claims`(묶음은 번호마다 한 줄), 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 `value` 안 씀), 같은 취지는 `parse_same_as`, 명확성 표현은 판단 원문의 따옴표 안 글자와 맞아야 함. 줄 단위 `no_location` 표현은 판단 원문 안에 있어야 함(없으면 그 줄 `unverified(not_extracted)`). 지원 안 하는 거절이유의 줄은 만들지 않음. 줄이 빠진 청구항(지원하는 거절이유의 대상 청구항 중)은 코드가 `unverified(not_extracted)` 빈 줄로 채움. 인용은 그 거절이유의 인용문헌이어야 하고 판단 원문이 가리키는 것(`인용발명 N`)과 같아야 함(가리키는 인용이 그 거절이유 밖이면 `unverified`). 판단 원문에 인용 번호가 없을 때 거절이유 인용이 하나면 그 인용, 여럿이면 모델 라벨을 남기되 그 줄은 `unverified(ambiguous)`(값·원문·쪽은 남김), 청구항 번호 원문은 판단 원문 안에, 순번은 판단 원문 머리 번호(`N-M.`)와 맞아야 함. `clarity_reason`은 모델이 쓴 글이라 `clarity_reason_origin: ai_generated`로 표시 |
+| 청구항 줄 `claim_rows`(청구항 x 거절이유) | 안 뽑음 | 줄마다 청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현(인용 안 또는 줄 단위), 같은 취지 원문, 명확성 표현 원문, 판단 원문 글자·쪽 | 판단 원문이 그 쪽에 있어야 `confirmed`(없으면 그 줄만 `unverified(not_extracted)`, 값 버림). 청구항은 `expand_claims`(묶음은 번호마다 한 줄), 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 `value` 안 씀), 같은 취지는 `parse_same_as`, 명확성 표현은 판단 원문의 따옴표 안 글자와 맞아야 함. 줄 단위 `no_location` 표현은 판단 원문 안에 있어야 함(없으면 그 줄 `unverified(not_extracted)`). 지원 안 하는 거절이유의 줄은 만들지 않음. 줄이 빠진 청구항(지원하는 거절이유의 대상 청구항 중)은 코드가 `unverified(not_extracted)` 빈 줄로 채움. 인용은 그 거절이유의 인용문헌이어야 하고 판단 원문이 가리키는 것(`인용발명 N`)과 같아야 함(가리키는 인용이 그 거절이유 밖이면 `unverified`). 판단 원문에 인용 번호가 없을 때 거절이유 인용이 하나면 그 인용, 여럿이면 모델 라벨을 남기되 그 줄은 `unverified(ambiguous)`(값·원문·쪽은 남김), 청구항 번호 원문은 판단 원문 안에, 순번은 판단 원문 머리 번호(`N-M.`)와 맞아야 함. 청구항 번호는 원문 대조를 통과한 원문 글자에서만 읽고(모델 `value` 안 씀), `제9항(제6항 인용)`처럼 괄호 밖 번호만 읽히면 그 번호 줄을 `unverified(ambiguous)`로 남김(값 없음, 같은 청구항의 다른 줄이 있으면 그 줄, 대상 밖 청구항은 안 만듦). 번호를 아예 못 읽은 줄은 만들지 않음(대상 청구항은 위 빈 줄로 채움). 목록 칸(`same_as`·`clarity_terms`)에 원문·쪽 없는 문자열이 오면 그 줄만 `unverified(not_extracted)`. `clarity_reason`은 모델이 쓴 글이라 `clarity_reason_origin: ai_generated`로 표시 |
 | 「특허 가능한 청구항」, 【보정에 관한 참고사항】 | 안 뽑음 | 원문 (칸이 없으면 "없음") | 대조 뒤 청구항은 `expand_claims`. 칸이 없으면 "없음": 값 `[]` / `null`, `raw_text`·`page`는 `null`, `confirmed`(`checked` = "원문에 칸 없음"). "확인되지 않음"과 다름 (정답 형식 f1-oa-gold.md 2.1·4절) |
 - 원문에 글자가 없어서 정한 값(통지 종류 `initial`, 힌트 "없음")은 쪽이 없는 `confirmed`이고 `checked`에 본 범위를 적는다. "확인하지 않은 원문 위치 0건"은 쪽이 있는 값에만 건다.
 - `ambiguous` 표시: 모델이 애매하다고 하면 `value`는 `null`, `raw_text`·`page`는 대조에 통과할 때만 남기고 `unverified(ambiguous)`.
@@ -193,7 +193,7 @@ flowchart LR
 
 ### 7-2. 방식 (한 사람)
 - 재아: 규칙으로 되는 것(번호·조문·청구항 범위·날짜 글자·통지 종류 문구)은 정규식 코드, 블록 나누기와 관계 잇기·요지·힌트만 모델 한 번. 모델 출력은 원문 글자를 같이 받아 코드로 대조한다 (지어낸 값 0건의 장치).
-- 모델 호출: `core/llm/` (#13)에서만, OA마다 한 번 (+ 출력 검사 실패 때 한 번).
+- 모델 호출: `core/llm/` (#13)에서만, OA마다 한 번 (+ 출력 검사 실패 때 한 번). 두 번째 호출 프롬프트에는 첫 답의 검사 오류 문구를 넣고(`$retry_note`), 두 번째 답은 목록 칸의 문자열만 받아 두는 `LooseOAExtraction`으로 검사한다 (문자열은 `Item`으로 바꾸지 않음, 그 줄은 확인되지 않음). 그 밖의 검사 실패는 `ModelOutputInvalid`.
 - 프롬프트 파일: `prompts/f1/read_oa.md`
 - 실험 설정: `config/f1.yaml`의 `read_oa.model`, `read_oa.temperature`, `read_oa.prompt` (모델은 [ADR 0003](../../decisions/0003-tech-stack.md)대로 Haiku 5.5로 시작).
 

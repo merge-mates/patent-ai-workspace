@@ -238,6 +238,7 @@ graph LR
     task-5 --> task-6
     task-6 --> task-7
     task-7 --> task-8
+    task-8 --> task-9
 ```
 
 ### task-1: 규칙 추출 (번호·날짜 글자·조문·청구항 범위·통지 종류)
@@ -315,6 +316,17 @@ graph LR
 - 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과
 - 먼저: task-7
 
+### task-9: tune 5건 진짜 모델 실패 원인 (11/19 승인, work/f1_real_model_tune5.md)
+- 담당: 재아
+- 합격 기준: requirements.md 1·2 (지어낸 값 0건, 못 뽑은 것은 확인되지 않음), 실패할 때 (조용히 실패하지 않음)
+- 왜: 5건 중 4건이 `clarity_terms`·`same_as`에 객체 대신 문자열을 넣어 검사에 두 번 떨어져 실행 전체가 실패. 성공 1건은 `제9항(제6항 인용)` 같은 청구항 원문을 못 읽어 줄이 빠짐
+- 고칠 파일: `prompts/f1/read_oa.md`(목록 칸 예시를 객체로, `$retry_note`), `src/patent_ai/core/f1_oa_reader/{extraction,read_oa,claim_rows}.py`, `tests/core/f1/test_claim_rows.py`, `docs/features/F1/design.md`
+- 만들 칸·함수 모양: 재시도 프롬프트에 검사 오류 문구. 두 번째 답 검사용 `LooseOAExtraction`(목록 칸만 `Item | str`, 문자열은 바꾸지 않음) → 그 줄만 `unverified(not_extracted)`. `_outside_parentheses`: 괄호 밖 번호만 읽히면 그 번호 줄 `unverified(ambiguous)` (대상 청구항일 때만, 다른 줄이 먼저)
+- 테스트할 경우: 첫 답 문자열 → 두 번째 프롬프트에 검사 오류, 두 번째가 맞으면 확인됨 / 두 번째도 문자열(clarity_terms·same_as) → 실행은 돌고 그 줄만 확인되지 않음, 다른 줄 그대로 / Item 칸의 문자열은 두 번째에도 `ModelOutputInvalid` / 괄호 줄 → 애매, 확인됨 아님, 번호 없는 줄 안 만듦 / 같은 청구항의 확인된 줄이 있으면 그 줄 / 괄호 밖도 못 읽으면 줄 안 만듦 / 대상 밖이면 안 만듦
+- 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과. tune 5건 다시 돌려 성공 건수·확인됨/확인 안 됨 개수·비용
+- 먼저: task-8
+- 정하지 않고 둔 것: 번호를 못 읽은 줄은 계속 만들지 않음 (11/19 사람 확인, 정한 규칙 유지)
+
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
 - 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
@@ -329,6 +341,7 @@ graph LR
 - [x] task-6
 - [x] task-7
 - [x] task-8
+- [x] task-9
 - 다음: tune 점수 (#20·#22 뒤), /pr-draft
 - 막힌 것: 
 
