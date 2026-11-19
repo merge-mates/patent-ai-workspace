@@ -17,6 +17,13 @@ from patent_ai.core.f1_oa_reader.rules import (
     _DISPATCH_BODY,
     normalize_application_number,
 )
+from patent_ai.core.schemas.case_materials import (
+    CaseDocument,
+    CaseMaterials,
+    HeldTask,
+    LookupResult,
+    MissingMaterial,
+)
 from patent_ai.core.schemas.common import (
     ExtractedValue,
     Status,
@@ -24,6 +31,8 @@ from patent_ai.core.schemas.common import (
     UnverifiedReason,
     worst_status,
 )
+from patent_ai.core.schemas.oa_result import Citation, OAResult
+from patent_ai.core.schemas.propagation import collect_review_items
 
 logger = logging.getLogger(__name__)
 
@@ -265,3 +274,85 @@ def select_examined_version(
         raw_text=last.raw_text,
         status=Status(value=StatusValue.CONFIRMED, checked="대상 OA 앞 마지막 보정서 접수번호"),
     )
+
+
+# --- 빠진 자료 → CaseMaterials (T4) ---------------------------------------------
+
+
+def _citation_name(c: Citation) -> str:
+    """사람이 읽는 인용문헌 이름: 라벨 + 번호 값(없으면 원문 글자)."""
+    return f"{c.label} {c.number.value or c.number.raw_text or '번호 모름'}"
+
+
+def _oa_citations(oa: OAResult) -> list[Citation]:
+    """OA의 인용문헌을 라벨 기준으로 한 번씩 (같은 문헌은 같은 라벨)."""
+    seen: dict[str, Citation] = {}
+    for rej in oa.rejections:
+        for c in rej.citations:
+            seen.setdefault(c.label, c)
+    return list(seen.values())
+
+
+def _missing_reason(
+    c: Citation, citation_docs: dict[str, str], lookup_failures: dict[str, LookupResult]
+) -> LookupResult | None:
+    """인용문헌이 빠졌으면 그 이유, 있으면 None."""
+    if c.country.value is not None and not c.country_supported:
+        return LookupResult.UNSUPPORTED_COUNTRY  # 지원 안 하는 나라: 직접 확인
+    key = c.number.value
+    if key is None:
+        return LookupResult.LOOKUP_FAILED  # 번호를 못 읽어 조회할 수 없음
+    if key in citation_docs:
+        return None
+    # 조회 쪽(#54)이 이유를 주면 그 이유, 없으면 못 가져온 것으로 본다
+    return lookup_failures.get(key, LookupResult.LOOKUP_FAILED)
+
+
+def build_case_materials(
+    case_id: str,
+    grouped: list[GroupedMaterial],
+    oa: OAResult,
+    citation_docs: dict[str, str],
+    lookup_failures: dict[str, LookupResult] | None = None,
+) -> CaseMaterials:
+    """묶은 자료와 OA 인용문헌으로 사건 자료·빠진 자료·보류 작업을 채운다 (합격 기준 4).
+
+    - citation_docs: 받은 인용문헌 번호(키 꼴) → 문서 id. lookup_failures: 못 받은 번호 → 이유.
+    - 빠진 인용문헌마다 missing 한 줄 + 그 인용문헌의 F3 대비만 held_tasks. 나머지는 진행.
+    - 지원 안 하는 나라는 ask_upload=False ("직접 확인"), 그 밖은 "올려 주세요".
+    - documents는 묶은 자료 전부 (상태가 나쁜 자료를 빼는 것은 cut_to_oa).
+    - review_items_count는 검토할 사항 모으기(collect_review_items)의 줄 수.
+    """
+    lookup_failures = lookup_failures or {}
+    citations = _oa_citations(oa)
+    if not citations:
+        logger.warning("build_case_materials: OA 인용문헌이 0건 (빠진 자료 검사 없음)")
+
+    missing: list[MissingMaterial] = []
+    held: list[HeldTask] = []
+    for c in citations:
+        reason = _missing_reason(c, citation_docs, lookup_failures)
+        if reason is None:
+            continue
+        what = f"{_citation_name(c)} 본문"
+        task = f"F3 대비: {_citation_name(c)}"
+        missing.append(
+            MissingMaterial(
+                what=what,
+                depends_on_tasks=[task],
+                lookup_result=reason,
+                ask_upload=reason != LookupResult.UNSUPPORTED_COUNTRY,
+            )
+        )
+        held.append(HeldTask(task=task, waiting_for=what))
+
+    materials = CaseMaterials(
+        case_id=case_id,
+        documents=[
+            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source) for g in grouped
+        ],
+        missing=missing,
+        held_tasks=held,
+    )
+    count = len(collect_review_items([oa], materials))
+    return materials.model_copy(update={"review_items_count": count})

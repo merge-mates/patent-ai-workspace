@@ -1,16 +1,22 @@
 """사건 자료 묶기 규칙 테스트 (#16). 번호는 모두 지어낸 것 (2099년 값, 실제 사건 아님)."""
 
+import json
+from pathlib import Path
+
 import pytest
 
 from patent_ai.core.f1_oa_reader.case_grouping import (
     HistoryEvent,
     MaterialInput,
+    build_case_materials,
     group_materials,
     normalize_receipt_number,
     read_number,
     select_examined_version,
 )
-from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
+from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult
+from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.oa_result import OAResult
 
 # --- T1 번호 읽기·정규화 -------------------------------------------------------
 
@@ -367,3 +373,158 @@ def test_version_마지막_보정서에_번호가_둘이면_ambiguous():
     v = select_examined_version(hist, OA2)
     assert v.value is None
     assert v.status.reason == UnverifiedReason.AMBIGUOUS
+
+
+# --- T4 빠진 자료 → CaseMaterials -----------------------------------------------
+
+FIXTURE = Path(__file__).parents[2] / "fixtures" / "case_missing_citation"
+KR_D1 = "KR20990000001A"
+US_D2 = "US20990000001A1"
+
+
+def _fixture_oa() -> OAResult:
+    return OAResult.model_validate_json((FIXTURE / "oa_result.json").read_text())
+
+
+def _fixture_grouped(oa: OAResult):
+    return group_materials(
+        [
+            _m(
+                "doc_oa_1",
+                "oa",
+                app=oa.application_number.raw_text,
+                number=oa.dispatch_number.raw_text,
+            ),
+            _m("doc_cit_kr_1", "citation", app=None, source="api"),
+        ],
+        oa.application_number.value,
+    )
+
+
+def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같은_구조():
+    oa = _fixture_oa()
+    got = build_case_materials(
+        "c_1",
+        _fixture_grouped(oa),
+        oa,
+        citation_docs={KR_D1: "doc_cit_kr_1"},
+        lookup_failures={US_D2: LookupResult.BODY_MISSING},
+    )
+    want = CaseMaterials.model_validate(json.loads((FIXTURE / "case_materials.json").read_text()))
+    assert got.case_id == want.case_id
+    assert got.documents == want.documents
+    # 빠진 자료 이름은 fixture가 손으로 쓴 글자라 글자 대신 구조를 비교한다
+    assert len(got.missing) == len(want.missing) == 1
+    (m,) = got.missing
+    assert m.what == "D2 US20990000001A1 본문"
+    assert (m.lookup_result, m.ask_upload) == (LookupResult.BODY_MISSING, True)
+    # 보류는 없는 인용문헌의 F3 대비만, 그 작업은 빠진 자료를 기다린다
+    assert len(got.held_tasks) == len(want.held_tasks) == 1
+    (h,) = got.held_tasks
+    assert h.waiting_for == m.what
+    assert m.depends_on_tasks == [h.task]
+    assert h.task == "F3 대비: D2 US20990000001A1"
+    assert got.review_items_count == want.review_items_count
+
+
+def test_materials_빠진_것이_없으면_missing_held_비어_있음():
+    oa = _fixture_oa()
+    got = build_case_materials(
+        "c_1",
+        _fixture_grouped(oa),
+        oa,
+        citation_docs={KR_D1: "doc_cit_kr_1", US_D2: "doc_cit_us_1"},
+    )
+    assert got.missing == [] and got.held_tasks == []
+
+
+def test_materials_이유가_없으면_lookup_failed():
+    oa = _fixture_oa()
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    assert [m.lookup_result for m in got.missing] == [LookupResult.LOOKUP_FAILED]
+
+
+def _oa_with_citation(**citation_update) -> OAResult:
+    """fixture OA에서 거절이유 1의 D2만 바꾼 OA."""
+    oa = _fixture_oa()
+    rej = oa.rejections[0]
+    d2 = rej.citations[1].model_copy(update=citation_update)
+    rej = rej.model_copy(update={"citations": [rej.citations[0], d2]})
+    return oa.model_copy(update={"rejections": [rej, *oa.rejections[1:]]})
+
+
+def test_materials_지원_안_하는_나라는_올려_달라고_안_함():
+    d2 = _fixture_oa().rejections[0].citations[1]
+    oa = _oa_with_citation(
+        country=d2.country.model_copy(update={"value": "JP"}),
+        country_supported=False,
+        flags=[Flag.NEEDS_HUMAN_REVIEW],
+    )
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    (m,) = got.missing
+    assert (m.lookup_result, m.ask_upload) == (LookupResult.UNSUPPORTED_COUNTRY, False)
+    assert len(got.held_tasks) == 1
+
+
+def test_materials_번호를_못_읽은_인용문헌은_lookup_failed_올려_달라고_함():
+    d2 = _fixture_oa().rejections[0].citations[1]
+    unread = d2.number.model_copy(
+        update={
+            "value": None,
+            "status": d2.number.status.model_copy(
+                update={
+                    "value": StatusValue.UNVERIFIED,
+                    "reason": UnverifiedReason.AMBIGUOUS,
+                    "checked": None,
+                }
+            ),
+        }
+    )
+    oa = _oa_with_citation(number=unread)
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    (m,) = got.missing
+    assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
+    # 번호 값이 없으면 원문 글자로 이름을 만든다
+    assert m.what == "D2 US 2099/0000001 A1 본문"
+
+
+def test_materials_같은_인용문헌이_여러_거절이유에_있어도_한_번():
+    oa = _fixture_oa()
+    rej1 = oa.rejections[0]
+    rej2 = oa.rejections[1].model_copy(update={"citations": [rej1.citations[1]]})
+    oa = oa.model_copy(update={"rejections": [rej1, rej2, *oa.rejections[2:]]})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    assert len(got.missing) == 1 and len(got.held_tasks) == 1
+
+
+def test_materials_인용문헌이_0건이면_경고(caplog):
+    oa = _fixture_oa()
+    oa = oa.model_copy(
+        update={"rejections": [r.model_copy(update={"citations": []}) for r in oa.rejections]}
+    )
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={})
+    assert got.missing == []
+    assert "인용문헌이 0건" in caplog.text
+
+
+def test_materials_나라를_못_읽은_인용문헌은_지원_안_함이_아니라_올려_달라고_함():
+    d2 = _fixture_oa().rejections[0].citations[1]
+    unknown_country = d2.country.model_copy(
+        update={
+            "value": None,
+            "status": d2.country.status.model_copy(
+                update={
+                    "value": StatusValue.UNVERIFIED,
+                    "reason": UnverifiedReason.AMBIGUOUS,
+                    "checked": None,
+                }
+            ),
+        }
+    )
+    oa = _oa_with_citation(
+        country=unknown_country, country_supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW]
+    )
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    (m,) = got.missing
+    # 나라 모름 ≠ 지원 안 함: 조회 못 한 것으로 보고 올려 달라고 한다
+    assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
