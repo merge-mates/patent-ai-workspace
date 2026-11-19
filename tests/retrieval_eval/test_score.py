@@ -87,6 +87,7 @@ def test_점검_예_값이_나온다(tmp_path, goldsets_root):
         "excluded_edition_unverified",
         "excluded_no_edition_in_scope",
         "excluded_gold_not_in_scope",
+        "excluded_gold_items_not_in_scope",
         "cq_candidates",
         "recall_ratio_undefined",
     }
@@ -350,33 +351,44 @@ def _score_fixture(tmp_path, goldsets_root, gold_name, corpus):
 
 
 def test_not_in_scope_법령_정답_판이_범위에_없으면_빼고_센다(tmp_path, goldsets_root):
-    """정답 판(구판)이 발송일 범위(신판)에 없으면 Hit·Recall·CQ에 넣지 않는다.
+    """정답 판(구판)이 발송일 범위(신판)에 없으면 그 항목은 맞힐 수 없다.
 
-    항목 하나만 범위에 없어도 줄째 뺀다 (항목만 빼면 Recall 분모가 바뀜).
+    항목이 모두 범위 밖인 줄은 줄째 빼고(Hit·Recall·CQ 밖), 일부만 범위 밖이면
+    그 항목만 빼고 남은 항목으로 채점한다 (은진 11/19, 재아 확인 필요).
     """
     report = _score_fixture(tmp_path, goldsets_root, "gold_law_not_in_scope.jsonl", "law")
-    assert report.scores["n"] == 1
-    assert report.scores["failures"]["excluded_gold_not_in_scope"] == 2
-    assert report.scores["failures"]["excluded_no_edition_in_scope"] == 0
-    assert report.scores["failures"]["excluded_edition_unverified"] == 0
-    # 뺀 줄은 CQ 후보(report.rows)에 없다
-    assert [r.row.row_id for r in report.rows] == ["10-2020-0000202:r1"]
+    f = report.scores["failures"]
+    assert report.scores["n"] == 2
+    assert f["excluded_gold_not_in_scope"] == 1  # 204: 항목 하나뿐인데 범위 밖
+    assert f["excluded_gold_items_not_in_scope"] == 1  # 205의 구판 항목
+    assert f["excluded_no_edition_in_scope"] == 0
+    assert f["excluded_edition_unverified"] == 0
+    ids = [r.row.row_id for r in report.rows]
+    assert ids == ["10-2020-0000202:r1", "10-2020-0000205:r1"]
+    # 205는 범위 안 항목(신판)만 남는다
+    assert [i.label for i in report.rows[1].row.items] == ["제5조 제1항 (신판)"]
 
 
 def test_not_in_scope_뺀_뒤_남은_줄_점수는_그대로(tmp_path, goldsets_root):
-    """범위 밖 정답 줄을 더해도 나머지 줄 점수는 그 줄만 채점한 것과 같다."""
+    """범위 밖 항목을 빼고 나면 205는 202와 같은 정답이라 점수가 202만 채점한 것과 같다."""
     only = _score_fixture(tmp_path, goldsets_root, "gold_law_counts.jsonl", "law")
     mixed = _score_fixture(tmp_path, goldsets_root, "gold_law_not_in_scope.jsonl", "law")
     assert mixed.scores["metrics"] == only.scores["metrics"]
 
 
-def test_not_in_scope_인용문헌_정답_문단이_조각에_없으면_빼고_센다(tmp_path, goldsets_root):
-    """공보 조각은 있는데 정답 문단이 어느 조각에도 없으면 청킹·정답 문제라 CQ에 넣지 않는다."""
+def test_not_in_scope_인용문헌_정답_문단이_조각에_없으면_그_항목만_뺀다(tmp_path, goldsets_root):
+    """공보 조각은 있는데 정답 문단 하나가 어느 조각에도 없으면 청킹·정답 문제다.
+
+    다른 항목으로는 맞힐 수 있으니 줄은 남기고 그 항목만 빼고 센다. CQ에는 남은 항목만 간다.
+    """
     report = _score_fixture(tmp_path, goldsets_root, "gold_cite_not_in_scope.jsonl", "cite")
-    assert report.scores["n"] == 1
-    assert report.scores["failures"]["excluded_gold_not_in_scope"] == 1
+    f = report.scores["failures"]
+    assert report.scores["n"] == 2
+    assert f["excluded_gold_not_in_scope"] == 0
+    assert f["excluded_gold_items_not_in_scope"] == 1
     # 공보 조각이 있으니 body_missing이 아니다
-    assert report.scores["failures"]["excluded_body_missing"] == 0
-    assert [r.row.row_id for r in report.rows] == ["10-2020-0000001:r1:c1:KR2000000001A"]
-    # 점수는 gold_ok(같은 첫 줄만)와 같다
-    assert report.scores["metrics"]["recall@5"] == pytest.approx(0.5, abs=1e-3)
+    assert f["excluded_body_missing"] == 0
+    second = report.rows[1]
+    assert second.row.row_id == "10-2020-0000105:r1:c1:KR2000000001A"
+    assert [i.label for i in second.row.items] == ["[0022]-[0025]"]
+    assert second.match_sizes == [4]

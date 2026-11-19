@@ -39,6 +39,7 @@ FAILURE_KEYS = [
     "excluded_edition_unverified",
     "excluded_no_edition_in_scope",
     "excluded_gold_not_in_scope",
+    "excluded_gold_items_not_in_scope",
     "cq_candidates",
     "recall_ratio_undefined",
 ]
@@ -163,14 +164,24 @@ def score(
             failures["excluded_no_edition_in_scope"] += 1
             continue
         match_sizes = [sum(1 for c in scope if matcher.matches(c, item, row)) for item in row.items]
-        if 0 in match_sizes:
-            # 범위 조각은 있는데 어떤 정답 항목에도 맞는 조각이 0개: 검색기가 어떻게 해도 못 맞힌다.
-            # 법령은 정답 판이 그날 범위에 없음(빠진 판·개정), 인용문헌은 정답 문단이
-            # 조각에 없음(청킹·정답 문제). 검색 실력이 아니라 데이터 문제라
-            # Hit·Recall·CQ에서 뺀다 (#129). 공보 조각이 아예 없으면 위 body_missing,
-            # 범위가 0개면 위 no_edition_in_scope가 먼저 센다
+        # 범위 조각은 있는데 맞는 조각이 0개인 정답 항목은 검색기가 어떻게 해도 못 맞힌다 (#129).
+        # 법령은 정답 판이 그날 범위에 없음(빠진 판·개정), 인용문헌은 정답 문단이 조각에 없음
+        # (청킹·정답 문제). 검색 실력이 아니라 데이터 문제라 Hit·Recall·CQ에 넣지 않는다.
+        # 공보 조각이 아예 없으면 위 body_missing, 범위가 0개면 위 no_edition_in_scope가 먼저 센다
+        if all(m == 0 for m in match_sizes):
+            # 항목이 모두 범위 밖: 줄째 뺀다
             failures["excluded_gold_not_in_scope"] += 1
             continue
+        if 0 in match_sizes:
+            # 일부만 범위 밖: 그 항목만 빼고 남은 항목으로 채점한다. 다른 항목으로 맞힌 줄까지
+            # 빼면 범위 밖 정답을 막으려다 Hit가 내려간다 (11/19 인용문헌 기준선에서 9줄 중 8줄)
+            failures["excluded_gold_items_not_in_scope"] += match_sizes.count(0)
+            row = row.model_copy(
+                update={
+                    "items": [it for it, m in zip(row.items, match_sizes, strict=True) if m > 0]
+                }
+            )
+            match_sizes = [m for m in match_sizes if m > 0]
         results.append(
             RowResult(
                 row=row,

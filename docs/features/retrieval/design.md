@@ -45,7 +45,10 @@ flowchart LR
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
    - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_body_missing`에 센다.
    - 기준일 범위 내 판본 없음: 문헌 조각은 있는데 `as_of`로 거르고 나면 검색 범위 조각이 0개인 줄(N = 0)은 무작위 기준선을 정할 수 없으므로 채점 전체를 멈추지 않고 그 줄만 빼고 `excluded_no_edition_in_scope`에 센다 (11/19 결정). 법령 판본 모름 조각만 있거나, OA 발송일이 색인의 가장 이른 법령 판본보다 앞서는 경우다.
-   - 범위 안에 정답 조각 없음: 범위 조각은 있는데 정답 항목 중 하나라도 맞는 조각이 0개(Mᵢ = 0)인 줄은 검색기가 어떻게 해도 못 맞히므로 빼고 `excluded_gold_not_in_scope`에 센다 (#129). 법령은 정답 판이 그날 범위에 없는 경우(받은 판 사이 빠진 개정, 판 하나가 통째로 없음), 인용문헌은 공보 조각은 있는데 정답 문단이 어느 조각에도 없는 경우(청킹·정답 문제)다. 데이터 문제가 "검색이 못 찾은 질문"처럼 Hit·Recall을 내리고 CQ 후보에 섞이지 않게 한다. 세 제외의 경계: 공보·법령 조각이 아예 없으면 `excluded_body_missing`, 조각은 있는데 기준일로 거르니 0개면 `excluded_no_edition_in_scope`, 범위는 있는데 정답 조각이 없으면 `excluded_gold_not_in_scope`. 이 순서로 먼저 걸린 하나에만 센다.
+   - 범위 안에 정답 조각 없음 (#129): 범위 조각은 있는데 맞는 조각이 0개(Mᵢ = 0)인 정답 항목은 검색기가 어떻게 해도 못 맞힌다. 법령은 정답 판이 그날 범위에 없는 경우(받은 판 사이 빠진 개정, 판 하나가 통째로 없음), 인용문헌은 공보 조각은 있는데 정답 문단·도면이 어느 조각에도 없는 경우(청킹·정답 문제)다. 데이터 문제가 "검색이 못 찾은 질문"처럼 Hit·Recall을 내리고 CQ 후보에 섞이지 않게 한다.
+     - 항목이 모두 Mᵢ = 0이면 줄째 빼고 `excluded_gold_not_in_scope`에 센다.
+     - 일부만 Mᵢ = 0이면 그 항목만 빼고 남은 항목으로 Hit·Recall·CQ를 매기며, 뺀 항목 수를 `excluded_gold_items_not_in_scope`에 센다. 다른 항목으로 맞힌 줄까지 빼면 점수가 오히려 내려간다 (11/19 인용문헌 기준선: 그렇게 빠지는 9줄 중 8줄이 다른 항목으로 맞힌 줄).
+     - 세 제외의 경계: 공보·법령 조각이 아예 없으면 `excluded_body_missing`, 조각은 있는데 기준일로 거르니 0개면 `excluded_no_edition_in_scope`, 범위는 있는데 정답 조각이 없으면 위 두 키. 이 순서로 먼저 걸린 하나에만 센다.
    - 결과에 다른 색인 판 조각이 있으면 실패로 끝난다. 판정은 조각마다 `hit.index_version`이 설정의 `index_version`과 같은지로 한다 (공통 래퍼가 먼저 보고, 채점기가 한 번 더 봄).
 5. 3·4번에서 빼고 남은 줄이 0개면 실패로 끝난다 (종료 코드 1, `RetrievalEvalError`). 빈 평균으로 성공 종료하지 않는다.
 6. 결과 조각마다 그 말뭉치 `Matcher`로 정답 항목과 맞는지 본다.
@@ -53,7 +56,7 @@ flowchart LR
 8. 결과 저장: `<scores 폴더>/scores.json`(모은 숫자, 기본 `experiments/<실험>/`), `<cq 폴더>/cq_candidates.jsonl`(CQ 후보, 기본 `work/retrieval/<실험>/`).
 - 실패하면: 실행 전 검사가 막는다. 줄 하나의 검색이 예외를 내면 그 줄에서 멈추고 실패로 끝난다 (조용히 건너뛰지 않음).
 - 메시지 규칙 (requirements "실패할 때"): 터미널 실패·경고 메시지에는 `row_id`와 건수를 쓸 수 있다. 질의·청구항·정답 원문 글자는 쓰지 않는다. git에 들어가는 `scores.json`에는 `row_id`도 쓰지 않는다.
-- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다 (정답 조각이 범위에 있을 때만. 없으면 위 4번 `excluded_gold_not_in_scope`). 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
+- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다 (정답 조각이 범위에 있을 때만. 없으면 위 4번 범위 밖 정답 규칙). 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
 - 느리면: 가짜 구현만 있는 이 이슈에는 해당 없음. 진짜 구현의 상한은 #66·#67 설정에 둔다.
 
 ### 2-1. 흐름 방식
@@ -220,7 +223,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 ```
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
-  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
+  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `excluded_gold_items_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
   - 위 표에 더하는 칸: `corpus`, `index_version`, `index_fingerprint`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
   - `index_fingerprint`: 그 색인 판 조각 전체의 `{"chunks": 조각 수, "chunk_ids_sha256": …}`. `make index-dump`의 `.fingerprint.json`과 같은 계산이다 (5-2). **지문이 다른 실험끼리는 점수를 비교하지 않는다** (색인 판 이름이 같아도 내용이 다르다).
   - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
@@ -307,7 +310,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 공통 검사는 `get_searcher`가 감싸는 래퍼 `CheckedSearcher` | 구현마다 검사 | #66·#67이 빠뜨릴 수 있음 | 설계 (plan-reviewer, 11/18) | |
 | `--chunks`(메모리)로 돌리면 출력은 `work/`만 | 어디든 씀 | 가짜 조각 점수가 실험 표에 섞이지 않게 | 설계 (plan-reviewer, 11/18) | |
 | 기준일로 범위 조각이 0개인 줄은 빼고 셈 (`excluded_no_edition_in_scope`) | 채점 전체를 멈춤 / Hit 0으로 셈 | 줄 하나 때문에 tune 점수가 안 나오지 않게. N=0이면 무작위 기준선을 못 정함 | 구현 중 문제 (11/19) | |
-| 범위 안에 정답 조각이 0개인 줄은 빼고 셈 (`excluded_gold_not_in_scope`), 법령·인용문헌 둘 다 | Hit 0으로 셈 / 법령만 | 데이터 문제가 Hit@k를 내리고 CQ에 섞임. 인용문헌도 같은 상황(정답 문단이 조각에 없음)이라 같이 (재아 요청) | 구현 중 문제 (#129, #121 리뷰) | 이슈 #129 |
+| 범위 안에 정답 조각이 0개인 항목은 빼고 셈, 모두 0개면 줄째 (`excluded_gold_items_not_in_scope`·`excluded_gold_not_in_scope`), 법령·인용문헌 둘 다 | Hit 0으로 셈 / 항목 하나라도 0이면 줄째 / 법령만 | 데이터 문제가 Hit@k를 내리고 CQ에 섞임. 줄째 빼면 다른 항목으로 맞힌 줄까지 빠짐. 인용문헌도 같은 상황이라 같이 (재아 요청) | 구현 중 문제 (#129, #121 리뷰) | 이슈 #129 |
 | `get_searcher`가 `impl` 이름으로 구현 모듈을 import | `retrieval/__init__`에 구현 목록 / 설정에 `impl_module` | #66·#67이 계약 파일을 안 고치고 새 파일만 더함 | 구현 중 문제 (11/19) | |
 | 이슈 셋으로 나눔 (A1·A2·B) | 둘 (A·B) | A가 400줄 규칙을 넘음. B·#66·#67은 A1만 필요 | 설계 (plan-reviewer, 11/18) | |
 | 법령 조각 = 항 단위 (호·목은 항 안, 앞에 조 제목). 항 없는 조는 조 하나 | 조 단위 / 호 단위 | 정답이 모두 항까지 있고 29조 1항(신규성)·2항(진보성)을 나눔. 호 단위는 글이 짧아 BM25가 약함 | 설계 (#66, 11/19) | 이슈 #66 본문 |
