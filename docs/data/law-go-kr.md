@@ -10,17 +10,17 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
 ## 1. 출처와 이용 조건
 - 어디서: 법제처 Open API (`lawSearch.do` 목록, `lawService.do` 본문). 인증키는 `.env`의 `LAW_OC`. 심사기준 원문은 각 판의 첨부파일 링크(`flDownload.do?flSeq=<번호>`, 인증키 없음).
 - 이용 조건: 법령·판결·훈령·예규는 저작권법 제7조에 따라 저작권 보호 대상이 아니다. Open API 이용 약관(출처 표시)은 따로 확인하지 않았다 [가정].
-- 위치: `data/raw/` (git 제외). 받은 기록은 `data/raw/DOWNLOAD_1116.md`, `data/raw/DOWNLOAD_1118.md`.
+- 위치: `data/raw/` (git 제외). 법령 JSON(`body_*`, `list_*`)은 `data/raw/law/` 아래에 있다. 색인 설정(`config/index/law-idx-v1.yaml`의 `raw_dir`)이 이 폴더를 읽는다. 옛 폴더에서는 `data/raw/` 바로 아래였고, 11/20 새 저장소로 복사할 때 `law/`로 모았다. 같은 폴더의 `body_특허실용신안_심사기준_*.json` 8개는 본문이 빈 API 응답이다 (3절). 받은 기록은 `data/raw/DOWNLOAD_1116.md`, `data/raw/DOWNLOAD_1118.md`.
 - 저장 파일 안의 인증키는 `***`로 가렸다(11/18 새 파일 100개 검사, 남은 키 0개).
 
 ## 2. 무엇이 들었나
 
 | 자료 | 판·건수 | 파일 형식 | 위치 |
 |---|---|---|---|
-| 특허법 | 14판 (시행 2017.9.22, 2018.10.18~2022.10.18 중 12판, 2025.11.11) | JSON (조문 단위) | `data/raw/body_특허법_<MST>_<시행일>.json` |
-| 특허법 시행령 | 3판 | JSON | `data/raw/body_특허법_시행령_*.json` |
-| 특허법 시행규칙 | 5판 | JSON | `data/raw/body_특허법_시행규칙_*.json` |
-| 변리사법 | 1판 | JSON | `data/raw/body_변리사법_*.json` |
+| 특허법 | 14판 (시행 2017.9.22, 2018.10.18~2022.10.18 중 12판, 2025.11.11) | JSON (조문 단위) | `data/raw/law/body_특허법_<MST>_<시행일>.json` |
+| 특허법 시행령 | 3판 | JSON | `data/raw/law/body_특허법_시행령_*.json` |
+| 특허법 시행규칙 | 5판 | JSON | `data/raw/law/body_특허법_시행규칙_*.json` |
+| 변리사법 | 1판 | JSON | `data/raw/law/body_변리사법_*.json` |
 | 특허·실용신안 심사기준 | 8판 (아래 표) | PDF 8 (그중 2판은 HWP 원본을 한컴 뷰어로 PDF 변환) | `data/raw/exam_guideline_*.pdf`, `data/raw/exam_guideline_versions/` |
 | 판례 (진보성) | 30건 | JSON | `data/raw/prec/` |
 | 판례 (명확성) | 29건 (+ 진보성과 겹치는 1건) | JSON | `data/raw/prec/` |
