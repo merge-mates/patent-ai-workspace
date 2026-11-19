@@ -1,7 +1,7 @@
 # 인용문헌 문단 검색 BM25 기준선 (이 실험이 기준선이라 baseline 없음)
 experiment: m2-i1-cite-search-bm25-baseline
 goldset: tune
-goldset_version: 1
+goldset_version: 2   # 11/19 같은이유 고침으로 2
 corpus: cite
 index_version: cite-idx-v1
 mode: bm25
