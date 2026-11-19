@@ -11,7 +11,7 @@
 | `/interview <기능>` | 기획안·requirements 쓰기 전, 모호할 때 | researcher (사실 찾기) | 질문 창(AskUserQuestion)으로 결정만 묻고, 문서 브랜치에 바로 씀 + 용어집, [가정], 열린 질문 |
 | `/doc-review <문서>` | 문서를 "다 썼다" 하기 전 | critic | 판정 + 지적 + 체크리스트 표 |
 | `/plan-feature <기능> <이터레이션>` | 이터레이션 시작 | plan-reviewer | tasks.md 이슈 계획 (task마다 확인 방법), (원하면) 이슈 |
-| `/start <이슈번호> [--here]` | 이슈 하나 시작 (구현·문서 모두) | 없음 | 최신 main에서 `<type>/<번호>-<설명>` 브랜치를 `../wt/<브랜치>` worktree로 (세션마다 폴더 따로. `--here`면 지금 폴더), 보드 카드 In Progress |
+| `/start <이슈번호> [--here]` | 이슈 하나 시작 (구현·문서 모두) | 없음 | 최신 main에서 `<type>/<번호>-<설명>` 브랜치를 `../wt/<이슈번호>-<짧은설명>` worktree로 (세션마다 폴더 따로. `--here`면 지금 폴더), 보드 카드 In Progress |
 | `/implement <tasks.md> <이터레이션>` 또는 `/implement <이슈번호>` | 계획 하나 시작 (작은 이슈는 이슈 본문 체크리스트가 계획, 진행은 본문 체크박스) | task마다 implementer → code-reviewer → 고침 → 테스트 → 커밋 (겹치지 않는 task는 워크트리에서 동시에), 끝에 /check 이슈 | 코드 + 커밋 + PR 재료 |
 | `/check <이슈\|기능> …` | PR 전(이슈), 기능 끝(기능) | verifier → code-reviewer | 증거 + 문서 대조 표 |
 | `/experiment <실험>` | AI 점수 낼 때 (이슈 끝, 마일스톤 끝) | experiment-analyst | scores.json, card.md, index.md |

@@ -1,6 +1,6 @@
 ---
 name: start
-description: GitHub 이슈 하나를 시작한다. 최신 main에서 팀 규칙 이름으로 브랜치를 만들고, 기본은 `../wt/<브랜치>` worktree에서 일한다 (`--here`면 지금 폴더). 진행 보드 카드를 In Progress로 옮긴다. 이슈 일을 시작할 때 (구현이든 문서든) 먼저 쓴다.
+description: GitHub 이슈 하나를 시작한다. 최신 main에서 팀 규칙 이름으로 브랜치를 만들고, 기본은 `../wt/<이슈번호>-<짧은설명>` worktree에서 일한다 (`--here`면 지금 폴더). 진행 보드 카드를 In Progress로 옮긴다. 이슈 일을 시작할 때 (구현이든 문서든) 먼저 쓴다.
 argument-hint: "<이슈번호> [-<사람>] [--here]"
 ---
 
@@ -11,10 +11,10 @@ argument-hint: "<이슈번호> [-<사람>] [--here]"
 3. `--here`일 때만 지금 폴더의 `git status`가 깨끗한지 본다. 커밋 안 한 변경이 있으면 멈추고 묻는다. 기본(worktree)은 지금 폴더를 바꾸지 않으므로 보지 않는다.
 4. 브랜치 이름을 정한다: `<type>/$0-<짧은설명>`. type은 이슈 제목 맨 앞(`feat` `fix` `docs` `chore` …), 짧은설명은 제목을 영어 소문자·하이픈 2~4단어로. 둘이 같은 기능을 각자 구현할 때만 끝에 `-<사람>` (두 번째 인자).
 5. 최신 main에서 만든다. 세션마다 폴더를 따로 쓰려고 기본은 worktree다 (세션 둘이 한 폴더에서 `git switch`하면 서로의 브랜치·파일을 바꿔 버린다, 이슈 #94).
-   - **기본**: 본 작업 트리 바로 옆 `../wt/<브랜치>`에 worktree를 만들고 그 폴더로 옮겨서 일한다 (예: 본 작업 트리가 `patent_ai/repo/`면 `patent_ai/wt/<브랜치>`). 다른 worktree 안에서 불러도 같은 자리에 만들도록 본 작업 트리 경로를 먼저 구한다.
+   - **기본**: 본 작업 트리 바로 옆 `../wt/<폴더>`에 worktree를 만들고 그 폴더로 옮겨서 일한다. `<폴더>`는 브랜치 이름에서 `<type>/`를 뗀 것이다 (예: 본 작업 트리가 `patent_ai/repo/`, 브랜치가 `feat/16-case-grouping`이면 `patent_ai/wt/16-case-grouping`). 브랜치를 그대로 쓰면 `/` 때문에 `wt/feat/` 같은 중간 폴더가 생기고 지운 뒤에도 빈 폴더가 남는다. 한 겹이면 폴더 이름만 봐도 이슈를 안다. 다른 worktree 안에서 불러도 같은 자리에 만들도록 본 작업 트리 경로를 먼저 구한다.
      ```
      MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-     WT="$MAIN/../wt/<브랜치>"
+     WT="$MAIN/../wt/<폴더>"
      git fetch origin main
      git worktree add -b <브랜치> "$WT" origin/main
      git -C "$WT" branch --unset-upstream
@@ -34,7 +34,7 @@ argument-hint: "<이슈번호> [-<사람>] [--here]"
      이미 같은 이름 브랜치가 있으면 `git switch <브랜치>`로 이어서 한다.
    - 어느 쪽이든 같은 이슈의 다음 계획이면 새 브랜치를 만들고 짧은설명에 계획 이름을 넣는다 (예: `feat/65-m2-i2-db-dump`). 보드는 아래 6번에서 직접 옮긴다.
    - 새 worktree 준비 (기본일 때):
-     - `data/`: git 밖이라 worktree에 없다. 원래 폴더 것을 링크한다 (복사하지 않는다): `ln -s <MAIN 절대 경로>/data <WT 절대 경로>/data`. 링크는 `.gitignore`의 `/data`에 걸려 git에 안 잡힌다 (커밋 전 `git status`로 한 번 본다). 채점·색인처럼 `data/`를 읽는 명령이 그래야 돈다.
+     - `data/`: git 밖이라 worktree에 없다. 원래 폴더 것을 링크한다 (복사하지 않는다): `[ -e <WT 절대 경로>/data ] || ln -s <MAIN 절대 경로>/data <WT 절대 경로>/data`. 이미 있으면 건너뛰고 링크인지 폴더인지(`ls -ld <WT 절대 경로>/data`) 사람에게 알린다 (폴더에 `ln -s`를 걸면 안쪽에 `data/data` 링크가 생긴다). 링크는 `.gitignore`의 `/data`에 걸려 git에 안 잡힌다 (커밋 전 `git status`로 한 번 본다). 채점·색인처럼 `data/`를 읽는 명령이 그래야 돈다.
      - 파이썬: `uv sync --directory <WT 절대 경로>`. 화면 일이면 `npm ci --prefix <WT 절대 경로>/web`. (준비 명령은 지금 폴더가 어디든 같게 돌도록 절대 경로로 쓴다)
      - `.env`: Claude는 읽지도 복사하지도 않는다. 사람에게 "원래 폴더의 `.env`를 이 worktree로 복사하거나 링크하세요 (`ln -s <원래 폴더>/.env .env`)"라고만 알린다.
      - DB: `make db`·`make up`(docker compose)은 원래 폴더 하나에서만 띄우고 모든 worktree가 그 DB를 같이 쓴다. worktree마다 띄우면 Postgres가 여럿 뜨고 포트(5432)가 겹친다. 그 브랜치의 마이그레이션은 worktree에서 `uv run alembic upgrade head`로 공유 DB에 들어가니, 마이그레이션을 고치는 이슈면 먼저 사람에게 알린다.
