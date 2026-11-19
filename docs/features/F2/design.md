@@ -126,7 +126,7 @@ flowchart LR
 ## 5. 저장
 - 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: `legal_evidence_bundles`, `legal_chats` (새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
-- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판(열린 질문 3, M2는 안 부름. 심결은 미리 받은 12건만). 먼저 `api_cache`에 저장하고 쓴다.
+- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판 API는 유료라 부르지 않는다 (심결은 웹에서 미리 받은 12건만, 열린 질문 3). 먼저 `api_cache`에 저장하고 쓴다.
 - 외부 모델로 보내는 자료: 법령·심사기준·판례 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
 
 ### 5-1. 색인 `law-idx-v3` (#24가 만듦, 여기서는 모양만)
