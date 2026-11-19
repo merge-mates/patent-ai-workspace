@@ -23,7 +23,7 @@ disable-model-invocation: true
 5. **보고를 믿지 않고 직접 확인한다**: 보고가 비었거나 칸이 빠졌으면 `git log`, `git show --stat`, 테스트를 직접 돌려 본다.
 6. task마다 **code-reviewer 에이전트**(task 모드)에 넘긴다: task 항목, 합격 기준, `git diff <시작>..HEAD`. implementer 보고는 넘기지 않는다.
 7. 막음이 있으면 implementer에게 지적만 넘겨 고치게 하고 (이 폴더에서), 테스트를 다시 돌리고, code-reviewer가 **바뀐 부분만** 다시 본다. 최대 2회. 그래도 막음이 남으면 멈추고 사람에게.
-8. 그 폴더 전체 테스트가 통과하는지 다시 본다 (코드 커밋은 implementer가 이미 했다). 진행 칸에서 task를 `[x]`로, `다음`을 고쳐 따로 커밋한다: `docs(docs): <기능> $1 task N 진행`. squash 머지라 main에는 하나로 합쳐진다.
+8. 그 폴더 전체 테스트가 통과하는지 다시 본다 (코드 커밋은 implementer가 이미 했다). 진행 칸에서 task를 `[x]`로, `다음`을 고쳐 따로 커밋한다: `docs(docs): <기능> $1 task N 진행`.
 9. 안 끝난 task가 남았으면 1로 돌아간다.
 
 ## 이슈가 끝나면
