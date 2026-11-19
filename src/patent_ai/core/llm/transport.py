@@ -114,19 +114,23 @@ def parse_openai_embeddings(resp) -> EmbedResponse:
     return EmbedResponse([list(d.embedding) for d in rows], resp.usage.prompt_tokens)
 
 
+def make_openai_client():
+    """OpenAI SDK 클라이언트. 키가 없으면 traceback 대신 설정 오류 한 줄 (키 값은 안 다룸)."""
+    import openai  # 여기서만 import
+
+    try:
+        return openai.OpenAI()
+    except openai.OpenAIError as e:
+        raise ModelConfigError(
+            "OPENAI_API_KEY가 없음: .env에 넣고 `uv run --env-file <.env 경로> ...`로 실행"
+        ) from e
+
+
 class OpenAIEmbedTransport:
     """진짜 임베딩 전송층. 키는 SDK가 환경 변수(OPENAI_API_KEY)에서 읽는다."""
 
     def __init__(self) -> None:
-        import openai  # 여기서만 import
-
-        try:
-            self._client = openai.OpenAI()
-        except openai.OpenAIError as e:
-            # 키가 없으면 SDK traceback 대신 설정 오류 한 줄 (키 값은 다루지 않음)
-            raise ModelConfigError(
-                "OPENAI_API_KEY가 없음: .env에 넣고 `uv run --env-file <.env 경로> ...`로 실행"
-            ) from e
+        self._client = make_openai_client()
 
     def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse:
         import openai

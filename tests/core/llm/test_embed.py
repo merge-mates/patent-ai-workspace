@@ -234,3 +234,18 @@ def test_OpenAI_응답은_index_순서로_읽는다():
 def test_진짜_임베딩_전송층은_테스트에서_만들_수_없다():
     with pytest.raises(RuntimeError, match="진짜 호출 막힘"):
         OpenAIEmbedTransport()
+
+
+def test_OPENAI_API_KEY가_없으면_SDK_오류_대신_한_줄_설정_오류(monkeypatch):
+    import openai
+
+    from patent_ai.core.llm import transport
+
+    def no_key(*a, **k):
+        raise openai.OpenAIError(
+            "Missing credentials"
+        )  # SDK가 키 없을 때 내는 오류 (네트워크 없음)
+
+    monkeypatch.setattr(openai, "OpenAI", no_key)
+    with pytest.raises(ModelConfigError, match="OPENAI_API_KEY"):
+        transport.make_openai_client()
