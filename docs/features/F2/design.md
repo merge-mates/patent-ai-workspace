@@ -33,16 +33,16 @@ flowchart LR
     S --> W[답 쓰기: 주장 + 근거 후보]
     W --> C[출처 확인: 코드, 무조건]
     C --> V[근거 검토: LLM]
-    V -- 안 맞음 --> W
+    V -- 안 맞음: 근거 바꿔 다시 --> W
     V --> B[④ LegalEvidenceBundle 저장]
     P -- 부딪힘·시점 모름 --> H[사람에게 확인, 그 조회만 기다림]
 ```
 1. **질문 읽기:** 입력 글에서 자료 유형·시점·사건번호·조문을 뽑아 `LegalQuestion`을 만든다. 날짜 계산과 사건번호·조문 번호 꼴 맞추기는 코드 도구(`normalize_refs`)다. 자연어 시점과 선택 조건 시점이 다르면 `clarifications`에 한 줄을 넣는다.
    - OA 흐름: 지휘 에이전트가 거절이유 하나마다 `LegalQuestion`을 만든다. 글 = 심사관 논리 글(조문 표기는 가리지 않음, 앱에서는 정답 누출이 없음), 조문 = F1 조문, 시점 = OA 발송일(검색 기준일), 자료 유형 = 전부. 청구항 글은 넣지 않는다 [가정: 조문·심사기준·판례 찾기에 청구항 글은 잡음. 7-3 실험에서 확인].
 2. **조사 계획:** 시점이 걸리지 않는 조회(판례 검색)는 바로 하고, 시점이 걸린 조회(조문·심사기준)는 `clarifications`가 비었을 때만 한다. 계획은 서브에이전트가 정하지만 고를 수 있는 도구는 7-1 목록뿐이다.
-3. **검색:** 도구마다 검색 계약 `SearchResult`를 받는다. 0개면 질의를 바꿔(결론 문장만, 핵심어만) 한 번 더 찾는다 (설정 `f2.max_research_retries`). 그래도 0개면 그 유형은 `not_found_in_scope` + 찾아본 범위.
-4. **출처 확인 (무조건 도는 코드 단계, [ADR 0003](../../decisions/0003-tech-stack.md)):** 근거마다 `chunk_id`가 색인에 있는지, 근거의 원문 인용 글이 그 조각 글에 그대로(공백만 무시) 있는지, 판본이 계획한 기준일 범위인지 본다. 안 맞는 근거는 빼고, 근거가 0개가 된 주장은 `unverified`(이유 `not_extracted`)로 남긴다. 모델이 쓴 조문 번호·사건번호가 조각에 없으면 여기서 걸린다 (없는 출처 0건).
-5. **근거 검토 (LLM):** 남은 근거가 주장을 뒷받침하는지 판정(뒷받침 / 일부 / 아님 / 판단 못 함) + 이유. "아님"이면 4단계로 돌아가 근거를 바꿔 한 번 고치고(설정 `f2.max_review_fixes`), 그래도 아니면 주장에 "확인 필요"(`flags: needs_human_review`). 검토 입력은 주장 글 + 근거 조각 글뿐이다 (답 쓰기의 추론 과정은 주지 않음).
+3. **검색:** 도구마다 검색 계약 `SearchResult`를 받는다. 0개면 질의를 바꿔(결론 문장만, 핵심어만) 한 번 더 찾는다 (설정 `f2.max_research_retries`). 그래도 0개면 그 유형은 `not_found_in_scope` + 찾아본 범위. 단 0개이고 `skipped_unverified_edition` > 0(판본 모름 조각이 기준일 거르기에서 빠짐)이면 `unverified(edition_unknown)`로 바꾼다. 판본을 몰라 못 본 것을 "찾았지만 없음"으로 내지 않는다.
+4. **출처 확인 (무조건 도는 코드 단계, [ADR 0003](../../decisions/0003-tech-stack.md)):** 근거마다 `chunk_id`가 색인에 있는지, 근거의 원문 인용 글이 그 조각 글에 그대로(공백만 무시) 있는지, 판본이 계획한 기준일 범위인지 본다. 안 맞는 근거는 빼고, 근거가 0개가 된 주장은 `unverified`로 남긴다. 이유 코드는 [제안] data-model 3절에 `evidence_rejected`(근거가 출처 확인에서 빠짐)를 더한다 (`not_extracted`는 F1의 "원문에서 못 뽑음"이라 섞지 않음. ④ 스키마 구현 PR #29에서 공통 칸 PR로). 모델이 쓴 조문 번호·사건번호가 조각에 없으면 여기서 걸린다 (없는 출처 0건).
+5. **근거 검토 (LLM):** 남은 근거가 주장을 뒷받침하는지 판정(뒷받침 / 일부 / 아님 / 판단 못 함) + 이유. "아님"이면 답 쓰기로 돌아가 근거를 바꾸고 출처 확인부터 다시 지나 한 번 고치고(설정 `f2.max_review_fixes`), 그래도 아니면 주장에 "확인 필요"(`flags: needs_human_review`). 검토 입력은 주장 글 + 근거 조각 글뿐이다 (답 쓰기의 추론 과정은 주지 않음).
 6. **저장:** ④를 `legal_evidence_bundles`에 저장 (OA 흐름은 `oa_id`·거절이유 순번, 법률 질문은 `chat_id`·질문 순번).
 - 실패하면: requirements "실패할 때". 모델 호출 실패는 실행 `failed`, 이미 확인된 조각 목록은 실행 기록에 남긴다.
 - 비면: 3단계. 결과가 모두 비어도 ④는 저장한다 (`status = not_found_in_scope`, 빈 성공 아님).
@@ -76,12 +76,14 @@ flowchart LR
     {
       "text": "진보성은 통상의 기술자가 선행기술로부터 쉽게 발명할 수 있는지로 판단한다.",
       "evidence": [{
-        "chunk_id": "law-idx-v3:특허법_212229_20200311:a290002",
+        "document_id": "특허법_212229_20200311",
+        "raw_text": "<조각 안 원문 일부>",
+        "edition": "특허법 시행 2020-03-11 ~ <다음 판 전날>",
+        "checked_on": "2026-11-20",
+        "chunk_id": "law-idx-v3:특허법_212229_20200311:290002",
+        "index_version": "law-idx-v3",
         "material_type": "article",
-        "doc_id": "특허법_212229_20200311",
-        "location_label": "제29조 제2항",
-        "edition": {"status": "confirmed", "effective_from": "2020-03-11", "effective_to": "<다음 판 전날>", "label": null},
-        "quote": "<조각 안 원문 일부>",
+        "location_label": "제29조제2항",
         "precedent": null
       }],
       "review": {"verdict": "supported", "reason": "…"},
@@ -89,16 +91,18 @@ flowchart LR
       "flags": []
     }
   ],
-  "further_review": [{"chunk_id": "…", "why": "opposite_holding | edition_unknown | not_used_candidate", "note": "…"}],
-  "searched_scope": [{"material_type": "precedent", "index_version": "law-idx-v3", "as_of": null, "queries": 2, "hits": 0}],
+  "further_review": [{"chunk_id": "…", "why": "opposite_holding | edition_unknown | other_edition | edition_out_of_scope | not_used_candidate", "note": "…"}],
+  "search_log": [{"material_type": "precedent", "index_version": "law-idx-v3", "as_of": null, "queries": 2, "hits": 0}],
   "origin": "ai_generated",
   "status": {"value": "confirmed", "checked": "…"}
 }
 ```
 - 판례 근거의 `precedent`: `{"case_number": "2007후3660", "court": "대법원", "decided_on": "<선고일>", "text_kind": "full | summary", "speaker": "court | party | unknown"}`. `text_kind`는 조각 종류에서 정해지고(5-1), `speaker`는 8절 결정. `unknown`이면 주장에 `needs_human_review`.
 - `as_of_source`: `user_text` / `user_condition` / `oa_dispatch_date` / `none`(현행). "적용 기준일" 칸은 두지 않는다 (requirements 3).
-- OA 흐름에서 발송일판과 출원일판의 글이 다르면 두 판 근거를 다 넣고 주장에 `needs_human_review` + `further_review`에 다른 판 한 줄 (requirements 열린 질문 4).
-- 공통 칸은 [data-model.md](../../data-model.md) 3절 그대로. 더하는 칸: `question`, `search_date`, `clarifications`, `claims[].review`, `further_review`, `searched_scope`.
+- 근거 칸: 공통 `Evidence`(`document_id`·`raw_text`·`edition`·`checked_on`, [data-model.md](../../data-model.md) 3절, `common.py`) 그대로에 F2 칸(`chunk_id`, `index_version`, `material_type`, `location_label`, `precedent`)을 더한다. 공통 `Evidence`가 `extra="forbid"`라, F2용 하위 클래스로 넓힐지 공통 쪽에 칸을 더할지는 #29 스키마 PR에서 정한다. `location_label`은 조각 `loc_label` 그대로다 (조문은 띄어 쓰지 않은 `제29조제2항`, 코드 `law_index._label`).
+- 찾은 기록은 `search_log`(목록)다. 공통 `status.searched_scope`(글 한 줄)와 이름을 나눈다. 결과가 `not_found_in_scope`이면 `status.searched_scope`에 `search_log`를 한 줄로 줄여 넣는다.
+- OA 흐름에서 발송일판과 출원일판의 글이 다르면: 주장의 `evidence`에는 발송일판(검색 기준일 판)만 넣고, 출원일판은 `further_review`에 `other_edition` 한 줄로 넣고, 주장에 `needs_human_review`를 단다. 출처 확인의 판본 범위는 검색 기준일 하나라 출원일판이 근거로 들어가면 빠지기 때문이다 (requirements 3, 열린 질문 4).
+- 공통 칸은 [data-model.md](../../data-model.md) 3절 그대로. 더하는 칸: `question`, `search_date`, `clarifications`, `claims[].review`, `further_review`, `search_log`.
 - 다시 확인 필요: F1 ①이 다시 써져 거절이유 글이나 발송일이 바뀌면 그 ④에 `needs_recheck` (규칙 2).
 - 인터페이스 변경: 있음 (④ 코드가 새로 생김, `core/schemas/legal_evidence.py`). 받는 기능 F3·F4 문서에 알린다. data-model 4절 ④ 줄은 스키마 코드를 만드는 구현 PR에서 고친다.
 
@@ -114,7 +118,7 @@ flowchart LR
 
 ## 4. 판과 근거
 - 쓰는 청구항 판: F2는 청구항 글을 쓰지 않는다 (2절 1단계 [가정]). 쓰게 되면 OA 당시 판만. 등록공보·대상 OA 뒤 자료는 입력 자료 검사에서 막는다 (지휘 에이전트가 넘기는 자료 목록에 `claim_versions.source_kind = registration`이 있으면 멈춤).
-- 쓰는 법령·심사기준 판: 기준일 = `conditions.as_of`. 검색 계약 `as_of` 거르기(그날 시행판)를 그대로 쓴다. 없으면 현행판 + `checked_on`. 판본 모름 조각은 기준일 검색에서 빠지고 `searched_scope`에 건수.
+- 쓰는 법령·심사기준 판: 기준일 = `conditions.as_of`. 검색 계약 `as_of` 거르기(그날 시행판)를 그대로 쓴다. 없으면 `as_of = checked_on`(오늘)으로 검색한다. 검색 계약은 `as_of = None`이면 판본을 거르지 않아 같은 조문의 옛 판들이 상위 k를 나눠 차지하기 때문이다. 판본 모름 조각은 기준일 검색에서 빠지고 `search_log`에 건수 (0개면 2절 3단계대로 `edition_unknown`).
   - OA 흐름: 발송일판으로 찾고, 같은 조문의 출원일판을 `get_article`로 한 번 더 읽어 글이 다르면 3-2 규칙.
   - 색인에 없는 판(2017년 이전 등): 법령 API(`law_api`, 캐시·호출 상한)로 한 번 조회, 실패하면 `unverified(lookup_failed)`.
 - 근거 위치 적는 법: 검색 계약 그대로 `doc_id` + `location.label` + `edition` + `index_version`. 화면은 `label`을 보이고 원문 보기로 잇는다 (조문은 그 조 전체, 심사기준은 그 쪽 PDF, 판례는 그 문단).
@@ -145,18 +149,19 @@ flowchart LR
 
 ## 7. AI
 ### 7-1. 공통 칸 (비교 실험이라 둘이 같이 정함, 구현 전에 확정) [제안 — 재아 님 확인 필요]
-- **인터페이스:** `research(question: LegalQuestion, ctx: RunContext) -> LegalEvidenceBundle` (`core/f2_legal_research/`). 구현은 `config/f2.yaml`의 `impl`로 고른다 (`single`: 한 에이전트가 쓰고 스스로 검토 / `split`: 답 쓰기와 근거 검토 에이전트를 나눔). 출처 확인은 두 구현 밖에서 같은 코드로 돈다.
+- **인터페이스:** `research(question: LegalQuestion, ctx: RunContext) -> LegalEvidenceBundle` (`core/f2_legal_research/`). 구현은 `config/f2.yaml`의 `impl`로 고른다 (`single`: 한 에이전트가 쓰고 스스로 검토 / `split`: 답 쓰기와 근거 검토 에이전트를 나눔). 출처 확인은 두 구현 밖에서 같은 코드로 돈다. 근거 검토 에이전트는 F2 것이 아니라 F2·F3·F4 공통이다 (`core/agents/`, [ADR 0003](../../decisions/0003-tech-stack.md) 폴더). F2는 `impl`로 그것을 따로 부를지(`split`) 같이 할지(`single`)만 고른다.
 - **도구 (서브에이전트가 골라 부름):**
 
   | 도구 | 입력 → 출력 | 실패 시 |
   |---|---|---|
   | `get_article` | 법령 이름 + 조·항 + 기준일 → 그 판 조각 + 시행 기간 | 판 없음 `unverified(edition_unknown)`, API 실패 `unverified(lookup_failed)` |
-  | `search_guideline` | 질의 + 기준일 → `SearchResult` (심사기준만) | 0개 `not_found_in_scope`, 색인 없음 `unverified(body_missing)` |
-  | `search_precedent` | 질의 (+ 사건번호) → `SearchResult` (판례만, 기준일 없음) | 같음 |
+  | `search_article` | 질의 + 기준일 → `SearchResult` (조문만, `doc_ids` = 법령 문헌). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)` |
+  | `search_guideline` | 질의 + 기준일 → `SearchResult` (심사기준만) | 위와 같음, 색인 없음 `unverified(body_missing)` |
+  | `search_precedent` | 질의 (+ 사건번호) → `SearchResult` (판례만, 기준일 없음) | 0개 `not_found_in_scope`, 색인 없음 `unverified(body_missing)` |
   | `get_precedent` | 사건번호 → 그 판례 조각들 | 없음 `not_found_in_scope` (+ 찾아본 범위: 받은 74건) |
   | `normalize_refs` | 글 → 조문·사건번호·날짜 꼴 맞춘 목록 (코드) | 못 읽음은 빈 목록 + 경고 |
 - **평가 세트·지표:**
-  - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 채점기 `eval.retrieval.score` (검색 계약). OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
+  - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
   - 근거 검토: `data/goldsets/tune/f2/` 실제 질문 + 오류 주입 5종 (#35, 20개 이상). 지표 출처 존재·위치·판본 일치율, 뒷받침 판정 정확도, 주입 오류 탐지율·고친 비율. 채점기 `eval/run_eval.py --config experiments/<실험>/config.yaml` (`feature: f2`, 새 채점기는 #29).
   - 문턱: [확인 필요: 기준선 뒤]. 지킬 선: 없는 출처 0건, 확인하지 않은 위치 0건.
 - **데이터:** `law-idx-v2` (지금), `law-idx-v3` (#24 뒤). 평가 단위는 OA 한 통(출원번호 + 발송번호), 범위는 컴퓨터 비전 분야 tune 사건 ([product.md](../../product.md) 7절).
@@ -165,9 +170,9 @@ flowchart LR
 
 ### 7-2. 각자 칸
 [제안 — 재아 님 확인 필요] 한 사람(은진)이 구현하고 설정만 바꿔 비교한다 (requirements "비교 실험").
-- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`·`f2_review` 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → `experiments/m2-i3-f2-review-split/`
+- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → `experiments/m2-i3-f2-review-split/`
 - 모델 호출: 거절이유마다 답 쓰기 1~3번 + 근거 검토 1~2번 [가정]. OA 한 통(거절이유 2~3개)에 10번 안팎.
-- 프롬프트 파일: `prompts/f2/research.md`, `prompts/f2/review.md`.
+- 프롬프트 파일: `prompts/f2/research.md` (F2), `prompts/agents/evidence_review.md` (공통 근거 검토).
 - 실험 설정: `config/f2.yaml`의 `impl`, `query_style`, `search_mode`.
 
 ### 7-3. 비교 실험 목록 (M2 안, 순서대로)
@@ -196,10 +201,12 @@ flowchart LR
 - 상태마다 하나씩 (`tests/fixtures/f2/`):
   - `confirmed`: 진보성 질문 → 조문·심사기준·판례 근거, 근거 검토 뒷받침.
   - `not_found_in_scope`: 어느 조각과도 안 겹치는 질문 → 다시 찾기 1번 뒤 빈 결과 + 찾아본 범위.
-  - `unverified(edition_unknown)`: 판본 모름 조각만 있는 조문 + 기준일.
+  - `unverified(edition_unknown)`: 판본 모름 조각만 있는 조문 + 기준일. 검색 도구 결과가 0개 + `skipped_unverified_edition` > 0이어도 `not_found_in_scope`가 아니라 이 값.
+  - 시점 없음: 같은 조문 두 판 → 현행판 조각만 나온다 (`as_of = checked_on`).
+  - 출원일판 ≠ 발송일판: 근거는 발송일판, 출원일판은 `further_review`의 `other_edition`.
   - `unverified(body_missing)`: 심결 질문, 심사기준 색인 없음.
   - `unverified(input_unverified)`: F1 조문이 `unverified`인 거절이유.
   - 오류 주입 5종: 녹화 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
   - 부딪힘: 글 시점 ≠ 선택 시점 → `clarifications` 1건, 판례 검색은 끝남.
   - 대화 두 번: 두 번째에 시점 바꿈 → `scope_changed`, `prior_evidence` 유지.
-  - 금지 낱말: 녹화 응답에 "적용된다"를 넣으면 저장 전에 거부.
+  - 사건 적용 표현: 녹화 응답의 답 글(따옴표 안 원문 인용 밖)에 "이 사건에 적용"·"등록 가능"을 넣으면 거부하지 않고 그 주장에 `needs_human_review` + 경고. 판례 인용 안의 "적용된다"는 걸리지 않는다.
