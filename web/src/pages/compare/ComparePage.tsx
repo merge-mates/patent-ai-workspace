@@ -48,7 +48,8 @@ export function ComparePage() {
           showIcon
           message={
             <Space wrap>
-              거절이유 {r.no}(특허법 {articleLabel(r.article.value)})는 AI가 다루지 않아 판단 단위가 없습니다.
+              {/* Space가 글 조각마다 띄우지 않게 한 덩어리로 */}
+              <span>{`거절이유 ${r.no}(특허법 ${articleLabel(r.article.value)})는 AI가 다루지 않아 판단 단위가 없습니다.`}</span>
               <HumanCheckTag>직접 검토 필요</HumanCheckTag>
             </Space>
           }
