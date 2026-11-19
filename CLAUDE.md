@@ -5,7 +5,7 @@
 - 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
 - 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
-- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다. 지금 `retrieval`만, `f1`은 #20에서 더함. 그 밖의 명령은 짐작해서 돌리지 않는다). 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
+- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다: `retrieval`·`f1`. 그 밖의 명령은 짐작해서 돌리지 않는다). F1은 `--predictions <폴더>`(read_oa가 낸 OAResult JSON, git 밖)가 필요하고 `--pages <폴더>`(쪽 글자)는 고를 수 있다. 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
 - PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더
@@ -16,6 +16,7 @@
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 - DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
 - 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
+- 부르는 방향은 `api → core → retrieval·law_api·db`, 그리고 `retrieval → db`만이다 ([ADR 0003](docs/decisions/0003-tech-stack.md)). `db/`에는 표 정의(ORM 모델)만 두고 core·retrieval을 import하지 않는다. core 타입을 DB에 쓰고 읽는 저장소(repository)는 부르는 쪽(core 또는 retrieval)에 둔다.
 
 ## 진행 단위
 - 지금 위치와 문서 지도: @docs/README.md (맨 위 `지금`)
@@ -27,7 +28,7 @@
 
 ## 일하는 순서
 1. 무엇을 할지는 `docs/features/<기능>/requirements.md`, 어떻게는 `design.md`, 이번 이터레이션 할 일은 `tasks.md`. task를 끝내면 그 계획의 진행 칸을 고친다. 구현 계획이 없으면 구현하지 않는다 (아주 작은 일 제외: 문구, 설정 한 줄). 기능 문서 없이 끝나는 작은 이슈(반나절~하루, 인터페이스 안 바뀜)는 이슈 본문의 task 체크리스트와 확인 명령 한 줄을 구현 계획으로 본다. 기능 밖 이슈(설정·스크립트 등)도, 기능 안 이슈도 된다 (위 `작은 기능`은 기능 하나 전체가 작을 때라 다르다). 기능 안 이슈면 그 기능 `tasks.md`가 생긴 뒤 거기에 이슈 링크만 남긴다.
-2. 테스트 먼저: 합격 기준에서 테스트를 쓰고, 실패를 확인하고, 구현한다. 기대값은 구현 계획·예시에서 가져오고 구현을 보고 정하지 않는다. (예외: 프롬프트 문구, 실험 스크립트)
+2. 테스트 먼저: 합격 기준에서 테스트를 쓰고, 실패를 확인하고(로컬에서만), 구현한다. 커밋은 통과한 뒤 테스트와 구현을 함께 한다 (`.claude/rules/git.md`). 기대값은 구현 계획·예시에서 가져오고 구현을 보고 정하지 않는다. (예외: 프롬프트 문구, 실험 스크립트)
    - 테스트 범위: 정해진 일을 하는 코드 도구와 꼭 지킬 선(사람 승인·누락 검사 등)은 테스트를 촘촘히 둔다. AI 품질은 테스트가 아니라 tune 세트 점수로 본다. 앱은 주요 API 테스트와 끝에서 끝까지(E2E) 하나. 프롬프트 문구·화면 스냅샷은 테스트하지 않는다.
 3. 커밋 전에 그 폴더 전체 테스트를 통과시킨다.
 4. "끝났다" = 합격 기준 테스트 통과 + 돌려 볼 명령 한 줄 + (AI 동작을 바꾼 이슈면) tune 세트 점수 한 줄 + 상대 PR 승인. 마일스톤 끝에는 report 세트로 한 번.
