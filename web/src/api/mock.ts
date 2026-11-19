@@ -26,6 +26,8 @@ import {
   exampleLegalAnswer,
   exampleUnits,
 } from '../types/provisional/examples'
+import type { CaseCheck, DirectionCandidates, Drafts, DraftPatch } from '../types/provisional/direction'
+import { exampleCaseChecks, exampleDirections, exampleDrafts } from '../types/provisional/directionExamples'
 import demoFiles from 'virtual:demo-results'
 import { ApiError } from './errors'
 
@@ -162,12 +164,55 @@ export const mockApi = {
   async askLegal(q: LegalQuestion): Promise<LegalEvidenceBundle> {
     return exampleLegalAnswer(q)
   },
+  // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 이 탭 메모리에만 둔다 (새로고침하면 처음으로)
+  async getDirections(oaId: string): Promise<DirectionCandidates[]> {
+    await byOA(oaId)
+    return directions[oaId] ?? []
+  },
+  async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
+    const list = Object.values(directions).flat()
+    const found = list.find((d) => d.unit_id === unitId)
+    if (!found) throw new ApiError('unit_not_found', '판단 단위를 찾을 수 없습니다', 404)
+    if (!found.candidates.some((c) => c.candidate_id === candidateId))
+      throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
+    // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
+    found.selection = { candidate_id: candidateId, origin: 'human_selected' }
+    return found
+  },
+  async getCaseCheck(oaId: string): Promise<CaseCheck> {
+    await byOA(oaId)
+    return exampleCaseChecks[oaId] ?? { items: [], unsupported_rejections: [] }
+  },
+  async getDrafts(oaId: string): Promise<Drafts> {
+    await byOA(oaId)
+    const d = drafts[oaId]
+    if (!d) throw new ApiError('result_not_ready', '초안이 아직 없습니다', 404)
+    return d
+  },
+  async patchDraft(draftId: string, patch: DraftPatch): Promise<Drafts> {
+    const d = Object.values(drafts).find((x) => x.draft_id === draftId)
+    if (!d) throw new ApiError('draft_not_found', '초안을 찾을 수 없습니다', 404)
+    // AI 원본은 그대로 두고 사람이 고친 글만 바꾼다. AI 원문과 같아지면 고친 것이 아님
+    if (patch.section) {
+      const sec = d.opinion.find((x) => x.key === patch.section)!
+      sec.human_text = patch.text === sec.ai_text ? null : patch.text
+    }
+    if (patch.claim !== undefined) {
+      const c = d.claims.find((x) => x.claim === patch.claim)!
+      c.human_text = patch.text === c.after ? null : patch.text
+    }
+    return { ...d }
+  },
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
   async createCase(_file: File): Promise<CreatedCase> {
     const b = committed[0]
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: b.run_id }
   },
 }
+
+// mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)
+const directions: Record<string, DirectionCandidates[]> = structuredClone(exampleDirections)
+const drafts: Record<string, Drafts> = structuredClone(exampleDrafts)
 
 // unit_id가 `<oa_id>:`로 시작하는 예시만 (판단 단위 ID는 OA ID로 시작한다)
 function ofOA<T>(table: Record<string, T>, oaId: string): T[] {
