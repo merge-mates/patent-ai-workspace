@@ -259,7 +259,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - P(항목 i 맞음) = 1 − C(N − |Mᵢ|, k') / C(N, k')
   - 줄 무작위 Recall@k = 항목 평균
   - 줄 무작위 Hit@k = 1 − C(N − |∪Mᵢ|, k') / C(N, k')
-- 보고값 = 점수에 넣는 줄의 평균. `recall_ratio@k = 평균 Recall@k / 평균 무작위 Recall@k`. 분모가 0이면 그 k의 `recall_ratio@k` 키를 빼고 `failures.recall_ratio_undefined`에 1을 더한다 (기존 `scores.schema.json`의 `metrics`는 숫자만 받음).
+- 보고값 = 점수에 넣는 줄의 평균. `recall_ratio@k = 평균 Recall@k / 평균 무작위 Recall@k`. 분모가 0이면 그 k의 `recall_ratio@k` 키를 빼고 `failures.recall_ratio_undefined`에 1을 더한다 (기존 `scores.schema.json`의 `metrics`는 숫자만 받음). #129 뒤로는 Mᵢ = 0인 항목을 먼저 빼서 남는 항목이 모두 Mᵢ ≥ 1이라 분모가 0이 되지 않는다. `recall_ratio_undefined`는 사실상 늘 0이고, 방어용으로 키와 갈래만 남긴다.
 - 점검 예 (fixture로 테스트): N = 10, 항목 2개(`[0022]-[0025]` → M₁ 4개, `도 3` → M₂ 1개), k = 5.
   - 무작위 P₁ = 1 − C(6,5)/C(10,5) = 1 − 6/252 = 0.976
   - 무작위 P₂ = 1 − C(9,5)/C(10,5) = 1 − 126/252 = 0.5
