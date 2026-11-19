@@ -1,5 +1,6 @@
 # 법령 BM25 기준선 (#66). 색인 law-idx-v1 = 특허법 14판·시행령 3판 조문만 (심사기준 없음)
 experiment: m2-i1-law-bm25-baseline
+feature: retrieval
 baseline: null                # 첫 기준선
 goldset: tune
 goldset_version: 2
