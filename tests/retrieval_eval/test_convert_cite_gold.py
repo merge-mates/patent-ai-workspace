@@ -86,7 +86,7 @@ def chunk(doc_id, kind="paragraph", chunk_kind="body", start=None, end=None, fig
 # ---- 평소 ----
 
 
-def test_정상_변환은_줄_일곱_개를_쓰고_다시_읽힌다(env):
+def test_정상_변환은_줄_아홉_개를_쓰고_다시_읽힌다(env):
     assert env.run() == 0
     rows = env.rows()
     assert set(rows) == {
@@ -96,6 +96,8 @@ def test_정상_변환은_줄_일곱_개를_쓰고_다시_읽힌다(env):
         rid(1, 4, KR1),
         rid(1, 6, KR1),
         rid(1, 1, NPL),
+        rid(1, 4, NPL),  # 같은이유는 거절이유 칸이라 그 거절이유의 모든 인용문헌에 적용
+        rid(1, 6, NPL),
         rid(3, 1, "KR2099000002B1"),
     }
     assert all(r.corpus == "cite" for r in rows.values())
@@ -183,9 +185,9 @@ def test_내용이_바뀌면_VERSION이_오른다(env):
 def test_변환_보고가_work에_남는다(env):
     env.run()
     rep = json.loads(env.report.read_text(encoding="utf-8"))
-    assert rep["rows"] == 7
+    assert rep["rows"] == 9
     assert rep["expanded"] == 2  # "3-4" -> 2줄
-    assert rep["excluded"] == {"same_as_other": 1, "no_location": 1}
+    assert rep["excluded"] == {"same_as_other": 3, "no_location": 1}
     assert rep["no_query_cases"] == 2  # 청구항이력 없는 사건 + OA 없는 사건
     assert rep["no_query_rows"] == 2
     assert rep["claim_missing_rows"] == 1  # 5항은 OA 앞에 삭제됨

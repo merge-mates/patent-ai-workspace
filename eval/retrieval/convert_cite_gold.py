@@ -153,8 +153,10 @@ def convert(
                     for c in claims:
                         have.add(c)
                         specs.append((seq, c, doc_id, items, len(claims) > 1))
-                # 같은이유: 이미 청구항별에 있는 청구항은 건너뛰고 나머지만 same_as_other
-                for key in cite.get("같은이유") or {}:
+                # 같은이유: 정답 파일에서는 거절이유 칸에 있다 (그 거절이유의 모든 인용문헌에 적용).
+                # 이미 청구항별에 있는 청구항은 건너뛰고 나머지만 same_as_other
+                same_keys = {**(reason.get("같은이유") or {}), **(cite.get("같은이유") or {})}
+                for key in same_keys:
                     try:
                         same = expand_claims(key)
                     except ValueError:
