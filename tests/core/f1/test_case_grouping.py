@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -10,7 +9,6 @@ from pydantic import ValidationError
 from patent_ai.core.f1_oa_reader.case_grouping import (
     APPLICATION_VERSION,
     HistoryEvent,
-    HistoryKind,
     MaterialInput,
     build_case_materials,
     group_materials,
@@ -323,18 +321,6 @@ def test_version_의견서만_있으면_판은_그대로_출원_때_판():
 def test_version_결정서·기타는_판을_만들지_않음(kind):
     hist = [_h("oa", OA1), _h(kind, None), _h("oa", OA2)]
     assert select_examined_version(hist, OA2).value == APPLICATION_VERSION
-
-
-def test_version_이력_종류는_case_events_kind와_같음():
-    # DB case_events.kind CHECK 값 6개와 같아야 저장할 때 어긋나지 않는다
-    assert set(get_args(HistoryKind)) == {
-        "oa",
-        "amendment",
-        "opinion",
-        "registration_decision",
-        "rejection_decision",
-        "other",
-    }
 
 
 def test_version_모르는_종류는_거부():

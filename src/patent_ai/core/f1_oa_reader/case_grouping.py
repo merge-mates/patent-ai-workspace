@@ -205,10 +205,10 @@ def group_materials(
 
 # 출원 때 판(앞에 보정서 없음)을 가리키는 고정 글자. DB claim_versions.source_kind의
 # 'application'과 같은 말이다. "값 없음"은 늘 "못 읽음"이라 출원 때 판을 값 없음으로 두지 않는다.
-# [확인 필요] 재아 님과 맞출 표현 (#123 리뷰 참고). 보정서 판이면 그 접수번호(숫자 15자리)다.
+# 정함 (11/19 은진, #123 리뷰 참고). 보정서 판이면 그 접수번호(숫자 15자리)다.
 APPLICATION_VERSION = "application"
 
-# 이력 사건 종류. DB case_events.kind CHECK 값과 같다 (#120, 테스트가 비교한다)
+# 이력 사건 종류. DB case_events.kind CHECK 값과 같다 (#120, tests/test_db_models.py가 비교)
 HistoryKind = Literal[
     "oa", "amendment", "opinion", "registration_decision", "rejection_decision", "other"
 ]
