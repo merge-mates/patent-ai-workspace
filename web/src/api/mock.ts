@@ -12,6 +12,7 @@ import type {
   OADetail,
   OAResultResponse,
 } from '../types/provisional/case'
+import demoFiles from 'virtual:demo-results'
 import { ApiError } from './errors'
 
 // fixture 한 묶음 = 사건 하나 + OA 하나
@@ -22,8 +23,9 @@ interface Bundle {
   oa_id: string
   run_id: string
   oa_result: OAResult
-  materials: CaseMaterials
-  review_items: ReviewItem[]
+  // 시연용 결과처럼 모르면 null: "없음"으로 보이지 않게 (0건과 다름)
+  materials: CaseMaterials | null
+  review_items: ReviewItem[] | null
   document: PageText | null
 }
 
@@ -31,15 +33,16 @@ const committed = Object.values(
   import.meta.glob<Bundle>('./fixtures/*.json', { eager: true, import: 'default' }),
 )
 
-// 시연용 결과는 OAResult 하나뿐이라 나머지 칸은 비워 둔다 (원문 쪽 글자 없음)
-const demoFiles = import.meta.glob<OAResult>('../../.demo/*.json', { import: 'default' })
+// 시연용 결과는 OAResult 하나뿐이라 사건 자료·검토할 사항·원문은 "모름"(null)으로 둔다.
+// 파일 목록은 vite.config.ts의 가상 모듈이 VITE_DEMO=1일 때만 만든다
 
 let demoCache: Bundle[] | null = null
 
 async function bundles(): Promise<Bundle[]> {
   if (import.meta.env.VITE_DEMO !== '1') return committed
   if (demoCache === null) {
-    const results = await Promise.all(Object.values(demoFiles).map((load) => load()))
+    // 시연 파일은 OAResult로 저장된 것 (F1 결과)
+    const results = (await Promise.all(Object.values(demoFiles).map((load) => load()))) as OAResult[]
     demoCache = results.map((r, i) => {
       const caseId = `demo_${i + 1}`
       return {
@@ -49,8 +52,8 @@ async function bundles(): Promise<Bundle[]> {
         oa_id: `demo_oa_${i + 1}`,
         run_id: `demo_run_${i + 1}`,
         oa_result: r,
-        materials: { case_id: caseId, documents: [], missing: [], held_tasks: [], review_items_count: 0 },
-        review_items: [],
+        materials: null,
+        review_items: null,
         document: null,
       }
     })
@@ -82,7 +85,7 @@ function summaryOf(b: Bundle): CaseSummary {
     rejection_kinds: kinds,
     run_state: 'succeeded',
     status: r.status.value,
-    review_items_count: b.review_items.length,
+    review_items_count: b.review_items?.length ?? null,
     last_opened_at: b.last_opened_at,
   }
 }
@@ -114,10 +117,14 @@ export const mockApi = {
     return { oa_id: b.oa_id, run_id: b.run_id, status: b.oa_result.status.value, result: b.oa_result }
   },
   async getMaterials(caseId: string): Promise<CaseMaterials> {
-    return (await byCase(caseId)).materials
+    const m = (await byCase(caseId)).materials
+    if (!m) throw new ApiError('result_not_ready', '사건 자료 목록이 아직 없습니다', 404)
+    return m
   },
   async getReviewItems(caseId: string): Promise<ReviewItem[]> {
-    return (await byCase(caseId)).review_items
+    const items = (await byCase(caseId)).review_items
+    if (!items) throw new ApiError('result_not_ready', '검토할 사항 목록이 아직 없습니다', 404)
+    return items
   },
   async getDocument(documentId: string): Promise<PageText> {
     const found = (await bundles()).find((b) => b.document?.document_id === documentId)

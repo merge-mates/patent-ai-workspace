@@ -45,7 +45,9 @@ const columns: ColumnsType<CaseSummary> = [
     title: '검토할 사항',
     dataIndex: 'review_items_count',
     align: 'right',
-    render: (n: number) => (n > 0 ? <Typography.Text strong>{n}건</Typography.Text> : '없음'),
+    // 모르면 "모름" (0건 "없음"과 구분)
+    render: (n: number | null) =>
+      n === null ? '모름' : n > 0 ? <Typography.Text strong>{n}건</Typography.Text> : '없음',
   },
   { title: '마지막으로 연 때', dataIndex: 'last_opened_at', render: dateTimeText },
 ]

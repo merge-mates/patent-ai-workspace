@@ -1,7 +1,7 @@
 // 화면에 들어가기 전에 데이터를 받는 곳 (react-router loader). 화면 부품 안에서 따로 부르지 않는다.
 import { redirect, type LoaderFunctionArgs } from 'react-router'
 import { api } from './api'
-import { isNotReady } from './api/errors'
+import { ApiError, isNotReady } from './api/errors'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { PageText } from './types/generated/PageText'
 import type { ReviewItem } from './types/generated/ReviewItem'
@@ -23,8 +23,9 @@ export interface OALoaderData {
   oa: OADetail
   // 실행이 아직 안 끝났으면 null (404 result_not_ready)
   oaResult: OAResultResponse | null
-  materials: CaseMaterials
-  // API v0에 목록이 없으면 null (개수만 보임)
+  // 사건 자료 목록이 아직 없으면 null
+  materials: CaseMaterials | null
+  // API v0에 목록이 없거나 아직 없으면 null (개수만, 또는 모름)
   reviewItems: ReviewItem[] | null
   // 원문 쪽 글자를 못 받으면 null (원문 보기에서 알린다)
   document: PageText | null
@@ -37,9 +38,19 @@ export async function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoader
       if (isNotReady(e)) return null
       throw e
     }),
-    api.getMaterials(oa.case_id),
-    api.getReviewItems(oa.case_id).catch(() => null),
+    api.getMaterials(oa.case_id).catch(notReadyAsNull),
+    // 목록 엔드포인트가 API v0에 없거나 아직 없을 때만 null. 다른 오류는 오류 화면으로
+    api.getReviewItems(oa.case_id).catch((e: unknown) => {
+      if (e instanceof ApiError && e.code === 'not_in_api_v0') return null
+      return notReadyAsNull(e)
+    }),
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
   ])
   return { oa, oaResult, materials, reviewItems, document }
+}
+
+// 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다
+function notReadyAsNull(e: unknown): null {
+  if (isNotReady(e)) return null
+  throw e
 }

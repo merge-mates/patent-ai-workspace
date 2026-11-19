@@ -52,7 +52,7 @@ export function CaseShell() {
       </Col>
       <Col xs={{ span: 24, order: 3 }} lg={{ span: 6, order: 3 }}>
         <div style={{ position: 'sticky', top: 16 }}>
-          <ReviewPanel items={data.reviewItems} count={data.materials.review_items_count} />
+          <ReviewPanel items={data.reviewItems} count={data.materials?.review_items_count ?? null} />
         </div>
       </Col>
     </Row>

@@ -27,7 +27,7 @@ export interface CaseSummary {
   rejection_kinds: RejectionKind[]
   run_state: RunState
   status: StatusValue
-  review_items_count: number
+  review_items_count: number | null // 모르면 null (0건과 다름)
   last_opened_at: string
 }
 

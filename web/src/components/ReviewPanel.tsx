@@ -8,7 +8,8 @@ import { StatusTag } from './StatusTag'
 interface Props {
   // 목록을 못 받았으면 null (API v0에 목록 엔드포인트가 없음) → 개수만 보인다
   items: ReviewItem[] | null
-  count: number
+  // 개수도 모르면 null ("0건"으로 보이지 않게)
+  count: number | null
 }
 
 // 검토할 사항 종류마다 같은 꼬리표 (상태 네 가지 + 사람이 할 일)
@@ -39,11 +40,16 @@ function reasonText(reason: string): string {
 export function ReviewPanel({ items, count }: Props) {
   const n = items ? items.length : count
   return (
-    <Card size="small" title={`검토할 사항 ${n}건`} styles={{ body: { paddingTop: 4 } }}>
+    <Card size="small" title={n === null ? '검토할 사항 (모름)' : `검토할 사항 ${n}건`} styles={{ body: { paddingTop: 4 } }}>
       {items === null ? (
-        <Typography.Text type="secondary">
-          목록은 서버 API에 아직 없습니다 (개수만 보임).
-        </Typography.Text>
+        <Space direction="vertical" size={4}>
+          <StatusTag status="unverified" />
+          <Typography.Text type="secondary">
+            {n === null
+              ? '검토할 사항 목록과 개수를 받지 못했습니다. 정리 결과의 상태 꼬리표를 직접 보세요.'
+              : '목록은 서버 API에 아직 없습니다 (개수만 보임).'}
+          </Typography.Text>
+        </Space>
       ) : items.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="검토할 사항 없음" />
       ) : (
