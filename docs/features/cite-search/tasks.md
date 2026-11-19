@@ -41,12 +41,12 @@ graph LR
   - `ConvertReport`: 줄 수, 펼친 수, 빼는 이유별 수(`same_as_other`, `no_location`, 질의 없음 사건·줄, 청구항 없음).
   - CLI `uv run python -m eval.retrieval.convert_cite_gold --src <json> --cases data/raw/cases [--goldsets-root data/goldsets]` → `<goldsets_root>/tune/retrieval/cite_gold.jsonl` (#66 법령 정답과 경로를 나눔. 실험 config `gold: retrieval/cite_gold.jsonl`).
     - 순서: `GoldRow` 검증 + `find_leaks`를 메모리에서 다 끝낸 뒤에만 파일을 쓴다. 0줄도 실패. 실패는 종료 1, 메시지에는 `row_id`·건수만 (질의 글자는 안 찍음).
-    - `<goldsets_root>/VERSION`: 없으면 1로 만들고, 새 파일 sha256이 기존 파일과 다를 때만 올린다. VERSION은 F1·#66과 같이 쓰는 파일이라, 올리면 다른 기능 실험 config `goldset_version`도 맞춰야 한다 (PR 본문에 한 줄).
+    - `<goldsets_root>/VERSION`: 처음엔 없으면 1로 만들고 sha256이 다를 때 올렸다. PR #117 리뷰(11/19)로 바꿈: 공용 파일이라 변환기는 쓰지 않고, 새 파일 sha256이 기존과 다르면 "VERSION을 올려야 함" 경고만.
     - 끝에 이유별 빼는 건수를 경고 한 줄로 찍음 (`logging.warning`).
     - 변환 보고 `work/cite_search/gold_convert_report.json`.
   - 읽는 사건 파일은 `청구항이력.txt`·`행정이력.txt`만 (등록공보·결정서·결정본문 안 읽음, 은진 님 11/19).
 - 테스트할 경우 (모두 `tmp_path`, 진짜 `data/`를 안 건드림):
-  - 평소: 범위 키 `"3-4"` → 줄 둘, 식별번호 `"0022-0025"` → start 22·end 25, 도면·청구항·요약·"3쪽" 항목이 같은 위치의 지어낸 `Chunk`에 `CiteMatcher.matches` = True. 쓴 줄을 `load_gold`로 다시 읽음. OA 뒤 보정은 질의에 안 들어감. 같은 입력 두 번 → VERSION 한 번만 오름
+  - 평소: 범위 키 `"3-4"` → 줄 둘, 식별번호 `"0022-0025"` → start 22·end 25, 도면·청구항·요약·"3쪽" 항목이 같은 위치의 지어낸 `Chunk`에 `CiteMatcher.matches` = True. 쓴 줄을 `load_gold`로 다시 읽음. OA 뒤 보정은 질의에 안 들어감. 공용 VERSION은 그대로, 내용이 바뀔 때만 경고
   - 빈 입력: 같은이유 → `same_as_other`, 위치 없음 → `no_location`(경고 줄은 caplog), 인용 없는 42조 → 줄 없음, 청구항이력 없는 사건 → 줄 없음 + 건수 + 경고, 결과 0줄 → 종료 1
   - 실패: 질의에 `[0023]` → 종료 1, 파일·VERSION 그대로. 표에 없는 문헌 → 종료 1. OA 발송번호 없음 → 그 사건 빼고 셈. 삭제된 청구항 → 그 줄 빼고 셈. `row_id` 중복 → 종료 1
   - 입력 경계: fixture 사건 폴더에 지어낸 `등록공보.pdf`·`결정본문.txt`를 같이 두고, 질의가 청구항이력 OA 당시 글자와 같음

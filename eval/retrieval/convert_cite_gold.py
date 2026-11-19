@@ -218,24 +218,16 @@ def convert(
     return rows, rep
 
 
-def _next_version(goldsets_root: Path, out: Path, new_bytes: bytes) -> int | None:
-    """VERSION을 새로 쓸 값. 바꿀 필요가 없으면 None.
+def _gold_changed(out: Path, new_bytes: bytes) -> bool:
+    """새 정답 파일이 기존 파일과 다른가 (기존 파일이 없으면 다름)."""
+    if not out.is_file():
+        return True
+    return hashlib.sha256(out.read_bytes()).digest() != hashlib.sha256(new_bytes).digest()
 
-    VERSION이 없으면 1. 있으면 새 파일 sha256이 기존 파일과 다를 때만 +1 (기존 파일이 없으면 다름).
-    """
+
+def _current_version(goldsets_root: Path) -> str:
     vf = goldsets_root / "VERSION"
-    if not vf.is_file():
-        return 1
-    try:
-        cur = int(vf.read_text().strip())
-    except ValueError:
-        raise RetrievalEvalError("정답 세트 VERSION 파일이 정수가 아니다") from None
-    if (
-        out.is_file()
-        and hashlib.sha256(out.read_bytes()).digest() == hashlib.sha256(new_bytes).digest()
-    ):
-        return None
-    return cur + 1
+    return vf.read_text().strip() if vf.is_file() else "없음"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -276,11 +268,17 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(r.model_dump(mode="json"), ensure_ascii=False) + "\n" for r in rows
         )
         data = body.encode("utf-8")
-        version = _next_version(root, out, data)
+        changed = _gold_changed(out, data)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
-        if version is not None:
-            (root / "VERSION").write_text(f"{version}\n")
+        # 공용 VERSION은 F1·법령 정답과 같이 쓴다. 변환기가 올리면 다른 기능 실험이 멈추므로
+        # 쓰지 않고 사람에게 알리기만 한다 (PR #117 리뷰). 파일 내용은 scores.json gold_sha256으로도 갈린다
+        if changed:
+            log.warning(
+                "정답 내용이 바뀜: data/goldsets/VERSION을 올려야 함 (지금 %s). "
+                "올리면 같은 VERSION을 쓰는 다른 실험 config의 goldset_version도 맞춘다",
+                _current_version(root),
+            )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(rep.as_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

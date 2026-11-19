@@ -34,6 +34,8 @@ class Env:
         self.report = tmp_path / "work" / "report.json"
         self.out = self.goldsets / OUT_REL
         self.version = self.goldsets / "VERSION"
+        # 공용 VERSION (F1·법령과 같이 씀). 변환기는 이 파일을 쓰지 않는다 (PR #117 리뷰 요청 1)
+        self.version.write_text("2\n")
 
     def data(self) -> dict:
         return json.loads(self.src.read_text(encoding="utf-8"))
@@ -157,29 +159,36 @@ def test_사건_폴더의_등록공보와_결정본문은_질의에_영향이_�
     for name in ("등록공보.pdf", "결정본문.txt"):
         (env.cases / "10-2099-0000001" / name).unlink()
     env.out.unlink()
-    env.version.unlink()
     assert env.run() == 0
     assert env.out.read_bytes() == before
 
 
-def test_VERSION은_없으면_1이고_같은_입력을_다시_돌려도_안_오른다(env):
+def test_공용_VERSION은_쓰지_않는다(env):
     env.run()
-    assert env.version.read_text().strip() == "1"
-    env.run()
-    assert env.version.read_text().strip() == "1"
-
-
-def test_내용이_바뀌면_VERSION이_오른다(env):
-    env.run()
+    assert env.version.read_text() == "2\n"
     data = env.data()
     data["사건"][0]["거절이유"][2]["인용"][0]["청구항별"]["1"]["식별번호"] = ["0008"]
     env.write_src(data)
     env.run()
-    assert env.version.read_text().strip() == "2"
-    sha = hashlib.sha256(env.out.read_bytes()).hexdigest()
-    env.run()
-    assert hashlib.sha256(env.out.read_bytes()).hexdigest() == sha
-    assert env.version.read_text().strip() == "2"
+    assert env.version.read_text() == "2\n"
+
+
+def test_정답_내용이_바뀌면_VERSION을_올리라고_경고만(env, caplog):
+    with caplog.at_level(logging.WARNING):
+        env.run()  # 처음 쓰는 파일도 바뀐 것으로 본다
+    assert "VERSION을 올려야 함" in caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        env.run()  # 같은 입력이면 경고 없음
+    assert "VERSION을 올려야 함" not in caplog.text
+    data = env.data()
+    data["사건"][0]["거절이유"][2]["인용"][0]["청구항별"]["1"]["식별번호"] = ["0008"]
+    env.write_src(data)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        env.run()
+    assert "VERSION을 올려야 함" in caplog.text
+    assert "지금 2" in caplog.text
 
 
 def test_변환_보고가_work에_남는다(env):
@@ -242,7 +251,8 @@ def test_결과가_0줄이면_종료_1이고_파일을_안_쓴다(env):
     data["사건"] = data["사건"][1:2]  # 청구항이력 없는 사건 하나뿐
     env.write_src(data)
     assert env.run() == 1
-    assert not env.out.exists() and not env.version.exists()
+    assert not env.out.exists()
+    assert env.version.read_text() == "2\n"
 
 
 # ---- 실패 ----

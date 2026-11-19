@@ -40,7 +40,7 @@ flowchart LR
 
 ## 3. 데이터 모양
 ### 3-1. 정답 변환 (은진 님 JSON → 계약 정답 파일 `cite_gold.jsonl`)
-- 위치: `eval/retrieval/convert_cite_gold.py` (정답은 채점기 쪽만 읽는다). 출력 `data/goldsets/tune/retrieval/cite_gold.jsonl` (#66 법령 정답과 경로를 나눔), 내용이 바뀌었을 때만 `data/goldsets/VERSION` 올림.
+- 위치: `eval/retrieval/convert_cite_gold.py` (정답은 채점기 쪽만 읽는다). 출력 `data/goldsets/tune/retrieval/cite_gold.jsonl` (#66 법령 정답과 경로를 나눔), 공용 `data/goldsets/VERSION`(F1·법령과 같이 씀)은 쓰지 않고, 내용이 바뀌면 "VERSION을 올려야 함" 경고만 낸다 (11/19 PR #117 리뷰, 은진 님). 정답 파일마다 판을 두는 일은 채점 계약 쪽 다음 이슈.
 - 한 줄 = 거절이유 × 청구항 하나 × 인용문헌 하나. `row_id` = `<발송번호>:r<순번>:c<청구항>:<doc_id>`.
 - 청구항 키 범위(`"3-4"`, `"5-7"`)는 청구항마다 줄로 펼치고 항목을 복사한다.
 - 항목: 식별번호 → `paragraph`(범위 `"0022-0025"`는 start·end 하나), 도면 → `figure`, 인용문헌_청구항 → `claim`, 기타 `"요약"` → `abstract`, 논문 기타 `"N쪽 …"` → `page` N (절·줄은 버림). 그 밖 기타 글자는 버린다.
@@ -84,7 +84,7 @@ flowchart LR
 ## 7. AI
 ### 7-1. 공통 칸
 - 인터페이스: 계약 `get_searcher("bm25", repo, settings)`. 계약 코드는 안 고친다.
-- 평가 세트·지표: `data/goldsets/tune/retrieval/cite_gold.jsonl` (VERSION은 변환 때), 계약 지표 Hit@k·Recall@k(k = 1, 3, 5, 10)와 무작위 기준선 대비 배수. 문턱 [확인 필요: 기준선 측정 뒤].
+- 평가 세트·지표: `data/goldsets/tune/retrieval/cite_gold.jsonl` (VERSION은 사람이 올림, 11/19 기준 2), 계약 지표 Hit@k·Recall@k(k = 1, 3, 5, 10)와 무작위 기준선 대비 배수. 문턱 [확인 필요: 기준선 측정 뒤].
 - 채점: `uv run python -m eval.retrieval.score --config experiments/<실험>/config.yaml` (`--chunks` 없이 Postgres 색인).
 - 결과에 남길 것: 토크나이저 이름·판, bm25s 판·방식·k1·b, 색인 판.
 
