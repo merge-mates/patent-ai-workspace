@@ -73,6 +73,7 @@ class PClaimRow(_P):
     clarity_reason: str | None = None
     text: str | None = None  # 이 줄 판단 원문 글자 (원문 대조용, 정답에는 없음)
     page: int | None = None
+    # 정답 꼴과 칸을 맞추려고 둔다. 채점은 시작 쪽만 본다 (앱 원문 대조와 같음, to_pred도 안 채움)
     page_end: int | None = None
 
 

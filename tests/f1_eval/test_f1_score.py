@@ -20,6 +20,8 @@ from eval.f1.config import F1EvalConfig
 from eval.f1.gold import F1Gold
 from eval.f1.pred import F1Pred
 from eval.f1.score import oa_key, score_f1
+from patent_ai.core.schemas.common import Status, StatusValue
+from patent_ai.core.schemas.document import Page, PageText
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "f1_eval"
 TOTAL = 37
@@ -221,6 +223,16 @@ def test_정답이_0개면_실패():
 # ---- 확인하지 않은 원문 위치 (쪽 글자)
 
 
+def _pt(texts: list[str]) -> PageText:
+    """쪽 글자 목록 -> PageText (extract_pages가 내는 모양)."""
+    ok = Status(value=StatusValue.CONFIRMED, checked="글자 층 있음")
+    return PageText(
+        document_id="d",
+        pages=[Page(page=i, text=x, status=ok) for i, x in enumerate(texts, start=1)],
+        status=ok,
+    )
+
+
 def _pages_ok() -> list[str]:
     g = _gold_dict()
     p1 = "\n".join(
@@ -246,7 +258,7 @@ def test_쪽_글자가_없으면_지표를_빼고_건수를_센다():
 
 def test_원문이_그_쪽에_다_있으면_0():
     g = _gold()
-    s = _score([g], {oa_key(g): _pred(_pred_dict())}, {oa_key(g): _pages_ok()})
+    s = _score([g], {oa_key(g): _pred(_pred_dict())}, {oa_key(g): _pt(_pages_ok())})
     assert s["metrics"]["unverified_locations"] == 0
     assert s["failures"]["pages_missing"] == 0
 
@@ -257,8 +269,21 @@ def test_원문이_붙은_쪽에_없으면_하나씩_센다():
     pages[1] = pages[1].replace("공개특허공보", "")  # D1 원문이 2쪽에 없음
     p = _pred_dict()
     p["notice_date"]["page"] = 2  # 통지일 원문은 1쪽에만 있음
-    s = _score([g], {oa_key(g): _pred(p)}, {oa_key(g): pages})
+    s = _score([g], {oa_key(g): _pred(p)}, {oa_key(g): _pt(pages)})
     assert s["metrics"]["unverified_locations"] == 2
+
+
+def test_두_쪽에_걸친_판단_문장은_앱처럼_시작_쪽에서_확인된다():
+    # 앱 원문 대조(#125)와 같은 규칙: 머리말·꼬리말을 빼고 이웃한 두 쪽을 이어 찾는다
+    g = _gold()
+    pages = _pages_ok()
+    pages[2] = "10-2099-0000001\n청구항 1은 D1, D2로 쉽\n- 3 -"
+    pages[3] = "10-2099-0000001\n게 발명할 수 있다\n4/6"
+    p = _pred_dict()
+    p["claim_rows"][0]["text"] = "청구항 1은 D1, D2로 쉽게 발명할 수 있다"
+    p["claim_rows"][1]["text"] = "게 발명할 수 있다"  # 통째로 4쪽에만 있는데 3쪽이라 함
+    s = _score([g], {oa_key(g): _pred(p)}, {oa_key(g): _pt(pages)})
+    assert s["metrics"]["unverified_locations"] == 1
 
 
 def test_안_낸_칸은_정답이_없음이어도_틀림():
