@@ -33,14 +33,17 @@ def is_supported(article: str) -> bool:
 
 
 # 인용문헌 키 꼴 (정답 형식 f1-oa-gold.md 2.3). 종류 코드(A·B1…)가 글자에 없으면 지어내지 않는다.
+# 예외는 미국: 코드가 없으면 공개(연도/7자리)는 A1, 등록은 코드 없이 (채점은 나라+번호).
+_US_NUMBER = r"(?<![A-Za-z])US\s*(\d{1,3}(?:,\d{3})+|\d{7,8})"  # 등록 번호 (쉼표 있어도 됨)
+_US_PUBLICATION = r"(?<![A-Za-z])US\s*(\d{4})\s*/\s*(\d{7})"  # 공개 번호 (연도/7자리)
+_NO_KIND_AFTER = r"(?![\d,/])(?!\s*[A-Z]\d)"  # 번호가 더 이어지거나 뒤에 종류 코드가 오면 안 걸림
 _KEY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"공개특허공보\s*제\s*10-(\d{4})-(\d{7})\s*호"), "KR{0}{1}A"),
     (re.compile(r"등록특허공보\s*제\s*10-(\d{7})\s*호"), "KR10{0}B1"),
-    (
-        re.compile(r"(?<![A-Za-z])US\s*(\d{1,3}(?:,\d{3})+|\d{7,8})\s*(B[12])(?![A-Za-z0-9])"),
-        "US{0}{1}",
-    ),
-    (re.compile(r"(?<![A-Za-z])US\s*(\d{4})\s*/\s*(\d{7})\s*(A[1-9])(?!\d)"), "US{0}{1}{2}"),
+    (re.compile(_US_NUMBER + r"\s*(B[12])(?![A-Za-z0-9])"), "US{0}{1}"),
+    (re.compile(_US_NUMBER + _NO_KIND_AFTER), "US{0}"),
+    (re.compile(_US_PUBLICATION + r"\s*(A[1-9])(?!\d)"), "US{0}{1}{2}"),
+    (re.compile(_US_PUBLICATION + _NO_KIND_AFTER), "US{0}{1}A1"),
     (re.compile(r"(?<![A-Za-z])JP\s*(\d{4})-?(\d{6})\s*(A)(?![A-Za-z])"), "JP{0}{1}{2}"),
     # 특개(공개)·특표(공표)는 정의상 종류 코드 A
     (re.compile(r"특[개표]\s*(\d{4})-?(\d{6})\s*호?"), "JP{0}{1}A"),
