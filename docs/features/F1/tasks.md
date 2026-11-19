@@ -237,6 +237,7 @@ graph LR
     task-4 --> task-5
     task-5 --> task-6
     task-6 --> task-7
+    task-7 --> task-8
 ```
 
 ### task-1: 규칙 추출 (번호·날짜 글자·조문·청구항 범위·통지 종류)
@@ -304,6 +305,16 @@ graph LR
 - 확인 방법: `uv run pytest tests/core/f1/test_claim_rows.py -q` → 모두 통과
 - 먼저: task-6
 
+### task-8: 쪽을 넘어간 거절이유 표 칸 (11/19 승인, 이슈 #18 은진 님 댓글)
+- 담당: 재아
+- 합격 기준: requirements.md 1·2 (거절이유의 대상 청구항·조문이 빠지지 않고, 지어낸 값 0건)
+- 왜: tune 10건 중 2건은 1쪽 거절이유 표의 "대상 청구항" 칸이 2쪽으로 넘어감(1쪽 "…제8항 내지", 2쪽 맨 위 "제10항"). 쪽 글자만 보면 값이 두 쪽에 걸쳐 원문 대조가 `unverified`가 되고 대상 청구항 일부가 빠짐
+- 고칠 파일: `src/patent_ai/core/schemas/document.py`(`Page.tables`, 기본 빈 목록, 공유 스키마), `src/patent_ai/core/f1_oa_reader/{pages,tables,verify,read_oa}.py`, `docs/features/F1/design.md`(2절 ①·3-2·필드 출처 표), `tests/core/f1/{test_pages,test_tables,test_verify,test_read_oa}.py`
+- 만들 칸·함수 모양: `Page.tables: list[list[list[str]]] = []` (표마다 행, 행마다 칸 글자. `extract_pages`가 pdfplumber `extract_tables`(=`find_tables`)로 채움, 빈 칸은 ""). `tables.py`: `merged_tables(pages)` — 다음 쪽 첫 표의 첫 줄 첫 칸(순번)이 비면 앞 쪽 마지막 표 마지막 줄 같은 칸에 붙임(시작 쪽 번호로). `rejection_rows(pages) -> list[RejectionRow(no, page, part, article)]` — "순번 / 거절이유가 있는 부분 / 관련 법조항" 머리 줄 뒤 줄들(다음 쪽 첫 표가 순번을 이어 가면 그 줄도). `read_oa`는 이 줄을 대상 청구항·조문의 규칙 쪽 값으로 merge에 넘김. 원문 대조(`raw_text_on_page`)는 쪽 글자 + 그 쪽에서 시작하는 (이어 붙인) 표 칸 글자에서 찾음 → 시작 쪽 번호
+- 테스트할 경우: PDF 표가 `Page.tables`에 행·칸으로 / 표 없는 쪽은 빈 목록, 예전 JSON(`tables` 없음)도 읽힘 / 평소(한 쪽 안) / 잘린 칸(다음 쪽 첫 줄 순번 빈칸 → 앞 줄에 붙음, 시작 쪽) / 줄 사이 끊김(다음 쪽 첫 줄 순번 4 → 줄로 이어짐) / 앞 쪽에 표가 없거나 앞 표가 거절이유 표가 아니거나 목록 이음말이 없으면 붙이지 않음 / 쪽 끝 줄인데 조각을 못 찾으면 규칙 값을 안 씀(리뷰에서 더함) / 표 찾기만 실패하면 그 쪽 표는 빈 목록 + 경고 / 원문 대조가 이어 붙인 칸에서 통과, 아무 칸에도 없는 글자는 실패 / read_oa: 쪽을 넘은 칸이 확인됨 [1..4]·시작 쪽, 표와 모델 값이 다르면 conflict
+- 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과
+- 먼저: task-7
+
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
 - 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
@@ -317,6 +328,7 @@ graph LR
 - [x] task-5
 - [x] task-6
 - [x] task-7
+- [x] task-8
 - 다음: tune 점수 (#20·#22 뒤), /pr-draft
 - 막힌 것: 
 
@@ -324,4 +336,5 @@ graph LR
 - 된 것: 규칙 추출(rules.py: 번호·날짜 글자·조문·청구항·통지 종류 initial/final/unknown, 본문 속 최후 언급 거름, 조의N 거부), 원문 대조·합치기(verify.py: 값은 원문 글자에서 다시 뽑음, 한쪽이라도 애매하면 확인되지 않음), 지원 표(support.py: 29-1-1·29-1-2·29-2·42-4-2, 나라 판정), `read_oa(pages, document_id, oa_id, run_id, *, ctx)` + OAExtraction·프롬프트·config/f1.yaml. 조문을 모르면 결과 status에 넣고 힌트 칸 누락을 확인되지 않음으로(공유 스키마 oa_result.py 규칙 변경, 문서 맞춤). `uv run pytest -q` 289 passed(task-1~3 /check 때), task-6 뒤 455 passed(11/19 2차, /check 증거 다시 모음: 통과). 진짜 모델 호출 없음(FakeTransport 답만).
 - 안 된 것·사람 판단: tune 점수(#20·#22 뒤). 프롬프트가 진짜 모델에서 도는지(scripts/record_llm.py, 비용 작음, 사람 확인 뒤). 코드(테스트 제외) 약 660줄로 400줄 기준을 넘음. 값 모양은 task-4에서 맞춤, 구조 차이(claim_rows·clarity_terms·kind)는 work/gold_diff_f1.md 4절. 호 없는 "제29조제1항"은 지원 안 함으로 둠(Claude 판단). 칸 제목 표기·인용 표기·OA 쪽 수는 [가정](#22 표본으로).
 - 11/19 2차: task-5 kind(조문 코드 → novelty/inventive_step/clarity/other), task-6 claim_rows·clarity_terms(정답 2.4·3절 1~11). 리뷰 막음(줄 빠짐·엇붙음, 인용 언급 규칙) 고침, 재리뷰 2회 다 씀 — 마지막 고침(b52d3a4)은 3회차 리뷰 없이 사람 확인. 남은 정답 차이는 work/gold_diff_f1.md 4절.
+- 11/19 3차: task-8 쪽을 넘어간 거절이유 표 칸(`Page.tables` 공유 스키마 칸, 기본 빈 목록). 리뷰 막음 없음·고칠 것 3(잘렸을 수 있는 쪽 끝 줄, 이음말 없는 붙이기, 시작 쪽 단언) 고침. `uv run pytest -q` 496 passed. 실제 OA 5건(로컬)에서 표 줄이 나오고 C 파일 3번 줄이 "…제8항 내지 제10항"으로 이어짐. 한계: 표가 1쪽 안에서 끝나도 그 쪽 마지막 표의 마지막 줄은 `may_be_cut`이라 규칙 값을 안 씀(예전처럼 모델 값만, 5건 중 3건의 마지막 줄).
 - 다음 이슈로: config/f1.yaml max_input_tokens, 가격 키(비용 기록).

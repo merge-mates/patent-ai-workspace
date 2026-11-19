@@ -36,11 +36,11 @@ flowchart LR
 ```
 1. 입력: 대상 OA의 `Document`(올린 PDF). 사건·출원번호는 몰라도 된다 (출원번호도 이 흐름에서 읽는다).
 2. 처리:
-   - ① 글자·쪽 추출 (#17): PDF → `PageText{document_id, pages[{page, text, status}], status}`. 글자 층이 없으면(스캔본) `unverified(body_missing)`.
+   - ① 글자·쪽 추출 (#17): PDF → `PageText{document_id, pages[{page, text, status, tables}], status}`. 글자 층이 없으면(스캔본) `unverified(body_missing)`. `tables`는 그 쪽의 표(표마다 행, 행마다 칸 글자, 빈 칸 "")이고 표가 없으면 빈 목록 (#18 task-8, 기본값이 빈 목록이라 예전 모양도 읽힘).
      - 쪽 번호는 PDF 물리 쪽 순서(1부터), 인쇄된 쪽 표시와 다를 수 있음.
-   - ③ 규칙 추출 (코드, 정규식): 출원번호(`10-YYYY-NNNNNNN`), 발송번호, 통지일·제출기일의 원문 글자(날짜로 바꾸지 않음), 조문(`제29조제2항` → `29-2`), 청구항 번호 범위(`제1항 내지 제4항, 제6항` → `[1,2,3,4,6]`), 통지 종류(`initial`/`final`/`unknown`, 아래 필드 출처 표). [가정] 국내 OA는 출원번호·발송번호·날짜가 정해진 칸에 글자로 있다 → 표본 OA 5건에서 확인 (#22).
+   - ③ 규칙 추출 (코드, 정규식): 출원번호(`10-YYYY-NNNNNNN`), 발송번호, 통지일·제출기일의 원문 글자(날짜로 바꾸지 않음), 조문(`제29조제2항` → `29-2`), 청구항 번호 범위(`제1항 내지 제4항, 제6항` → `[1,2,3,4,6]`), 통지 종류(`initial`/`final`/`unknown`, 아래 필드 출처 표), 거절이유 표 줄(`tables.rejection_rows`: 머리 줄 "순번 / 거절이유가 있는 부분 / 관련 법조항" 뒤 순번이 이어지는 줄. 다음 쪽 첫 표의 첫 줄 순번이 비고 앞 칸 끝이나 조각 앞머리에 목록 이음말(`내지`·`,`·`및` 등)이 있으면 앞 쪽 거절이유 표 마지막 줄 같은 칸에 붙이고 시작 쪽 번호를 씀, 다음 쪽 첫 표가 순번을 이어 가면 그 줄도. 쪽 끝 줄인데 다음 쪽 조각을 못 찾으면 `may_be_cut`이라 규칙 쪽 값으로 쓰지 않음: 잘린 앞부분만으로 확인됨이 되지 않게). [가정] 국내 OA는 출원번호·발송번호·날짜가 정해진 칸에 글자로 있다 → 표본 OA 5건에서 확인 (#22).
    - ④ 모델 추출 (#13 모델 호출 모듈 한 번): 거절이유 블록마다 조문 원문, 대상 청구항 원문, 인용문헌 번호, 인용 식별번호, 심사관 논리 요지(원문 + 쪽), 「특허 가능한 청구항」, 【보정에 관한 참고사항】. 모델은 값마다 **원문 글자와 쪽**을 같이 돌려준다. 출력은 LLM 출력 스키마 `OAExtraction`(3-2)이고, 상태는 모델이 정하지 않는다.
-   - ⑤ 원문 대조·합치기 (코드): 모델이 준 원문 글자가 그 쪽 텍스트에 실제로 있는지 본다 (공백·줄바꿈만 무시). 없으면 값과 쪽을 버리고 `unverified(not_extracted)`. 규칙 값과 모델 값이 둘 다 있고 다르면 `conflict`(둘 다 남김). 하나뿐이면 그 값. 모델이 "애매"라고 표시하면 `unverified(ambiguous)`. 청구항 번호 범위·조문은 모델 원문 글자를 ③ 코드로 다시 정규화한다.
+   - ⑤ 원문 대조·합치기 (코드): 모델이 준 원문 글자가 그 쪽 텍스트에 실제로 있는지 본다 (공백·줄바꿈만 무시). 쪽 텍스트에 없으면 그 쪽에서 시작하는 표 칸(쪽을 넘어간 칸은 이어 붙인 것)에서도 찾는다. 없으면 값과 쪽을 버리고 `unverified(not_extracted)`. 규칙 값과 모델 값이 둘 다 있고 다르면 `conflict`(둘 다 남김). 하나뿐이면 그 값. 모델이 "애매"라고 표시하면 `unverified(ambiguous)`. 청구항 번호 범위·조문은 모델 원문 글자를 ③ 코드로 다시 정규화한다.
    - ⑥ 지원 여부·나라 (코드 표): 조문 `29-1-1`·`29-1-2`(신규성, 29조 1항 1·2호)·`29-2`(진보성)·`42-4-2`(명확성)만 지원(호 없는 `29-1`은 1항 본문과 구분이 안 돼 지원 안 함), 그 밖은 `flags: ["needs_human_review"]`. 지원 표는 `config/f1.yaml`이 아니라 코드 상수 (실험 값이 아님). 나라는 인용문헌 표기에서 정규식으로 정한다: `공개특허공보 제10-YYYY-NNNNNNN호`·`등록특허공보 제10-NNNNNNN호`·`KR …` → KR, `US YYYY/NNNNNNN`·`US N,NNN,NNN`·`미국 …` → US, `JP`·`CN`·`EP`·`WO`·`일본`·`중국` → 그 나라(지원 안 함, 직접 확인), 맞는 것이 없으면 `null` + `unverified(ambiguous)`. [가정] 국내 OA 인용문헌 표기는 이 몇 가지 안에 든다 → 표본 OA로 확인 (#22).
 
 **필드 출처 표** (누가 뽑고 어떻게 합치나):
@@ -50,8 +50,8 @@ flowchart LR
 | 통지일·제출기일 (글자) | 뽑음 | 안 뽑음 | 규칙 값만. `value`는 비우고 `raw_text`·`page` |
 | 통지 종류 | 뽑음 | 안 뽑음 | 규칙 값만. "최후거절이유통지" 표시가 있으면 `final`(원문 글자 + 쪽). 1쪽 머리말 글자를 읽었는데 표시가 없으면 `initial`, `raw_text`·`page`는 `null`, `confirmed`(`checked` = "최후 표시 없음, 모든 쪽 글자를 봄". 머리말 = 1쪽 첫 15줄에 "의견제출통지서"가 있음). 1쪽 머리말을 못 읽으면 `unknown` + `unverified(not_extracted)`. 이력(앞 보정서)과의 대조는 #16 묶기에서 `conflict`로 |
 | 심사 대상 청구항 | 안 뽑음 | 원문 | 모델 `raw_text`를 대조한 뒤 `expand_claims`로 펼침 |
-| 거절이유 블록 나누기, 조문 | 안 뽑음 | 블록마다 조문 원문 | 모델 `raw_text`를 대조한 뒤 ③ `normalize_article`로 정규화한 값만 씀 |
-| 대상 청구항 | 안 뽑음 | 블록마다 원문 | 모델 `raw_text`를 대조한 뒤 ③ `expand_claims`로 펼침 (`청구항 전항`은 심사 대상 청구항 값으로). 규칙 값과 비교하지 않음 |
+| 거절이유 블록 나누기, 조문 | 거절이유 표 줄의 관련 법조항 (순번으로 짝) | 블록마다 조문 원문 | 둘 다 대조 뒤 ③ `normalize_article`로 정규화. 같음 → `confirmed` / 다름 → `conflict` / 하나만 통과 → 그 값. 표 줄 수와 모델 블록 수가 다르면 경고 |
+| 대상 청구항 | 거절이유 표 줄의 거절이유가 있는 부분 (순번으로 짝, 쪽을 넘은 칸은 이어 붙임) | 블록마다 원문 | 둘 다 대조 뒤 ③ `expand_claims`로 펼침 (`청구항 전항`은 심사 대상 청구항 값으로, 청구항이 아닌 부분은 규칙 쪽 못 씀). 같음 → `confirmed` / 다름 → `conflict` / 하나만 통과 → 그 값 |
 | 인용문헌 번호, 인용 식별번호 | 안 뽑음 | 블록마다 원문 | 대조 뒤 번호는 ⑥ `citation_key`로 키 꼴(나라와 맞아야 함), 식별번호는 `parse_cited_locations`로 정답 꼴, 나라는 ⑥ 정규식 |
 | 심사관 논리 요지 | 안 뽑음 | 요지 + 원문 | 원문 `raw_text`만 대조 (요지 글은 대조하지 않음, `origin: ai_generated`) |
 | 청구항 줄 `claim_rows`(청구항 x 거절이유) | 안 뽑음 | 줄마다 청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현(인용 안 또는 줄 단위), 같은 취지 원문, 명확성 표현 원문, 판단 원문 글자·쪽 | 판단 원문이 그 쪽에 있어야 `confirmed`(없으면 그 줄만 `unverified(not_extracted)`, 값 버림). 청구항은 `expand_claims`(묶음은 번호마다 한 줄), 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 `value` 안 씀), 같은 취지는 `parse_same_as`, 명확성 표현은 판단 원문의 따옴표 안 글자와 맞아야 함. 줄 단위 `no_location` 표현은 판단 원문 안에 있어야 함(없으면 그 줄 `unverified(not_extracted)`). 지원 안 하는 거절이유의 줄은 만들지 않음. 줄이 빠진 청구항(지원하는 거절이유의 대상 청구항 중)은 코드가 `unverified(not_extracted)` 빈 줄로 채움. 인용은 그 거절이유의 인용문헌이어야 하고 판단 원문이 가리키는 것(`인용발명 N`)과 같아야 함(가리키는 인용이 그 거절이유 밖이면 `unverified`). 판단 원문에 인용 번호가 없을 때 거절이유 인용이 하나면 그 인용, 여럿이면 모델 라벨을 남기되 그 줄은 `unverified(ambiguous)`(값·원문·쪽은 남김), 청구항 번호 원문은 판단 원문 안에, 순번은 판단 원문 머리 번호(`N-M.`)와 맞아야 함. `clarity_reason`은 모델이 쓴 글이라 `clarity_reason_origin: ai_generated`로 표시 |
@@ -145,7 +145,7 @@ flowchart LR
 | `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, date}]`, `claim_versions[{version, created_by_receipt_number, claim_count}]`, 각 OA에 `examined_claim_version{version, created_by_receipt_number}`. events·claim_versions는 올라온 OA 중 가장 늦은 OA 시점까지. 청구항 본문은 넣지 않음 | 서버 담당 리뷰 |
 | 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | + 출원번호 입력 기다림 (`waiting_for: application_number`, 목록은 #15) | 서버 담당 리뷰 |
 | 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 (11/18 확인, requirements 실패할 때) | 서버 담당 리뷰 |
-| `GET /documents/{id}` | 원문과 쪽 | 메타 + `PageText` 그대로 (`pages[{page, text, status}]` + 문서 status). 화면이 쪽마다 "글자 없음"을 보임 | 서버 담당 리뷰 |
+| `GET /documents/{id}` | 원문과 쪽 | 메타 + `PageText` 그대로 (`pages[{page, text, status, tables}]` + 문서 status). 화면이 쪽마다 "글자 없음"을 보임. `tables`는 #18에서 더함(공유 스키마 변경) | 서버 담당 리뷰 |
 | `GET /documents/{id}/file` | 없음 | 원본 PDF | 서버 담당 리뷰 |
 | 실행 `failed` 오류 | `{code, message}` | 같은 OA면 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | 결과 공통 칸 | data-model 3절 | 위 JSON (Status 객체, 이유 셋 더함, `needs_recheck`, `flags`) | #14 PR |
