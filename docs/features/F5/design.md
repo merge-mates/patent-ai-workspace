@@ -93,7 +93,7 @@ flowchart LR
 |---|---|---|---|
 | ⑥ `CaseMaterials` | `review_items_count`만 | + `review_items: list[ReviewItem] \| None`, 개수 = 줄 수 검사, `None`이면 저장 거부 | 상대 리뷰 (공유 스키마) |
 | ⑥ `CaseDocument` | `status`(묶기, #137) | + `text_status`(글자 추출). `status` 뜻은 그대로 | 상대 리뷰 (공유 스키마) |
-| `build_case_materials` | 안에서 검토할 사항 개수까지 셈 | 빠진 자료·보류·문서 두 상태를 만들고 끝에서 `finalize_case_materials`를 부름 | 상대 리뷰 (#16 주인) |
+| `build_case_materials` | 안에서 검토할 사항 개수까지 셈 | 빠진 자료·보류·문서 두 상태를 만들고 끝에서 `finalize_case_materials`를 부름 | 상대 리뷰 (재아) |
 | `held_tasks.task`·`depends_on_tasks` | 사람 글 | 3-2절 이름 규칙 | 상대 리뷰 (#16 코드도 같이) |
 | `GET /cases/{id}/materials` | ⑥ | 그대로 (⑥에 칸이 더해질 뿐) | 서버 담당 리뷰 |
 

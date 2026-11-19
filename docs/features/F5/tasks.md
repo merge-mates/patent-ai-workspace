@@ -53,7 +53,7 @@ graph LR
 - 먼저: task-1
 
 ### task-3: F1 쪽 `build_case_materials` 입력 정리 (글자 추출 상태, 보류 작업 이름)
-- 담당: 은진 (#16 주인 재아와 같은 파일, 리뷰는 재아)
+- 담당: 은진 (#16·#137도 은진, 같은 파일이라 #137 머지 뒤, 리뷰는 재아)
 - 합격 기준: requirements.md 3 (빠진 자료마다 한 줄, 기대는 작업만 보류, 올리면 줄·보류가 사라짐)
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/case_grouping.py`, `tests/core/f1/test_case_grouping.py`, `tests/core/schemas/test_fixtures.py`, `tests/fixtures/case_missing_citation/case_materials.json`
 - 만들 함수·인터페이스 모양: `build_case_materials(case_id, grouped, oa, received_citations, lookup_failures=None, text_status: dict[str, Status] | None = None) -> CaseMaterials` — 문서마다 `status = g.status`(#137 그대로), `text_status = text_status.get(document_id)`(없으면 `None`, 합치지 않음). 보류 작업 이름 `f3_compare:<oa.oa_id>:<c.label>` (design.md 3-2절). `what`·`waiting_for`는 지금 꼴(`_citation_name` + " 본문", 예 "D2 US20990000001A1 본문") 그대로.
