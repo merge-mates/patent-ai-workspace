@@ -1,5 +1,5 @@
 import { Card, Empty, List, Space, Tag, Typography } from 'antd'
-import { unverifiedReasonLabel } from '../labels'
+import { lookupResultLabel, unverifiedReasonLabel } from '../labels'
 import type { ReviewItem } from '../types/generated/ReviewItem'
 import { HumanCheckTag } from './Marks'
 import { StatusLegend } from './StatusLegend'
@@ -29,9 +29,10 @@ function KindTag({ item }: { item: ReviewItem }) {
   }
 }
 
-// reason이 코드면 한국어로, 글이면 그대로
+// reason이 코드(확인 안 된 이유·빠진 자료 조회 결과)면 한국어로, 글이면 그대로
+const reasonCodes: Record<string, string> = { ...unverifiedReasonLabel, ...lookupResultLabel }
 function reasonText(reason: string): string {
-  return (unverifiedReasonLabel as Record<string, string>)[reason] ?? reason
+  return reasonCodes[reason] ?? reason
 }
 
 // 오른쪽에 늘 있는 "검토할 사항 N건" 판: 사람이 봐야 할 것을 한곳에 모은다
