@@ -10,14 +10,15 @@
 - 이름: 이터레이션 M1-i3에 F5 이슈가 둘이라 계획 제목을 `m1-i3-<이슈번호>`로 쓴다 (F1 tasks.md와 같은 방식).
 - 끝난 F5 이슈: #14 결과 스키마·상태 규칙 (계획은 [F1 tasks.md](../F1/tasks.md)의 `m1-i2-14`). F5 합격 기준 1·2·3의 데이터 쪽 대부분이 여기서 들어갔다.
 - 순서: 검토할 사항 칸(`m1-i3-new`)의 task-1이 인터페이스라 먼저. 화면(`m1-i3-19`)은 task-1의 칸 모양만 정해지면 fixture로 같이 간다.
-- 다른 이슈와 겹치는 파일: `core/f1_oa_reader/case_grouping.py`는 #16이 지금 고치고 있다. 그 파일을 고치는 task(`m1-i3-new` task-3)는 #16이 머지된 뒤 시작한다.
+- 다른 이슈와 겹치는 파일: PR #137(#16)이 `CaseDocument.status`(필수), `case_grouping.py`의 `build_case_materials`, `case_missing_citation` fixture를 고친다. `m1-i3-new`는 **#137 머지 뒤 최신 main에서** 시작한다 (task-1·task-3 모두 같은 파일).
 
 ```mermaid
 graph LR
     I14["#14 결과 스키마 (끝)"] --> N1["new task-1 칸"]
     N1 --> N2["new task-2 마무리 함수"]
     N2 --> N4["new task-4 화면 fixture"]
-    I16["#16 사건 자료 묶기"] --> N3["new task-3 F1 쪽 정리"]
+    I16["PR #137 (#16) 묶기 상태·저장소"] --> N1
+    I16 --> N3["new task-3 F1 쪽 정리"]
     N1 --> N3
     N4 --> W1["19 task-1·2·3 F5 부품"]
 ```
@@ -34,15 +35,14 @@ graph LR
     task-2 --> task-4
 ```
 
-### task-1: ⑥에 `review_items`·`CaseDocument.status` 칸과 개수 검사
+### task-1: ⑥에 `review_items` 칸과 개수 검사
 - 담당: 은진
 - 합격 기준: requirements.md 3 (N = 목록 줄 수 = `review_items_count`)
 - 고칠 파일: `src/patent_ai/core/schemas/case_materials.py`, `src/patent_ai/core/schemas/propagation.py`, `tests/core/schemas/test_propagation.py`, `tests/core/schemas/test_fixtures.py`, `tests/fixtures/case_missing_citation/case_materials.json`, `docs/data-model.md` 4절 ⑥ 줄
-- 만들 함수·인터페이스 모양: `ReviewItem{kind, target, label, reason}`과 `ReviewKind`(Literal)를 `case_materials.py`로 옮기고(`propagation.py`가 `case_materials`를 import하므로 거꾸로 두면 순환), `propagation.py`는 둘 다 그대로 다시 내보낸다(`test_fixtures.py`가 `propagation`에서 import함). `CaseMaterials.review_items: list[ReviewItem] = []` + 검사 `review_items_count == len(review_items)`. `CaseDocument.status: Status` (기본값 없음). fixture에 문서 status와 `review_items` 줄을 넣는다.
-- 테스트할 경우: 평소(줄 2 + 개수 2 → 통과) / 빈 입력(줄 0 + 개수 0 → 통과) / 실패(줄 2 + 개수 3 → `ValidationError`, 문서에 status 없음 → `ValidationError`)
+- 만들 함수·인터페이스 모양: `ReviewItem{kind, target, label, reason}`과 `ReviewKind`(Literal)를 `case_materials.py`로 옮기고(`propagation.py`가 `case_materials`를 import하므로 거꾸로 두면 순환), `propagation.py`는 둘 다 그대로 다시 내보낸다(`test_fixtures.py`가 `propagation`에서 import함). `CaseMaterials.review_items: list[ReviewItem] = []` + 검사 `review_items_count == len(review_items)`. `CaseDocument.status`는 #137에서 이미 들어온다. fixture에 `review_items` 줄을 넣는다.
+- 테스트할 경우: 평소(줄 2 + 개수 2 → 통과) / 빈 입력(줄 0 + 개수 0 → 통과) / 실패(줄 2 + 개수 3 → `ValidationError`)
 - 확인 방법: `uv run pytest tests/core/schemas -q` → 모두 통과
-- 먼저: 없음 (공유 스키마 변경이라 이 task만 먼저 상대 리뷰를 받아도 된다)
-- 주의: `build_case_materials`가 `CaseDocument`를 만들 때 status가 필요해진다. 이 task에서는 그 자리에 묶기 결과 `g.status`를 넘기는 한 줄만 고치고(테스트가 깨지지 않게), 나머지는 task-3.
+- 먼저: PR #137 머지 (공유 스키마 변경이라 이 task만 먼저 상대 리뷰를 받아도 된다)
 
 ### task-2: F5 마무리 함수 `finalize_case_materials` (모으기 + 문서 줄 + 묶기 + 개수)
 - 담당: 은진
@@ -57,10 +57,10 @@ graph LR
 - 담당: 은진 (#16 주인 재아와 같은 파일이라 #16 머지 뒤, 리뷰는 재아)
 - 합격 기준: requirements.md 3 (빠진 자료마다 한 줄, 기대는 작업만 보류, 올리면 줄·보류가 사라짐)
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/case_grouping.py`, `tests/core/f1/test_case_grouping.py`, `tests/core/schemas/test_fixtures.py`, `tests/fixtures/case_missing_citation/case_materials.json`
-- 만들 함수·인터페이스 모양: `build_case_materials(case_id, grouped, oa, received_citations, lookup_failures=None, page_status: dict[str, Status] | None = None) -> CaseMaterials` — 안의 `collect_review_items` 호출·개수 계산을 뺀다(`review_items`는 비우고 개수 0, 채우는 것은 `finalize_case_materials`). 문서 status = `worst_status([g.status, page_status.get(id)])`. 보류 작업 이름 `f3_compare:<oa.oa_id>:<c.label>` (design.md 3-2절).
+- 만들 함수·인터페이스 모양: `build_case_materials(case_id, grouped, oa, received_citations, lookup_failures=None, page_status: dict[str, Status] | None = None) -> CaseMaterials` — 안의 `collect_review_items` 호출·개수 계산을 뺀다(`review_items`는 비우고 개수 0, 채우는 것은 `finalize_case_materials`). 문서 status = `worst_status([g.status, page_status.get(id)])` (#137이 넣은 `g.status`에 글자 추출 상태를 합침). 보류 작업 이름 `f3_compare:<oa.oa_id>:<c.label>` (design.md 3-2절).
 - 테스트할 경우: 평소(`case_missing_citation` → `held_tasks` = `f3_compare:oa_1:D2`, `waiting_for` = "US 2099/0000001 본문") / 빈 입력(인용문헌 0건 → 경고 + 빠진 자료 0) / 경계(지원 안 하는 나라 → `ask_upload=false`, 스캔본 page_status → 문서 `body_missing`, 빠진 문헌을 `received_citations`에 더해 다시 부름 → 빠진 자료·보류 0)
 - 확인 방법: `uv run pytest tests/core/schemas tests/core/f1 -q` → 모두 통과
-- 먼저: task-1, #16 머지 (같은 파일)
+- 먼저: task-1, PR #137 머지 (같은 파일)
 
 ### task-4: 화면용 네 값 fixture
 - 담당: 은진
@@ -84,7 +84,7 @@ graph LR
 - [ ] task-3
 - [ ] task-4
 - 다음: task-1
-- 막힌 것: task-3은 #16 머지 기다림
+- 막힌 것: PR #137 머지 기다림 (그 뒤 최신 main에서 시작)
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로

@@ -82,7 +82,7 @@ flowchart LR
 - `target` 경로 규칙: `oa_result[i]…`는 사건의 i번째 OA(올라온 순서)의 `OAResult` 안 경로, `materials.missing[i]`는 ⑥ 안. 화면은 이 경로로 그 값의 카드로 이동한다. 뒤 결과(②~⑤)가 생기면 `units[i]`·`comparisons[i]`… 같은 꼴로 더한다 (그 기능 설계에서).
 - **보류 작업 이름 규칙** (`held_tasks.task`, `missing.depends_on_tasks`): `<작업>:<oa_id>:<대상>`. `oa_id`는 `OAResult.oa_id`. 작업은 `f3_compare`(인용문헌 하나의 대비) / `f3_all`(그 OA의 F3 전체) / `f4_all`(그 OA의 F4 전체) / `f4_amend_basis`(보정 근거 위치). F1 requirements 합격 기준 4의 네 갈래가 이 넷이다. 대상은 `f3_compare`면 인용문헌 라벨 `Citation.label`(`D1`·`D2`, OA마다 늘 있고 겹치지 않음. 번호를 못 읽은 문헌도 라벨은 있다), 나머지는 `*`. 예: `f3_compare:oa_1:D2`. 화면 글은 이 이름이 아니라 `waiting_for`(사람 글, 예 "US 2099/0000001 본문")와 작업 종류 한국어("F3 대비")로 만든다.
 - 이름을 바꾸면 같이 고칠 곳: `core/f1_oa_reader/case_grouping.py`, `tests/core/f1/test_case_grouping.py`, `tests/fixtures/case_missing_citation/case_materials.json`, `tests/core/schemas/test_fixtures.py`. 문서(F1 requirements·architecture·product·cite-search)의 "F3 대비" 글은 사람 말이라 그대로 둔다.
-- `CaseDocument.status: Status` 더함 (2절 문서 줄). 기본값 없이 꼭 채운다 (모르는 문서를 확인됨으로 두지 않게).
+- `CaseDocument.status: Status`는 PR #137(#16)이 묶기 상태로 먼저 더한다 (필수 칸). F5는 이 칸에 글자 추출 상태(`PageText.status`)를 `worst_status`로 합치는 것만 더한다 (2절 문서 줄).
 - 공통 속성(`status`·`evidence`·`origin`)은 data-model 3절 그대로. F5가 결과에 더하는 칸은 없다.
 - 앞 기능 결과가 바뀌면 "다시 확인 필요": 규칙 2 (`mark_recheck`, 있음). 빠진 자료를 올리면 `result_inputs`로 그 자료(`document`)에 기댄 결과를 찾아 `needs_recheck`를 단다. **M1에는 달 대상이 없다**: 빠진 인용문헌에 기대는 결과는 F3 대비(M2)인데, 보류돼서 아직 결과가 없기 때문이다. 그래서 M1은 ⑥을 다시 쓰는 것(빠진 자료 줄이 사라지고 보류가 풀림)까지만 하고, `needs_recheck` 달기는 F3 설계에서 구현한다.
 - 인터페이스 변경: **있음**.
@@ -90,7 +90,7 @@ flowchart LR
 | 바뀌는 곳 | 지금 | 바꿀 것 | 확정 |
 |---|---|---|---|
 | ⑥ `CaseMaterials` | `review_items_count`만 | + `review_items: list[ReviewItem]`, 개수 = 줄 수 검사 | 상대 리뷰 (공유 스키마) |
-| ⑥ `CaseDocument` | `document_id, kind, source` | + `status` | 상대 리뷰 (공유 스키마) |
+| ⑥ `CaseDocument.status` | PR #137에서 묶기 상태로 더해짐 | + 글자 추출 상태를 합침 (뜻 넓힘) | 상대 리뷰 (공유 스키마) |
 | `build_case_materials` | 안에서 검토할 사항 개수까지 셈 | 빠진 자료·보류·문서 status만, 개수는 `finalize_case_materials` | 상대 리뷰 (#16 주인) |
 | `held_tasks.task`·`depends_on_tasks` | 사람 글 | 3-2절 이름 규칙 | 상대 리뷰 (#16 코드도 같이) |
 | `GET /cases/{id}/materials` | ⑥ | 그대로 (⑥에 칸이 더해질 뿐) | 서버 담당 리뷰 |
