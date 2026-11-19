@@ -77,7 +77,7 @@ function summaryOf(b: Bundle): CaseSummary {
   return {
     case_id: b.case_id,
     case_name: b.case_name,
-    application_number: r.application_number.value ?? r.application_number.raw_text ?? null,
+    application_number: r.application_number.raw_text ?? r.application_number.value ?? null,
     latest_oa: { oa_id: b.oa_id, notice_kind: r.notice_kind.value ?? null },
     rejection_kinds: kinds,
     run_state: 'succeeded',
