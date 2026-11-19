@@ -43,12 +43,27 @@ def _card(
     return f"---\n{head}\n---\n# {name}\n\n**가설**: …\n"
 
 
-def _exp(root: Path, name: str, baseline: str, metric: float | None, usd=0.12, **card_kw):
+def _exp(
+    root: Path,
+    name: str,
+    baseline: str,
+    metric: float | None,
+    usd=0.12,
+    goldset="tune",
+    version=2,
+    **card_kw,
+):
     d = root / name
     d.mkdir(parents=True)
     (d / "card.md").write_text(_card(name, baseline, **card_kw), encoding="utf-8")
     if metric is not None:
-        scores = {"metrics": {"field_accuracy": metric}, "cost": {"usd": usd}, "n": 10}
+        scores = {
+            "metrics": {"field_accuracy": metric},
+            "cost": {"usd": usd},
+            "n": 10,
+            "goldset": goldset,
+            "goldset_version": version,
+        }
         (d / "scores.json").write_text(json.dumps(scores), encoding="utf-8")
     return d
 
@@ -162,3 +177,15 @@ def test_main은_실패하면_1이고_파일을_안_쓴다(tmp_path):
     out = tmp_path / "index.md"
     assert main(["--experiments-dir", str(root), "--out", str(out)]) == 1
     assert not out.exists()
+
+
+@pytest.mark.parametrize(("goldset", "version"), [("tune", 1), ("report", 2)])
+def test_정답_세트나_판이_다르면_비교하지_않고_경고(tmp_path, caplog, goldset, version):
+    # .claude/rules/eval.md: 버전이 다른 점수끼리 비교하지 않는다
+    root = _with_template(tmp_path)
+    _exp(root, "a-base", "a-base", 0.8, goldset=goldset, version=version)
+    _exp(root, "b-exp", "a-base", 0.85)
+    with caplog.at_level(logging.WARNING):
+        text = build_index(root)
+    assert "| field_accuracy 0.850 | 판 다름 |" in text
+    assert "b-exp" in caplog.text and "판" in caplog.text

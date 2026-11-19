@@ -17,6 +17,8 @@ class PValue(_P):
     text: str | None = None
     page: int | None = None
     basis: str | None = None
+    # 앱이 이 칸을 냈나. 확인되지 않음·충돌이면 False (값 None이 정답 '없음'과 같아 보이지 않게)
+    given: bool = True
 
 
 class PDate(_P):
