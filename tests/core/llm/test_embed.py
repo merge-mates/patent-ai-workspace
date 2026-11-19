@@ -249,3 +249,34 @@ def test_OPENAI_API_KEY가_없으면_SDK_오류_대신_한_줄_설정_오류(mon
     monkeypatch.setattr(openai, "OpenAI", no_key)
     with pytest.raises(ModelConfigError, match="OPENAI_API_KEY"):
         transport.make_openai_client()
+
+
+class _EmbedWrapper:
+    """진짜 임베딩 SDK를 감싼 래퍼 흉내. 돈 안 드는 표시(is_real=False)가 없다."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def embed(self, **kw):
+        return self.inner.embed(**kw)
+
+
+def test_이름_모르는_임베딩_전송층은_진짜로_보고_상한이_없으면_멈춘다(tmp_path):
+    inner = FakeEmbedTransport(vec_of)
+    with pytest.raises(ModelConfigError, match="max_model_calls"):
+        embed(
+            STEP,
+            ["가", "나", "다"],
+            ctx=ctx_with(_EmbedWrapper(inner), cache=False),
+            config_dir=make_config(tmp_path),
+        )
+    assert inner.calls == []
+
+
+def test_묶음끼리_길이가_다르면_그_묶음_기록은_invalid_output(tmp_path):
+    cfg = make_config(tmp_path, batch_size=1)
+    t = FakeEmbedTransport(lambda s: [1.0, 2.0] if s == "가" else [1.0])
+    ctx = ctx_with(t)
+    with pytest.raises(ModelOutputInvalid):
+        embed(STEP, ["가", "나"], ctx=ctx, config_dir=cfg)
+    assert [r.outcome for r in ctx.recorder.records] == ["ok", "invalid_output"]

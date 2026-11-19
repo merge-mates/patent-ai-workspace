@@ -30,6 +30,7 @@ class FakeEmbedTransport:
     vector_of: Callable[[str], list[float]]
     errors: list[Exception] = field(default_factory=list)
     calls: list[dict] = field(default_factory=list)
+    is_real = False  # 돈 안 드는 전송층 (is_real_transport)
 
     def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse:
         self.calls.append(dict(step=step, model=model, texts=list(texts)))
@@ -61,6 +62,8 @@ def save_embed_recording(
 
 class RecordedEmbedTransport:
     """저장한 벡터만 돌려준다. 하나라도 없으면 RecordingMissing (진짜 호출로 안 넘어감)."""
+
+    is_real = False  # 돈 안 드는 전송층 (is_real_transport)
 
     def __init__(self, directory: Path) -> None:
         self.directory = Path(directory)
