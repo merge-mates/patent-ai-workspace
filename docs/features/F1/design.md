@@ -133,7 +133,7 @@ flowchart LR
 - 결과 전체 `status` = 칸들 중 가장 나쁜 값 (`conflict` > `unverified` > `not_found_in_scope` > `confirmed`). 단 지원 안 하는 거절이유는 상태를 나쁘게 하지 않는다 (flags로만). 예외 둘: (a) 빼는 것은 조문이 `confirmed`이고 지원 표 밖일 때만이다. 조문을 모르면(`unverified`·`conflict`) 결과 `status`에 넣는다. (b) 거절이유 0개이고 위쪽 필드(출원번호·발송번호·통지일·제출기일·통지 종류)가 모두 `input_unverified`(스캔본)면 결과 `reason`은 `input_unverified`이고 "거절이유 0개" 경고는 남기지 않는다. 전체 `reason`은 가장 나쁜 칸의 `reason`(같은 값이 여럿이면 앞 칸 순서: 식별 정보 → 통지 → 거절이유 순), `confirmed`면 `checked = "모든 칸 원문 대조"`. 거절이유 하나의 `status`도 같은 규칙으로 그 안 칸들을 모은다.
 - 결과 단위 `evidence` = 값마다 `{document_id, page, raw_text}`를 모은 목록 (대조에 통과한 것만).
 - LLM 출력 스키마 `OAExtraction` ([data-model.md](../../data-model.md) 6절 열린 것을 여기서 정함): 결과 스키마의 일부. 값마다 `{value, raw_text, page, ambiguous: bool}`만 두고 `status`·`supported`·`country`·`flags`는 없다 (코드가 ⑤⑥에서 붙임). 모델이 상태를 정하지 않게 하려는 것이다.
-- `CaseMaterials`(⑥) 중 F1에서 쓰는 칸: `documents[]`, `missing[{what, depends_on_tasks, lookup_result, ask_upload: true}]`, `held_tasks[{task, waiting_for}]`, `review_items_count`. 채우는 것은 #16·#54, 모양은 #14.
+- `CaseMaterials`(⑥) 중 F1에서 쓰는 칸: `documents[{document_id, kind, source, status}]` (status = 묶기 상태, 다른 출원번호·번호 못 읽음이 다시 열어도 남음, #16 T6), `missing[{what, depends_on_tasks, lookup_result, ask_upload: true}]`, `held_tasks[{task, waiting_for}]`, `review_items_count`. 채우는 것은 #16·#54, 모양은 #14.
 - 앞 기능 결과가 바뀌면 "다시 확인 필요": F1은 맨 앞이라 없다. 다만 사람이 출원번호를 넣거나(`PATCH /cases/{id}`) 빠진 자료를 올리면, 그 자료에 기댄 뒤 결과(F3·F4)에 `needs_recheck`를 붙인다 (data-model 3절 규칙 2, #14).
 - 인터페이스 변경: **있음**. 받는 쪽에 알림 (서버 담당: API, 결과 스키마 #14).
 

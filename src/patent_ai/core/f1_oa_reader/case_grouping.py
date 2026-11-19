@@ -368,7 +368,7 @@ def build_case_materials(
     materials = CaseMaterials(
         case_id=case_id,
         documents=[
-            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source)
+            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source, status=g.status)
             for g in _one_per_key(grouped)
         ],
         missing=missing,

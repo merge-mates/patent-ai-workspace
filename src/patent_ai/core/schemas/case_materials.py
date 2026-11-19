@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from patent_ai.core.schemas.common import Status
+
 
 class LookupResult(StrEnum):
     """빠진 자료를 조회한 결과."""
@@ -22,6 +24,9 @@ class CaseDocument(BaseModel):
     document_id: str
     kind: str  # 예: oa, claims, citation
     source: str  # uploaded | api
+    # 묶기 상태 (#16 GroupedMaterial.status). 다른 출원번호(conflict)·번호 못 읽음(unverified)
+    # 자료가 어느 문서인지 다시 열어도 남게 한다. 빼는 것은 cut_to_oa(#54)
+    status: Status
 
 
 class MissingMaterial(BaseModel):
