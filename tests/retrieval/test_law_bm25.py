@@ -106,6 +106,17 @@ def test_기준일에_효력_있는_판만_나온다():
     ] == ["특허법_new"]
 
 
+def test_통계는_기준일_범위_안_조각으로만_센다():
+    # 옛 판에만 '가나'가 흔하다. 기준일 검색 점수는 옛 판을 아예 뺀 저장소 점수와 같아야 한다
+    new = [_chunk("n", 1, "가나 다라"), _chunk("n", 2, "마바 사아")]
+    old = [_chunk("o", i, "가나 가나 가나", OLD) for i in range(1, 6)]
+    day = date(2021, 1, 1)
+    with_old = _searcher(new + old).search("가나", "law", "bm25", 5, as_of=day)
+    only_new = _searcher(new).search("가나", "law", "bm25", 5, as_of=day)
+    assert [h.chunk_id for h in with_old.hits] == [h.chunk_id for h in only_new.hits]
+    assert with_old.hits[0].score == pytest.approx(only_new.hits[0].score)
+
+
 def test_판본_모르는_조각은_빠지고_센다():
     unknown = Edition(status="unverified")
     chunks = [_chunk("a", 1, "가나"), _chunk("b", 1, "가나", unknown)]
