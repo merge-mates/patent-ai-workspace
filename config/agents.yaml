@@ -1,0 +1,8 @@
+# 에이전트 단계별 모델 설정 (core/llm이 읽는다)
+orchestrator:
+  model: claude-haiku-5-5
+  temperature: 0
+  max_tokens: 500
+  prompt: prompts/agents/orchestrator.md
+  max_model_calls: 12   # [가정] max_steps보다 조금 크게
+  max_retries: 2        # 전송 오류(429·연결)를 다시 부르는 횟수
