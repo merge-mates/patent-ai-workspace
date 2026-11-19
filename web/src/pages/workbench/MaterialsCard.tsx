@@ -30,7 +30,7 @@ function rowsOf(m: CaseMaterials, r: OAResult): Row[] {
   const missing: Row[] = m.missing.map((x, i) => ({
     key: `missing-${i}`,
     what: x.what,
-    edition: '공개·등록공보',
+    edition: '판 모름', // 공개공보·등록공보는 다른 판이라 데이터에 없으면 짐작하지 않는다
     how: '자동 조회',
     lookup: x.lookup_result,
     askUpload: x.ask_upload,

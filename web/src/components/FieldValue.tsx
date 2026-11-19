@@ -2,17 +2,18 @@ import { Space, Typography } from 'antd'
 import type { ReactNode } from 'react'
 import { SourceLink } from './SourceLink'
 import { StatusTag } from './StatusTag'
-import type { Status } from '../types/generated/OAResult'
+import type {
+  ExtractedValueListInt,
+  ExtractedValueListStr,
+  ExtractedValueNoticeKind,
+  ExtractedValueStr,
+} from '../types/generated/OAResult'
 
-// 뽑은 값 하나의 공통 칸 (ExtractedValue 모양)
-interface Extracted {
-  raw_text: string | null
-  page: number | null
-  status: Status
-  candidates: { value: unknown; raw_text: string | null; page: number | null; source: 'rule' | 'model' }[]
-}
+// 뽑은 값 하나 (ExtractedValue). 뽑은 타입을 그대로 써서 스키마가 바뀌면 타입 검사가 잡는다
+type Extracted = ExtractedValueStr | ExtractedValueNoticeKind | ExtractedValueListInt | ExtractedValueListStr
 
-const sourceName = { rule: '규칙', model: '모델' }
+// 후보 출처 글자. 뽑은 타입의 값이 늘면 Record 타입 검사가 잡는다
+const sourceName: Record<ExtractedValueStr['candidates'][number]['source'], string> = { rule: '규칙', model: '모델' }
 
 // 값 + (확인됨이 아니면) 상태 꼬리표 + 원문 쪽 링크.
 // 확인됨은 판 머리 상태로 충분해서 칸마다 붙이지 않는다 (화면이 꼬리표로 덮이지 않게)
