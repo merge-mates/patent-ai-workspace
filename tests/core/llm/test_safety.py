@@ -47,7 +47,7 @@ def test_진짜_전송층은_테스트에서_만들_수_없다():
 def test_transport_없이_call_model을_부르면_막힌다(tmp_path):
     # 호출 수 상한이 있어야 진짜 전송층을 만들러 간다 (없으면 그 전에 ModelConfigError)
     (tmp_path / "test.yaml").write_text(
-        "summarize:\n  model: fake-model-1\n  temperature: 0.0\n  max_tokens: 256\n"
+        "summarize:\n  model: fake-model-1\n  effort: medium\n  max_tokens: 256\n"
         "  prompt: prompts/summarize.txt\n  max_model_calls: 1\n",
         encoding="utf-8",
     )
@@ -141,12 +141,13 @@ def test_저장소_config의_모든_단계가_temperature_없이_effort로_읽�
 
     from patent_ai.core.llm.config import REPO_ROOT
 
-    # 모델 단계 설정(칸 안에 model이 있는 것)만 본다. cite_search.yaml 같은 다른 설정은 건너뜀
+    # 모델 단계 설정(칸 안에 prompt가 있는 것)만 본다. 임베딩 칸(law_search.yaml의 embed,
+    # core/llm/embed.py가 따로 읽음)은 model은 있어도 prompt·effort가 없어서 건너뜀
     steps = []
     for path in sorted((REPO_ROOT / "config").glob("*.yaml")):
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for name, section in data.items():
-            if isinstance(section, dict) and "model" in section:
+            if isinstance(section, dict) and "prompt" in section:
                 steps.append(f"{path.stem}.{name}")
     assert "f1.read_oa" in steps and "agents.orchestrator" in steps
     for step in steps:

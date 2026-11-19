@@ -208,7 +208,7 @@ def test_기록_전송층은_상한이_없어도_경고만_남기고_부른다(t
         step="t.s",
         model="fake-model-1",
         prompt=prompt,
-        temperature=0.0,
+        effort="medium",
         max_tokens=256,
     )
     with caplog.at_level(logging.WARNING):
