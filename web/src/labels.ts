@@ -1,6 +1,7 @@
 // 서버가 주는 영어 코드 → 화면에 보이는 한국어 (docs/api/README.md 2절: 화면에서 한국어로 보여 준다)
 import type { LookupResult } from './types/generated/CaseMaterials'
 import type { NoticeKind, RejectionKind, UnverifiedReason } from './types/generated/OAResult'
+import type { LegalSourceKind } from './types/provisional/analysis'
 import type { RunState } from './types/provisional/case'
 
 export const unverifiedReasonLabel: Record<UnverifiedReason, string> = {
@@ -64,4 +65,11 @@ export const materialKindLabel: Record<string, string> = {
 export const sourceLabel: Record<string, string> = {
   uploaded: '올림',
   api: '자동 조회',
+}
+
+export const sourceKindLabel: Record<LegalSourceKind, string> = {
+  statute: '법령',
+  exam_guideline: '심사기준',
+  precedent: '판례',
+  trial_decision: '심결례',
 }

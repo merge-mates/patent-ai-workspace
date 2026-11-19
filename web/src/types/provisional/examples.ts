@@ -39,7 +39,7 @@ export const exampleComparisons: Record<string, ComparisonTable> = {
   'oa_1:29-1-1:c1': {
     unit_id: 'oa_1:29-1-1:c1',
     rejection_kind: 'novelty',
-    citations: [{ label: 'D1', number: 'KR20990000011A', compared: true, skipped_reason: null }],
+    citations: [{ label: 'D1', number: 'KR20990000011A', compared: true, skipped_reason: null, skipped_status: null }],
     rows: [
       { element: '영상을 촬영하는 카메라 모듈', element_location: '청구항 1 [구성 1-1]', citation: 'D1', location: '[0014]', judgment: 'disclosed', paragraph_source: 'examiner', why_retrieved: null, status: ok('D1 [0014] 대조') },
       { element: '촬영 영상에서 프리뷰 이미지를 만드는 처리부', element_location: '청구항 1 [구성 1-2]', citation: 'D1', location: '[0056]', judgment: 'disclosed', paragraph_source: 'examiner', why_retrieved: null, status: ok('D1 [0056] 대조') },
@@ -52,8 +52,8 @@ export const exampleComparisons: Record<string, ComparisonTable> = {
     unit_id: 'oa_1:29-2:c1',
     rejection_kind: 'inventive_step',
     citations: [
-      { label: 'D1', number: 'KR20990000011A', compared: true, skipped_reason: null },
-      { label: 'D2', number: 'KR20990000012A', compared: false, skipped_reason: '본문 조회 실패 · 올려 주면 대비' },
+      { label: 'D1', number: 'KR20990000011A', compared: true, skipped_reason: null, skipped_status: null },
+      { label: 'D2', number: 'KR20990000012A', compared: false, skipped_reason: '본문 조회 실패 · 올려 주면 대비', skipped_status: unv('lookup_failed') },
     ],
     rows: [
       { element: '영상을 촬영하는 카메라 모듈', element_location: '청구항 1 [구성 1-1]', citation: 'D1', location: '[0020]', judgment: 'disclosed', paragraph_source: 'examiner', why_retrieved: null, status: ok('D1 [0020] 대조') },
@@ -74,8 +74,8 @@ export const exampleComparisons: Record<string, ComparisonTable> = {
     unit_id: 'oa_2:29-2:c1',
     rejection_kind: 'inventive_step',
     citations: [
-      { label: 'D1', number: 'KR20990000001A', compared: true, skipped_reason: null },
-      { label: 'D2', number: 'JP2099000001A', compared: false, skipped_reason: '지원 안 하는 나라 (JP) · 직접 확인' },
+      { label: 'D1', number: 'KR20990000001A', compared: true, skipped_reason: null, skipped_status: null },
+      { label: 'D2', number: 'JP2099000001A', compared: false, skipped_reason: '지원 안 하는 나라 (JP) · 직접 확인', skipped_status: null },
     ],
     rows: [
       { element: '온도를 재는 센서부', element_location: '청구항 1 [구성 1-1]', citation: 'D1', location: '[0023]', judgment: 'disclosed', paragraph_source: 'examiner', why_retrieved: null, status: ok('D1 [0023] 대조') },
@@ -93,8 +93,8 @@ export const exampleComparisons: Record<string, ComparisonTable> = {
     unit_id: 'oa_3:29-2:c1',
     rejection_kind: 'inventive_step',
     citations: [
-      { label: 'D1', number: 'KR20990000003A', compared: false, skipped_reason: '본문 미확보 · 올려 주면 대비' },
-      { label: 'D2', number: 'US20990000001A1', compared: false, skipped_reason: '본문 조회 실패 · 올려 주면 대비' },
+      { label: 'D1', number: 'KR20990000003A', compared: false, skipped_reason: '본문 미확보 · 올려 주면 대비', skipped_status: unv('body_missing') },
+      { label: 'D2', number: 'US20990000001A1', compared: false, skipped_reason: '본문 조회 실패 · 올려 주면 대비', skipped_status: unv('lookup_failed') },
     ],
     rows: [],
     summary: { kind: 'inventive_step', differences: [], combination: '인용문헌 본문을 받지 못해 대비를 보류함', effect_candidates: [] },

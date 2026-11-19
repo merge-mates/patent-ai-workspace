@@ -1,8 +1,9 @@
 import { createBrowserRouter, redirect } from 'react-router'
 import { AppShell } from './layout/AppShell'
 import { CaseShell } from './layout/CaseShell'
-import { caseLoader, casesLoader, oaLoader } from './loaders'
+import { caseLoader, casesLoader, compareLoader, oaLoader } from './loaders'
 import { CaseListPage } from './pages/CaseListPage'
+import { ComparePage } from './pages/compare/ComparePage'
 import { RouteError } from './pages/RouteError'
 import { WorkbenchPage } from './pages/workbench/WorkbenchPage'
 
@@ -22,7 +23,10 @@ export const router = createBrowserRouter([
         loader: oaLoader,
         element: <CaseShell />,
         errorElement: <RouteError />,
-        children: [{ index: true, element: <WorkbenchPage /> }],
+        children: [
+          { index: true, element: <WorkbenchPage /> },
+          { path: 'compare', loader: compareLoader, element: <ComparePage />, errorElement: <RouteError /> },
+        ],
       },
     ],
   },

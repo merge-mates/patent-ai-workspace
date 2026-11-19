@@ -40,8 +40,9 @@ export interface ComparisonRow {
 export interface ComparedCitation {
   label: string
   number: string
-  compared: boolean // false면 대비 안 함 (이유는 skipped_reason)
+  compared: boolean // false면 대비 안 함 (이유는 skipped_reason, 상태는 skipped_status)
   skipped_reason: string | null
+  skipped_status: Status | null
 }
 
 // 진보성 요약: 차이점 → 결합 → 효과 후보 순

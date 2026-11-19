@@ -5,6 +5,12 @@ import { ApiError, isNotReady } from './api/errors'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { PageText } from './types/generated/PageText'
 import type { ReviewItem } from './types/generated/ReviewItem'
+import type {
+  ClarityReview,
+  ComparisonTable,
+  JudgmentUnit,
+  LegalEvidenceBundle,
+} from './types/provisional/analysis'
 import type { CaseSummary, OADetail, OAResultResponse } from './types/provisional/case'
 
 export async function casesLoader(): Promise<CaseSummary[]> {
@@ -53,4 +59,23 @@ export async function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoader
 function notReadyAsNull(e: unknown): null {
   if (isNotReady(e)) return null
   throw e
+}
+
+export interface CompareLoaderData {
+  units: JudgmentUnit[]
+  comparisons: ComparisonTable[]
+  clarity: ClarityReview[]
+  legal: LegalEvidenceBundle[]
+}
+
+// 3 대비와 근거: 판단 단위 · 대비표 · 명확성 문구 검토 · 법률 근거
+export async function compareLoader({ params }: LoaderFunctionArgs): Promise<CompareLoaderData> {
+  const oaId = params.oaId!
+  const [units, comparisons, clarity, legal] = await Promise.all([
+    api.getUnits(oaId),
+    api.getComparisons(oaId),
+    api.getClarityReviews(oaId),
+    api.getLegalEvidence(oaId),
+  ])
+  return { units, comparisons, clarity, legal }
 }
