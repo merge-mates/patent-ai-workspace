@@ -44,22 +44,25 @@ lint: ## 파이썬·화면 린트
 
 IDX := uv run python -m patent_ai.db.index_dump
 
-index-load: ## 색인 덤프를 불러온다: make index-load DUMP=data/index/cite-idx-v1.dump (옆 .revision이 DB와 다르면 멈춤)
+index-load: ## 색인 덤프를 불러온다: make index-load DUMP=data/index/cite-idx-v1.dump (옆 .revision·.fingerprint.json이 없거나 다르면 멈춤)
 	@test -n "$(DUMP)" || { echo "DUMP=<파일> 을 붙여 주세요. 예: make index-load DUMP=data/index/cite-idx-v1.dump"; exit 1; }
 	@test -f "$(DUMP)" || { echo "파일이 없습니다: $(DUMP)"; exit 1; }
 	$(COMPOSE) up -d --wait db
-	$(IDX) check-revision "$(basename $(DUMP)).revision"
+	$(IDX) check-before-load "$(DUMP)"
 	$(COMPOSE) exec -T db sh -c 'pg_restore -U $(DB_USER) -d $(DB_NAME) --clean --if-exists --no-owner' < "$(DUMP)"
+	$(IDX) check-after-load "$(DUMP)"
 
-index-dump: ## 그 말뭉치 색인 표만 덤프로 뽑는다: make index-dump CORPUS=cite (data/index/<말뭉치>-idx-<판>.dump와 .revision)
+index-dump: ## 그 말뭉치 색인 표만 덤프로 뽑는다: make index-dump CORPUS=cite (data/index/<말뭉치>-idx-<판>.dump와 .revision·.fingerprint.json)
 	@test -n "$(CORPUS)" || { echo "CORPUS=law 또는 CORPUS=cite 를 붙여 주세요"; exit 1; }
 	$(COMPOSE) up -d --wait db
 	@mkdir -p data/index
 	@name=$$($(IDX) name "$(CORPUS)") || exit 1; \
-	rev="data/index/$${name%.dump}.revision"; \
+	base="data/index/$${name%.dump}"; \
 	cur=$$($(IDX) current-revision) || exit 1; \
-	printf '%s\n' "$$cur" > "$$rev.tmp" \
+	printf '%s\n' "$$cur" > "$$base.revision.tmp" \
+	  && $(IDX) fingerprint "$(CORPUS)" > "$$base.fingerprint.json.tmp" \
 	  && $(COMPOSE) exec -T db sh -c 'pg_dump -U $(DB_USER) -d $(DB_NAME) -Fc -t $(CORPUS)_chunks' > "data/index/$$name.tmp" \
 	  && mv "data/index/$$name.tmp" "data/index/$$name" \
-	  && mv "$$rev.tmp" "$$rev" \
-	  && echo "만듦: data/index/$$name, data/index/$${name%.dump}.revision"
+	  && mv "$$base.revision.tmp" "$$base.revision" \
+	  && mv "$$base.fingerprint.json.tmp" "$$base.fingerprint.json" \
+	  && echo "만듦: data/index/$$name, $$base.revision, $$base.fingerprint.json"
