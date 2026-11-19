@@ -5,7 +5,7 @@
 - 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
 - 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
-- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다. 지금 `retrieval`만, `f1`은 #20에서 더함. 그 밖의 명령은 짐작해서 돌리지 않는다). 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
+- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다: `retrieval`·`f1`. 그 밖의 명령은 짐작해서 돌리지 않는다). F1은 `--predictions <폴더>`(read_oa가 낸 OAResult JSON, git 밖)가 필요하고 `--pages <폴더>`(쪽 글자)는 고를 수 있다. 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
 - PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더

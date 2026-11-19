@@ -1,17 +1,31 @@
-"""F1 채점 (이슈 #20 task 3). 정답 꼴 예측 대 정답 꼴 정답.
+"""F1 채점 (이슈 #20 task 3·5). 정답 꼴 예측 대 정답 꼴 정답.
 
 점수 단위는 칸 하나 = 맞음/틀림 하나 (기본 8, 거절이유마다 4, 인용마다 2, 청구항 줄마다 3~4).
-OA 한 통마다 정확도를 내고 그 평균이 주 점수다. 파일은 쓰지 않는다 (쓰기는 명령 쪽, task 5).
+OA 한 통마다 정확도를 내고 그 평균이 주 점수다. score_f1은 파일을 쓰지 않는다 (쓰기는 main).
 scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건수와 비율만).
+
+명령: uv run python eval/run_eval.py --config <설정> --predictions <폴더> [--pages <폴더>]
+- 예측: <폴더>/<출원번호>_<발송번호>.json (read_oa가 낸 OAResult JSON)
+- 쪽 글자: <폴더>/<출원번호>_<발송번호>.pages.json (extract_pages가 낸 PageText JSON)
 """
 
+import argparse
+import hashlib
 import logging
+import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from eval.common.errors import EvalError
-from eval.f1.config import F1EvalConfig
-from eval.f1.gold import F1Gold
+from eval.common.goldset import check_goldset_version, gold_path
+from eval.common.paths import REPO_ROOT, check_experiment_name, git_commit, is_git_ignored
+from eval.common.scores import write_scores
+from eval.f1.adapt import to_pred
+from eval.f1.config import F1EvalConfig, load_config
+from eval.f1.gold import F1Gold, load_f1_gold
 from eval.f1.metrics import (
     cite_key,
     clarity_match,
@@ -22,6 +36,8 @@ from eval.f1.metrics import (
     text_eq,
 )
 from eval.f1.pred import F1Pred
+from patent_ai.core.schemas.document import PageText
+from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
 
@@ -309,3 +325,97 @@ def score_f1(
             "seconds": round(time.monotonic() - started, 3),
         },
     }
+
+
+# ---- 명령 (파일 읽기·쓰기)
+
+
+def _gold_sha256(folder: Path) -> str:
+    """정답 파일들을 이름 순서로 이어 붙인 해시 (정답이 바뀌었는지 scores에 남긴다)."""
+    h = hashlib.sha256()
+    for f in sorted(folder.glob("*.json")):
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+def _page_texts(pt: PageText) -> list[str]:
+    """쪽 번호 순 글자 목록. 표 칸 글자도 붙인다 (#112 원문 대조가 표 칸에서도 찾음)."""
+    n = max((p.page for p in pt.pages), default=0)
+    out = [""] * n
+    for p in pt.pages:
+        cells = " ".join(c for table in p.tables for row in table for c in row)
+        out[p.page - 1] = p.text + ("\n" + cells if cells else "")
+    return out
+
+
+def load_predictions(folder: Path) -> dict[str, F1Pred]:
+    """예측 폴더의 <키>.json(OAResult)을 읽어 정답 꼴로 바꾼다. 틀린 파일은 순번만 말하고 멈춘다."""
+    if not folder.is_dir():
+        raise EvalError("F1 예측 폴더가 없다")
+    files = sorted(f for f in folder.glob("*.json") if not f.name.endswith(".pages.json"))
+    preds: dict[str, F1Pred] = {}
+    for i, f in enumerate(files, start=1):
+        try:
+            oa = OAResult.model_validate_json(f.read_text(encoding="utf-8"))
+        except ValidationError:
+            # 파일 이름(출원번호)과 원문 글자는 메시지에 넣지 않는다
+            raise EvalError(f"예측 파일 {i}번째: OAResult 모양이 아니다") from None
+        preds[f.stem] = to_pred(oa)
+    return preds
+
+
+def load_pages(folder: Path) -> dict[str, list[str]]:
+    pages: dict[str, list[str]] = {}
+    for i, f in enumerate(sorted(folder.glob("*.pages.json")), start=1):
+        try:
+            pt = PageText.model_validate_json(f.read_text(encoding="utf-8"))
+        except ValidationError:
+            raise EvalError(f"쪽 글자 파일 {i}번째: PageText 모양이 아니다") from None
+        pages[f.name.removesuffix(".pages.json")] = _page_texts(pt)
+    return pages
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="eval.f1.score")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--goldsets-root", default="data/goldsets")
+    ap.add_argument("--predictions", required=True, help="read_oa 결과 OAResult JSON 폴더 (git 밖)")
+    ap.add_argument("--pages", default=None, help="extract_pages 결과 PageText JSON 폴더 (git 밖)")
+    ap.add_argument("--scores-dir", default=None, help="기본: experiments/<실험>/")
+    args = ap.parse_args(argv)
+
+    try:
+        cfg = load_config(args.config)
+        check_experiment_name(cfg.experiment)
+        pred_dir = Path(args.predictions)
+        pages_dir = Path(args.pages) if args.pages else None
+        # 예측·쪽 글자에는 OA 원문 글자가 있어 git에 들어갈 수 있는 경로면 멈춘다
+        for d in (pred_dir, pages_dir):
+            if d is not None and not is_git_ignored(d):
+                msg = "예측·쪽 글자 폴더가 git에 들어갈 수 있는 경로다"
+                raise EvalError(msg + " (저장소 밖이나 무시되는 경로만)")
+        root = Path(args.goldsets_root)
+        check_goldset_version(root, cfg.goldset_version)
+        folder = gold_path(root, cfg.goldset, cfg.gold)
+        golds = load_f1_gold(folder, expected_version=cfg.goldset_version)
+        preds = load_predictions(pred_dir)
+        extra = set(preds) - {oa_key(g) for g in golds}
+        if extra:
+            logger.warning("정답에 없는 예측 %d건 (채점에서 뺌)", len(extra))
+        pages = load_pages(pages_dir) if pages_dir is not None else None
+        scores = score_f1(
+            cfg, golds, preds, pages, commit=git_commit(), gold_sha256=_gold_sha256(folder)
+        )
+        scores_dir = (
+            Path(args.scores_dir) if args.scores_dir else REPO_ROOT / "experiments" / cfg.experiment
+        )
+        write_scores(scores_dir, scores)
+    except EvalError as e:
+        print(f"채점 실패: {e}", file=sys.stderr)
+        return 1
+    print(f"scores.json 저장: n={scores['n']}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
