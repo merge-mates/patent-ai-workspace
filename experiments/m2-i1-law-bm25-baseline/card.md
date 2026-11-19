@@ -43,6 +43,11 @@
 ## 정답
 - 원본: 드라이브 `tune_search_v0/tune_search_gold_1118_검수완료.json` (검수 11/18) → `eval.retrieval.law_gold`로 변환.
 - 공용 `data/goldsets/VERSION`이 정수가 아니라(`tune-f1-v0`) 채점기가 멈춰서, worktree `data/goldsets/`에 `VERSION=1`과 `tune/retrieval/law_gold.jsonl`을 따로 두고 `--goldsets-root`로 채점했다. 공용 VERSION 형식을 정하면 다시 돌린다.
+- 다시 돌리는 법 (DB 없이, 출력은 `work/`):
+  1. `mkdir -p data/goldsets && printf '1\n' > data/goldsets/VERSION` (공용 세트 말고 따로 둔 폴더에서)
+  2. `uv run python -m eval.retrieval.law_gold --gold-json <검수 정답.json> --oa-dir data/raw/oa_txt_tune --out data/goldsets/tune/retrieval/law_gold.jsonl`
+  3. `uv run python -m eval.retrieval.score --config experiments/m2-i1-law-bm25-baseline/config.yaml --goldsets-root data/goldsets --chunks data/processed/law/law-idx-v1.jsonl`
+  - DB로 채점하려면 `make index-load DUMP=data/index/law-idx-v1.dump` 뒤 `--chunks` 없이.
 
 ## 해 본 것 / 버린 것
 - 없음 (첫 기준선)

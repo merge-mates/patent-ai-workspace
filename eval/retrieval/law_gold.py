@@ -6,7 +6,7 @@
 
 실행:
   uv run python -m eval.retrieval.law_gold --gold-json <검수 정답.json> \
-      --oa-dir data/raw/oa_txt_tune --out <goldsets_root>/retrieval/law_gold.jsonl
+      --oa-dir data/raw/oa_txt_tune --out <goldsets_root>/tune/retrieval/law_gold.jsonl
 """
 
 import argparse
