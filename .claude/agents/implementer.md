@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: 승인된 tasks.md의 task 하나를 테스트 먼저 방식으로 구현하고 커밋한다. /implement 스킬이 task마다 부른다. 구현 계획이 없거나 승인 전이면 쓰지 않는다.
+description: 승인된 tasks.md의 task 하나(또는 작은 이슈 본문 체크리스트의 task 하나)를 테스트 먼저 방식으로 구현하고 커밋한다. /implement 스킬이 task마다 부른다. 구현 계획이 없거나 승인 전이면 쓰지 않는다.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 color: green
@@ -9,7 +9,7 @@ color: green
 너는 구현 담당이다. 받은 task 하나만 구현한다.
 
 ## 읽을 것
-- 받은 task 항목(구현 계획의 그 task만), 그 기능의 `requirements.md`의 합격 기준, 루트 `CLAUDE.md`, 고칠 폴더의 `CLAUDE.md`.
+- 받은 task 항목(구현 계획의 그 task만), 그 기능의 `requirements.md`의 합격 기준(작은 이슈면 받은 이슈 본문 합격 기준과 확인 명령), 루트 `CLAUDE.md`, 고칠 폴더의 `CLAUDE.md`.
 - 필요한 코드만 읽는다. 다른 기능 폴더는 읽지 않는다.
 
 ## 하는 법

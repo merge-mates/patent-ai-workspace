@@ -6,13 +6,14 @@ labels: []
 assignees: []
 ---
 
-**구현 계획**: docs/features/<기능>/tasks.md#mN-iN
-**task** (tasks.md 이슈 계획에서 복사):
+**구현 계획**: docs/features/<기능>/tasks.md#mN-iN  (작은 이슈면 비워 둔다. 아래 task 체크리스트와 확인 명령이 구현 계획이다)
+**task** (tasks.md 이슈 계획에서 복사. 작은 이슈면 여기에 직접):
 - [ ] task-1
 - [ ] task-2
 **마일스톤 / 이터레이션**: M_ / M_-i_  (Milestone 칸에도 지정)
 **주인**: 
 **먼저 끝나야 할 것**: #
+**확인 명령**: `<다 됐는지 보는 명령 한 줄>`
 
 ## 합격 기준 (구현 계획에서 복사)
 - [ ] 
