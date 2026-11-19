@@ -157,9 +157,16 @@ graph LR
 - 테스트할 경우:
   - 평소: `["cite-idx-v1","cite-idx-v2"]` → `cite-idx-v2.dump`, `v9`·`v10` → `v10`, `"abc123 (head)"` → `abc123`
   - 빈 입력: 색인 판 없음 → 오류, `alembic current` 출력이 빔(마이그레이션 전) → 오류
-  - 실패: `CORPUS`가 `law`·`cite`가 아님, 다른 말뭉치 색인 판 섞임, revision 다름 → 오류. `.revision` 옆 파일이 없으면 경고만
-- 확인 방법: `uv run pytest tests/retrieval/test_index_dump.py` → 통과. 손 확인: `make db` → `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl` → `make index-dump CORPUS=cite` → `data/index/cite-idx-v1.dump`·`.revision` 생김
+  - 실패: `CORPUS`가 `law`·`cite`가 아님, 다른 말뭉치 색인 판 섞임, revision 다름 → 오류. `.revision`·`.fingerprint.json` 옆 파일이 없으면 멈춤 (11/19 리뷰 반영, 처음엔 경고만)
+- 확인 방법: `uv run pytest tests/retrieval/test_index_dump.py` → 통과. 손 확인: `make db` → `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl` → `make index-dump CORPUS=cite` → `data/index/cite-idx-v1.dump`·`.revision`·`.fingerprint.json` 생김
 - 먼저: task-1
+
+### 리뷰 반영 (11/19, PR #102)
+- 색인 지문: `index_fingerprint(chunk_ids)`, `fingerprints_by_version(rows)`, `compare_fingerprints(expected, actual)`. CLI `fingerprint <말뭉치>`, `check-before-load <덤프>`(옆 파일 둘이 있고 revision 같음), `check-after-load <덤프>`(다시 센 지문 같음). `check-revision` 하위 명령은 `check-before-load`로 바뀜.
+- `scripts/db/init.sql`과 `compose.yaml`의 마운트 줄을 지움 (마이그레이션이 확장을 만든다).
+
+### 열린 항목 (메모)
+- `PostgresChunkRepository.from_url()`이 세션을 닫지 않는다. 채점기 한 번 도는 데는 괜찮다. 서버(F2·F3 도구)가 쓸 때 요청마다 세션을 열고 닫게 바꾼다.
 
 ### 이번에 안 하는 것
 - 채점기 (→ m2-i3), 색인 스크립트·실제 조각 (→ #66·#67).

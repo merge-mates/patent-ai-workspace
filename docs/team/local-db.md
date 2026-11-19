@@ -28,8 +28,11 @@
 make index-load DUMP=data/index/law-idx-v1.dump
 ```
 - 덤프를 주고받을 때는 같은 main에서 `make db`로 마이그레이션을 맞춘 뒤 한다 (revision이 정확히 같아야 한다).
-- 덤프 옆 `.revision`이 내 DB의 마이그레이션 revision과 다르면 멈춘다. `make db`로 맞춘 뒤 다시 한다. 옆 파일이 없으면 경고만 하고 넣는다.
-- 손 확인(가짜 조각): `make db` 뒤 `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl`, `make index-dump CORPUS=cite`로 `data/index/cite-idx-v1.dump`·`.revision`이 생기는지 본다.
+- 덤프는 옆 파일 둘(`.revision`, `.fingerprint.json`)과 같이 받는다. 하나라도 없으면 덜 받은 것이라 멈춘다.
+- 덤프 옆 `.revision`이 내 DB의 마이그레이션 revision과 다르면 멈춘다. `make db`로 맞춘 뒤 다시 한다.
+- 넣은 뒤 조각 수·chunk_id 목록(지문)을 다시 세어 `.fingerprint.json`과 다르면 실패로 끝난다. 덤프를 다시 받아 다시 한다.
+- 손 확인(가짜 조각): `make db` 뒤 `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl`, `make index-dump CORPUS=cite`로 `data/index/cite-idx-v1.dump`·`.revision`·`.fingerprint.json`이 생기는지 본다.
+  - 손 확인으로 fixture를 넣은 뒤에는 `make test-db`가 `chunk_id` 충돌로 실패한다. db 테스트를 별도 DB로 나누기 전까지는 손 확인과 `make test-db`를 같은 DB에서 섞지 않는다.
 - 덤프에 든 테이블만 지우고 다시 만든다 (`pg_restore --clean`). 다른 테이블은 그대로다.
 - 덤프는 git에 올리지 않는다.
 
