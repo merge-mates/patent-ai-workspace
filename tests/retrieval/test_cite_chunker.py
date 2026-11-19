@@ -141,8 +141,12 @@ def test_논문은_쪽마다_한_조각():
 
 def test_식별번호_없는_공보는_본문_안_만들고_나머지는_만듦():
     pages = [
-        PageText(page=1, lines=["(57) 요 약", "요약 글", "특허청구의 범위", "청구항 1", "가 나", "명 세 서", "번호 없는 본문 줄"]),
-    ]  # fmt: skip
+        PageText(
+            page=1,
+            lines=["(57) 요 약", "요약 글", "특허청구의 범위", "청구항 1", "가 나"]
+            + ["명 세 서", "번호 없는 본문 줄"],
+        ),
+    ]
     chunks, warns = chunk_document(DOC, pages, IV)
     assert [c.chunk_id.split(":", 2)[2] for c in chunks] == ["abs", "claim1"]
     assert "식별번호 없음: 본문 조각 안 만듦" in warns
