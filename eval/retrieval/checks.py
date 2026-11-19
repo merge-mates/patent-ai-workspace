@@ -4,16 +4,18 @@
 """
 
 import re
-import subprocess
-from pathlib import Path, PurePath
+from pathlib import Path
 
+from eval.common import goldset
+from eval.common.goldset import check_goldset_version
+from eval.common.paths import REPO_ROOT, is_git_ignored
 from eval.retrieval.config import RetrievalEvalConfig
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldItem, GoldRow
 from patent_ai.retrieval.repository import ChunkRepository
 
-# 저장소 뿌리 (eval/retrieval/checks.py 기준 두 단계 위)
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# REPO_ROOT·is_git_ignored는 eval/common/paths.py에 있다 (score.py가 여기서 가져다 쓴다)
+__all__ = ["REPO_ROOT", "find_leaks", "gold_path", "is_git_ignored", "preflight"]
 
 # 번호 뒤에 숫자·소수점+숫자·℃·%·°가 오면 도면 번호가 아니다 ("도 3.5", "도 3%")
 _NOT_AFTER_NUM = r"(?!\d|\.\d|[℃%°])"
@@ -87,25 +89,8 @@ def find_leaks(row: GoldRow) -> list[str]:
 
 
 def gold_path(cfg: RetrievalEvalConfig, goldsets_root: Path) -> Path:
-    """정답 파일 경로. `..`·절대 경로로 세트 폴더 밖을 가리키면 멈춘다."""
-    rel = PurePath(cfg.gold)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise RetrievalEvalError("설정의 gold 경로가 세트 폴더 밖을 가리킨다 (절대 경로·.. 금지)")
-    return Path(goldsets_root) / cfg.goldset / rel
-
-
-def is_git_ignored(path: Path) -> bool:
-    """저장소 밖이면 통과. 안이면 git check-ignore로 무시되는 경로여야 통과."""
-    p = path.resolve()
-    try:
-        p.relative_to(REPO_ROOT)
-    except ValueError:
-        return True
-    r = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", "--", str(p)],
-        capture_output=True,
-    )
-    return r.returncode == 0
+    """정답 파일 경로. `..`·절대 경로로 세트 폴더 밖을 가리키면 멈춘다 (eval/common)."""
+    return goldset.gold_path(goldsets_root, cfg.goldset, cfg.gold)
 
 
 def preflight(
@@ -120,18 +105,8 @@ def preflight(
     goldsets_root = Path(goldsets_root)
     gold_path(cfg, goldsets_root)  # 경로 모양 검사 (있는지는 load_gold가 본다)
 
-    # 정답 세트 버전
-    version_file = goldsets_root / "VERSION"
-    if not version_file.is_file():
-        raise RetrievalEvalError("정답 세트 VERSION 파일이 없다")
-    try:
-        version = int(version_file.read_text().strip())
-    except ValueError:
-        raise RetrievalEvalError("정답 세트 VERSION 파일이 정수가 아니다") from None
-    if version != cfg.goldset_version:
-        raise RetrievalEvalError(
-            f"goldset_version이 다르다: 설정 {cfg.goldset_version}, VERSION {version}"
-        )
+    # 정답 세트 버전 (공통 검사)
+    check_goldset_version(goldsets_root, cfg.goldset_version)
 
     # 색인 판
     if not repo.has_index_version(cfg.corpus, cfg.index_version):

@@ -1,8 +1,9 @@
 # 이 실험의 실험 설정(config). 기준선과 다른 줄은 하나만. 바꾼 줄 옆에 # changed
 experiment: m1-i3-<기능>-<바꾼 것>
+feature: <retrieval | f1>  # eval/run_eval.py가 이 칸으로 채점기를 고른다
 baseline: m1-i2-<기능>-baseline
 goldset: tune
-goldset_version: 1
+goldset_version: 2
 impl: <사람>             # 구현 비교면 이 줄만 바꾼다 (같은 인터페이스의 다른 구현)
 settings:                # 하이퍼파라미터
   model: <모델 id>

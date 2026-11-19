@@ -80,7 +80,7 @@ OA "거절이유가 있는 부분과 관련 법조항" 표의 순번마다 한 �
 ## 4. JSON 모양 (채점기 #20이 읽는 것)
 ```json
 {
-  "gold_version": "tune-f1-v0",
+  "gold_version": 1,
   "source": "oa_pdf",
   "reviewed": {"by": null, "date": null},
   "application_number": {"value": "1020990000001", "text": "10-2099-0000001", "page": 1},
@@ -90,7 +90,7 @@ OA "거절이유가 있는 부분과 관련 법조항" 표의 순번마다 한 �
   "notice_kind": {"value": "initial", "text": null, "page": null, "basis": "최후 표시 없음 (없어서 판단)"},
   "examined_claims": {"value": [1, 2, 3], "text": "제1-3항", "page": 1},
   "allowable_claims": {"value": [], "text": null, "page": null, "basis": "원문에 칸 없음"},
-  "amendment_note": {"value": null, "text": null, "page": null},
+  "amendment_note": {"value": null, "text": null, "page": null, "basis": "원문에 칸 없음"},
   "rejections": [
     {"no": 1, "kind": "inventive_step", "article": "특허법 제29조제2항", "supported": true,
      "targets": {"value": [1, 2, 3], "text": "청구항 제1항 내지 제3항"}, "page": 1}
@@ -107,7 +107,9 @@ OA "거절이유가 있는 부분과 관련 법조항" 표의 순번마다 한 �
 ```
 - `kind` 코드: `novelty` / `inventive_step` / `clarity` / `other`. 지원 여부는 `supported`, 어떤 이유인지는 `article`로 본다. 이름은 결과 스키마 코드(#14)와 맞춘다.
 - 명확성 줄은 `locations` 대신 `clarity_terms: ["상기 프리뷰 이미지"]`, 참고용 `clarity_reason: "앞에 정의 없음"`.
-- `gold_version`은 `data/goldsets/VERSION`과 같아야 하고, 다르면 채점기가 멈춘다 (`.claude/rules/eval.md`). 지금 판 `tune-f1-v0`은 #20 첫 점수 전까지 칸 추가·원문 글자 고침을 같은 판으로 둔다. 첫 점수가 나온 뒤에는 정답을 고칠 때마다 판을 올린다 (점수 비교가 어느 판 기준인지 남게).
+- `gold_version`은 정수이고 `data/goldsets/VERSION`(정수)과 같아야 하며, 다르면 채점기가 멈춘다 (`.claude/rules/eval.md`, #20). 지금 판(VERSION과 같은 값, 11/19 기준 2)은 #20 첫 점수 전까지 칸 추가·원문 글자 고침을 같은 판으로 둔다. 첫 점수가 나온 뒤에는 정답을 고칠 때마다 판을 올린다 (점수 비교가 어느 판 기준인지 남게).
+- 고를 수 있는 칸: 청구항 줄 `page_end`(판단이 다음 쪽까지 이어질 때 끝 쪽, 2.4 쪽 칸), `notice_kind.label`(통지 이름 전체, 예 `최초거절이유통지`), `reviewed.method`·`reviewed.scope`(검수 방법·범위). 이 밖의 칸은 형식 검사(`eval/f1/gold.py`)가 막는다.
+- 문단 표기는 `[0016]`·`[0080]-[0081]`만 받는다. 도면·청구항·요약·칼럼·논문·도면 부호 꼴은 2.4·3절대로 원문에 맞춰 적는다.
 - `OAResult`의 "심사관 논리 요지"는 F1 합격 기준 밖이라 정답에 넣지 않고 채점하지 않는다.
 - `notice_kind`: `initial` / `final` / `unknown`.
 - 원문에 글자가 없어서 정한 값(통지 종류 `최초`, 특허 가능한 청구항·보정 참고사항 `없음`)은 `page: null`이고 `basis`에 그 이유를 적는다. 1쪽 머리말·거절이유 표 아래·[첨 부] 앞을 다 봤는데 없다는 뜻이다.

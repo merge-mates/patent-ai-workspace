@@ -1,5 +1,5 @@
 {
-  "$comment": "eval/run_eval.py(프레임워크를 정한 뒤 생김)가 쓰는 scores.json 모양. 사람이 손으로 쓰지 않는다.",
+  "$comment": "채점기가 eval/common/scores.py(write_scores)로 쓰는 scores.json 모양. 필수 칸은 이 파일의 required를 읽는다. 사람이 손으로 쓰지 않는다.",
   "type": "object",
   "required": ["experiment", "commit", "goldset", "goldset_version", "n", "metrics", "failures", "cost"],
   "properties": {
@@ -7,7 +7,7 @@
     "commit": {"type": "string"},
     "goldset": {"type": "string"},
     "goldset_version": {"type": "integer"},
-    "n": {"type": "integer", "description": "채점한 문항 수. 0이면 경고"},
+    "n": {"type": "integer", "description": "채점한 문항 수. 0이면 실패 (쓰지 않음)"},
     "metrics": {"type": "object", "additionalProperties": {"type": "number"}},
     "failures": {"type": "object", "additionalProperties": {"type": "integer"}, "description": "실패 유형별 개수"},
     "cost": {
