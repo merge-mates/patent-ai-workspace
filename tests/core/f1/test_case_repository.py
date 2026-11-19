@@ -228,14 +228,15 @@ def test_모르는_판_종류는_거부():
 
 
 def test_보정서_판인데_잇는_이력이_없으면_저장_거부():
+    materials = [*MATERIALS, _m("doc_claims_amd", "claims")]
     bad = [
         *CLAIM_INPUTS,
         ClaimVersionInput(
-            document_id="doc_claims_app", source_kind="amendment", receipt_number_text=None
+            document_id="doc_claims_amd", source_kind="amendment", receipt_number_text=None
         ),
     ]
     with pytest.raises(CaseStoreError, match="이력"):
-        plan_case_rows(_record(claims=bad))
+        plan_case_rows(_record(materials=materials, claims=bad))
 
 
 def test_보정서_판인데_접수번호가_이력에_없으면_저장_거부():
@@ -250,6 +251,30 @@ def test_보정서_판인데_접수번호가_이력에_없으면_저장_거부()
     ]
     with pytest.raises(CaseStoreError, match="이력"):
         plan_case_rows(_record(materials=materials, claims=bad))
+
+
+@pytest.mark.parametrize("source_kind", ["application", "registration"])
+def test_판이_가리키는_문서가_자료에_없으면_저장_거부(source_kind):
+    # 없는 문서를 가리키면 메모리는 들어가고 Postgres는 외래 키에서 깨진다: 저장 코드가 먼저 막는다
+    bad = [*CLAIM_INPUTS, ClaimVersionInput(document_id="doc_none", source_kind=source_kind)]
+    with pytest.raises(CaseStoreError, match="doc_none"):
+        plan_case_rows(_record(claims=bad))
+
+
+def test_판이_청구항_문서가_아닌_자료를_가리키면_저장_거부():
+    # OA 문서를 등록공보 판이라고 하면 안 된다 (청구항 문서 종류 claims·spec만)
+    bad = [*CLAIM_INPUTS, ClaimVersionInput(document_id="doc_oa1", source_kind="publication")]
+    with pytest.raises(CaseStoreError, match="doc_oa1"):
+        plan_case_rows(_record(claims=bad))
+
+
+def test_같은_청구항_문서에_판이_둘이면_저장_거부():
+    bad = [
+        *CLAIM_INPUTS,
+        ClaimVersionInput(document_id="doc_claims_reg", source_kind="publication"),
+    ]
+    with pytest.raises(CaseStoreError, match="doc_claims_reg"):
+        plan_case_rows(_record(claims=bad))
 
 
 def test_보정각하된_보정서는_판을_만들지_않음():

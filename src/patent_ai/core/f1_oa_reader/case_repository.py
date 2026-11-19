@@ -236,7 +236,21 @@ def _plan_claim_versions(
     record: CaseRecord, case_id: str, events: list[EventRow], documents: list[DocumentRow]
 ) -> list[ClaimVersionRow]:
     """청구항 판: 0 = 출원 때 판(늘 하나), 그다음 보정서 판(이력 순서), 그다음 공보 판."""
-    inputs_by_doc = {c.document_id: c for c in record.claim_versions}
+    # 판이 가리키는 문서는 이 사건 자료 중 청구항 문서여야 하고, 문서 하나에 판 하나.
+    # (없는 문서면 메모리 fake는 들어가고 Postgres는 외래 키에서 깨져 둘이 달라진다)
+    kinds_by_doc = {d.id: d.kind for d in documents}
+    inputs_by_doc: dict[str, ClaimVersionInput] = {}
+    for c in record.claim_versions:
+        if c.document_id not in kinds_by_doc:
+            raise CaseStoreError(f"청구항 판이 가리키는 문서 {c.document_id}가 저장할 자료에 없음")
+        if kinds_by_doc[c.document_id] not in _CLAIM_DOCUMENT_KINDS:
+            raise CaseStoreError(
+                f"청구항 판이 청구항 문서가 아닌 {c.document_id}"
+                f"({kinds_by_doc[c.document_id]})를 가리킴"
+            )
+        if c.document_id in inputs_by_doc:
+            raise CaseStoreError(f"청구항 문서 {c.document_id}에 판이 둘")
+        inputs_by_doc[c.document_id] = c
     # 청구항 문서는 판 종류를 꼭 받는다 (등록공보 청구항이 출원 판처럼 섞이지 않게)
     for d in documents:
         if d.kind in _CLAIM_DOCUMENT_KINDS and d.id not in inputs_by_doc:
