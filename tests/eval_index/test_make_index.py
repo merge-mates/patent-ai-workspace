@@ -75,13 +75,19 @@ def _with_template(tmp_path) -> Path:
     return root
 
 
-def test_실험이_0개면_머리만_쓰고_지금_index와_같다(tmp_path, caplog):
+def test_실험이_0개면_머리만_쓰고_경고(tmp_path, caplog):
     root = _with_template(tmp_path)
     with caplog.at_level(logging.WARNING):
         text = build_index(root)
     assert text == HEAD
-    assert text == (REPO_ROOT / "experiments" / "index.md").read_text(encoding="utf-8")
     assert "0개" in caplog.text
+
+
+def test_저장소_실험으로_다시_만든_표가_커밋된_index와_같다():
+    # 합격 기준 2: index.md는 스크립트로 다시 만들어진다
+    # (손으로 고쳤거나 실험을 더하고 다시 안 만들면 여기서 걸린다)
+    root = REPO_ROOT / "experiments"
+    assert build_index(root) == (root / "index.md").read_text(encoding="utf-8")
 
 
 def test_실험_둘이면_두_줄이고_기준선_대비_차이가_맞다(tmp_path):
