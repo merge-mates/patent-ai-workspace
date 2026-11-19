@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 _QUOTE_CHARS = " '\"‘’“”「」『』"
 _NO_LOCATION = "위치 없음"
 
+# 인용을 정한 규칙 (정답 형식 3절 12번 순서). 확인됨 근거(checked)에 붙는 문구
+_BY_MENTION = "mentioned"  # 1) 판단 원문에 적힌 인용발명
+_BY_SAME_AS = "same_as"  # 2) 같은 취지 대상 줄의 인용 (줄을 다 만든 뒤 두 번째 단계에서 푼다)
+_BY_ALL = "all"  # 3) 그 거절이유에 쓰인 인용 전부
+_RULE_NOTE = {
+    _BY_SAME_AS: "문장에 인용 표기 없음, 같은 취지 대상 줄의 인용으로 봄",
+    _BY_ALL: "문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
+}
+# _content가 돌려주는 dict에서 ClaimRow 칸이 아닌 것
+_INTERNAL = ("citation_rule", "location_ambiguous")
+
 
 class _Fail(Exception):
     """줄의 값을 원문과 못 맞췄다. 이유는 status.reason이 된다."""
@@ -169,33 +180,47 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
         out["clarity_reason"] = reason or None
         out["clarity_reason_origin"] = Origin.AI_GENERATED if reason else None  # 모델이 쓴 글
         return out
-    citations: list[str] = []
     locations: dict[str, list[str]] = {}
     known = _labels_of([rej])  # 후보는 그 거절이유의 인용문헌뿐
     allowed = [c.label for c in rej["citations"]]
     mentioned = _mentioned(judgment, rej)
     if mentioned - set(allowed):  # 판단 원문이 그 거절이유 밖의 인용을 가리킴
         raise _Fail()
-    noted = False
+    # 인용은 모델이 고르지 않고 3절 12번 순서로 정한다
+    if mentioned:  # 1) 판단 원문에 적힌 문헌 (거절이유 인용 표 순서)
+        rule, citations = _BY_MENTION, [label for label in allowed if label in mentioned]
+    elif out["same_as"]:  # 2) 같은 취지 대상 줄의 인용: 줄을 다 만든 뒤 푼다
+        rule, citations = _BY_SAME_AS, []
+    else:  # 3) 그 거절이유에 쓰인 인용 전부
+        rule, citations = _BY_ALL, list(allowed)
+        if not allowed:
+            logger.warning("인용 언급도 같은 취지도 없는데 거절이유 %s에 인용이 없음", rej["no"])
+    # 위치는 원문이 정한다: 모델이 짚은 위치가 어느 문헌의 것인지 원문으로 정해져야 확인됨
+    candidates = citations if mentioned else allowed
+    location_ambiguous = False
     for c in r.citations:
         if c.label or c.number is not None:
-            label: str | None = _label(c, known, pages)
+            label: str | None = _label(c, known, pages)  # 거절이유 밖 라벨이면 _Fail
         else:
-            label = allowed[0] if len(allowed) == 1 else None  # 인용이 하나뿐이면 그것
+            label = candidates[0] if len(candidates) == 1 else None  # 후보가 하나뿐이면 그것
+        has_location = c.location is not None or c.no_location is not None
         if label is None:
-            if c.location is not None or c.no_location is not None:
+            if has_location:
                 raise _Fail(UnverifiedReason.AMBIGUOUS)  # 위치가 있는데 어느 인용인지 모름
             continue
-        if mentioned:
-            if label not in mentioned:  # 판단 원문이 가리키는 인용과 다름
-                raise _Fail()
-        elif len(allowed) > 1:
-            noted = True  # 언급이 없으면 거절이유 인용 중 모델 라벨을 받되 애매로 표시
-        citations.append(label)
+        if mentioned and label not in mentioned:  # 판단 원문이 가리키는 인용과 다름
+            raise _Fail()
+        if has_location and not mentioned and len(allowed) > 1:
+            # 언급 없이 인용이 여럿: 모델 라벨 아래 위치를 남기되 원문으로 못 정했으니 애매
+            location_ambiguous = True
         found = _locations(c, pages)
         if found:
             locations[label] = _unique([*locations.get(label, []), *found])
-    out["label_note"] = noted
+    out["citation_rule"] = rule
+    out["location_ambiguous"] = location_ambiguous
+    if r.no_location is not None and rule == _BY_SAME_AS:
+        # 인용이 아직 안 정해진 줄이라 줄 단위 위치 없음을 어느 인용 아래 둘지 못 정함
+        raise _Fail(UnverifiedReason.AMBIGUOUS)
     if r.no_location is not None:
         # 인용이 하나도 없는 줄의 위치 없음: 표현이 이 줄 판단 원문 안에 있어야 한다
         expression = _need(r.no_location, pages).strip(_QUOTE_CHARS)
@@ -217,6 +242,75 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
 def _unverified(claim: int | None, rejection: int | None, reason: UnverifiedReason) -> ClaimRow:
     status = Status(value=StatusValue.UNVERIFIED, reason=reason)
     return ClaimRow(claim=claim, rejection=rejection, status=status)
+
+
+def _label_order(label: str) -> tuple[int, str]:
+    """`D2`가 `D10`보다 앞에 오게 번호로 정렬한다."""
+    m = re.fullmatch(r"D(\d+)", label)
+    return (int(m.group(1)), "") if m else (10**9, label)
+
+
+def _target_key(row: ClaimRow, target: str) -> tuple[int | None, int | None]:
+    """같은 취지 대상 -> 가리키는 줄 (청구항, 거절이유).
+
+    `claim:N` = 같은 거절이유의 청구항 N 줄, `rejection:N` = 같은 청구항의 거절이유 N 줄.
+    """
+    kind, _, number = target.partition(":")
+    if kind == "claim":
+        return int(number), row.rejection
+    return row.claim, int(number)
+
+
+def _resolve_same_as(made: list[ClaimRow], pending: set[int]) -> list[ClaimRow]:
+    """규칙 2: 같은 취지 줄의 인용 = 대상 줄 인용의 합 (중복 빼고 라벨 순).
+
+    대상 줄이 없거나(지원 안 하는 거절이유·대상 밖 청구항), 확인되지 않음이거나,
+    같은 취지가 돌아서 제자리로 오면(순환) 그 줄도 확인되지 않음 (지어내지 않는다).
+    """
+    index = {(row.claim, row.rejection): i for i, row in enumerate(made)}
+    done: dict[int, list[str] | None] = {}  # 줄 번호 -> 정한 인용 (못 정하면 None)
+
+    def citations_of(i: int, path: frozenset[int]) -> list[str] | None:
+        """줄 i의 인용. pending 줄이면 대상을 따라가 푼다."""
+        if i in done:
+            return done[i]
+        row = made[i]
+        if i not in pending:
+            return row.citations if row.status.value == StatusValue.CONFIRMED else None
+        merged: list[str] = []
+        for target in row.same_as:
+            j = index.get(_target_key(row, target))
+            if j is None:
+                logger.warning("같은 취지 대상 줄이 없음 (%s): 그 줄은 확인되지 않음", target)
+                done[i] = None
+                return None
+            if j == i or j in path:
+                logger.warning("같은 취지가 순환함 (%s): 그 줄은 확인되지 않음", target)
+                done[i] = None
+                return None
+            found = citations_of(j, path | {i})
+            # 대상 줄이 pending이면 그 줄 자신도 확인됨이어야 인용을 넘겨받는다
+            if found is None or made[j].status.value != StatusValue.CONFIRMED:
+                logger.warning(
+                    "같은 취지 대상 줄 %s이 확인되지 않음: 그 줄도 확인되지 않음", target
+                )
+                done[i] = None
+                return None
+            merged += found
+        if not merged:
+            logger.warning("같은 취지 대상 줄의 인용이 비어 있음 (청구항 %s)", row.claim)
+        done[i] = sorted(set(merged), key=_label_order)
+        return done[i]
+
+    out = list(made)
+    for i in sorted(pending):
+        citations = citations_of(i, frozenset())
+        row = made[i]
+        if citations is None:
+            out[i] = _unverified(row.claim, row.rejection, UnverifiedReason.NOT_EXTRACTED)
+        else:
+            out[i] = row.model_copy(update={"citations": citations})
+    return out
 
 
 def _head_number(judgment: Item, pages: PageText) -> int | None:
@@ -271,6 +365,7 @@ def build_claim_rows(
     """
     by_no = {r["no"]: r for r in rejections}
     made: list[ClaimRow] = []
+    pending: set[int] = set()  # 같은 취지 대상 줄로 인용을 정할 줄 (made 안 번호)
     fallback: list[tuple[int, int, UnverifiedReason]] = []  # 값 없이 남길 줄 (다른 줄이 없을 때만)
     seen: set[tuple[int, int]] = set()
     for r in rows:
@@ -333,15 +428,19 @@ def build_claim_rows(
             if row_reason is not None:
                 made.append(_unverified(claim, no, row_reason))
                 continue
-            values = {k: v for k, v in content.items() if k != "label_note"}
-            if content.get("label_note"):
-                # 인용이 여럿인데 판단 원문에 인용 번호가 없음: 모델 라벨(거절이유 인용 안)을 남기되
-                # 어느 인용인지 원문으로 못 정했으니 확인되지 않음(애매)
+            values = {k: v for k, v in content.items() if k not in _INTERNAL}
+            rule = content.get("citation_rule")
+            if content.get("location_ambiguous"):
+                # 판단 원문에 인용 언급이 없고 인용이 여럿인데 모델이 위치를 짚음: 값은 남기되
+                # 어느 문헌의 위치인지 원문으로 못 정했으니 확인되지 않음(애매)
                 status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
             else:
-                status = Status(
-                    value=StatusValue.CONFIRMED, checked=f"{content['page']}쪽 원문 대조"
-                )
+                checked = f"{content['page']}쪽 원문 대조"
+                if rule in _RULE_NOTE:
+                    checked += f", {_RULE_NOTE[rule]}"
+                status = Status(value=StatusValue.CONFIRMED, checked=checked)
+            if rule == _BY_SAME_AS:
+                pending.add(len(made))
             made.append(ClaimRow(claim=claim, rejection=no, status=status, **values))
     # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
     # (줄이 빠져도 조용히 지나가지 않게)
@@ -357,4 +456,5 @@ def build_claim_rows(
             if (claim, rej["no"]) not in produced:
                 logger.warning("청구항 %s 거절이유 %s: 모델이 줄을 주지 않음", claim, rej["no"])
                 made.append(_unverified(claim, rej["no"], UnverifiedReason.NOT_EXTRACTED))
-    return made
+    # 같은 취지 줄의 인용은 빈 줄까지 다 만든 뒤 대상 줄에서 푼다 (3절 12번 2)
+    return _resolve_same_as(made, pending)
