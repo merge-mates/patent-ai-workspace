@@ -243,9 +243,9 @@ graph LR
 - 테스트할 경우:
   - 평소: `gold_ok.jsonl` + `chunks_check.jsonl` → Hit@5 = 1, Recall@5 = 0.5, 무작위 Recall@5 ≈ 0.738, 배수 ≈ 0.68, `--chunks`라 출력이 `work/retrieval/<실험>/`에 감
   - 빈 입력: `gold_excluded.jsonl` → 빼는 이유별 건수, `gold_all_excluded.jsonl` → `main` 1 반환, 무작위 분모 0 → `recall_ratio@k` 키 없음 + `failures.recall_ratio_undefined`
-  - 실패: `--chunks` 없음 → `main` 1 반환 + "Postgres 저장소 없음(m2-i2)" 한 줄, 줄 검색 예외(녹화 없는 질의) → `main` 1 반환, `--chunks` + `--scores-dir experiments/x` → 1 반환·파일 안 생김, `scores.json`에 `row_id`·질의 글자 없음, `commit`은 `main(..., commit="abc")`로 넣은 값
+  - 실패: 줄 검색 예외(녹화 없는 질의) → `main` 1 반환, `--chunks` + `--scores-dir experiments/x` → 1 반환·파일 안 생김, `scores.json`에 `row_id`·질의 글자 없음, `commit`은 `main(..., commit="abc")`로 넣은 값
   - 무작위 분모 0 줄(정답 항목에 맞는 조각이 범위에 하나도 없는 줄)은 `gold_excluded.jsonl`에 둔다
-- `--chunks` 없는 경로: m2-i3은 m2-i1에만 기대므로 `PostgresChunkRepository`를 import하지 않는다. m2-i2와 m2-i3 중 나중에 머지되는 쪽 task에서 `score.py` 한 줄로 연결한다 (`score.py`는 두 이슈가 겹치는 파일).
+- `--chunks` 없는 경로: `PostgresChunkRepository.from_url()`(`DATABASE_URL`)로 잇는다. 머지 순서가 m2-i1 → m2-i2 → m2-i3으로 정해져 m2-i3이 m2-i2 위에 쌓였다 (11/19).
 - 확인 방법: `uv run pytest tests/retrieval_eval/test_score.py` → 통과
 - 먼저: task-1, task-2, task-3
 
@@ -261,7 +261,16 @@ graph LR
 - 확인 방법: `uv run pytest tests/retrieval_eval/test_cq.py` → 통과
 - 먼저: task-4
 
+### 리뷰 반영 (11/19, PR #101)
+- 정답 줄 ID: 법령 `<발송번호>:r<순번>`, 인용문헌 `<발송번호>:r<순번>:c<청구항>:<공보 번호>`. `GoldRow`가 꼴과 공보 번호를 본다. fixture ID를 모두 이 꼴로 바꿈.
+- `gold_edition`을 `items[]` 항목마다. `LawMatcher`는 항목 판본을 보고, 항목 하나라도 확인되지 않음이면 줄을 뺀다.
+- 실패 키 `excluded_text_missing` → `excluded_body_missing` (#103 공통 칸 이름).
+- `scores.json`에 `index_fingerprint` (계산은 `patent_ai.db.index_dump.index_fingerprint` 하나).
+- `--chunks` 없으면 `PostgresChunkRepository.from_url()`, 기본 출력 `experiments/<실험>/`.
+
 ### 열린 항목 (메모)
+- 색인 지문은 `repo.chunks(corpus, index_version, None, None)`로 그 판 조각을 다 읽어 센다. Postgres에서는 임베딩까지 읽으므로 색인이 커지면 `chunk_id`만 읽는 메서드를 저장소에 더한다.
+- 채점기 공통 부분(설정 읽기·정답 버전 검사·`scores.json` 필수 칸)을 `eval/common`으로 빼는 일은 F1 채점기(#20)와 같이 정한다.
 - 조문 누출 검사는 조 번호만 본다. 정답이 "제29조 제2항"이면 질의의 "제29조 제1항"이나 "롤러 2조"도 누출로 잡힌다. #66에서 법령 질의 모양을 정할 때 같이 본다.
 - `tests/retrieval/`, `tests/retrieval_eval/`에 `__init__.py`가 없다. 나중에 두 폴더에 같은 이름의 테스트 파일이 생기면 pytest 수집이 충돌한다. 그때 이름을 바꾸거나 패키지로 만든다.
 
