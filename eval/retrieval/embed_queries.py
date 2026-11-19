@@ -15,8 +15,6 @@ import logging
 import sys
 from pathlib import Path
 
-import yaml
-
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import load_gold
 from patent_ai.core.index_embed import (
@@ -24,6 +22,7 @@ from patent_ai.core.index_embed import (
     IndexEmbedError,
     call_report,
     embed_queries,
+    load_index_config,
     new_context,
     write_query_vectors,
 )
@@ -45,7 +44,7 @@ def main(
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
-        cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+        cfg = load_index_config(args.config, ("index_version", "embed_step"))
         if Path(args.out).exists():
             raise IndexEmbedError(f"이미 있는 파일이라 덮어쓰지 않는다: {args.out}")
         # 0줄·모양이 틀린 정답 파일이면 load_gold가 이유와 함께 멈춘다

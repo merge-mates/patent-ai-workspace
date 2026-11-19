@@ -84,3 +84,11 @@ def test_out이_빠지면_인자_오류(files):
     d, cfg, gold = files
     with pytest.raises(SystemExit):
         main(["--config", str(cfg), "--gold", str(gold)])
+
+
+def test_설정에_embed_step이_없으면_traceback_없이_1로_멈춘다(files, caplog):
+    d, cfg, gold = files
+    cfg.write_text("index_version: law-idx-v2\n", encoding="utf-8")
+    t = FakeEmbedTransport(lambda s: [1.0])
+    assert main(args(cfg, gold, d / "q.json"), ctx=ctx_of(t), config_dir=d) == 1
+    assert t.calls == [] and "embed_step" in caplog.text

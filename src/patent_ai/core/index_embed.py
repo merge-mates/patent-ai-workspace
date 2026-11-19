@@ -102,6 +102,18 @@ def write_query_vectors(vectors: dict[str, list[float]], out: str | Path) -> Non
     p.write_text(json.dumps(vectors, ensure_ascii=False), encoding="utf-8")
 
 
+def load_index_config(path: str | Path, keys: tuple[str, ...]) -> dict:
+    """색인 설정 yaml을 읽는다. 키가 빠지면 KeyError 대신 한 줄 오류 (RUN_ERRORS에 잡힘)."""
+    p = Path(path)
+    cfg = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if not isinstance(cfg, dict):
+        raise IndexEmbedError(f"설정 파일이 비었거나 모양이 틀리다: {p.name}")
+    missing = [k for k in keys if cfg.get(k) in (None, "")]
+    if missing:
+        raise IndexEmbedError(f"설정 {p.name}에 키가 빠짐: {', '.join(missing)}")
+    return cfg
+
+
 def call_report(ctx: RunContext) -> str:
     """기록기(MemoryRecorder)에 쌓인 호출 수·입력 토큰·비용 한 줄."""
     recs = ctx.recorder.records  # type: ignore[attr-defined]
@@ -128,7 +140,7 @@ def main(
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
-        cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+        cfg = load_index_config(args.config, ("index_version", "from", "embed_step", "out"))
         out_path = Path(cfg["out"])
         # 돈을 쓰기 전에 덮어쓰기를 먼저 막는다
         if out_path.exists():

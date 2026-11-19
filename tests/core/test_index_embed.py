@@ -161,3 +161,15 @@ def test_chunks_명령은_출력_파일이_있으면_돈_쓰기_전에_1로_멈�
     t = FakeEmbedTransport(vec_of)
     assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 1
     assert t.calls == [] and out.read_text(encoding="utf-8") == "old"
+
+
+@pytest.mark.parametrize("missing", ["out", "from", "embed_step", "index_version"])
+def test_chunks_명령은_설정_키가_빠지면_traceback_없이_1로_멈춘다(cfg, tmp_path, missing, caplog):
+    conf, _ = _idx_files(tmp_path)
+    lines = conf.read_text(encoding="utf-8").splitlines()
+    conf.write_text(
+        "\n".join(x for x in lines if not x.startswith(missing + ":")), encoding="utf-8"
+    )
+    t = FakeEmbedTransport(vec_of)
+    assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 1
+    assert t.calls == [] and missing in caplog.text
