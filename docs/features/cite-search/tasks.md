@@ -112,12 +112,12 @@ graph LR
 - `make` 색인 target (CLI로 충분, 필요하면 다음 계획)
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- [ ] task-5
-- 다음: 승인 → /implement
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- [x] task-5
+- 다음: code-reviewer 지적 반영 → /check → /experiment 카드 → /pr-draft. 11/19 첫 점수: n=69, Hit@1·3·5·10 = 0.116·0.319·0.493·0.609, CQ 27 (`experiments/m2-i1-cite-search-bm25-baseline/scores.json`)
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
