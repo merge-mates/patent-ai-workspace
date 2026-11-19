@@ -120,7 +120,13 @@ class OpenAIEmbedTransport:
     def __init__(self) -> None:
         import openai  # 여기서만 import
 
-        self._client = openai.OpenAI()
+        try:
+            self._client = openai.OpenAI()
+        except openai.OpenAIError as e:
+            # 키가 없으면 SDK traceback 대신 설정 오류 한 줄 (키 값은 다루지 않음)
+            raise ModelConfigError(
+                "OPENAI_API_KEY가 없음: .env에 넣고 `uv run --env-file <.env 경로> ...`로 실행"
+            ) from e
 
     def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse:
         import openai

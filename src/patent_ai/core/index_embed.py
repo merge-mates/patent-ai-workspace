@@ -23,6 +23,7 @@ from pathlib import Path
 import yaml
 
 from patent_ai.core.llm.embed import embed
+from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelConfigError
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.retrieval.law_index import write_jsonl
 from patent_ai.retrieval.law_index_db import read_chunks_jsonl
@@ -133,7 +134,15 @@ def main(argv: list[str] | None = None) -> int:
             write_query_vectors(embed_queries(queries, cfg["embed_step"], ctx), args.out)
             # 질의 글은 로그에 안 남긴다 (개수만)
             logger.info("만듦: %s (질의 %d개). %s", args.out, len(set(queries)), _report(ctx))
-    except (IndexEmbedError, ValueError) as e:
+    except (
+        IndexEmbedError,
+        ValueError,
+        OSError,
+        ModelConfigError,
+        ModelCallFailed,
+        ModelCallLimitExceeded,
+    ) as e:
+        # 실패는 한 줄로 알리고 1로 끝낸다 (성공 종료하지 않음)
         logger.error("%s", e)
         return 1
     return 0
