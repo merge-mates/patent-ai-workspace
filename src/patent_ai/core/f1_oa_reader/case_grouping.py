@@ -56,6 +56,13 @@ def normalize_receipt_number(text: str) -> str | None:
     return m.group(0).replace("-", "") if m else None
 
 
+def _unverified(reason: UnverifiedReason, raw_text: str | None = None) -> ExtractedValue[str]:
+    """확인되지 않은 값 (값 없음, 원문 글자는 있으면 남김)."""
+    return ExtractedValue[str](
+        raw_text=raw_text, status=Status(value=StatusValue.UNVERIFIED, reason=reason)
+    )
+
+
 def read_number(kind: NumberKind, text: str | None) -> ExtractedValue[str]:
     """번호 글자 하나를 값으로 읽는다.
 
@@ -65,17 +72,13 @@ def read_number(kind: NumberKind, text: str | None) -> ExtractedValue[str]:
     - 글자가 없으면 unverified(not_extracted), 글자도 없음.
     """
     if text is None or not text.strip():
-        return ExtractedValue[str](
-            status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
-        )
+        return _unverified(UnverifiedReason.NOT_EXTRACTED)
     # 글자 전체에서 그 종류 꼴을 모두 찾아 서로 다른 값의 수를 센다
     # (하이픈으로 이어 붙은 번호 둘도 따로 잡힌다)
     values = {m.group(0).replace("-", "") for m in _PATTERNS[kind].finditer(text)}
     if len(values) != 1:
         reason = UnverifiedReason.AMBIGUOUS if values else UnverifiedReason.NOT_EXTRACTED
-        return ExtractedValue[str](
-            raw_text=text, status=Status(value=StatusValue.UNVERIFIED, reason=reason)
-        )
+        return _unverified(reason, text)
     (value,) = values
     return ExtractedValue[str](
         value=value,
@@ -209,13 +212,7 @@ class HistoryEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["oa", "amendment", "opinion", "other"]
-    number_text: str | None = None  # OA는 발송번호, 보정서·의견서는 접수번호 (원문 글자)
-
-
-def _unverified(reason: UnverifiedReason, raw_text: str | None = None) -> ExtractedValue[str]:
-    return ExtractedValue[str](
-        raw_text=raw_text, status=Status(value=StatusValue.UNVERIFIED, reason=reason)
-    )
+    doc_number_text: str | None = None  # OA는 발송번호, 보정서·의견서는 접수번호 (원문 글자)
 
 
 def select_examined_version(
@@ -244,12 +241,13 @@ def select_examined_version(
     positions = [
         i
         for i, e in enumerate(history)
-        if e.kind == "oa" and read_number("dispatch", e.number_text).value == target
+        if e.kind == "oa" and read_number("dispatch", e.doc_number_text).value == target
     ]
     if not positions:
         # 번호를 못 읽은 OA가 있으면 그게 대상일 수도 있다: 조회 실패와 구분한다
         unreadable = any(
-            e.kind == "oa" and read_number("dispatch", e.number_text).value is None for e in history
+            e.kind == "oa" and read_number("dispatch", e.doc_number_text).value is None
+            for e in history
         )
         reason = UnverifiedReason.NOT_EXTRACTED if unreadable else UnverifiedReason.LOOKUP_FAILED
         return _unverified(reason)
@@ -265,10 +263,10 @@ def select_examined_version(
                 value=StatusValue.CONFIRMED, checked="대상 OA 앞 보정서 없음: 출원 때 판"
             ),
         )
-    last = read_number("receipt", before[-1].number_text)
+    last = read_number("receipt", before[-1].doc_number_text)
     if last.value is None:
         # 못 읽은 이유(not_extracted / ambiguous)를 그대로 넘긴다
-        return _unverified(last.status.reason, before[-1].number_text)
+        return _unverified(last.status.reason, before[-1].doc_number_text)
     return ExtractedValue[str](
         value=last.value,
         raw_text=last.raw_text,
@@ -294,7 +292,7 @@ def _oa_citations(oa: OAResult) -> list[Citation]:
 
 
 def _missing_reason(
-    c: Citation, citation_docs: dict[str, str], lookup_failures: dict[str, LookupResult]
+    c: Citation, received_citations: set[str], lookup_failures: dict[str, LookupResult]
 ) -> LookupResult | None:
     """인용문헌이 빠졌으면 그 이유, 있으면 None."""
     if c.country.value is not None and not c.country_supported:
@@ -302,7 +300,7 @@ def _missing_reason(
     key = c.number.value
     if key is None:
         return LookupResult.LOOKUP_FAILED  # 번호를 못 읽어 조회할 수 없음
-    if key in citation_docs:
+    if key in received_citations:
         return None
     # 조회 쪽(#54)이 이유를 주면 그 이유, 없으면 못 가져온 것으로 본다
     return lookup_failures.get(key, LookupResult.LOOKUP_FAILED)
@@ -312,16 +310,18 @@ def build_case_materials(
     case_id: str,
     grouped: list[GroupedMaterial],
     oa: OAResult,
-    citation_docs: dict[str, str],
+    received_citations: set[str],
     lookup_failures: dict[str, LookupResult] | None = None,
 ) -> CaseMaterials:
     """묶은 자료와 OA 인용문헌으로 사건 자료·빠진 자료·보류 작업을 채운다 (합격 기준 4).
 
-    - citation_docs: 받은 인용문헌 번호(키 꼴) → 문서 id. lookup_failures: 못 받은 번호 → 이유.
+    - received_citations: 본문을 받은 인용문헌 번호(키 꼴). lookup_failures: 못 받은 번호 → 이유.
     - 빠진 인용문헌마다 missing 한 줄 + 그 인용문헌의 F3 대비만 held_tasks. 나머지는 진행.
     - 지원 안 하는 나라는 ask_upload=False ("직접 확인"), 그 밖은 "올려 주세요".
-    - documents는 묶은 자료 전부 (상태가 나쁜 자료를 빼는 것은 cut_to_oa).
-    - review_items_count는 검토할 사항 모으기(collect_review_items)의 줄 수.
+    - documents: 같은 열쇠(같은 문서)는 하나만, 올린 것 우선. 나머지는 경고 로그.
+      confirmed가 아닌 자료(다른 출원번호·번호 못 읽음)도 빼지 않는다 (빼는 것은 cut_to_oa).
+    - review_items_count = 검토할 사항 모으기(collect_review_items) 줄 수
+      + confirmed가 아닌 자료 수 (조용히 섞이지 않게).
     """
     lookup_failures = lookup_failures or {}
     citations = _oa_citations(oa)
@@ -331,7 +331,7 @@ def build_case_materials(
     missing: list[MissingMaterial] = []
     held: list[HeldTask] = []
     for c in citations:
-        reason = _missing_reason(c, citation_docs, lookup_failures)
+        reason = _missing_reason(c, received_citations, lookup_failures)
         if reason is None:
             continue
         what = f"{_citation_name(c)} 본문"
@@ -349,10 +349,39 @@ def build_case_materials(
     materials = CaseMaterials(
         case_id=case_id,
         documents=[
-            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source) for g in grouped
+            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source)
+            for g in _one_per_key(grouped)
         ],
         missing=missing,
         held_tasks=held,
     )
-    count = len(collect_review_items([oa], materials))
+    # 묶기에서 확인되지 않은 자료도 사람이 보게 검토할 사항 수에 더한다
+    unsettled = sum(1 for g in grouped if g.status.value != StatusValue.CONFIRMED)
+    count = len(collect_review_items([oa], materials)) + unsettled
     return materials.model_copy(update={"review_items_count": count})
+
+
+def _one_per_key(grouped: list[GroupedMaterial]) -> list[GroupedMaterial]:
+    """같은 열쇠(같은 문서)는 하나만 남긴다. 사용자가 올린 것을 우선, 그다음 앞에 온 것.
+
+    열쇠가 없는 자료(인용문헌·청구항·확인 안 된 자료)는 모두 남긴다. 순서는 처음 순서 그대로.
+    """
+    chosen: dict[str, GroupedMaterial] = {}
+    for g in grouped:
+        if g.key is None:
+            continue
+        kept = chosen.get(g.key)
+        if kept is None or (kept.source != "uploaded" and g.source == "uploaded"):
+            chosen[g.key] = g
+    out = []
+    for g in grouped:
+        if g.key is None or chosen[g.key] is g:
+            out.append(g)
+        else:
+            logger.warning(
+                "build_case_materials: 같은 문서(%s)가 또 있어 %s 대신 %s를 씀",
+                g.key,
+                g.document_id,
+                chosen[g.key].document_id,
+            )
+    return out

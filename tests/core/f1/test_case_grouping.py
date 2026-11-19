@@ -279,7 +279,7 @@ AMD2 = "1-1-2099-0000002-34"
 
 
 def _h(kind, number):
-    return HistoryEvent(kind=kind, number_text=number)
+    return HistoryEvent(kind=kind, doc_number_text=number)
 
 
 # 이력 순서(#54가 정함): OA ① → 보정서 → OA ②
@@ -407,7 +407,7 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같은_구조
         "c_1",
         _fixture_grouped(oa),
         oa,
-        citation_docs={KR_D1: "doc_cit_kr_1"},
+        received_citations={KR_D1},
         lookup_failures={US_D2: LookupResult.BODY_MISSING},
     )
     want = CaseMaterials.model_validate(json.loads((FIXTURE / "case_materials.json").read_text()))
@@ -433,14 +433,14 @@ def test_materials_빠진_것이_없으면_missing_held_비어_있음():
         "c_1",
         _fixture_grouped(oa),
         oa,
-        citation_docs={KR_D1: "doc_cit_kr_1", US_D2: "doc_cit_us_1"},
+        received_citations={KR_D1, US_D2},
     )
     assert got.missing == [] and got.held_tasks == []
 
 
 def test_materials_이유가_없으면_lookup_failed():
     oa = _fixture_oa()
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
     assert [m.lookup_result for m in got.missing] == [LookupResult.LOOKUP_FAILED]
 
 
@@ -460,7 +460,7 @@ def test_materials_지원_안_하는_나라는_올려_달라고_안_함():
         country_supported=False,
         flags=[Flag.NEEDS_HUMAN_REVIEW],
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
     (m,) = got.missing
     assert (m.lookup_result, m.ask_upload) == (LookupResult.UNSUPPORTED_COUNTRY, False)
     assert len(got.held_tasks) == 1
@@ -481,7 +481,7 @@ def test_materials_번호를_못_읽은_인용문헌은_lookup_failed_올려_달
         }
     )
     oa = _oa_with_citation(number=unread)
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
     (m,) = got.missing
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
     # 번호 값이 없으면 원문 글자로 이름을 만든다
@@ -493,7 +493,7 @@ def test_materials_같은_인용문헌이_여러_거절이유에_있어도_한_�
     rej1 = oa.rejections[0]
     rej2 = oa.rejections[1].model_copy(update={"citations": [rej1.citations[1]]})
     oa = oa.model_copy(update={"rejections": [rej1, rej2, *oa.rejections[2:]]})
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
     assert len(got.missing) == 1 and len(got.held_tasks) == 1
 
 
@@ -502,7 +502,7 @@ def test_materials_인용문헌이_0건이면_경고(caplog):
     oa = oa.model_copy(
         update={"rejections": [r.model_copy(update={"citations": []}) for r in oa.rejections]}
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations=set())
     assert got.missing == []
     assert "인용문헌이 0건" in caplog.text
 
@@ -524,7 +524,36 @@ def test_materials_나라를_못_읽은_인용문헌은_지원_안_함이_아니
     oa = _oa_with_citation(
         country=unknown_country, country_supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW]
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, citation_docs={KR_D1: "d"})
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
     (m,) = got.missing
     # 나라 모름 ≠ 지원 안 함: 조회 못 한 것으로 보고 올려 달라고 한다
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
+
+
+def test_materials_같은_열쇠_문서는_하나만_올린_것_우선(caplog):
+    oa = _fixture_oa()
+    app, num = oa.application_number.raw_text, oa.dispatch_number.raw_text
+    grouped = group_materials(
+        [
+            _m("d_api", "oa", app=app, number=num, source="api"),
+            _m("d_up", "oa", app=app, number=num, source="uploaded"),
+        ],
+        oa.application_number.value,
+    )
+    got = build_case_materials("c_1", grouped, oa, received_citations={KR_D1, US_D2})
+    assert [d.document_id for d in got.documents] == ["d_up"]
+    assert "d_api" in caplog.text
+
+
+def test_materials_확인_안_된_자료는_목록에_두고_검토할_사항에_셈():
+    oa = _fixture_oa()
+    base = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1, US_D2})
+    other = group_materials(
+        [_m("d_other", "oa", app="10-2099-0009999", number="9-5-2099-012345678")],
+        oa.application_number.value,
+    )
+    got = build_case_materials(
+        "c_1", _fixture_grouped(oa) + other, oa, received_citations={KR_D1, US_D2}
+    )
+    assert "d_other" in [d.document_id for d in got.documents]
+    assert got.review_items_count == base.review_items_count + 1
