@@ -14,6 +14,7 @@ const EXAMPLES = ['진보성 판단에서 결합 동기는 어디서 찾나', '�
 export function LegalPage() {
   const [text, setText] = useState('')
   const [asOf, setAsOf] = useState<string | null>(null) // null = 현행
+  const [pickerKey, setPickerKey] = useState(0) // 바꾸면 날짜 칸이 비워진다
   const [kinds, setKinds] = useState<LegalSourceKind[]>([]) // 비면 모든 유형
   const [answer, setAnswer] = useState<LegalEvidenceBundle | null>(null)
   const [busy, setBusy] = useState(false)
@@ -48,10 +49,14 @@ export function LegalPage() {
           />
           <Space size={[4, 4]} wrap>
             <Typography.Text type="secondary">시점</Typography.Text>
-            <Tag.CheckableTag checked={asOf === null} onChange={() => setAsOf(null)}>
+            <Tag.CheckableTag checked={asOf === null} onChange={() => {
+                setAsOf(null)
+                setPickerKey(pickerKey + 1)
+              }}>
               현행
             </Tag.CheckableTag>
             <DatePicker
+              key={pickerKey}
               size="small"
               placeholder="날짜 지정"
               onChange={(_, s) => setAsOf(typeof s === 'string' && s ? s : null)}

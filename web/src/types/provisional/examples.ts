@@ -15,7 +15,19 @@ import type {
 const ok = (checked: string): Status => ({ value: 'confirmed', reason: null, checked, searched_scope: null })
 const unv = (reason: UnverifiedReason): Status => ({ value: 'unverified', reason, checked: null, searched_scope: null })
 const none = (scope: string): Status => ({ value: 'not_found_in_scope', reason: null, checked: null, searched_scope: scope })
-const common = (status: Status): ResultCommon => ({ status, evidence: [], origin: 'ai_generated', flags: [] })
+const common = (status: Status): ResultCommon => ({
+  status, evidence: [], origin: 'ai_generated', needs_recheck: false, recheck_reason: null, flags: [],
+})
+
+// 상태 모으기: 가장 나쁜 값 (충돌 > 확인되지 않음 > 조회 범위 내 없음 > 확인됨, data-model 3절)
+const WORST: Status['value'][] = ['conflict', 'unverified', 'not_found_in_scope', 'confirmed']
+const worst = (xs: Status[], checked: string): Status => {
+  for (const v of WORST) {
+    const found = xs.find((s) => s.value === v)
+    if (found) return v === 'confirmed' ? ok(checked) : found
+  }
+  return unv('not_extracted') // 모을 것이 없으면 확인되지 않음
+}
 
 // ---- ② 판단 단위 ----
 export const exampleUnits: Record<string, JudgmentUnit[]> = {
@@ -146,14 +158,14 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
     bundle_id: 'le_2', unit_id: 'oa_1:29-2:c1', question: '진보성: 차이점 확정 뒤 결합 동기와 효과를 보는 기준', as_of: null, checked_on: CHECKED_ON,
     claims: [
       {
-        no: 1, text: '진보성은 청구항과 가장 가까운 인용발명의 차이점을 먼저 확정하고, 통상의 기술자가 그 차이를 쉽게 극복할 수 있는지로 본다.', status: ok('조문·심사기준 원문 대조'),
+        no: 1, text: '진보성은 청구항과 가장 가까운 인용발명의 차이점을 먼저 확정하고, 통상의 기술자가 그 차이를 쉽게 극복할 수 있는지로 본다.', status: unv('edition_unknown'), // 근거 중 조문 판본을 모름
         sources: [
-          { source_kind: 'statute', identifier: '특허법 제29조제2항', edition: null, location: '제29조제2항', text_kind: 'full', speaker: null, excerpt: '그 발명이 속하는 기술분야에서 통상의 지식을 가진 사람이 쉽게 발명할 수 있으면 특허를 받을 수 없다.', status: unv('edition_unknown') },
+          { source_kind: 'statute', identifier: '특허법 제29조제2항', edition: null, location: '제29조제2항', text_kind: 'full', speaker: null, excerpt: '(예시 요약) 통상의 지식을 가진 사람이 인용발명으로 쉽게 발명할 수 있으면 특허를 받을 수 없다.', status: unv('edition_unknown') },
           { source_kind: 'exam_guideline', identifier: '특허·실용신안 심사기준 제3부 제3장 (예시 위치)', edition: '2099.1. 개정 (예시)', location: '5.1 판단 순서', text_kind: 'full', speaker: null, excerpt: '청구항 발명과 가장 가까운 인용발명을 고르고 차이점을 확정한 뒤…', status: ok('원문 대조') },
         ],
       },
       {
-        no: 2, text: '인용발명을 결합하려면 결합할 동기나 암시가 인용발명이나 기술상식에 있어야 한다.', status: ok('판례 전문 대조'),
+        no: 2, text: '인용발명을 결합하려면 결합할 동기나 암시가 인용발명이나 기술상식에 있어야 한다.', status: none('특허심판원 심결 요지 2015~2025 · "폐곡선 분할" 결합'), // 근거 하나가 조회 범위 내 없음
         sources: [
           { source_kind: 'precedent', identifier: '대법원 예시판결 20XX후0002', edition: null, location: '판결 이유 3.', text_kind: 'full', speaker: 'court', excerpt: '사후적 고찰로 결합을 쉽다고 보아서는 안 된다.', status: ok('판례 전문 대조') },
           { source_kind: 'trial_decision', identifier: '특허심판원 심결 (폐곡선 분할 결합)', edition: null, location: '—', text_kind: 'summary', speaker: null, excerpt: '—', status: none('특허심판원 심결 요지 2015~2025 · "폐곡선 분할" 결합') },
@@ -182,18 +194,21 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
 // ---- 법률 질문 (사건 없이) 예시 답 ----
 export function exampleLegalAnswer(q: LegalQuestion): LegalEvidenceBundle {
   const base = exampleLegal['oa_1:29-2:c1']
+  // 고른 자료 유형만 남기고(고르지 않으면 모두), 주장 상태는 남은 근거 중 가장 나쁜 값으로
+  const claims = base.claims
+    .map((c) => {
+      const sources = c.sources.filter((s) => q.source_kinds.length === 0 || q.source_kinds.includes(s.source_kind))
+      return { ...c, sources, status: worst(sources.map((s) => s.status), '근거 원문 대조') }
+    })
+    .filter((c) => c.sources.length > 0)
   return {
     ...base,
     bundle_id: 'le_chat_1',
     unit_id: null,
     question: q.text,
     as_of: q.as_of,
-    // 고른 자료 유형만 남긴다 (고르지 않으면 모두)
-    claims: base.claims
-      .map((c) => ({
-        ...c,
-        sources: c.sources.filter((s) => q.source_kinds.length === 0 || q.source_kinds.includes(s.source_kind)),
-      }))
-      .filter((c) => c.sources.length > 0),
+    claims,
+    // 걸러 낸 뒤 남은 주장으로 묶음 상태를 다시 모은다
+    status: worst(claims.map((c) => c.status), '주장마다 근거 원문 대조'),
   }
 }

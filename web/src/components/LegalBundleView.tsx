@@ -15,7 +15,9 @@ function SourceItem({ s }: { s: LegalSource }) {
         <StatusTag status={s.status} />
       </Space>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        판본: {s.edition ?? '모름'} · 원문 위치: {s.location}
+        {/* 판본은 법령·심사기준에만 있다 (판례·심결은 원문 위치만) */}
+        {s.source_kind === 'statute' || s.source_kind === 'exam_guideline' ? `판본: ${s.edition ?? '모름'} · ` : ''}
+        원문 위치: {s.location}
       </Typography.Text>
       {s.excerpt !== '—' && (
         <Typography.Text style={{ fontSize: 13 }}>
@@ -34,6 +36,9 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
         <Descriptions.Item label="질문">{b.question}</Descriptions.Item>
         <Descriptions.Item label="기준 시점">{b.as_of ?? '현행'}</Descriptions.Item>
         <Descriptions.Item label="확인 기준일">{b.checked_on}</Descriptions.Item>
+        <Descriptions.Item label="상태">
+          <StatusTag status={b.status} />
+        </Descriptions.Item>
       </Descriptions>
       {b.claims.map((c) => (
         <Card
@@ -56,7 +61,9 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
         </Card>
       ))}
       {b.claims.length === 0 && (
-        <Typography.Text type="secondary">고른 자료 유형에서 근거를 찾지 못했습니다.</Typography.Text>
+        <Typography.Text type="secondary">
+          {b.unit_id === null ? '고른 자료 유형에서 근거를 찾지 못했습니다.' : '이 판단 단위의 근거 주장이 없습니다.'}
+        </Typography.Text>
       )}
       <Card size="small" title="추가 검토할 자료">
         {b.further_review.length === 0 ? (

@@ -62,7 +62,8 @@ function notReadyAsNull(e: unknown): null {
 }
 
 export interface CompareLoaderData {
-  units: JudgmentUnit[]
+  // 판단 단위 결과가 아직 없으면 null (실행 중, 404 result_not_ready)
+  units: JudgmentUnit[] | null
   comparisons: ComparisonTable[]
   clarity: ClarityReview[]
   legal: LegalEvidenceBundle[]
@@ -71,11 +72,16 @@ export interface CompareLoaderData {
 // 3 대비와 근거: 판단 단위 · 대비표 · 명확성 문구 검토 · 법률 근거
 export async function compareLoader({ params }: LoaderFunctionArgs): Promise<CompareLoaderData> {
   const oaId = params.oaId!
+  // 결과가 아직 없음(result_not_ready)만 "없음"으로 받고, 다른 오류는 오류 화면으로
+  const notReady = <T,>(fallback: T) => (e: unknown): T => {
+    if (isNotReady(e)) return fallback
+    throw e
+  }
   const [units, comparisons, clarity, legal] = await Promise.all([
-    api.getUnits(oaId),
-    api.getComparisons(oaId),
-    api.getClarityReviews(oaId),
-    api.getLegalEvidence(oaId),
+    api.getUnits(oaId).catch(notReady(null)),
+    api.getComparisons(oaId).catch(notReady([])),
+    api.getClarityReviews(oaId).catch(notReady([])),
+    api.getLegalEvidence(oaId).catch(notReady([])),
   ])
   return { units, comparisons, clarity, legal }
 }

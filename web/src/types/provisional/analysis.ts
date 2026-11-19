@@ -7,6 +7,8 @@ export interface ResultCommon {
   status: Status
   evidence: Evidence[]
   origin: Origin
+  needs_recheck: boolean // 앞 입력이 바뀌어 다시 확인해야 함 (status와 따로)
+  recheck_reason: string | null
   flags: Flag[]
 }
 

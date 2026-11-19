@@ -1,7 +1,8 @@
 import { BookOutlined } from '@ant-design/icons'
-import { Alert, Badge, Button, Card, Descriptions, Drawer, Empty, Radio, Space, Typography } from 'antd'
+import { Alert, Badge, Button, Card, Descriptions, Drawer, Empty, Radio, Result, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { useLoaderData, useRouteLoaderData, useSearchParams } from 'react-router'
+import { API_MODE } from '../../api'
 import { LegalBundleView } from '../../components/LegalBundleView'
 import { AiResultMark, ExampleDataMark, HumanCheckTag } from '../../components/Marks'
 import { StatusTag } from '../../components/StatusTag'
@@ -25,13 +26,22 @@ export function ComparePage() {
   const [params, setParams] = useSearchParams()
   const [legalOpen, setLegalOpen] = useState(false)
 
+  if (units === null) {
+    return <Result status="info" title="판단 단위가 아직 없습니다" subTitle="실행이 끝나면 여기에 대비와 근거가 보입니다" />
+  }
   const unit = units.find((u) => u.unit_id === params.get('unit')) ?? units[0]
   const unsupported = oaResult?.result.rejections.filter((r) => !r.supported) ?? []
 
   if (!unit) {
     return (
       <Card size="small" title="대비와 근거">
-        <Empty description="판단 단위가 없습니다" />
+        <Empty
+          description={
+            API_MODE === 'mock'
+              ? '판단 단위가 없습니다 (예시 데이터는 fixture 사건 셋에만 있음)'
+              : '판단 단위가 없습니다 (AI가 다루는 거절이유가 없음)'
+          }
+        />
       </Card>
     )
   }

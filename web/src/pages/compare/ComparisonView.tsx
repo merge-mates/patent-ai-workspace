@@ -1,4 +1,11 @@
-import { ArrowRightOutlined, AuditOutlined, RobotOutlined } from '@ant-design/icons'
+import {
+  ArrowRightOutlined,
+  AuditOutlined,
+  CheckOutlined,
+  DiffOutlined,
+  EllipsisOutlined,
+  RobotOutlined,
+} from '@ant-design/icons'
 import { Card, Col, Row, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { HumanCheckTag } from '../../components/Marks'
@@ -12,11 +19,11 @@ import type {
   NoveltySummary,
 } from '../../types/provisional/analysis'
 
-// 판단 값 (상태 네 가지와 다른 축이라 색도 다르게)
-const judgmentTag: Record<Judgment, { color: string; text: string }> = {
-  disclosed: { color: 'green', text: '개시됨' },
-  difference_candidate: { color: 'orange', text: '차이 후보' },
-  unclear: { color: 'default', text: '불명' },
+// 판단 값 (상태 네 가지와 다른 축). 색만으로 나누지 않게 아이콘도 붙인다
+const judgmentTag: Record<Judgment, { color: string; text: string; icon: ReactNode }> = {
+  disclosed: { color: 'green', text: '개시됨', icon: <CheckOutlined /> },
+  difference_candidate: { color: 'orange', text: '차이 후보', icon: <DiffOutlined /> },
+  unclear: { color: 'default', text: '불명', icon: <EllipsisOutlined /> },
 }
 
 const columns: ColumnsType<ComparisonRow> = [
@@ -35,7 +42,11 @@ const columns: ColumnsType<ComparisonRow> = [
   { title: '위치', render: (_, r) => r.location ?? '—' },
   {
     title: '판단',
-    render: (_, r) => <Tag color={judgmentTag[r.judgment].color}>{judgmentTag[r.judgment].text}</Tag>,
+    render: (_, r) => (
+      <Tag color={judgmentTag[r.judgment].color} icon={judgmentTag[r.judgment].icon}>
+        {judgmentTag[r.judgment].text}
+      </Tag>
+    ),
   },
   { title: '상태', render: (_, r) => <StatusTag status={r.status} /> },
   {
@@ -89,10 +100,11 @@ function InventiveSteps({ s }: { s: InventiveSummary }) {
   )
 }
 
+// 신규성 요약 판정: 표의 판단과 같은 색 (차이 없음·실질적 동일 = 개시됨 쪽 초록, 차이 있음 = 차이 후보 쪽 주황)
 const noveltyVerdict = {
-  no_difference: '차이 없음',
-  substantially_same_candidate: '실질적 동일 후보',
-  different: '차이 있음',
+  no_difference: { text: '차이 없음', color: 'green', icon: <CheckOutlined /> },
+  substantially_same_candidate: { text: '실질적 동일 후보', color: 'lime', icon: <EllipsisOutlined /> },
+  different: { text: '차이 있음', color: 'orange', icon: <DiffOutlined /> },
 }
 
 // 신규성: 인용 하나와만 대비한다
@@ -100,7 +112,9 @@ function NoveltyLine({ s }: { s: NoveltySummary }) {
   return (
     <Card size="small" title={`신규성 대비: ${s.citation} 하나와만`}>
       <Space wrap>
-        <Tag color={s.verdict === 'different' ? 'green' : 'orange'}>{noveltyVerdict[s.verdict]}</Tag>
+        <Tag color={noveltyVerdict[s.verdict].color} icon={noveltyVerdict[s.verdict].icon}>
+          {noveltyVerdict[s.verdict].text}
+        </Tag>
         <Typography.Text>{s.reason}</Typography.Text>
       </Space>
     </Card>
