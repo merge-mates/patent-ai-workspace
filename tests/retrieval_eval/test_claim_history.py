@@ -46,9 +46,10 @@ def test_br은_줄바꿈이_된다():
 
 
 def test_행정이력에_없는_접수의_변경은_적용하지_않고_센다():
-    claims, unmatched = claims_at_oa_with_stats(HIST, ADMIN, OA)
+    claims, unmatched, unknown = claims_at_oa_with_stats(HIST, ADMIN, OA)
     assert "행정이력에 없는" not in claims[4]
     assert unmatched == 1
+    assert unknown == 0
 
 
 def test_OA_발송번호가_행정이력에_없으면_OaNotFound():
@@ -76,3 +77,26 @@ def test_날짜가_아니라_행정이력_줄_순서로_자른다(tmp_path):
         encoding="utf-8",
     )
     assert claims_at_oa(hist, admin, "OA1") == {1: "날짜는 늦은 앞 보정"}
+
+
+def test_모르는_변경구분명은_건너뛰고_센다(tmp_path):
+    # 리뷰 요청 3: 신규·수정·삭제가 아닌 값은 조용히 넘기지 않고 건수를 돌려준다
+    admin = tmp_path / "a.txt"
+    admin.write_text(
+        "출원번호¶접수발송번호¶접수발송일자¶접수발송서류명¶접수발송서류영문명¶처리상태¶처리상태영문명¶단계¶심판번호¶등록번호\n"
+        "X¶R1¶20990101¶특허출원서¶¶¶¶¶¶\n"
+        "X¶R2¶20990201¶보정서¶¶¶¶¶¶\n"
+        "X¶OA1¶20990601¶의견제출통지서¶¶¶¶¶¶\n",
+        encoding="utf-8",
+    )
+    hist = tmp_path / "h.txt"
+    hist.write_text(
+        "출원번호¶접수발송일련번호¶접수발송번호¶청구항번호¶변경구분코드¶변경구분명¶청구항¶변동대상접수문서번호¶변동청구항\n"
+        "X¶1¶R1¶1¶N¶신규¶처음¶¶\n"
+        "X¶2¶R2¶1¶Z¶지어낸종류¶바뀌면 안 됨¶¶\n",
+        encoding="utf-8",
+    )
+    claims, unmatched, unknown = claims_at_oa_with_stats(hist, admin, "OA1")
+    assert claims == {1: "처음"}
+    assert unmatched == 0
+    assert unknown == 1

@@ -44,6 +44,7 @@ class ConvertReport:
     claim_missing_rows: int = 0  # OA 당시 없거나 삭제된 청구항
     no_citation_reasons: int = 0  # 인용 없는 거절이유 (42조 등)
     unapplied_changes: int = 0  # 행정이력에 없는 접수의 청구항 변경
+    unknown_change_kinds: int = 0  # 신규·수정·삭제가 아니라 건너뛴 청구항 변경
 
     def as_dict(self) -> dict:
         return {
@@ -55,6 +56,7 @@ class ConvertReport:
             "claim_missing_rows": self.claim_missing_rows,
             "no_citation_reasons": self.no_citation_reasons,
             "unapplied_changes": self.unapplied_changes,
+            "unknown_change_kinds": self.unknown_change_kinds,
         }
 
 
@@ -173,13 +175,14 @@ def convert(
         # 2단계: OA 당시 청구항 (질의). 파일·OA가 없으면 이 사건 줄은 모두 뺀다
         hist, admin = _case_paths(cases_root, app_no)
         try:
-            claims_by_no, unapplied = claims_at_oa_with_stats(hist, admin, oa_no)
+            claims_by_no, unapplied, unknown_kind = claims_at_oa_with_stats(hist, admin, oa_no)
         except OSError, OaNotFound:
             rep.no_query_cases += 1
             rep.no_query_rows += len(specs)
             log.warning("질의를 못 만든 사건: 발송번호 %s (줄 %d개 뺌)", oa_no, len(specs))
             continue
         rep.unapplied_changes += unapplied
+        rep.unknown_change_kinds += unknown_kind
 
         # 3단계: 줄 만들기
         for seq, c, doc_id, items, from_range in specs:
@@ -272,7 +275,8 @@ def main(argv: list[str] | None = None) -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
         # 공용 VERSION은 F1·법령 정답과 같이 쓴다. 변환기가 올리면 다른 기능 실험이 멈추므로
-        # 쓰지 않고 사람에게 알리기만 한다 (PR #117 리뷰). 파일 내용은 scores.json gold_sha256으로도 갈린다
+        # 쓰지 않고 사람에게 알리기만 한다 (PR #117 리뷰).
+        # 파일 내용은 scores.json gold_sha256으로도 갈린다
         if changed:
             log.warning(
                 "정답 내용이 바뀜: data/goldsets/VERSION을 올려야 함 (지금 %s). "
@@ -302,6 +306,12 @@ def main(argv: list[str] | None = None) -> int:
         rep.claim_missing_rows,
         rep.unapplied_changes,
     )
+    if rep.unknown_change_kinds:
+        log.warning(
+            "모르는 변경구분명이라 적용하지 않은 청구항 변경 %d건: "
+            "질의가 OA 당시 판과 다를 수 있다",
+            rep.unknown_change_kinds,
+        )
     return 0
 
 

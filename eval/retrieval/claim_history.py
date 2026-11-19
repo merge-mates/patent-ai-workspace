@@ -48,8 +48,11 @@ def _read_table(path: Path) -> list[dict[str, str]]:
 
 def claims_at_oa_with_stats(
     claim_history_path: Path, admin_history_path: Path, oa_no: str
-) -> tuple[dict[int, str], int]:
-    """(청구항 번호 -> 글자, 행정이력에 없는 접수라 적용 안 한 변경 수)."""
+) -> tuple[dict[int, str], int, int]:
+    """(청구항 번호 -> 글자, 적용 안 한 변경 수, 모르는 변경구분명이라 건너뛴 수).
+
+    적용 안 한 변경 = 행정이력에 없는 접수의 변경.
+    """
     admin = _read_table(admin_history_path)
     oa_idx = next(
         (
@@ -80,6 +83,7 @@ def claims_at_oa_with_stats(
     changes.sort(key=lambda t: (t[0], t[1]))  # 행정이력 순서, 같은 접수 안은 파일 순서
 
     claims: dict[int, str] = {}
+    unknown_kind = 0
     for _, _, r in changes:
         n = int(r["청구항번호"])
         kind = r["변경구분명"].strip()
@@ -87,7 +91,10 @@ def claims_at_oa_with_stats(
             claims[n] = r["청구항"].replace("<br />", "\n")
         elif kind == "삭제":
             claims.pop(n, None)
-    return claims, unmatched
+        else:
+            # 신규·수정·삭제가 아닌 종류: 적용하지 않고 센다 (조용히 넘기면 질의가 옛 판이 된다)
+            unknown_kind += 1
+    return claims, unmatched, unknown_kind
 
 
 def claims_at_oa(claim_history_path: Path, admin_history_path: Path, oa_no: str) -> dict[int, str]:

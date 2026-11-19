@@ -1,6 +1,5 @@
 """정답 변환 (design 3-1). 지어낸 정답 JSON·청구항이력만 쓰고, 출력은 전부 tmp_path."""
 
-import hashlib
 import json
 import logging
 import shutil
@@ -201,6 +200,20 @@ def test_변환_보고가_work에_남는다(env):
     assert rep["no_query_rows"] == 2
     assert rep["claim_missing_rows"] == 1  # 5항은 OA 앞에 삭제됨
     assert rep["unapplied_changes"] == 1
+    assert rep["unknown_change_kinds"] == 0
+
+
+def test_모르는_변경구분명은_보고에_세고_경고(env, caplog):
+    hist = env.cases / "10-2099-0000001" / "10-2099-0000001_청구항이력.txt"
+    first = hist.read_text(encoding="utf-8").splitlines()[1].split("¶")
+    first[5] = "지어낸종류"  # 출원서 접수(OA 앞)의 변경 하나를 모르는 종류로
+    with hist.open("a", encoding="utf-8") as f:
+        f.write("¶".join(first) + "\n")
+    with caplog.at_level(logging.WARNING):
+        assert env.run() == 0
+    rep = json.loads(env.report.read_text(encoding="utf-8"))
+    assert rep["unknown_change_kinds"] == 1
+    assert "모르는 변경구분명" in caplog.text
 
 
 # ---- 빈 입력 ----
