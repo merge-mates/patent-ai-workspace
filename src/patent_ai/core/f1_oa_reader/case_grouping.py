@@ -187,3 +187,81 @@ def group_materials(
         else g
         for g in grouped
     ]
+
+
+# --- 심사 대상 판 고르기 (T3) ---------------------------------------------------
+
+V0 = "v0"  # [가정] 출원 때 판 이름 (보정서 없음). 판 이름 규칙은 저장 PR(#55 뒤)에서 맞춘다
+
+
+class HistoryEvent(BaseModel):
+    """행정 이력 사건 하나. 목록 순서가 곧 이력 순서다 (순서는 #54 조회가 정한다)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["oa", "amendment", "opinion", "other"]
+    number_text: str | None = None  # OA는 발송번호, 보정서·의견서는 접수번호 (원문 글자)
+
+
+def _unverified(reason: UnverifiedReason, raw_text: str | None = None) -> ExtractedValue[str]:
+    return ExtractedValue[str](
+        raw_text=raw_text, status=Status(value=StatusValue.UNVERIFIED, reason=reason)
+    )
+
+
+def select_examined_version(
+    history: list[HistoryEvent] | None, target_dispatch: str | None
+) -> ExtractedValue[str]:
+    """대상 OA(발송번호)가 심사한 청구항 판을 고른다 (design.md 4절).
+
+    - 이력 순서에서 대상 OA **앞**의 마지막 보정서 접수번호가 그 판. 보정서가 없으면 "v0".
+    - 의견서는 판을 만들지 않으니 건너뛴다. 날짜는 보지 않는다.
+    - 이력이 없거나 비었거나 대상 OA가 이력에 없으면 unverified(lookup_failed).
+      단 번호를 못 읽은 OA가 이력에 있으면 unverified(not_extracted).
+    - 대상 OA가 이력에 두 번 나오면 unverified(ambiguous).
+    - 대상 발송번호를 못 읽으면 unverified(input_unverified).
+    - 마지막 보정서 번호를 못 읽으면 unverified(그 번호의 이유) (그 판을 모름).
+    """
+    target = read_number("dispatch", target_dispatch).value
+    if target is None:
+        return _unverified(UnverifiedReason.INPUT_UNVERIFIED, target_dispatch)
+    if history is None:
+        return _unverified(UnverifiedReason.LOOKUP_FAILED)
+    if not history:
+        logger.warning("select_examined_version: 이력이 비어 있음 -> unverified(lookup_failed)")
+        return _unverified(UnverifiedReason.LOOKUP_FAILED)
+
+    # 대상 OA가 이력 몇 번째에 있는지 찾는다 (번호로만 찾는다)
+    positions = [
+        i
+        for i, e in enumerate(history)
+        if e.kind == "oa" and read_number("dispatch", e.number_text).value == target
+    ]
+    if not positions:
+        # 번호를 못 읽은 OA가 있으면 그게 대상일 수도 있다: 조회 실패와 구분한다
+        unreadable = any(
+            e.kind == "oa" and read_number("dispatch", e.number_text).value is None for e in history
+        )
+        reason = UnverifiedReason.NOT_EXTRACTED if unreadable else UnverifiedReason.LOOKUP_FAILED
+        return _unverified(reason)
+    if len(positions) > 1:
+        return _unverified(UnverifiedReason.AMBIGUOUS)
+
+    # 대상 OA 앞에서 가장 늦은 보정서 = 심사 대상 판을 만든 보정서
+    before = [e for e in history[: positions[0]] if e.kind == "amendment"]
+    if not before:
+        return ExtractedValue[str](
+            value=V0,
+            status=Status(
+                value=StatusValue.CONFIRMED, checked="대상 OA 앞 보정서 없음: 출원 때 판"
+            ),
+        )
+    last = read_number("receipt", before[-1].number_text)
+    if last.value is None:
+        # 못 읽은 이유(not_extracted / ambiguous)를 그대로 넘긴다
+        return _unverified(last.status.reason, before[-1].number_text)
+    return ExtractedValue[str](
+        value=last.value,
+        raw_text=last.raw_text,
+        status=Status(value=StatusValue.CONFIRMED, checked="대상 OA 앞 마지막 보정서 접수번호"),
+    )

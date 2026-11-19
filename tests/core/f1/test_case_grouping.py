@@ -3,10 +3,12 @@
 import pytest
 
 from patent_ai.core.f1_oa_reader.case_grouping import (
+    HistoryEvent,
     MaterialInput,
     group_materials,
     normalize_receipt_number,
     read_number,
+    select_examined_version,
 )
 from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
 
@@ -260,3 +262,108 @@ def test_group_사건_출원번호는_하이픈이_있어도_맞춤():
 def test_group_사건_출원번호_꼴이_아니면_ValueError(case_number):
     with pytest.raises(ValueError):
         group_materials([_m("d_oa", "oa", number="9-5-2099-012345678")], case_number)
+
+
+# --- T3 심사 대상 판 고르기 -----------------------------------------------------
+
+OA1 = "9-5-2099-000000001"
+OA2 = "9-5-2099-000000002"
+AMD1 = "1-1-2099-0000001-12"
+AMD2 = "1-1-2099-0000002-34"
+
+
+def _h(kind, number):
+    return HistoryEvent(kind=kind, number_text=number)
+
+
+# 이력 순서(#54가 정함): OA ① → 보정서 → OA ②
+TWO_OAS = [_h("oa", OA1), _h("amendment", AMD1), _h("oa", OA2)]
+
+
+def test_version_첫_OA는_출원_때_판_v0():
+    v = select_examined_version(TWO_OAS, OA1)
+    assert v.value == "v0"
+    assert v.status.value == StatusValue.CONFIRMED
+
+
+def test_version_두번째_OA는_앞_보정서_접수번호():
+    v = select_examined_version(TWO_OAS, OA2)
+    assert v.value == "112099000000112"
+    assert v.raw_text == AMD1
+    assert v.status.value == StatusValue.CONFIRMED
+
+
+def test_version_보정서가_여럿이면_대상_OA_바로_앞_마지막():
+    hist = [_h("oa", OA1), _h("amendment", AMD1), _h("amendment", AMD2), _h("oa", OA2)]
+    assert select_examined_version(hist, OA2).value == "112099000000234"
+
+
+def test_version_대상_OA_뒤_보정서는_보지_않음():
+    hist = [_h("oa", OA1), _h("amendment", AMD1)]
+    assert select_examined_version(hist, OA1).value == "v0"
+
+
+def test_version_의견서만_있으면_판은_그대로_v0():
+    hist = [_h("oa", OA1), _h("opinion", AMD1), _h("oa", OA2)]
+    assert select_examined_version(hist, OA2).value == "v0"
+
+
+def test_version_대상_발송번호는_하이픈_없어도_됨():
+    assert select_examined_version(TWO_OAS, "952099000000002").value == "112099000000112"
+
+
+def test_version_이력을_못_가져오면_lookup_failed():
+    v = select_examined_version(None, OA1)
+    assert v.value is None
+    assert v.status.reason == UnverifiedReason.LOOKUP_FAILED
+
+
+def test_version_빈_이력이면_lookup_failed와_경고(caplog):
+    v = select_examined_version([], OA1)
+    assert v.status.reason == UnverifiedReason.LOOKUP_FAILED
+    assert "이력이 비어 있음" in caplog.text
+
+
+def test_version_대상_OA가_이력에_없으면_lookup_failed():
+    v = select_examined_version([_h("oa", OA1)], OA2)
+    assert v.value is None
+    assert v.status.reason == UnverifiedReason.LOOKUP_FAILED
+
+
+def test_version_대상_OA가_이력에_두_번이면_ambiguous():
+    hist = [_h("oa", OA1), _h("amendment", AMD1), _h("oa", OA1)]
+    v = select_examined_version(hist, OA1)
+    assert v.value is None
+    assert v.status.reason == UnverifiedReason.AMBIGUOUS
+
+
+@pytest.mark.parametrize("target", [None, "", "9-5-2099-0001"])
+def test_version_대상_발송번호를_못_읽으면_input_unverified(target):
+    v = select_examined_version(TWO_OAS, target)
+    assert v.value is None
+    assert v.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+
+
+def test_version_마지막_보정서_번호를_못_읽으면_not_extracted():
+    hist = [_h("oa", OA1), _h("amendment", AMD1), _h("amendment", "1-1-2099-12"), _h("oa", OA2)]
+    v = select_examined_version(hist, OA2)
+    assert v.value is None
+    assert v.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+def test_version_앞쪽_보정서만_못_읽고_마지막이_읽히면_마지막():
+    hist = [_h("amendment", "1-1-2099-12"), _h("oa", OA1), _h("amendment", AMD2), _h("oa", OA2)]
+    assert select_examined_version(hist, OA2).value == "112099000000234"
+
+
+def test_version_대상을_못_찾았는데_번호_없는_OA가_있으면_not_extracted():
+    hist = [_h("oa", OA1), _h("amendment", AMD1), _h("oa", None)]
+    v = select_examined_version(hist, OA2)
+    assert v.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+def test_version_마지막_보정서에_번호가_둘이면_ambiguous():
+    hist = [_h("oa", OA1), _h("amendment", f"{AMD1}, {AMD2}"), _h("oa", OA2)]
+    v = select_examined_version(hist, OA2)
+    assert v.value is None
+    assert v.status.reason == UnverifiedReason.AMBIGUOUS
