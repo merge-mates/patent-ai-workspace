@@ -107,6 +107,7 @@ def _score_basic(g: F1Gold, p: F1Pred, s: OAScore) -> None:
 
 
 def _score_rejections(g: F1Gold, p: F1Pred, s: OAScore) -> None:
+    # 칸 4개: 종류·조문·지원·대상. 종류와 지원은 같은 조문 규칙에서 나와 틀리면 둘이 같이 틀린다
     pred_by_no = {r.no: r for r in p.rejections}
     for gr in g.rejections:
         pr = pred_by_no.get(gr.no)
