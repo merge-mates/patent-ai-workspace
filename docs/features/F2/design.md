@@ -126,7 +126,7 @@ flowchart LR
 ## 5. 저장
 - 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: `legal_evidence_bundles`, `legal_chats` (새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
-- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판(열린 질문 3, M2는 안 부름). 먼저 `api_cache`에 저장하고 쓴다.
+- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판(열린 질문 3, M2는 안 부름. 심결은 미리 받은 12건만). 먼저 `api_cache`에 저장하고 쓴다.
 - 외부 모델로 보내는 자료: 법령·심사기준·판례 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
 
 ### 5-1. 색인 `law-idx-v3` (#24가 만듦, 여기서는 모양만)
@@ -138,6 +138,7 @@ flowchart LR
 | 심사기준 | `심사기준_<예규번호>_<시행일>` | 절 제목 아래 문단 묶음 (쪽을 넘으면 쪽에서 자름) | `guideline` | `page`, `3203쪽 (제3부 제3장 4.1)` | 예규 시행일 ~ 다음 판 전날 |
 | 판례 요지 | `판례_<사건번호>` | 판시사항·판결요지 한 칸씩 | `judgment_summary` (새 값) | `paragraph`, `판결요지 [1]` | `not_applicable` |
 | 판례 전문 | `판례_<사건번호>` | 판례내용 "이유" 아래 번호 문단 | `judgment` | `paragraph`, `이유 2. 가.` | `not_applicable` |
+| 심결 (12건, PDF) | `심결_<심판번호>` | "이유" 아래 번호 문단 (요지 칸이 없어 전문만) | `judgment` | `paragraph`, `이유 3. 나.` | `not_applicable` |
 
 - `judgment_summary`를 더하는 것은 검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR" 규칙대로 #24 PR에서 검색 계약 design도 고친다.
 - 자료 유형 거르기: 검색 계약에 유형 인자가 없다. F2 도구가 `doc_ids`에 그 유형의 문헌 목록(저장소에서 `doc_id` 앞머리로 뽑음)을 넘긴다. 계약은 바꾸지 않는다.
@@ -158,7 +159,7 @@ flowchart LR
   | `search_article` | 질의 + 기준일 → `SearchResult` (조문만, `doc_ids` = 법령 문헌). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)` |
   | `search_guideline` | 질의 + 기준일 → `SearchResult` (심사기준만) | 위와 같음, 색인 없음 `unverified(body_missing)` |
   | `search_precedent` | 질의 (+ 사건번호) → `SearchResult` (판례만, 기준일 없음) | 0개 `not_found_in_scope`, 색인 없음 `unverified(body_missing)` |
-  | `get_precedent` | 사건번호 → 그 판례 조각들 | 없음 `not_found_in_scope` (+ 찾아본 범위: 받은 74건) |
+  | `get_precedent` | 사건번호·심판번호 → 그 판례·심결 조각들 | 없음 `not_found_in_scope` (+ 찾아본 범위: 받은 판례 74건·심결 12건) |
   | `normalize_refs` | 글 → 조문·사건번호·날짜 꼴 맞춘 목록 (코드) | 못 읽음은 빈 목록 + 경고 |
 - **평가 세트·지표:**
   - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
@@ -187,7 +188,7 @@ flowchart LR
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |
 |---|---|---|---|---|
 | 심사기준·판례도 `law_chunks` 한 표 (`law-idx-v3`) | 말뭉치 새로 (`guideline`, `prec`) | 검색 계약이 법령·판례를 법령 표에 넣기로 함. 계약·채점기를 안 고침 | 설계 | 검색 계약 requirements 2 |
-| 자료 유형 거르기 = 도구가 `doc_ids`로 | `search()`에 유형 인자 | 계약을 안 바꿈. 판례 74건·심사기준 8판이라 목록이 짧음 | 설계 | |
+| 자료 유형 거르기 = 도구가 `doc_ids`로 | `search()`에 유형 인자 | 계약을 안 바꿈. 판례 74건·심결 12건·심사기준 8판이라 목록이 짧음 | 설계 | |
 | 판례 요지 = 새 `chunk_kind: judgment_summary` | `judgment` 하나 + 다른 칸 | 요지/전문 구분(기준 5)을 조각에서 바로 앎 | 설계 | |
 | 판단/당사자 주장 = [제안] 색인 때 제목 규칙("원고의 주장", "판단" 등)으로 표시, 못 정하면 `unknown` → 사람 확인 | 답할 때 모델이 정함 | 규칙이면 테스트로 잴 수 있음. 모델이 정하면 "판단처럼 쓰기" 오류가 근거 검토에만 걸림 | 설계 | 열린 질문 6 |
 | OA 흐름 질의 = 심사관 논리 글 (청구항 글 없음) | 청구항 + 논리 | 조문·법리 찾기에 청구항 글은 잡음 [가정] | 설계 | 7-3 실험 1 |
@@ -204,7 +205,8 @@ flowchart LR
   - `unverified(edition_unknown)`: 판본 모름 조각만 있는 조문 + 기준일. 검색 도구 결과가 0개 + `skipped_unverified_edition` > 0이어도 `not_found_in_scope`가 아니라 이 값.
   - 시점 없음: 같은 조문 두 판 → 현행판 조각만 나온다 (`as_of = checked_on`).
   - 출원일판 ≠ 발송일판: 근거는 발송일판, 출원일판은 `further_review`의 `other_edition`.
-  - `unverified(body_missing)`: 심결 질문, 심사기준 색인 없음.
+  - `unverified(body_missing)`: 심사기준·심결 색인 없음.
+  - 받은 12건 밖의 심판번호 → `not_found_in_scope` + 찾아본 범위.
   - `unverified(input_unverified)`: F1 조문이 `unverified`인 거절이유.
   - 오류 주입 5종: 녹화 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
   - 부딪힘: 글 시점 ≠ 선택 시점 → `clarifications` 1건, 판례 검색은 끝남.
