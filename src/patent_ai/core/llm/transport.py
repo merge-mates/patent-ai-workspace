@@ -1,4 +1,4 @@
-"""전송층. 모델 SDK(anthropic)는 이 파일 안에서만 import한다."""
+"""전송층. 모델 SDK(anthropic·openai)는 이 파일 안에서만 import한다."""
 
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -19,6 +19,13 @@ class TransportError(Exception):
     def __init__(self, message: str, retryable: bool) -> None:
         super().__init__(message)
         self.retryable = retryable
+
+
+def is_real_transport(transport) -> bool:
+    """돈이 드는 진짜 전송층인가. 허용 목록 방식: is_real=False 표시가 있는 가짜·기록 전송층만
+    돈이 안 든다고 보고, 표시가 없는 전송층(래퍼, 새 진짜 전송층)과 None(기본 진짜)은 진짜로 본다.
+    과금을 막는 선(상한 필수·기본 파일 캐시)이 모르는 전송층에서 빠지지 않게."""
+    return transport is None or getattr(transport, "is_real", True)
 
 
 class Transport(Protocol):
@@ -73,6 +80,7 @@ class FakeTransport:
 
     responses: dict[str, object]
     calls: list[dict] = field(default_factory=list)
+    is_real = False  # 돈 안 드는 전송층 (is_real_transport)
     _used: dict[str, int] = field(default_factory=dict)
 
     def complete(
@@ -99,3 +107,38 @@ class FakeTransport:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+# ---- 임베딩 (#66) ----
+@dataclass(frozen=True)
+class EmbedResponse:
+    vectors: list[list[float]]  # 받은 글 순서 그대로
+    input_tokens: int
+
+
+def parse_openai_embeddings(resp) -> EmbedResponse:
+    """SDK 응답의 data를 index 순서로 줄 세워 벡터를 읽는다."""
+    rows = sorted(resp.data, key=lambda d: d.index)
+    return EmbedResponse([list(d.embedding) for d in rows], resp.usage.prompt_tokens)
+
+
+class OpenAIEmbedTransport:
+    """진짜 임베딩 전송층. 키는 SDK가 환경 변수(OPENAI_API_KEY)에서 읽는다."""
+
+    def __init__(self) -> None:
+        import openai  # 여기서만 import
+
+        self._client = openai.OpenAI()
+
+    def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse:
+        import openai
+
+        # SDK 예외를 TransportError로 바꿔 던진다 (429·5xx·연결 오류만 다시 부를 만함)
+        try:
+            resp = self._client.embeddings.create(model=model, input=texts)
+        except openai.APIStatusError as e:
+            retryable = e.status_code == 429 or e.status_code >= 500
+            raise TransportError(f"{e.status_code} {e.message}", retryable) from e
+        except openai.APIConnectionError as e:
+            raise TransportError(f"연결 오류: {e}", True) from e
+        return parse_openai_embeddings(resp)

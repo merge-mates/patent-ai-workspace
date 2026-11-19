@@ -17,6 +17,8 @@ from patent_ai.core.llm.errors import (
     ModelOutputInvalid,
 )
 from patent_ai.core.llm.limits import CallBudget, CallRecord, MemoryRecorder, RunContext
+from patent_ai.core.llm.prompts import render_prompt
+from patent_ai.core.llm.recorded import RecordedTransport, save_recording
 from patent_ai.core.llm.transport import (
     AnthropicTransport,
     FakeTransport,
@@ -147,7 +149,7 @@ def test_캐시_적중은_상한에_세지_않고_기록은_남는다(tmp_path):
     assert rec.records[1].cost == 0.0
 
 
-def test_상한이_설정에_없으면_막지_않고_경고를_한_번만_남긴다(tmp_path, caplog):
+def test_가짜_전송층은_상한이_설정에_없으면_막지_않고_경고를_한_번만_남긴다(tmp_path, caplog):
     cfg = make_config(tmp_path)
     budget, rec, t = CallBudget(), MemoryRecorder(), scripted(OK)
     with caplog.at_level(logging.WARNING):
@@ -156,6 +158,90 @@ def test_상한이_설정에_없으면_막지_않고_경고를_한_번만_남긴
     assert len(t.calls) == 5
     warns = [m for m in caplog.messages if "상한" in m]
     assert len(warns) == 1
+
+
+def _real_transport(inner):
+    """AnthropicTransport 객체 (생성자 우회, complete만 가짜로 바꿈. 네트워크 없음)."""
+    real = object.__new__(AnthropicTransport)
+    real.complete = inner.complete
+    return real
+
+
+def test_진짜_전송층인데_max_model_calls가_없으면_부르기_전에_멈춘다(tmp_path):
+    cfg = make_config(tmp_path, max_input_tokens=1000)  # 토큰 상한만 있고 호출 수 상한 없음
+    inner = scripted(OK)
+    with pytest.raises(ModelConfigError, match="max_model_calls"):
+        run(_real_transport(inner), cfg, CallBudget(), MemoryRecorder(), cache=False)
+    assert inner.calls == []  # 진짜 전송층을 한 번도 안 부름
+
+
+def test_transport를_안_주고_상한이_없으면_SDK를_만들기_전에_멈춘다(tmp_path):
+    # conftest의 '진짜 호출 막힘'(RuntimeError)이 아니라 설정 검사(ModelConfigError)에서 멈춰야 한다
+    cfg = make_config(tmp_path)
+    with pytest.raises(ModelConfigError, match="max_model_calls"):
+        run(None, cfg, CallBudget(), MemoryRecorder(), cache=False)
+
+
+def test_진짜_전송층도_max_model_calls가_있으면_그대로_부른다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=2)
+    inner = scripted(OK)
+    r = run(_real_transport(inner), cfg, CallBudget(), MemoryRecorder(), cache=False)
+    assert r.text == "답" and len(inner.calls) == 1
+
+
+def test_진짜_전송층이라도_캐시_적중이면_상한이_없어도_멈추지_않는다(tmp_path):
+    cfg = make_config(tmp_path)
+    c = MemoryCache()
+    run(scripted(OK), cfg, CallBudget(), MemoryRecorder(), cache=c)  # 가짜로 캐시를 채움
+    inner = scripted(OK)
+    r = run(_real_transport(inner), cfg, CallBudget(), MemoryRecorder(), cache=c)
+    assert r.from_cache is True and inner.calls == []
+
+
+def test_기록_전송층은_상한이_없어도_경고만_남기고_부른다(tmp_path, caplog):
+    cfg = make_config(tmp_path)
+    rec_dir = tmp_path / "rec"
+    prompt = render_prompt("prompts/summarize.txt", VARS, FIX)
+    save_recording(
+        rec_dir,
+        OK,
+        step="t.s",
+        model="fake-model-1",
+        prompt=prompt,
+        temperature=0.0,
+        max_tokens=256,
+    )
+    with caplog.at_level(logging.WARNING):
+        r = run(RecordedTransport(rec_dir), cfg, CallBudget(), MemoryRecorder())
+    assert r.text == "답"
+    assert len([m for m in caplog.messages if "상한" in m]) == 1
+
+
+class _Wrapper:
+    """진짜 SDK를 감싼 래퍼 흉내 (로그·재시도 등). 돈 안 드는 표시(is_real=False)가 없다."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def complete(self, **kw):
+        return self.inner.complete(**kw)
+
+
+def test_이름_모르는_전송층은_진짜로_보고_상한이_없으면_멈춘다(tmp_path):
+    cfg = make_config(tmp_path)
+    inner = scripted(OK)
+    with pytest.raises(ModelConfigError, match="max_model_calls"):
+        run(_Wrapper(inner), cfg, CallBudget(), MemoryRecorder(), cache=False)
+    assert inner.calls == []
+
+
+def test_이름_모르는_전송층은_기본_파일_캐시를_쓴다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=5)
+    inner = scripted(OK)
+    w = _Wrapper(inner)
+    run(w, cfg, CallBudget(), MemoryRecorder())  # cache None -> 진짜로 보고 기본 FileCache
+    r = run(w, cfg, CallBudget(), MemoryRecorder())
+    assert r.from_cache is True and len(inner.calls) == 1
 
 
 def test_429가_계속되면_max_retries_뒤_ModelCallFailed(tmp_path):
@@ -338,7 +424,7 @@ def test_ctx와_따로_넘긴_인자를_같이_주면_막는다(tmp_path):
 
 
 def test_가짜_전송층이면_캐시_기본은_안_쓰고_진짜_전송층이면_파일_캐시를_쓴다(tmp_path):
-    cfg = make_config(tmp_path)
+    cfg = make_config(tmp_path, max_model_calls=5)  # 진짜 전송층은 호출 수 상한이 있어야 부른다
     fake = scripted(OK)
     ctx = RunContext("r", CallBudget(), MemoryRecorder(), transport=fake)
     ctx_call(ctx, cfg)
