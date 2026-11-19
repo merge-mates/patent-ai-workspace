@@ -16,6 +16,7 @@
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 - DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
 - 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
+- 부르는 방향은 `api → core → retrieval·law_api·db`, 그리고 `retrieval → db`만이다 ([ADR 0003](docs/decisions/0003-tech-stack.md)). `db/`에는 표 정의(ORM 모델)만 두고 core·retrieval을 import하지 않는다. core 타입을 DB에 쓰고 읽는 저장소(repository)는 부르는 쪽(core 또는 retrieval)에 둔다.
 
 ## 진행 단위
 - 지금 위치와 문서 지도: @docs/README.md (맨 위 `지금`)
