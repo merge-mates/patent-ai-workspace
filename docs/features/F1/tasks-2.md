@@ -36,7 +36,7 @@ graph LR
 - 합격 기준: #15 "AI 코어는 `run_case()` 하나만 밖으로", "계획을 설정 파일에서 고정 순서로 바꿀 수 있게", design.md 4절 (자르기는 건너뛸 수 없음)
 - 고칠 파일: `src/patent_ai/core/agents/orchestrator.py`, `src/patent_ai/core/agents/case_input.py`, `src/patent_ai/core/__init__.py`(`run_case` 내보내기), `config/orchestrator.yaml`, `prompts/agents/orchestrator.md`, `tests/core/agents/test_orchestrator.py`, `docs/architecture.md` 8절 그림 순서 (design.md 4절)
 - 만들 함수·인터페이스 모양: `CaseInput{case_id, oa_document: Path, oa_document_id, materials: list[DocumentRef]}`, `CaseStore` 프로토콜 `find_oa(application_number, dispatch_number) -> (case_id, oa_id) | None` (서버가 넣어 줌, core는 api를 import하지 않음), `run_case(case_input: CaseInput, oa_id: str, run_id: str, store: CaseStore, config_path: Path) -> RunOutcome{state, results, waiting_for, error, case_id}`. LangGraph 그래프: 지휘 노드(모델은 `core/llm` 경유) → 도구 노드. `fixed_stage` 도구는 그래프 간선으로 늘 지난다 (지휘가 고르지 않음). 설정 `plan: agent | fixed_order`
-- 테스트할 경우: 평소(`fixed_order`로 `extract_pages` → `read_oa` → `cut_to_oa`) / 지휘가 `cut_to_oa`를 안 골라도 돎 (그래프 테스트) / 실패(도구가 `ModelCallFailed`·`ModelCallLimitExceeded`·`ModelOutputInvalid` 중 하나 → `state=failed` + 이유, `succeeded`로 끝나지 않음)
+- 테스트할 경우: 평소(`fixed_order`로 `extract_pages` → `read_oa` → `cut_to_oa`) / 지휘가 `cut_to_oa`를 안 골라도 돎 (그래프 테스트) / 실패(도구가 `ModelCallFailed`·`ModelCallLimitExceeded`·`ModelOutputInvalid`·`PdfReadError` 중 하나 → `state=failed` + 이유, `succeeded`로 끝나지 않음)
 - 확인 방법: `uv run pytest tests/core/agents/test_orchestrator.py -q` → 모두 통과 (가짜 전송층)
 - 먼저: task-1, #13 task-3
 

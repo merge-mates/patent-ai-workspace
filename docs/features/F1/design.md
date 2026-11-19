@@ -36,7 +36,8 @@ flowchart LR
 ```
 1. 입력: 대상 OA의 `Document`(올린 PDF). 사건·출원번호는 몰라도 된다 (출원번호도 이 흐름에서 읽는다).
 2. 처리:
-   - ① 글자·쪽 추출 (#17): PDF → `PageText[{page, text}]` + 글자 추출 status. 글자 층이 없으면(스캔본) `unverified(body_missing)`.
+   - ① 글자·쪽 추출 (#17): PDF → `PageText{document_id, pages[{page, text, status}], status}`. 글자 층이 없으면(스캔본) `unverified(body_missing)`.
+     - 쪽 번호는 PDF 물리 쪽 순서(1부터), 인쇄된 쪽 표시와 다를 수 있음.
    - ③ 규칙 추출 (코드, 정규식): 출원번호(`10-YYYY-NNNNNNN`), 발송번호, 통지일·제출기일의 원문 글자(날짜로 바꾸지 않음), 조문(`제29조제2항` → `29-2`), 청구항 번호 범위(`제1항 내지 제4항, 제6항` → `[1,2,3,4,6]`), 통지 종류(`initial`/`final`/`unknown`, 아래 필드 출처 표). [가정] 국내 OA는 출원번호·발송번호·날짜가 정해진 칸에 글자로 있다 → 표본 OA 5건에서 확인 (#22).
    - ④ 모델 추출 (#13 모델 호출 모듈 한 번): 거절이유 블록마다 조문 원문, 대상 청구항 원문, 인용문헌 번호, 인용 식별번호, 심사관 논리 요지(원문 + 쪽), 「특허 가능한 청구항」, 【보정에 관한 참고사항】. 모델은 값마다 **원문 글자와 쪽**을 같이 돌려준다. 출력은 LLM 출력 스키마 `OAExtraction`(3-2)이고, 상태는 모델이 정하지 않는다.
    - ⑤ 원문 대조·합치기 (코드): 모델이 준 원문 글자가 그 쪽 텍스트에 실제로 있는지 본다 (공백·줄바꿈만 무시). 없으면 값과 쪽을 버리고 `unverified(not_extracted)`. 규칙 값과 모델 값이 둘 다 있고 다르면 `conflict`(둘 다 남김). 하나뿐이면 그 값. 모델이 "애매"라고 표시하면 `unverified(ambiguous)`. 청구항 번호 범위·조문은 모델 원문 글자를 ③ 코드로 다시 정규화한다.
@@ -128,7 +129,7 @@ flowchart LR
 | `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, date}]`, `claim_versions[{version, created_by_receipt_number, claim_count}]`, 각 OA에 `examined_claim_version{version, created_by_receipt_number}`. events·claim_versions는 올라온 OA 중 가장 늦은 OA 시점까지. 청구항 본문은 넣지 않음 | 서버 담당 리뷰 |
 | 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | + 출원번호 입력 기다림 (`waiting_for: application_number`, 목록은 #15) | 서버 담당 리뷰 |
 | 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 (11/18 확인, requirements 실패할 때) | 서버 담당 리뷰 |
-| `GET /documents/{id}` | 원문과 쪽 | 메타 + `pages[{page, text}]` + 글자 추출 status | 서버 담당 리뷰 |
+| `GET /documents/{id}` | 원문과 쪽 | 메타 + `PageText` 그대로 (`pages[{page, text, status}]` + 문서 status). 화면이 쪽마다 "글자 없음"을 보임 | 서버 담당 리뷰 |
 | `GET /documents/{id}/file` | 없음 | 원본 PDF | 서버 담당 리뷰 |
 | 실행 `failed` 오류 | `{code, message}` | 같은 OA면 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | 결과 공통 칸 | data-model 3절 | 위 JSON (Status 객체, 이유 셋 더함, `needs_recheck`, `flags`) | #14 PR |
@@ -190,7 +191,7 @@ flowchart LR
 | 규칙·모델 값이 다르면 `conflict`로 둘 다 남김 | 하나를 골라 씀 | 고르는 것은 사람 | 설계 | product.md 5절 F5 |
 | 지원 조문 표는 코드 상수 | 설정 파일 | 실험 값이 아니라 범위 결정 (product.md 3.2) | 설계 | — |
 | 통지 종류는 규칙만 (`initial`/`final`/`unknown`) | 규칙 + 모델 비교 | 표시 문구 하나로 정해지는 일. 정답 형식과 같은 코드 | 11/18 (정답 형식 PR #91) + Claude (모델 뺌) | docs/evaluation/f1-oa-gold.md 2.1 |
-| PDF 글자 추출은 pdfplumber, `extract_pages` 인터페이스 뒤 | PyMuPDF(AGPL), Docling, Upstage(외부) | 라이선스 가볍고 쪽 번호가 남음. tune 10건에서 거절이유 표가 깨지면 Docling과 비교 | 11/18 | #17 |
+| PDF 글자 추출은 `extract_pages` 인터페이스 뒤에 둠. 도구는 미정 (지금 코드는 pdfplumber) | Docling (비교에서 뺌) | 라이선스는 기준에서 뺌(개인 프로젝트), 도구는 tune 품질과 Upstage 비교 뒤 정함. 11/19 OA 3건에서 pdfplumber·pymupdf4llm은 쪽·청구항·단락 번호가 같았고, 둘 다 쪽을 넘어간 거절이유 표 칸을 잇지 못함 | 11/18, 11/19 고침 | #17 |
 | 보내도 되는 자료 검사 코드 없음 | `MaterialKind` 표 코드·거부 테스트 (이슈 #13 원래 기준) | architecture.md 7절(11/17 확정): 받지 않는 자료는 규칙으로 막음 | 11/18 | architecture.md 7절 |
 | 출원번호·발송번호 결정 4개 (임시 자리, 같은 사건에 붙이기, 409, 중복 임시 사건 숨김) | 올릴 때 출원번호 입력 / 못 읽으면 거절 / 중복을 200으로 붙임 | "PDF 하나만 올림" 흐름 유지, 실수로 올린 것을 알림 | 설계 (11/18 인터뷰) | requirements "실패할 때" |
 | 순서: F1 읽기 → 자동 조회 + 자르기 | 자르기 먼저 (architecture 8절 그림) | 출원번호를 F1이 읽어야 조회할 수 있음 | 설계 (doc-review) | 4절 |
