@@ -2,7 +2,6 @@
 name: implement
 description: 승인된 tasks.md의 이슈 계획 하나(PR 하나)를 task 순서대로 구현 → 리뷰 → 고침 → 테스트 → 커밋까지 돌린다. 계획 하나를 시작할 때 쓴다. 구현 계획 없는 일, 문구 한 줄 같은 아주 작은 일에는 쓰지 않는다.
 argument-hint: "<tasks.md 경로> <이터레이션 예: m1-i3> [task 번호부터]"
-disable-model-invocation: true
 ---
 
 # 구현: $0 의 이슈 계획 $1

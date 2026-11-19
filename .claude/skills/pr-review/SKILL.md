@@ -2,7 +2,6 @@
 name: pr-review
 description: 상대의 PR을 리뷰 전용 워크트리에서 리뷰하고, 사람 확인 뒤 판정과 지적을 GitHub 리뷰로 올린다. 리뷰 요청을 받았을 때 쓴다. 내 PR 셀프 점검은 /check를 쓴다.
 argument-hint: "<PR 번호>"
-disable-model-invocation: true
 ---
 
 # PR 리뷰: #$ARGUMENTS
