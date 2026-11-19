@@ -8,7 +8,7 @@ core를 import하지 않는다.
 from datetime import date
 
 from patent_ai.retrieval.contract import Embed, register_impl
-from patent_ai.retrieval.embedding import cosine, recorded_embed  # noqa: F401 (밖에서 fake에서 가져다 씀)
+from patent_ai.retrieval.embedding import cosine, recorded_embed
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import (
     Chunk,
