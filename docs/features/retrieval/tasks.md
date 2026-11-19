@@ -288,3 +288,44 @@ graph LR
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
+
+## m2-i2-bm25  (11/20)  상태: 초안  (BM25 하나로, PR #117 리뷰 요청 2 후속. 이슈 번호는 은진 님이 만든 뒤)
+**구현할 design 부분**: design.md 8절 결정 표 `bm25` 줄   **맡은 합격 기준**: requirements.md 1 (`impl` 고르기)
+**목표** (한 줄): 법령 `law_bm25`를 인용문헌 `bm25`로 합치고 낱말 자르기만 설정(`settings.tokenizer`)으로 고르게 해서, 법령을 Kiwi·두 글자 둘 다 채점한다.
+**끝나면 보여 줄 것** (데모 한 줄): `uv run python eval/run_eval.py --config experiments/m2-i2-law-bm25-kiwi/config.yaml` → `scores.json` n=19.
+**어림 크기**: 코드 약 60줄 + 테스트 약 130줄 (law_bm25 코드·테스트 약 240줄을 뺌).
+
+```mermaid
+graph LR
+    task-1 --> task-2
+    task-2 --> task-3
+```
+
+### task-1: `law_bm25`를 `bm25`로 합치기, tokenizer에 `char_bigram`·`whitespace`
+- 담당: 은진
+- 고칠 파일: `src/patent_ai/retrieval/tokenizer.py`(`make_tokenizer(이름, pos_tags)`), `bm25.py`, `tests/retrieval/test_bm25.py`. 뺌: `law_bm25.py`, `tests/retrieval/test_law_bm25.py`(법령 테스트는 `test_bm25.py`로 옮김)
+- 테스트할 경우: 두 글자 자르기, 모르는 tokenizer → `ValueError`, kiwi가 아닌데 `pos_tags` → `ValueError`(조용히 무시 안 함), 기준일 판만·통계는 기준일 범위 안·판본 모름 조각 빠지고 셈, 점수 = lucene 식
+- 확인 방법: `uv run pytest tests/retrieval/test_bm25.py`
+
+### task-2: `bm25.unique_query_terms` 설정 (질의 낱말 한 번씩 세기)
+- 담당: 은진
+- 왜: bm25s는 질의에 같은 낱말이 나온 만큼 센다. 법령 질의(거절이유 본문)는 길어 흔한 두 글자가 반복돼 tune Hit@1이 0.632 → 0.211. `law_bm25`는 한 번씩 셌다.
+- 기본 false (인용문헌 기준선 점수 그대로). true/false 말고는 `ValueError`.
+- 확인 방법: `uv run pytest tests/retrieval/test_bm25.py`
+
+### task-3: 채점 (실험 셋)
+- 담당: 은진
+- `m2-i2-law-bm25-char-bigram`(기준선 `m2-i2-law-bm25-v2`, impl만 바꿈: 같아야 함), `m2-i2-law-bm25-kiwi`(tokenizer만 바꿈), `m2-i2-cite-search-bm25-unique-query`(인용문헌을 법령과 같은 셈으로)
+- `experiments/index.md`는 #138·#146 머지 뒤 `uv run python eval/make_index.py`로 다시 만들어 커밋 (그 전엔 `test_make_index` 하나가 실패)
+- 확인 방법: 위 `run_eval` 명령 셋
+
+### 이번에 안 하는 것
+- 인용문헌을 `char_bigram`으로 채점, 두 말뭉치 `unique_query_terms` 하나로 정하기 (11/24 CQ 볼 때).
+- 옛 실험 설정(`m2-i1-law-bm25-baseline`, `m2-i2-law-bm25-v2`)은 `impl: law_bm25` 기록 그대로 둔다 (다시 돌리면 `UnknownImplError`).
+
+### 진행
+- [x] task-1
+- [x] task-2
+- [x] task-3 (index.md만 남음)
+- 다음: 은진 님 계획 확인, 이슈 만들기, PR
+- 막힌 것: 없음
