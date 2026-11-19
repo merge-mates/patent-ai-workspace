@@ -59,12 +59,12 @@ def test_빈_결과는_not_found_in_scope로_읽힌다():
     assert result.status == "not_found_in_scope"
 
 
-def test_빈_결과_unverified는_text_missing_이유를_받는다():
+def test_빈_결과_unverified는_body_missing_이유를_받는다():
     data = copy.deepcopy(EXAMPLE)
     data["hits"] = []
     data["status"] = "unverified"
-    data["status_reason"] = "text_missing"
-    assert SearchResult.model_validate(data).status_reason == "text_missing"
+    data["status_reason"] = "body_missing"
+    assert SearchResult.model_validate(data).status_reason == "body_missing"
 
 
 def test_edition_status가_정해진_값_밖이면_오류():
@@ -110,7 +110,7 @@ def test_status_reason은_status가_unverified일_때만_올_수_있다():
     data = copy.deepcopy(EXAMPLE)
     data["hits"] = []
     data["status"] = "not_found_in_scope"
-    data["status_reason"] = "text_missing"
+    data["status_reason"] = "body_missing"
     with pytest.raises(ValidationError):
         SearchResult.model_validate(data)
 

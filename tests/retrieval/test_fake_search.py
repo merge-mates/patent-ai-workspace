@@ -10,6 +10,7 @@ from patent_ai.retrieval import (
     RecordedEmbeddingMissing,
     get_searcher,
 )  # 패키지 import가 fake도 등록
+from patent_ai.retrieval.fake import recorded_embed
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 
 FIX = Path(__file__).parent.parent / "fixtures" / "retrieval"
@@ -19,14 +20,15 @@ US = "US0000001B2"
 
 
 def cite(extra=None):
+    # 부르는 쪽이 embed를 넘기는 길 (design 7-1). 녹화 파일을 읽는 embed를 쓴다
     repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
-    s = {"index_version": "cite-idx-v1", "query_vectors": QV, **(extra or {})}
-    return get_searcher("fake", repo, s)
+    s = {"index_version": "cite-idx-v1", **(extra or {})}
+    return get_searcher("fake", repo, s, embed=recorded_embed(QV))
 
 
 def law():
     repo = InMemoryChunkRepository.from_jsonl("law", FIX / "chunks_law.jsonl")
-    return get_searcher("fake", repo, {"index_version": "law-idx-v1", "query_vectors": QV})
+    return get_searcher("fake", repo, {"index_version": "law-idx-v1"}, embed=recorded_embed(QV))
 
 
 def ids(res):
@@ -97,10 +99,10 @@ def test_기준일로_다_빠지면_not_found_in_scope와_판본모름_셈():
     assert res.skipped_unverified_edition == 1
 
 
-def test_없는_공보는_unverified_text_missing():
+def test_없는_공보는_unverified_body_missing():
     res = cite().search("기판", "cite", "bm25", 3, doc_ids=["KR9999999999A"])
     assert res.status == "unverified"
-    assert res.status_reason == "text_missing"
+    assert res.status_reason == "body_missing"
 
 
 def test_녹화_없는_질의는_RecordedEmbeddingMissing():
@@ -108,11 +110,34 @@ def test_녹화_없는_질의는_RecordedEmbeddingMissing():
         cite().search("녹화에 없는 질의", "cite", "vector", 3)
 
 
-def test_vector인데_query_vectors_설정_없으면_ValueError():
+def test_vector인데_embed도_query_vectors_설정도_없으면_ValueError():
     repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
     s = get_searcher("fake", repo, {"index_version": "cite-idx-v1"})
-    with pytest.raises(ValueError, match="query_vectors"):
+    with pytest.raises(ValueError, match="embed"):
         s.search("열 처리", "cite", "vector", 3)
+
+
+def test_embed_없이_설정_query_vectors만_있어도_녹화를_읽는다():
+    # 채점기 설정(settings.query_vectors)으로 도는 길
+    repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
+    s = get_searcher("fake", repo, {"index_version": "cite-idx-v1", "query_vectors": QV})
+    res = s.search("열 처리", "cite", "vector", 3, doc_ids=[KR])
+    assert ids(res) == ["요약", "청구항 1", "[0010]"]
+
+
+def test_넘긴_embed가_질의마다_불린다():
+    calls = []
+    rec = recorded_embed(QV)
+
+    def embed(q):
+        calls.append(q)
+        return rec(q)
+
+    repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
+    s = get_searcher("fake", repo, {"index_version": "cite-idx-v1"}, embed=embed)
+    s.search("열 처리", "cite", "vector", 3, doc_ids=[KR])
+    s.search("기판 가열", "cite", "bm25", 3, doc_ids=[KR])
+    assert calls == ["열 처리"]  # bm25는 embed를 부르지 않는다
 
 
 def test_vector인데_조각에_embedding_없으면_ValueError(tmp_path):

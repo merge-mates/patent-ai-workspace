@@ -1,15 +1,16 @@
 """fake 검색 구현 (design.md 7-2절). 실제 모델·DB 없이 계약을 시험하는 용도.
 
 - bm25: 질의 낱말(공백으로 자름)이 조각 낱말과 겹치는 수
-- vector: 녹화해 둔 질의 벡터와 조각 벡터의 코사인 유사도
+- vector: embed(질의)와 조각 벡터의 코사인 유사도. 테스트는 녹화 파일을 읽는 embed를 쓴다
 core를 import하지 않는다.
 """
 
 import json
 import math
 from datetime import date
+from pathlib import Path
 
-from patent_ai.retrieval.contract import register_impl
+from patent_ai.retrieval.contract import Embed, register_impl
 from patent_ai.retrieval.errors import RecordedEmbeddingMissing
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import (
@@ -32,21 +33,33 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b, strict=True)) / (na * nb)
 
 
-@register_impl("fake")
-class FakeSearcher:
-    def __init__(self, repo: ChunkRepository, settings: dict) -> None:
-        self._repo = repo
-        self._index_version: str = settings["index_version"]
-        self._query_vectors_path: str | None = settings.get("query_vectors")
+def recorded_embed(path: str | Path) -> Embed:
+    """녹화해 둔 {질의: 벡터} 파일을 읽는 embed. 실제 모델을 부르지 않는다."""
+    with open(path, encoding="utf-8") as f:
+        recorded: dict[str, list[float]] = json.load(f)
 
-    def _query_vector(self, query: str) -> list[float]:
-        if not self._query_vectors_path:
-            raise ValueError("vector 검색에는 settings['query_vectors'](녹화 파일 경로)가 필요하다")
-        with open(self._query_vectors_path, encoding="utf-8") as f:
-            recorded = json.load(f)
+    def embed(query: str) -> list[float]:
         if query not in recorded:
             raise RecordedEmbeddingMissing(f"녹화에 없는 질의: {query!r}")
         return recorded[query]
+
+    return embed
+
+
+@register_impl("fake")
+class FakeSearcher:
+    def __init__(self, repo: ChunkRepository, settings: dict, embed: Embed | None = None) -> None:
+        self._repo = repo
+        self._index_version: str = settings["index_version"]
+        # embed를 안 넘기고 설정에 녹화 파일만 있으면 그 파일을 읽는 embed를 쓴다 (채점기 설정용)
+        if embed is None and settings.get("query_vectors"):
+            embed = recorded_embed(settings["query_vectors"])
+        self._embed = embed
+
+    def _query_vector(self, query: str) -> list[float]:
+        if self._embed is None:
+            raise ValueError("vector 검색에는 embed(또는 settings['query_vectors'])가 필요하다")
+        return self._embed(query)
 
     def _score(self, chunk: Chunk, mode: Mode, query: str, qvec: list[float] | None) -> float:
         if mode == "bm25":
@@ -78,7 +91,7 @@ class FakeSearcher:
 
         # 거른 문헌 조각이 0개면 본문이 없는 것 (기준일과 상관없이 문헌 기준)
         if self._repo.count_chunks(corpus, self._index_version, doc_ids) == 0:
-            return SearchResult(**base, status="unverified", status_reason="text_missing")
+            return SearchResult(**base, status="unverified", status_reason="body_missing")
 
         chunks = self._repo.chunks(corpus, self._index_version, doc_ids, as_of)
         scored = [(self._score(c, mode, query, qvec), c) for c in chunks]

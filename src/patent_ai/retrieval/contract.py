@@ -38,12 +38,16 @@ class _IndexVersionLookup(Protocol):
     def has_index_version(self, corpus: Corpus, index_version: str) -> bool: ...
 
 
+# 글 -> 벡터 함수. 부르는 쪽(채점기, F2·F3)이 core/llm의 embed를 넘긴다.
+# retrieval은 core를 import하지 않으므로 모델 호출을 직접 하지 않고 이 함수만 받는다
+Embed = Callable[[str], list[float]]
+
 # impl 이름 -> 구현 클래스. 구현은 register_impl로 이름만 더하면 된다
 _REGISTRY: dict[str, Callable[..., Searcher]] = {}
 
 
 def register_impl(name: str) -> Callable[[Callable[..., Searcher]], Callable[..., Searcher]]:
-    """구현 클래스를 이름으로 등록하는 데코레이터. 클래스는 (repo, settings)로 만들어진다."""
+    """구현 클래스를 이름으로 등록하는 데코레이터. 클래스는 (repo, settings, embed)로 만들어진다."""
 
     def deco(cls: Callable[..., Searcher]) -> Callable[..., Searcher]:
         # 같은 이름에 다른 클래스가 덮어쓰면 어느 구현이 도는지 알 수 없다. 막는다
@@ -90,6 +94,12 @@ class CheckedSearcher:
         result = self._inner.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of)
 
         # --- 받은 뒤 검사 ---
+        # 부른 말뭉치·방식·k와 다른 결과면 구현이 엉뚱한 것을 돌려준 것이다
+        if result.corpus != corpus or result.mode != mode or result.scope.k != k:
+            raise SearchContractViolationError(
+                f"결과 머리가 요청과 다르다: corpus {result.corpus!r}/{corpus!r}, "
+                f"mode {result.mode!r}/{mode!r}, k {result.scope.k}/{k}"
+            )
         if len(result.hits) > k:
             raise SearchContractViolationError(f"결과 {len(result.hits)}개가 k={k}보다 많다")
         mixed = [h for h in result.hits if h.index_version != self._index_version]
@@ -129,13 +139,21 @@ def _import_impl(impl: str) -> None:
         importlib.reload(module)
 
 
-def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher:
-    """이름으로 구현을 골라 CheckedSearcher로 감싸 돌려준다."""
+def get_searcher(
+    impl: str, repo: ChunkRepository, settings: dict, embed: Embed | None = None
+) -> Searcher:
+    """이름으로 구현을 골라 CheckedSearcher로 감싸 돌려준다.
+
+    embed: 질의 글을 벡터로 바꾸는 함수. vector 검색 구현이 쓴다 (bm25만 쓰면 None).
+    """
     if impl not in _REGISTRY:
         _import_impl(impl)
     if impl not in _REGISTRY:
-        raise UnknownImplError(f"없는 impl {impl!r}. 쓸 수 있는 이름: {sorted(_REGISTRY)}")
+        raise UnknownImplError(
+            f"없는 impl {impl!r}. impl 이름은 retrieval/<이름>.py와 같아야 함"
+            f"(소문자·숫자·밑줄). 쓸 수 있는 이름: {sorted(_REGISTRY)}"
+        )
     if not settings.get("index_version"):
         raise ValueError("settings에 index_version이 없다")
-    inner = _REGISTRY[impl](repo, settings)
+    inner = _REGISTRY[impl](repo, settings, embed)
     return CheckedSearcher(inner, repo, settings["index_version"])

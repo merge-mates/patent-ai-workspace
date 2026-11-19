@@ -35,6 +35,11 @@ def _hit(chunk_id, score, rank, index_version=IV):
     return SearchHit(**c.model_dump(), score=score, rank=rank)
 
 
+class FakeRepoBoth(FakeRepo):
+    def has_index_version(self, corpus, index_version):
+        return index_version == IV
+
+
 @pytest.fixture(autouse=True)
 def _빈_등록표():
     # 테스트마다 같은 이름 "t"를 새로 등록하므로 등록표를 비워 준다.
@@ -44,25 +49,27 @@ def _빈_등록표():
     contract._REGISTRY.clear()
 
 
-def _result(hits, k=5, index_version=IV):
+def _result(hits, k=5, index_version=IV, corpus="cite", mode="bm25"):
     return SearchResult(
-        corpus="cite",
+        corpus=corpus,
         index_version=index_version,
-        mode="bm25",
+        mode=mode,
         scope=SearchScope(k=k),
         status=None if hits else "not_found_in_scope",
         hits=hits,
     )
 
 
-def _register(name, hits_fn, result_index_version=IV):
+def _register(name, hits_fn, result_index_version=IV, override=None):
+    # override: 결과 머리를 요청과 다르게 돌려줄 때 (corpus·mode·k)
     @register_impl(name)
     class _Impl:
-        def __init__(self, repo, settings):
-            pass
+        def __init__(self, repo, settings, embed):
+            self.embed = embed
 
         def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
-            return _result(hits_fn(), k, result_index_version)
+            head = {"k": k, "corpus": corpus, "mode": mode, **(override or {})}
+            return _result(hits_fn(), index_version=result_index_version, **head)
 
     return _Impl
 
@@ -93,6 +100,37 @@ def test_없는_impl은_등록된_이름을_알려준다():
     _register("impl_a", lambda: [])
     with pytest.raises(UnknownImplError, match=r"nope.*impl_a"):
         get_searcher("nope", FakeRepo(), {"index_version": IV})
+
+
+def test_UnknownImplError는_이름_규칙을_알려준다():
+    # law-bm25처럼 하이픈을 쓰면 import하지 않는다. 메시지로 이유를 알린다
+    with pytest.raises(UnknownImplError, match=r"retrieval/<이름>\.py.*소문자·숫자·밑줄"):
+        get_searcher("law-bm25", FakeRepo(), {"index_version": IV})
+
+
+def test_embed는_구현에_그대로_넘어간다():
+    impl = _register("t", lambda: [])
+
+    def embed(q):
+        return [0.0]
+
+    s = get_searcher("t", FakeRepo(), {"index_version": IV}, embed=embed)
+    assert isinstance(s._inner, impl)
+    assert s._inner.embed is embed
+    # 안 넘기면 None
+    assert get_searcher("t", FakeRepo(), {"index_version": IV})._inner.embed is None
+
+
+@pytest.mark.parametrize(
+    "override",
+    [{"corpus": "law"}, {"mode": "vector"}, {"k": 3}],
+    ids=["corpus", "mode", "k"],
+)
+def test_결과_머리가_요청과_다르면_오류(override):
+    _register("t", lambda: [_hit("a", 1.0, 1)], override=override)
+    s = get_searcher("t", FakeRepoBoth(), {"index_version": IV})
+    with pytest.raises(SearchContractViolationError, match="요청과 다르다"):
+        _search(s)
 
 
 def test_settings에_index_version이_없으면_ValueError():

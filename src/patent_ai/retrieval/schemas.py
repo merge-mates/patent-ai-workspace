@@ -18,7 +18,7 @@ LocKind = Literal["paragraph", "column_line", "article", "page", "figure", "clai
 EditionStatus = Literal["confirmed", "unverified", "not_applicable"]
 # 검색 결과가 비었을 때만 쓰는 상태. confirmed/conflict는 검색이 붙이지 않는다
 SearchStatus = Literal["not_found_in_scope", "unverified"]
-StatusReason = Literal["text_missing"]
+StatusReason = Literal["body_missing"]  # #103 core/schemas/common.py와 같은 이름
 
 
 class _Strict(BaseModel):
