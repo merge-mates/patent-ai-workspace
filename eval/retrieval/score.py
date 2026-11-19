@@ -38,6 +38,7 @@ FAILURE_KEYS = [
     "excluded_body_missing",
     "excluded_edition_unverified",
     "excluded_no_edition_in_scope",
+    "excluded_gold_not_in_scope",
     "cq_candidates",
     "recall_ratio_undefined",
 ]
@@ -161,6 +162,15 @@ def score(
             # 이 줄만 빼고 센다 (design 2절 4번)
             failures["excluded_no_edition_in_scope"] += 1
             continue
+        match_sizes = [sum(1 for c in scope if matcher.matches(c, item, row)) for item in row.items]
+        if 0 in match_sizes:
+            # 범위 조각은 있는데 어떤 정답 항목에도 맞는 조각이 0개: 검색기가 어떻게 해도 못 맞힌다.
+            # 법령은 정답 판이 그날 범위에 없음(빠진 판·개정), 인용문헌은 정답 문단이
+            # 조각에 없음(청킹·정답 문제). 검색 실력이 아니라 데이터 문제라
+            # Hit·Recall·CQ에서 뺀다 (#129). 공보 조각이 아예 없으면 위 body_missing,
+            # 범위가 0개면 위 no_edition_in_scope가 먼저 센다
+            failures["excluded_gold_not_in_scope"] += 1
+            continue
         results.append(
             RowResult(
                 row=row,
@@ -170,9 +180,7 @@ def score(
                 ],
                 hits=list(result.hits),
                 n_scope=len(scope),
-                match_sizes=[
-                    sum(1 for c in scope if matcher.matches(c, item, row)) for item in row.items
-                ],
+                match_sizes=match_sizes,
                 union_size=sum(
                     1 for c in scope if any(matcher.matches(c, item, row) for item in row.items)
                 ),

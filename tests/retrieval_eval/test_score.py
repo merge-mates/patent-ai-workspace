@@ -86,6 +86,7 @@ def test_점검_예_값이_나온다(tmp_path, goldsets_root):
         "excluded_body_missing",
         "excluded_edition_unverified",
         "excluded_no_edition_in_scope",
+        "excluded_gold_not_in_scope",
         "cq_candidates",
         "recall_ratio_undefined",
     }
@@ -162,7 +163,9 @@ def test_빼는_줄을_이유별로_센다(tmp_path, goldsets_root):
     assert f["excluded_no_location"] == 1
     assert f["excluded_clarity"] == 1
     assert f["excluded_same_as_other"] == 1
-    assert report.scores["n"] == 2  # 종속항 줄·맞는 조각 없는 줄은 점수에 들어간다
+    # 종속항 줄은 점수에 들어간다. 맞는 조각이 범위에 없는 줄은 #129부터 따로 센다
+    assert report.scores["n"] == 1
+    assert f["excluded_gold_not_in_scope"] == 1
 
 
 def test_본문_없는_공보는_body_missing으로_빠진다(tmp_path, goldsets_root):
@@ -186,21 +189,19 @@ def test_법령_판본_모름_줄은_빠진다(tmp_path, goldsets_root):
         score(cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq")
 
 
-def test_무작위_분모가_0이면_배수_키를_뺀다(tmp_path, goldsets_root):
-    # 정답 항목에 맞는 조각이 범위에 하나도 없는 줄만 둔다
+def test_맞는_조각이_범위에_없는_줄은_무작위_분모까지_안_간다(tmp_path, goldsets_root):
+    """#129 전에는 이 줄이 점수에 들어가 random_recall 0, recall_ratio_undefined가 됐다.
+
+    이제 excluded_gold_not_in_scope로 먼저 빠지므로, 이 줄만 있으면 남은 줄 0개로 멈춘다.
+    """
     lines = (FIX / "gold_excluded.jsonl").read_text(encoding="utf-8").splitlines()
     only = [ln for ln in lines if '"10-2020-0000108:r1:c1:KR1000000001A"' in ln]
     assert len(only) == 1
     (goldsets_root / "tune" / "retrieval" / "gold_nomatch.jsonl").write_text(only[0] + "\n")
     cfg = load_config(make_config(tmp_path, "gold_nomatch.jsonl"))
     repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
-    report = score(
-        cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq"
-    )
-    assert "recall_ratio@5" not in report.scores["metrics"]
-    assert report.scores["metrics"]["random_recall@5"] == 0
-    # k 목록(1, 3, 5, 10)마다 한 번씩 센다
-    assert report.scores["failures"]["recall_ratio_undefined"] == 4
+    with pytest.raises(RetrievalEvalError, match="0개"):
+        score(cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq")
 
 
 # ---- 실패 -------------------------------------------------------------
@@ -301,6 +302,8 @@ def test_body_missing_건수가_1이다(tmp_path, goldsets_root):
     assert report.scores["n"] == 1
     assert report.scores["failures"]["excluded_body_missing"] == 1
     assert report.scores["failures"]["excluded_edition_unverified"] == 0
+    # 본문이 아예 없는 줄은 body_missing 하나로만 센다 (gold_not_in_scope와 겹쳐 세지 않음)
+    assert report.scores["failures"]["excluded_gold_not_in_scope"] == 0
 
 
 def test_edition_unverified_건수가_1이다(tmp_path, goldsets_root):
@@ -331,3 +334,49 @@ def test_기준일로_범위가_비면_그_줄만_빼고_센다(tmp_path, goldse
     assert report.scores["failures"]["excluded_no_edition_in_scope"] == 1
     # 뺀 줄은 CQ 후보가 아니다 (검색 범위가 없어서 못 찾은 것이지 검색이 놓친 게 아님)
     assert all(r.row.row_id != "10-2020-0000201:r1" for r in report.rows)
+
+
+# ---- 범위 안에 정답 조각이 없는 줄 (#129 ②) ------------------------------
+
+
+def _score_fixture(tmp_path, goldsets_root, gold_name, corpus):
+    base = "config_law_ok.yaml" if corpus == "law" else "config_ok.yaml"
+    chunks = FIX / ("chunks_law.jsonl" if corpus == "law" else "chunks_check.jsonl")
+    cfg = load_config(make_config(tmp_path, gold_name, base=base))
+    repo = InMemoryChunkRepository.from_jsonl(corpus, chunks)
+    return score(
+        cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq"
+    )
+
+
+def test_not_in_scope_법령_정답_판이_범위에_없으면_빼고_센다(tmp_path, goldsets_root):
+    """정답 판(구판)이 발송일 범위(신판)에 없으면 Hit·Recall·CQ에 넣지 않는다.
+
+    항목 하나만 범위에 없어도 줄째 뺀다 (항목만 빼면 Recall 분모가 바뀜).
+    """
+    report = _score_fixture(tmp_path, goldsets_root, "gold_law_not_in_scope.jsonl", "law")
+    assert report.scores["n"] == 1
+    assert report.scores["failures"]["excluded_gold_not_in_scope"] == 2
+    assert report.scores["failures"]["excluded_no_edition_in_scope"] == 0
+    assert report.scores["failures"]["excluded_edition_unverified"] == 0
+    # 뺀 줄은 CQ 후보(report.rows)에 없다
+    assert [r.row.row_id for r in report.rows] == ["10-2020-0000202:r1"]
+
+
+def test_not_in_scope_뺀_뒤_남은_줄_점수는_그대로(tmp_path, goldsets_root):
+    """범위 밖 정답 줄을 더해도 나머지 줄 점수는 그 줄만 채점한 것과 같다."""
+    only = _score_fixture(tmp_path, goldsets_root, "gold_law_counts.jsonl", "law")
+    mixed = _score_fixture(tmp_path, goldsets_root, "gold_law_not_in_scope.jsonl", "law")
+    assert mixed.scores["metrics"] == only.scores["metrics"]
+
+
+def test_not_in_scope_인용문헌_정답_문단이_조각에_없으면_빼고_센다(tmp_path, goldsets_root):
+    """공보 조각은 있는데 정답 문단이 어느 조각에도 없으면 청킹·정답 문제라 CQ에 넣지 않는다."""
+    report = _score_fixture(tmp_path, goldsets_root, "gold_cite_not_in_scope.jsonl", "cite")
+    assert report.scores["n"] == 1
+    assert report.scores["failures"]["excluded_gold_not_in_scope"] == 1
+    # 공보 조각이 있으니 body_missing이 아니다
+    assert report.scores["failures"]["excluded_body_missing"] == 0
+    assert [r.row.row_id for r in report.rows] == ["10-2020-0000001:r1:c1:KR2000000001A"]
+    # 점수는 gold_ok(같은 첫 줄만)와 같다
+    assert report.scores["metrics"]["recall@5"] == pytest.approx(0.5, abs=1e-3)
