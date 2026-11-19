@@ -1,0 +1,19 @@
+# 법령 벡터 기준선 (#66). 색인 law-idx-v2 = v1 조각 그대로 + text-embedding-3-small 벡터 (조문만, 심사기준 없음)
+experiment: m2-i2-law-vector-baseline
+feature: retrieval
+baseline: m2-i1-law-bm25-baseline   # 같은 조각의 BM25와 비교
+goldset: tune
+goldset_version: 2
+corpus: law
+index_version: law-idx-v2
+mode: vector
+impl: vector
+k: [1, 3, 5, 10]
+gold: retrieval/law_gold.jsonl
+law_location_rule: overlap_or_label
+settings:
+  # 질의 벡터는 core/index_embed queries로 미리 만든다 (config/law_search.yaml embed 단계, git 밖)
+  query_vectors: work/retrieval/m2-i2-law-vector-baseline/query_vectors.json
+budget:
+  max_usd: 0.05
+  max_external_calls: 30
