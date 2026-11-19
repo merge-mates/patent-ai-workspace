@@ -10,7 +10,7 @@
      requirements·design은 PR #96 리뷰 중(상태: 초안)이다. 두 문서가 승인되기 전에는 이 계획도 승인하지 않는다.
      어림 크기는 코드 + 테스트 줄이다. fixture 데이터 줄(JSONL·JSON·YAML)은 세지 않는다. -->
 
-## m2-i1  (11/19)  상태: 승인  (A1, 이슈 번호는 승인 뒤. 11/18 승인, 상대 리뷰는 PR에서)
+## m2-i1  (11/19)  상태: 승인  (A1, 이슈 #98. 11/18 승인, 상대 리뷰는 PR에서)
 **구현할 design 부분**: design.md 3-2, 5-1 저장소 인터페이스, 7-1 검색 인터페이스, 7-2   **맡은 합격 기준**: requirements.md 1
 **목표** (한 줄): #66·#67과 채점기가 바로 쓸 수 있는 검색 계약 코드(스키마·`Searcher`·공통 검사 래퍼·메모리 저장소·`fake` 구현)를 만든다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run pytest tests/retrieval` 통과. 테스트 하나가 `get_searcher("fake", InMemoryChunkRepository.from_jsonl("cite", "tests/fixtures/retrieval/chunks_cite.jsonl"), {"index_version": "cite-idx-v1"}).search(...)`로 한 공보 안 상위 k를 돌려준다.
@@ -74,16 +74,16 @@ graph LR
 
 ### task-4: `fake` 구현 (녹화 벡터)
 - 담당: 재아
-- 합격 기준: requirements.md 1 (`not_found_in_scope`, `unverified(text_missing)`, `skipped_unverified_edition`)
+- 합격 기준: requirements.md 1 (`not_found_in_scope`, `unverified(body_missing)`, `skipped_unverified_edition`)
 - 고칠 파일: `src/patent_ai/retrieval/fake.py`, `tests/fixtures/retrieval/query_vectors.json`, `tests/retrieval/test_fake_search.py`
 - 만들 함수·인터페이스 모양: `@register_impl("fake") class FakeSearcher`
   - `bm25`: 공백으로 자른 낱말이 질의와 겹치는 수
   - `vector`: 코사인 유사도 (녹화에 없는 질의 → `RecordedEmbeddingMissing`)
   - 점수 0 이하인 조각은 결과에서 뺀다
-  - 거른 문헌 조각이 0개면 `status=unverified`, `status_reason=text_missing`. 결과가 0개면 `status=not_found_in_scope`
+  - 거른 문헌 조각이 0개면 `status=unverified`, `status_reason=body_missing`. 결과가 0개면 `status=not_found_in_scope`
 - 테스트할 경우 (모두 `get_searcher("fake", …)`로, 래퍼를 거쳐서):
   - 평소: bm25·vector 상위 k, 같은 점수 `chunk_id` 오름차순, 한 공보 안만, 기준일 거르기 + `skipped_unverified_edition`
-  - 빈 입력: 겹치는 낱말 없는 질의 → `not_found_in_scope` + `scope`, 없는 공보 → `unverified(text_missing)`
+  - 빈 입력: 겹치는 낱말 없는 질의 → `not_found_in_scope` + `scope`, 없는 공보 → `unverified(body_missing)`
   - 실패: 녹화 없는 질의 → `RecordedEmbeddingMissing`
 - 확인 방법: `uv run pytest tests/retrieval` → 전부 통과
 - 먼저: task-2, task-3
@@ -93,11 +93,11 @@ graph LR
 - 진짜 BM25·벡터 구현, 색인 스크립트, 청킹 (→ #66·#67). `hybrid` 구현.
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- 다음: 계획 승인 뒤 `/implement docs/features/retrieval/tasks.md m2-i1`. 머지되면 은진 님에게 "#66 시작 가능" 알림
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- 다음: /check 통과. PR은 아침에. 머지되면 은진 님에게 "#66 시작 가능" 알림
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)

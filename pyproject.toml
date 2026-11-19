@@ -16,6 +16,8 @@ dependencies = [
     "langgraph>=1.2.22",
     "anthropic>=2.10.0",
     "openai>=3.55.0",
+    "pyyaml>=6.0.3",
+    "pgvector>=0.5.1",
 ]
 
 [dependency-groups]

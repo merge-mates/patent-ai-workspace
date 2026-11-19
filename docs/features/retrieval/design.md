@@ -43,7 +43,7 @@ flowchart LR
    - 하나라도 걸리면 `RetrievalEvalError`로 끝나고 종료 코드는 1이다.
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다.
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
-   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`text_missing`)면 그 줄을 빼고 `excluded_text_missing`에 센다.
+   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_text_missing`에 센다.
    - 기준일 범위 내 판본 없음: 문헌 조각은 있는데 `as_of`로 거르고 나면 검색 범위 조각이 0개인 줄(N = 0)은 무작위 기준선을 정할 수 없으므로 채점 전체를 멈추지 않고 그 줄만 빼고 `excluded_no_edition_in_scope`에 센다 (11/19 결정). 법령 판본 모름 조각만 있거나, OA 발송일이 색인의 가장 이른 법령 판본보다 앞서는 경우다.
    - 결과에 다른 색인 판 조각이 있으면 실패로 끝난다. 판정은 조각마다 `hit.index_version`이 설정의 `index_version`과 같은지로 한다 (공통 래퍼가 먼저 보고, 채점기가 한 번 더 봄).
 5. 3·4번에서 빼고 남은 줄이 0개면 실패로 끝난다 (종료 코드 1, `RetrievalEvalError`). 빈 평균으로 성공 종료하지 않는다.
@@ -52,7 +52,7 @@ flowchart LR
 8. 결과 저장: `<scores 폴더>/scores.json`(모은 숫자, 기본 `experiments/<실험>/`), `<cq 폴더>/cq_candidates.jsonl`(CQ 후보, 기본 `work/retrieval/<실험>/`).
 - 실패하면: 실행 전 검사가 막는다. 줄 하나의 검색이 예외를 내면 그 줄에서 멈추고 실패로 끝난다 (조용히 건너뛰지 않음).
 - 메시지 규칙 (requirements "실패할 때"): 터미널 실패·경고 메시지에는 `row_id`와 건수를 쓸 수 있다. 질의·청구항·정답 원문 글자는 쓰지 않는다. git에 들어가는 `scores.json`에는 `row_id`도 쓰지 않는다.
-- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다. 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(text_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
+- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다. 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
 - 느리면: 가짜 구현만 있는 이 이슈에는 해당 없음. 진짜 구현의 상한은 #66·#67 설정에 둔다.
 
 ### 2-1. 흐름 방식
@@ -72,15 +72,15 @@ flowchart LR
   "corpus": "cite",
   "index_version": "cite-idx-v1",
   "mode": "bm25",
-  "scope": {"doc_ids": ["KR1020190012345A"], "as_of": null, "k": 5},
+  "scope": {"doc_ids": ["KR20190012345A"], "as_of": null, "k": 5},
   "status": null,
   "status_reason": null,
   "skipped_unverified_edition": 0,
   "hits": [
     {
-      "chunk_id": "cite-idx-v1:KR1020190012345A:p0023",
+      "chunk_id": "cite-idx-v1:KR20190012345A:p0023",
       "index_version": "cite-idx-v1",
-      "doc_id": "KR1020190012345A",
+      "doc_id": "KR20190012345A",
       "chunk_kind": "body",
       "location": {"kind": "paragraph", "start": 23, "end": 23, "label": "[0023]", "figures": [], "claims": []},
       "edition": {"status": "not_applicable", "effective_from": null, "effective_to": null, "label": null},
@@ -92,15 +92,15 @@ flowchart LR
 }
 ```
 - `SearchHit` = 조각 `Chunk`의 칸(5-1 표에서 `embedding`·`created_at` 뺀 것) + `score` + `rank`다. `Chunk`도 `retrieval/schemas.py`에 둔다. 저장소는 `Chunk`를 돌려주고 `Matcher`는 `Chunk`를 받으므로(7-1), 검색 결과와 무작위 기준선 계산이 같은 판정을 쓴다.
-- `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "text_missing"`, 거른 문헌 조각이 0개).
-- 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `status_reason: text_missing`, `edition.status: not_applicable`(인용문헌) 둘이다.
+- `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "body_missing"`, 거른 문헌 조각이 0개). 이름은 결과 공통 칸 `core/schemas/common.py`(#103)의 `body_missing`과 같다.
+- 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `edition.status: not_applicable`(인용문헌) 하나다 (`status_reason: body_missing`은 #103 공통 칸 이름을 그대로 씀).
 - 다시 확인 필요: 해당 없음 (검색은 저장하지 않는 도구 결과).
 - 인터페이스 변경: 있음 (새로 생김). F2·F3 설계가 이 모양을 받는다. 스키마는 `src/patent_ai/retrieval/schemas.py`에 둔다. `core/schemas/`에 두지 않는 이유는 부르는 방향이 `core → retrieval`이라 `retrieval`이 `core`를 import하면 안 되기 때문이다 ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더). data-model 4절 표에 "도구 결과" 줄로 이름을 더하는 것은 스키마 코드를 만드는 구현 task에서 한다.
 
 ## 4. 판과 근거
 - 쓰는 청구항 판: 인용문헌 정답 줄의 질의 = OA 당시 청구항 전문. 어느 판인지는 정답 파일을 만드는 변환 스크립트가 출원번호 + 발송번호로 고른다 (#67). 이 계약은 질의 글자만 받는다.
 - 쓰는 법령 판본: 정답 줄의 `as_of`(OA 발송일)로 `search`가 그날 시행 중인 법령 판본 조각만 거른다. 조각의 `edition.effective_from ≤ as_of ≤ effective_to`(끝이 없으면 현행). 법령 판본 상태가 `unverified`인 조각은 기준일 검색에서 빠지고 `skipped_unverified_edition`에 센다.
-- 공보: 인용문헌 조각의 `doc_id`는 공보 번호(나라 + 번호 + 종류 코드, 예 `KR1020190012345A`, `US10123456B2`)다. 번호 정규화 규칙은 #67이 정하고, 이 계약은 같은 문자열끼리만 같다고 본다.
+- 공보: 인용문헌 조각의 `doc_id`는 공보 번호(나라 + 번호 + 종류 코드, 예 `KR20190012345A`, `US10123456B2`)다. 공보 번호는 [docs/evaluation/f1-oa-gold.md](../../evaluation/f1-oa-gold.md) 2.3 키 꼴을 따른다. 번호 정규화 규칙은 #67이 정하고, 이 계약은 같은 문자열끼리만 같다고 본다.
 - 근거 위치 적는 법: `doc_id` + `location`(종류·시작·끝·원문 표기 `label`) + `edition` + `index_version`. 화면 연결은 F2·F3 설계.
 
 ## 5. 저장
@@ -151,15 +151,16 @@ class Searcher(Protocol):
     def search(self, query: str, corpus: Corpus, mode: Mode, k: int,
                doc_ids: list[str] | None = None, as_of: date | None = None) -> SearchResult: ...
 
-def get_searcher(impl: str, repo: ChunkRepository, settings: dict) -> Searcher  # 없는 이름 → UnknownImplError(쓸 수 있는 이름 목록)
+def get_searcher(impl: str, repo: ChunkRepository, settings: dict, embed: Callable[[str], list[float]] | None = None) -> Searcher  # 없는 이름 → UnknownImplError(이름 규칙 + 쓸 수 있는 이름 목록)
 ```
 - `get_searcher`는 등록된 구현을 공통 검사 래퍼 `CheckedSearcher`로 감싸 돌려준다. 어느 구현이든 아래 검사를 래퍼가 하므로 #66·#67은 구현에서 다시 하지 않아도 된다.
   - 부르기 전: `k ≥ 1`(아니면 `ValueError`), `corpus`·`mode` 값(아니면 `ValueError`), `mode == "hybrid"`면 `ModeNotSupportedError`, `settings["index_version"]`이 그 말뭉치에 없으면 `UnknownIndexVersionError`.
-  - 받은 뒤: 결과 조각 수 ≤ k, 모든 `hit.index_version == settings["index_version"]`(아니면 `IndexVersionMismatchError`), 점수 내림차순·같은 점수는 `chunk_id` 오름차순.
+  - 받은 뒤: `result.corpus`·`result.mode`·`result.scope.k`가 요청과 같음(아니면 `SearchContractViolationError`), 결과 조각 수 ≤ k, 모든 `hit.index_version == settings["index_version"]`(아니면 `IndexVersionMismatchError`), 점수 내림차순·같은 점수는 `chunk_id` 오름차순.
 - 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.
 - `get_searcher`는 설정 `impl` 이름으로 구현 모듈 `patent_ai.retrieval.<impl>`을 그때 import한다 (등록표에 이미 있으면 import하지 않음). 그래서 구현 파일 이름 = `impl` 이름이고(예 `impl: fake` → `retrieval/fake.py`), 그 모듈이 `@register_impl("<impl>")`로 자기를 등록한다. 모듈이 없거나 import 뒤에도 이름이 없으면 `UnknownImplError` (11/19 결정).
+- `embed`(글 → 벡터)는 부르는 쪽(채점기, F2·F3)이 `core/llm`의 `embed()`를 넘기고, 구현은 `(repo, settings, embed)`로 만들어진다. `retrieval`은 `core`를 import하지 않으므로 모델 호출을 직접 하지 않는다 (11/19 리뷰). fake는 녹화 파일을 읽는 `recorded_embed(path)`를 받는다 (`settings["query_vectors"]`만 있어도 같은 녹화를 읽는다).
 - `hybrid`를 넣기로 하면 인터페이스는 그대로 두고, 구현과 래퍼의 막는 줄만 바꾼다.
 - 같은 점수의 순서는 `chunk_id` 오름차순이다 (다시 돌려도 같은 순서).
 
@@ -175,10 +176,10 @@ MATCHERS: dict[Corpus, Matcher]  # "cite": CiteMatcher, "law": LawMatcher
 
 **정답 파일** `data/goldsets/tune/retrieval/gold.jsonl` (git 밖, 한 줄 = 정답 줄 하나)
 ```json
-{"row_id": "<발송번호>:29-2:c1:KR1020190012345A", "corpus": "cite",
- "query": "<OA 당시 청구항 1 전문>", "doc_ids": ["KR1020190012345A"], "as_of": null,
+{"row_id": "<발송번호>:29-2:c1:KR20190012345A", "corpus": "cite",
+ "query": "<OA 당시 청구항 1 전문>", "doc_ids": ["KR20190012345A"], "as_of": null,
  "gold_edition": null,
- "items": [{"kind": "paragraph", "start": 22, "end": 25, "label": "[0022-0025]"},
+ "items": [{"kind": "paragraph", "start": 22, "end": 25, "label": "[0022]-[0025]"},
            {"kind": "figure", "figures": [3], "label": "도 3"}],
  "exclude": null}
 ```
@@ -254,7 +255,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - 줄 무작위 Recall@k = 항목 평균
   - 줄 무작위 Hit@k = 1 − C(N − |∪Mᵢ|, k') / C(N, k')
 - 보고값 = 점수에 넣는 줄의 평균. `recall_ratio@k = 평균 Recall@k / 평균 무작위 Recall@k`. 분모가 0이면 그 k의 `recall_ratio@k` 키를 빼고 `failures.recall_ratio_undefined`에 1을 더한다 (기존 `scores.schema.json`의 `metrics`는 숫자만 받음).
-- 점검 예 (fixture로 테스트): N = 10, 항목 2개(`[0022-0025]` → M₁ 4개, `도 3` → M₂ 1개), k = 5.
+- 점검 예 (fixture로 테스트): N = 10, 항목 2개(`[0022]-[0025]` → M₁ 4개, `도 3` → M₂ 1개), k = 5.
   - 무작위 P₁ = 1 − C(6,5)/C(10,5) = 1 − 6/252 = 0.976
   - 무작위 P₂ = 1 − C(9,5)/C(10,5) = 1 − 126/252 = 0.5
   - 무작위 Recall@5 = 0.738
@@ -279,7 +280,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   3. `figure` 항목: 조각 `loc_figures`가 항목 도면 번호와 하나라도 겹치면 맞음. 보통 `chunk_kind = figure_desc`이지만, 본문 조각이 도면 번호를 담고 있어도 맞음으로 본다 ("그 도면 설명을 담고 있으면", #9 B-3).
   4. `claim` 항목: `loc_claims`가 겹치면 맞음. `abstract` 항목: `chunk_kind = abstract`면 맞음.
   5. 2번에서 조각이나 항목의 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음 (`LawMatcher` 기본값과 같은 규칙).
-  6. 공보가 다르면(같은 출원의 공개 `A`만 색인에 있고 정답은 등록 `B`) 1번에서 거른 문헌 조각이 0개가 된다. 그러면 검색 결과가 `text_missing`이고 그 줄은 빠진다 (판단은 2절 4번 한 곳).
+  6. 공보가 다르면(같은 출원의 공개 `A`만 색인에 있고 정답은 등록 `B`) 1번에서 거른 문헌 조각이 0개가 된다. 그러면 검색 결과가 `body_missing`이고 그 줄은 빠진다 (판단은 2절 4번 한 곳).
 - `LawMatcher`:
   1. 조각 `edition_status = confirmed`이고 시행 기간이 정답 줄 `gold_edition.effective_from`과 같은 법령 판본이어야 한다.
   2. 위치 규칙은 #66이 끼우는 함수 `(chunk, item) -> bool`이다. `register_law_location_rule("<이름>")`으로 등록하고 실험 설정 `law_location_rule: <이름>`으로 고른다 (`impl`과 같은 방식, `matchers.py`는 안 고침). 설정에 없으면 `overlap_or_label`을 쓴다. 이 기본값은 "같은 `loc_kind`이고 정렬 키가 겹침"이고, 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음이다.
@@ -322,7 +323,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 - 상태·경우마다 하나씩:
   - 결과 있음 (`status: null`)
   - `not_found_in_scope`
-  - `unverified(text_missing)`
+  - `unverified(body_missing)`
   - 기준일 거르기와 `skipped_unverified_edition`
   - `hybrid` → `ModeNotSupportedError`
   - 없는 `impl` → `UnknownImplError`
