@@ -36,5 +36,6 @@ packages = ["src/patent_ai"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # 저장소 뿌리의 eval/ 채점기를 테스트에서 import
 addopts = "-q -m 'not db'"
 markers = ["db: 실제 Postgres가 필요한 테스트 (make db 뒤 make test-db, CI는 서비스 컨테이너)"]

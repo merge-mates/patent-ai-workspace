@@ -43,7 +43,7 @@ flowchart LR
    - 하나라도 걸리면 `RetrievalEvalError`로 끝나고 종료 코드는 1이다.
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다.
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
-   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_text_missing`에 센다.
+   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_body_missing`에 센다.
    - 기준일 범위 내 판본 없음: 문헌 조각은 있는데 `as_of`로 거르고 나면 검색 범위 조각이 0개인 줄(N = 0)은 무작위 기준선을 정할 수 없으므로 채점 전체를 멈추지 않고 그 줄만 빼고 `excluded_no_edition_in_scope`에 센다 (11/19 결정). 법령 판본 모름 조각만 있거나, OA 발송일이 색인의 가장 이른 법령 판본보다 앞서는 경우다.
    - 결과에 다른 색인 판 조각이 있으면 실패로 끝난다. 판정은 조각마다 `hit.index_version`이 설정의 `index_version`과 같은지로 한다 (공통 래퍼가 먼저 보고, 채점기가 한 번 더 봄).
 5. 3·4번에서 빼고 남은 줄이 0개면 실패로 끝난다 (종료 코드 1, `RetrievalEvalError`). 빈 평균으로 성공 종료하지 않는다.
@@ -177,9 +177,8 @@ MATCHERS: dict[Corpus, Matcher]  # "cite": CiteMatcher, "law": LawMatcher
 
 **정답 파일** `data/goldsets/tune/retrieval/gold.jsonl` (git 밖, 한 줄 = 정답 줄 하나)
 ```json
-{"row_id": "<발송번호>:29-2:c1:KR20190012345A", "corpus": "cite",
+{"row_id": "<발송번호>:r1:c1:KR20190012345A", "corpus": "cite",
  "query": "<OA 당시 청구항 1 전문>", "doc_ids": ["KR20190012345A"], "as_of": null,
- "gold_edition": null,
  "items": [{"kind": "paragraph", "start": 22, "end": 25, "label": "[0022]-[0025]"},
            {"kind": "figure", "figures": [3], "label": "도 3"}],
  "exclude": null}
@@ -187,15 +186,15 @@ MATCHERS: dict[Corpus, Matcher]  # "cite": CiteMatcher, "law": LawMatcher
 - 정답 항목의 `start`·`end`는 5-1 정렬 키와 같은 인코딩이다. 칼럼:줄 `3:10-25`는 `start: 30010, end: 30025`이고, 칼럼을 넘는 `3:50-4:5`는 `start: 30050, end: 40005`다.
 - 법령 정답 줄 예시:
 ```json
-{"row_id": "<발송번호>:29-2", "corpus": "law",
+{"row_id": "<발송번호>:r1", "corpus": "law",
  "query": "<#66이 정한 질의>", "doc_ids": null, "as_of": "2020-05-04",
- "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"},
- "items": [{"kind": "page", "start": 3203, "end": 3204, "label": "3203~3204쪽"}],
+ "items": [{"kind": "page", "start": 3203, "end": 3204, "label": "3203~3204쪽",
+            "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"}}],
  "exclude": null}
 ```
   (`doc_ids: null` = 법령 말뭉치 전체에서 기준일로만 거름. 법령 `doc_id` 값과 `items` 단위는 #66이 정한다.)
-- `row_id`: 내용으로 정함. 인용문헌 `<발송번호>:<조문>:c<청구항>:<공보 번호>`, 법령 `<발송번호>:<조문>`. 발송번호가 들어가므로 git에 넣는 파일(`scores.json`)에는 쓰지 않는다.
-- `gold_edition`(법령): `{"status": "confirmed", "effective_from": "2020-01-01"}` 또는 `{"status": "unverified"}`. 변환 스크립트가 `as_of`(OA 발송일)로 채운다.
+- `row_id`: 내용으로 정함. 법령 `<발송번호>:r<거절이유 순번>`, 인용문헌 `<발송번호>:r<거절이유 순번>:c<청구항>:<공보 번호>` (11/19 리뷰, 조문 대신 순번: 같은 조문의 거절이유가 한 OA에 둘 이상일 수 있다). 꼴이 틀리거나, 인용문헌 줄의 공보 번호가 `doc_ids`에 없으면 정답 파일 읽기에서 멈춘다. 발송번호가 들어가므로 git에 넣는 파일(`scores.json`)에는 쓰지 않는다.
+- `items[].gold_edition`(법령 항목만): `{"status": "confirmed", "effective_from": "2020-01-01"}` 또는 `{"status": "unverified"}`. 한 줄에 특허법 조문과 심사기준 쪽처럼 판본이 다른 항목이 같이 오므로 줄이 아니라 항목마다 둔다 (11/19 리뷰). 변환 스크립트가 `as_of`(OA 발송일)로 채운다. 항목 하나라도 확인되지 않음이면 그 줄을 빼고 `excluded_edition_unverified`에 센다 (항목만 빼면 Recall 분모가 바뀐다). 인용문헌 항목에는 두지 않는다.
 - `exclude`: `null` / `no_location` / `clarity` / `same_as_other`. 변환 스크립트가 정한다.
 - `items[].kind`: `paragraph` / `column_line` / `figure` / `claim` / `abstract` / `article` / `page`.
 - 정답 세트 버전은 기존 규칙대로 `data/goldsets/VERSION`(정수)이다.
@@ -220,8 +219,9 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 ```
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
-  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_text_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
-  - 위 표에 더하는 칸: `corpus`, `index_version`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
+  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
+  - 위 표에 더하는 칸: `corpus`, `index_version`, `index_fingerprint`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
+  - `index_fingerprint`: 그 색인 판 조각 전체의 `{"chunks": 조각 수, "chunk_ids_sha256": …}`. `make index-dump`의 `.fingerprint.json`과 같은 계산이다 (5-2). **지문이 다른 실험끼리는 점수를 비교하지 않는다** (색인 판 이름이 같아도 내용이 다르다).
   - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
   - 줄 ID·질의·정답 위치는 넣지 않는다.
 - **E (정답 파일 버전 기록)**: `scores.json`의 `goldset_version`(`data/goldsets/VERSION` 정수)과 `gold_sha256`(정답 파일 해시)으로 남긴다. CQ 후보 줄마다 같은 두 값을 넣는다. 버전이 같아도 해시가 다르면 다른 정답으로 보고, CQ 모으기는 멈춘다.
@@ -283,7 +283,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   5. 2번에서 조각이나 항목의 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음 (`LawMatcher` 기본값과 같은 규칙).
   6. 공보가 다르면(같은 출원의 공개 `A`만 색인에 있고 정답은 등록 `B`) 1번에서 거른 문헌 조각이 0개가 된다. 그러면 검색 결과가 `body_missing`이고 그 줄은 빠진다 (판단은 2절 4번 한 곳).
 - `LawMatcher`:
-  1. 조각 `edition_status = confirmed`이고 시행 기간이 정답 줄 `gold_edition.effective_from`과 같은 법령 판본이어야 한다.
+  1. 조각 `edition_status = confirmed`이고 시행 기간이 그 정답 항목 `gold_edition.effective_from`과 같은 법령 판본이어야 한다 (항목마다 본다).
   2. 위치 규칙은 #66이 끼우는 함수 `(chunk, item) -> bool`이다. `register_law_location_rule("<이름>")`으로 등록하고 실험 설정 `law_location_rule: <이름>`으로 고른다 (`impl`과 같은 방식, `matchers.py`는 안 고침). 설정에 없으면 `overlap_or_label`을 쓴다. 이 기본값은 "같은 `loc_kind`이고 정렬 키가 겹침"이고, 정렬 키가 null이면 `loc_label` 글자가 같을 때만 맞음이다.
 
 ### 7-5. CQ 모으기 (requirements 기준 5)

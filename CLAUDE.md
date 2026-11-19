@@ -5,7 +5,7 @@
 - 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
 - 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
-- 채점 명령은 `eval/`을 만들 때 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다.
+- 검색 채점: `uv run python -m eval.retrieval.score --config experiments/<실험>/config.yaml` (다른 기능의 채점 명령은 그 `eval/`을 만들 때 채운다. 그 전에는 명령을 짐작해서 돌리지 않는다). (`--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다)
 - PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더

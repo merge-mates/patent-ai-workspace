@@ -1,0 +1,3 @@
+{"row_id": "10-2020-0000111:r1:c1:KR1000000001A", "corpus": "cite", "query": "가짜 청구항: 문단 [0023]에 적힌 가열 처리 방법", "doc_ids": ["KR1000000001A"], "as_of": null, "items": [{"kind": "paragraph", "start": 22, "end": 25, "label": "[0022]-[0025]"}], "exclude": null}
+{"row_id": "10-2020-0000110:r1:c1:KR1000000001A", "corpus": "cite", "query": "가짜 청구항: 도 3 의 기판 구조", "doc_ids": ["KR1000000001A"], "as_of": null, "items": [{"kind": "figure", "figures": [3], "label": "도 3"}], "exclude": null}
+{"row_id": "10-2020-0000103:r1:c1:KR1000000001A", "corpus": "cite", "query": "가짜 청구항: 온도 300℃에서 처리", "doc_ids": ["KR1000000001A"], "as_of": null, "items": [{"kind": "paragraph", "start": 5, "end": 5, "label": "[0005]"}], "exclude": null}
