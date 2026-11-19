@@ -5,6 +5,8 @@
 날짜: 
 기준선: experiments/m1-i2-<기능>-baseline/
 평가 세트: tune v1
+바꾼 것: <`settings.<키>`: 기준값 → 새 값, 또는 `impl`: 사람1 → 사람2. 기준선이면 기준선>
+주 지표: <scores.json metrics의 키 하나, 예 field_accuracy·recall@5>
 ---
 # <실험 이름>
 
