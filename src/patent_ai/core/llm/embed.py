@@ -27,7 +27,7 @@ from patent_ai.core.llm.errors import (
     RecordingMissing,
 )
 from patent_ai.core.llm.limits import CallRecord, RunContext
-from patent_ai.core.llm.transport import TransportError
+from patent_ai.core.llm.transport import TransportError, is_real_transport
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def embed(
         return []
 
     transport: EmbedTransport | None = ctx.transport
-    real = transport is None or isinstance(transport, OpenAIEmbedTransport)
+    real = is_real_transport(transport)
     # 진짜 전송층이면 기본 파일 캐시 (과금 방지). cache=False면 끔
     cache: Cache | None
     if ctx.cache is False:
@@ -198,12 +198,15 @@ def embed(
             if len(resp.vectors) != len(batch):
                 record(resp.input_tokens, 0, "invalid_output", n + 1)
                 raise ModelOutputInvalid(f"{step}: 글 {len(batch)}개에 벡터 {len(resp.vectors)}개")
+            # 캐시에 쓰기 전에 길이를 본다: 잘못된 벡터가 캐시에 남으면 다음 실행도 계속 실패한다
+            lengths = {len(v) for v in resp.vectors} | {len(v) for v in out if v is not None}
+            if len(lengths) != 1 or 0 in lengths:
+                record(resp.input_tokens, 0, "invalid_output", n + 1)
+                raise ModelOutputInvalid(
+                    f"{step}: 벡터 길이가 서로 다르거나 0이다 {sorted(lengths)}"
+                )
             record(resp.input_tokens, int((time.monotonic() - t0) * 1000), "ok", n + 1)
             break
-        # 캐시에 쓰기 전에 길이를 본다: 잘못된 벡터가 캐시에 남으면 다음 실행도 계속 실패한다
-        lengths = {len(v) for v in resp.vectors} | {len(v) for v in out if v is not None}
-        if len(lengths) != 1 or 0 in lengths:
-            raise ModelOutputInvalid(f"{step}: 벡터 길이가 서로 다르거나 0이다 {sorted(lengths)}")
         for i, vector in zip(idx, resp.vectors, strict=True):
             out[i] = vector
             if cache is not None:

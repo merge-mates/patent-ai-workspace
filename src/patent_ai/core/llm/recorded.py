@@ -52,6 +52,8 @@ def save_recording(
 class RecordedTransport:
     """저장한 답만 돌려준다. 없으면 RecordingMissing (진짜 호출로 넘어가지 않음)."""
 
+    is_real = False  # 돈 안 드는 전송층 (is_real_transport)
+
     def __init__(self, directory: Path) -> None:
         self.directory = Path(directory)
 

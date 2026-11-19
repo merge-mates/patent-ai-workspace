@@ -28,6 +28,7 @@ from patent_ai.core.llm.transport import (
     Transport,
     TransportError,
     TransportResponse,
+    is_real_transport,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ def call_model(
 
     # 진짜 전송층(AnthropicTransport)이면 기본 파일 캐시를 쓴다 (과금 방지). 끄려면 cache=False
     # 가짜 등 그 밖의 전송층은 cache=None이면 캐시를 안 쓴다
-    if cache is None and (transport is None or isinstance(transport, AnthropicTransport)):
+    if cache is None and is_real_transport(transport):
         cache = FileCache()
     if cache is False:
         cache = None
@@ -121,7 +122,7 @@ def call_model(
 
     # 진짜 전송층을 부를 차례면(캐시 적중 아님) 호출 수 상한이 꼭 있어야 한다 (과금 방지).
     # 가짜·기록 전송층은 돈이 안 들어 지금처럼 경고만 한다 (CallBudget.check)
-    calls_real = transport is None or isinstance(transport, AnthropicTransport)
+    calls_real = is_real_transport(transport)
     if hit is None and calls_real and cfg.max_model_calls is None:
         raise ModelConfigError(
             f"{step}: 진짜 전송층을 부르는데 설정에 max_model_calls가 없음 (config/에 넣는다)"

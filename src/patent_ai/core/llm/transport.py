@@ -21,6 +21,13 @@ class TransportError(Exception):
         self.retryable = retryable
 
 
+def is_real_transport(transport) -> bool:
+    """돈이 드는 진짜 전송층인가. 허용 목록 방식: is_real=False 표시가 있는 가짜·기록 전송층만
+    돈이 안 든다고 보고, 표시가 없는 전송층(래퍼, 새 진짜 전송층)과 None(기본 진짜)은 진짜로 본다.
+    과금을 막는 선(상한 필수·기본 파일 캐시)이 모르는 전송층에서 빠지지 않게."""
+    return transport is None or getattr(transport, "is_real", True)
+
+
 class Transport(Protocol):
     def complete(
         self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
@@ -73,6 +80,7 @@ class FakeTransport:
 
     responses: dict[str, object]
     calls: list[dict] = field(default_factory=list)
+    is_real = False  # 돈 안 드는 전송층 (is_real_transport)
     _used: dict[str, int] = field(default_factory=dict)
 
     def complete(

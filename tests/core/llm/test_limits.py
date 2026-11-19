@@ -214,7 +214,34 @@ def test_기록_전송층은_상한이_없어도_경고만_남기고_부른다(t
     with caplog.at_level(logging.WARNING):
         r = run(RecordedTransport(rec_dir), cfg, CallBudget(), MemoryRecorder())
     assert r.text == "답"
-    assert any("상한" in m for m in caplog.messages)
+    assert len([m for m in caplog.messages if "상한" in m]) == 1
+
+
+class _Wrapper:
+    """진짜 SDK를 감싼 래퍼 흉내 (로그·재시도 등). 돈 안 드는 표시(is_real=False)가 없다."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def complete(self, **kw):
+        return self.inner.complete(**kw)
+
+
+def test_이름_모르는_전송층은_진짜로_보고_상한이_없으면_멈춘다(tmp_path):
+    cfg = make_config(tmp_path)
+    inner = scripted(OK)
+    with pytest.raises(ModelConfigError, match="max_model_calls"):
+        run(_Wrapper(inner), cfg, CallBudget(), MemoryRecorder(), cache=False)
+    assert inner.calls == []
+
+
+def test_이름_모르는_전송층은_기본_파일_캐시를_쓴다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=5)
+    inner = scripted(OK)
+    w = _Wrapper(inner)
+    run(w, cfg, CallBudget(), MemoryRecorder())  # cache None -> 진짜로 보고 기본 FileCache
+    r = run(w, cfg, CallBudget(), MemoryRecorder())
+    assert r.from_cache is True and len(inner.calls) == 1
 
 
 def test_429가_계속되면_max_retries_뒤_ModelCallFailed(tmp_path):
