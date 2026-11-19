@@ -65,14 +65,14 @@ export interface DraftCheck {
 
 export interface Drafts extends ResultCommon {
   draft_id: string
+  // 이 초안을 만들 때 쓴 선택 (묶음마다 후보). 지금 선택과 다르면 "다시 확인 필요"
+  based_on: { unit_id: string; candidate_id: string }[]
   opinion: OpinionSection[]
   claims: AmendedClaim[]
   check: DraftCheck
 }
 
 // PATCH /drafts/{id}: 의견서 한 칸 또는 보정 청구항 하나를 사람이 고친다
-export interface DraftPatch {
-  section?: OpinionSection['key']
-  claim?: number
-  text: string
-}
+export type DraftPatch =
+  | { section: OpinionSection['key']; claim?: undefined; text: string }
+  | { claim: number; section?: undefined; text: string }

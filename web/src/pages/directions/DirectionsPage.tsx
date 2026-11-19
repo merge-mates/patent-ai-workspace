@@ -1,12 +1,14 @@
 import { CheckCircleTwoTone, CloseCircleTwoTone, ExclamationCircleTwoTone } from '@ant-design/icons'
-import { Alert, App, Card, Descriptions, List, Popover, Radio, Space, Tag, Typography } from 'antd'
+import { App, Card, Descriptions, Empty, List, Popover, Radio, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useRouteLoaderData } from 'react-router'
 import { api } from '../../api'
+import { AmendmentLimitAlert, UnsupportedAlert } from '../../components/CaseAlerts'
 import { ConfidenceTag, OriginTag } from '../../components/DirectionTags'
 import { ExampleDataMark, HumanCheckTag } from '../../components/Marks'
+import { StatusTag } from '../../components/StatusTag'
 import { claimRange } from '../../format'
-import { articleLabel, rejectionKindLabel } from '../../labels'
+import { rejectionKindLabel } from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
 import type { JudgmentUnit } from '../../types/provisional/analysis'
 import type {
@@ -122,53 +124,33 @@ export function DirectionsPage() {
   const [chosen, setChosen] = useState<Record<string, DirectionSelection | null>>(() =>
     Object.fromEntries(directions.map((d) => [d.unit_id, d.selection])),
   )
-  const [saving, setSaving] = useState<string | null>(null)
+  // 저장 중인 묶음들 (여러 묶음을 빨리 골라도 서로 덮지 않게 묶음마다 따로)
+  const [saving, setSaving] = useState<Record<string, boolean>>({})
 
   // 사람이 고르면 서버에 저장한다 (저장한 선택은 1등과 같아도 "사람이 고름")
   const choose = async (d: DirectionCandidates, candidateId: string) => {
-    setSaving(d.unit_id)
+    setSaving((prev) => ({ ...prev, [d.unit_id]: true }))
     try {
       const saved = await api.selectDirection(d.unit_id, candidateId)
-      setChosen({ ...chosen, [d.unit_id]: saved.selection })
+      // 응답이 늦게 와도 다른 묶음의 선택을 덮지 않게 그때의 최신 값에 더한다
+      setChosen((prev) => ({ ...prev, [d.unit_id]: saved.selection }))
     } catch (e) {
       message.error(`저장하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
-      setSaving(null)
+      setSaving((prev) => ({ ...prev, [d.unit_id]: false }))
     }
   }
 
-  const isFinal = directions.some((d) => d.amendment_limit === 'final')
-  const unsupported = oaResult?.result.rejections.filter((r) => caseCheck.unsupported_rejections.includes(r.no)) ?? []
-
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      {isFinal && (
-        <Alert
-          type="info"
-          showIcon
-          message={
-            <Space wrap>
-              <span>최후거절이유통지: 보정할 수 있는 범위가 제한됩니다 (특허법 제47조제3항).</span>
-              <HumanCheckTag>고른 보정이 허용되는 종류인지 직접 확인</HumanCheckTag>
-            </Space>
-          }
-        />
+      <AmendmentLimitAlert directions={directions} />
+      {caseCheck && (
+        <UnsupportedAlert numbers={caseCheck.unsupported_rejections} rejections={oaResult?.result.rejections ?? []} />
       )}
-      {unsupported.length > 0 && (
-        <Alert
-          type="warning"
-          showIcon
-          message={
-            <Space wrap>
-              <span>
-                {`AI가 다루지 않은 거절이유가 남아 있음: ${unsupported
-                  .map((r) => `거절이유 ${r.no}(특허법 ${articleLabel(r.article.value)})`)
-                  .join(', ')}`}
-              </span>
-              <HumanCheckTag>직접 대응 필요</HumanCheckTag>
-            </Space>
-          }
-        />
+      {directions.length === 0 && (
+        <Card size="small" title="대응 방향">
+          <Empty description="대응 방향 후보가 아직 없습니다" />
+        </Card>
       )}
       {directions.map((d) => {
         const sel = chosen[d.unit_id]
@@ -190,7 +172,7 @@ export function DirectionsPage() {
           >
             <Radio.Group
               value={sel?.candidate_id ?? null}
-              disabled={saving === d.unit_id}
+              disabled={saving[d.unit_id] === true}
               onChange={(e) => choose(d, e.target.value as string)}
               style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
             >
@@ -211,29 +193,37 @@ export function DirectionsPage() {
         )
       })}
       <Card size="small" title={<Space>사건 전체 검사 <ExampleDataMark /></Space>}>
-        <List
-          size="small"
-          dataSource={caseCheck.items}
-          renderItem={(it) => (
-            <List.Item style={{ paddingInline: 0 }}>
-              <Space align="start">
-                {it.result === 'ok' ? (
-                  <CheckCircleTwoTone twoToneColor="#52c41a" />
-                ) : it.result === 'warn' ? (
-                  <ExclamationCircleTwoTone twoToneColor="#faad14" />
-                ) : (
-                  <CloseCircleTwoTone twoToneColor="#ff4d4f" />
-                )}
-                <Space direction="vertical" size={0}>
-                  <Typography.Text strong>{it.name}</Typography.Text>
-                  <Typography.Text type="secondary">{it.detail}</Typography.Text>
+        {caseCheck === null ? (
+          <Space>
+            <StatusTag status="unverified" />
+            <Typography.Text type="secondary">사건 전체 검사 결과가 아직 없습니다</Typography.Text>
+          </Space>
+        ) : (
+          <List
+            size="small"
+            dataSource={caseCheck.items}
+            locale={{ emptyText: '검사 항목이 없습니다' }}
+            renderItem={(it) => (
+              <List.Item style={{ paddingInline: 0 }}>
+                <Space align="start">
+                  {it.result === 'ok' ? (
+                    <CheckCircleTwoTone twoToneColor="#52c41a" />
+                  ) : it.result === 'warn' ? (
+                    <ExclamationCircleTwoTone twoToneColor="#faad14" />
+                  ) : (
+                    <CloseCircleTwoTone twoToneColor="#ff4d4f" />
+                  )}
+                  <Space direction="vertical" size={0}>
+                    <Typography.Text strong>{it.name}</Typography.Text>
+                    <Typography.Text type="secondary">{it.detail}</Typography.Text>
+                  </Space>
                 </Space>
-              </Space>
-            </List.Item>
-          )}
-        />
+              </List.Item>
+            )}
+          />
+        )}
         <Link to="../drafts" relative="path">
-          고른 방향으로 의견서·보정 초안 보기 →
+          의견서·보정 초안 보기 →
         </Link>
       </Card>
     </Space>

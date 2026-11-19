@@ -90,7 +90,8 @@ export async function compareLoader({ params }: LoaderFunctionArgs): Promise<Com
 export interface DirectionsLoaderData {
   units: JudgmentUnit[]
   directions: DirectionCandidates[]
-  caseCheck: CaseCheck
+  // 아직 없으면 null (확인되지 않음으로 보인다)
+  caseCheck: CaseCheck | null
 }
 
 // 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
@@ -99,7 +100,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
   const [units, directions, caseCheck] = await Promise.all([
     api.getUnits(oaId),
     api.getDirections(oaId),
-    api.getCaseCheck(oaId),
+    api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
   return { units, directions, caseCheck }
 }
@@ -107,13 +108,18 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
 export interface DraftsLoaderData {
   // 초안이 아직 없으면 null (404 result_not_ready)
   drafts: Drafts | null
+  // 지금 선택: 초안이 바탕으로 삼은 선택과 다른지 본다
+  directions: DirectionCandidates[]
+  caseCheck: CaseCheck | null
 }
 
 // 5 의견서·보정 초안
 export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData> {
-  const drafts = await api.getDrafts(params.oaId!).catch((e: unknown) => {
-    if (isNotReady(e)) return null
-    throw e
-  })
-  return { drafts }
+  const oaId = params.oaId!
+  const [drafts, directions, caseCheck] = await Promise.all([
+    api.getDrafts(oaId).catch(notReadyAsNull),
+    api.getDirections(oaId),
+    api.getCaseCheck(oaId).catch(notReadyAsNull),
+  ])
+  return { drafts, directions, caseCheck }
 }

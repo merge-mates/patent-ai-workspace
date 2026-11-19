@@ -183,6 +183,11 @@ export const exampleCaseChecks: Record<string, CaseCheck> = {
 export const exampleDrafts: Record<string, Drafts> = {
   oa_1: {
     draft_id: 'dr_1', ...common(ok('초안 검사')),
+    based_on: [
+      { unit_id: 'oa_1:29-1-1:c1', candidate_id: 'd1a' },
+      { unit_id: 'oa_1:29-2:c1', candidate_id: 'd2a' },
+      { unit_id: 'oa_1:42-4-2:c6', candidate_id: 'd3a' },
+    ],
     opinion: [
       { key: 'case_info', title: '사건 정보', ai_text: '출원번호 10-2099-0000002, 발송번호 9-5-2099-000000002 의견제출통지서에 대하여 다음과 같이 의견을 제출합니다.', human_text: null },
       { key: 'points', title: '지적 요지', ai_text: '심사관은 청구항 1이 인용발명 1과 같고(신규성), 청구항 1~13이 인용발명 1·2의 결합으로 쉽게 발명할 수 있으며(진보성), 청구항 6·7의 표현이 불명확하다고 하였습니다.', human_text: null },

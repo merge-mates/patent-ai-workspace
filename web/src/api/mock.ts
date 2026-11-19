@@ -181,7 +181,10 @@ export const mockApi = {
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {
     await byOA(oaId)
-    return exampleCaseChecks[oaId] ?? { items: [], unsupported_rejections: [] }
+    // 예시가 없으면 "다루지 않은 거절이유 없음"처럼 지어내지 않고 결과 없음으로
+    const check = exampleCaseChecks[oaId]
+    if (!check) throw new ApiError('result_not_ready', '사건 전체 검사 결과가 아직 없습니다', 404)
+    return check
   },
   async getDrafts(oaId: string): Promise<Drafts> {
     await byOA(oaId)
@@ -193,12 +196,14 @@ export const mockApi = {
     const d = Object.values(drafts).find((x) => x.draft_id === draftId)
     if (!d) throw new ApiError('draft_not_found', '초안을 찾을 수 없습니다', 404)
     // AI 원본은 그대로 두고 사람이 고친 글만 바꾼다. AI 원문과 같아지면 고친 것이 아님
-    if (patch.section) {
-      const sec = d.opinion.find((x) => x.key === patch.section)!
+    if (patch.section !== undefined) {
+      const sec = d.opinion.find((x) => x.key === patch.section)
+      if (!sec) throw new ApiError('section_not_found', '의견서 칸을 찾을 수 없습니다', 400)
       sec.human_text = patch.text === sec.ai_text ? null : patch.text
-    }
-    if (patch.claim !== undefined) {
-      const c = d.claims.find((x) => x.claim === patch.claim)!
+    } else {
+      const c = d.claims.find((x) => x.claim === patch.claim)
+      // 보류한 청구항(초안 없음)은 고칠 수 없다
+      if (!c || c.after === null) throw new ApiError('claim_not_editable', '고칠 수 있는 보정 초안이 없습니다', 400)
       c.human_text = patch.text === c.after ? null : patch.text
     }
     return { ...d }

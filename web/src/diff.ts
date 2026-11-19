@@ -1,8 +1,8 @@
 // 단어 단위 비교: 두 글에서 같은 부분 / 지운 부분 / 더한 부분을 나눈다 (변경 추적 표시용)
 export type DiffPart = { kind: 'same' | 'removed' | 'added'; text: string }
 
-// 띄어쓰기를 붙인 채로 자른다 ("가 나 다" → ["가 ", "나 ", "다"])
-const tokens = (s: string) => s.match(/\S+\s*|\s+/g) ?? []
+// 단어와 띄어쓰기를 따로 자른다 ("가 나" → ["가", " ", "나"]). 끝에 글을 덧붙여도 앞 단어가 바뀐 것으로 안 보이게
+const tokens = (s: string) => s.match(/\S+|\s+/g) ?? []
 
 export function wordDiff(before: string, after: string): DiffPart[] {
   const a = tokens(before)
