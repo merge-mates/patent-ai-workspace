@@ -1,0 +1,8 @@
+# 법령 색인 law-idx-v1 설정 (#66). 설정을 바꾸면 새 판(v2)으로, 이 파일은 고치지 않는다.
+# 범위: 특허법·시행령 조문만 (심사기준은 law-idx-v2에서)
+index_version: law-idx-v1
+raw_dir: data/raw/law
+laws:
+  - 특허법
+  - 특허법_시행령
+out: data/processed/law/law-idx-v1.jsonl

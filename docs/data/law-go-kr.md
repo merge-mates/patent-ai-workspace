@@ -65,6 +65,11 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
   - 캐시·호출 상한 예외는 CLAUDE.md 코드 규칙을 따른다 (이 스크립트들은 이미 있는 파일이면 멈추고 호출 사이 1초 쉰다).
 - 모든 스크립트는 기존 파일을 덮어쓰지 않고 멈추며, 호출 사이 1초 쉰다.
 - raw → processed(조각 테이블·청킹·임베딩)는 이슈 #65(검색 계약)와 이슈 #66에서 정한다.
+- 법령 색인 `law-idx-v1` (#66, 11/19): `data/raw/law/body_<법령>_<MST>_<시행일>.json` → `uv run python -m patent_ai.retrieval.law_index --config config/index/law-idx-v1.yaml` → `data/processed/law/law-idx-v1.jsonl`.
+  - 범위: 특허법 14판 + 시행령 3판 조문만(시행규칙은 설정 `laws`에서 뺌). 조각 10,649개, 판본 모름 0개. 같은 입력이면 같은 바이트.
+  - 버리는 것: 장·절 제목(`조문여부=전문`), 삭제된 조·항·호(글이 "삭제"뿐), `<개정 …>`처럼 날짜가 든 꺾쇠 꼬리표.
+  - 원본 모양 주의: `항`이 목록이 아니라 하나(dict)이거나 `항번호` 없이 `호`만 있는 조가 있고(항 0 조각), `목내용`이 겹목록인 곳이 있다(시행령 제7조).
+  - DB: `uv run python -m patent_ai.retrieval.law_index_db --jsonl … --index-version law-idx-v1` → `make index-dump CORPUS=law`.
 
 ## 5. 쓰면 안 되는 곳
 - 저장소에 원문(조문·판결문·심사기준 본문)을 넣지 않는다. 이 카드에는 건수와 필드 이름만 둔다.
