@@ -4,11 +4,12 @@ import { ReviewPanel } from '../components/ReviewPanel'
 import type { OALoaderData } from '../loaders'
 
 // 사건 안의 단계: 일하는 순서대로. 아직 안 만든 단계는 잠가 둔다
-const STEPS = [
+type Step = { key: string; label: string; path: string; anchor?: string; disabled?: boolean }
+const STEPS: Step[] = [
   { key: 'materials', label: '1 자료', path: '', anchor: 'materials' },
   { key: 'rejections', label: '2 거절이유 정리', path: '', anchor: 'rejections' },
   { key: 'compare', label: '3 대비와 근거', path: '/compare' },
-  { key: 'directions', label: '4 대응 방향', path: '/directions', disabled: true },
+  { key: 'directions', label: '4 대응 방향', path: '/directions' },
   { key: 'drafts', label: '5 의견서·보정 초안', path: '/drafts', disabled: true },
 ]
 
