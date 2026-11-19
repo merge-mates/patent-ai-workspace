@@ -38,6 +38,7 @@
 | F4 대응 방향 후보와 초안 | | M3 | PRD | | | |
 | F5 근거·상태 표시와 진행·보류 | | M1 | PRD | | | |
 | F2·F3 공통 검색 계약 (이슈 #65) | 재아 | M2 | requirements·design 초안 | [requirements](features/retrieval/requirements.md) | [design](features/retrieval/design.md) | |
+| F3 인용문헌 문단 검색 기준선 (이슈 #67) | 재아 | M2 | requirements·design 초안 | [requirements](features/cite-search/requirements.md) | [design](features/cite-search/design.md) | |
 
 기능 번호·합격 기준은 [product.md](product.md) 5절. 기능 폴더(`features/<기능>/`)는 PRD 승인 뒤 만든다. 기술·경쟁사 조사, 선행기술 조사는 기획서에만 있다 (기획서 9절).
 
