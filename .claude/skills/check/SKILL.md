@@ -1,7 +1,7 @@
 ---
 name: check
 description: "끝났다"고 말하기 전에 증거를 모으고 문서와 대조한다. 계획 하나가 끝나 PR을 올리기 전(이슈), 기능이 끝났을 때(기능)에 쓴다. 증거 없이 "잘 된다"고 쓰지 않기 위한 절차다.
-argument-hint: "<이슈|기능> <tasks.md 또는 기능 폴더> [이터레이션 예: m1-i3]"
+argument-hint: "<이슈|기능> <tasks.md 또는 기능 폴더 또는 이슈번호> [이터레이션 예: m1-i3]"
 ---
 
 # 확인: $ARGUMENTS
@@ -9,7 +9,7 @@ argument-hint: "<이슈|기능> <tasks.md 또는 기능 폴더> [이터레이션
 ## 범위
 | 모드 | 기준 문서 | diff 범위 |
 |---|---|---|
-| 이슈 | tasks.md의 그 이슈 계획 + design.md 중 그 계획이 구현한 부분 + requirements 중 맡은 합격 기준 | `git diff main...` (이 브랜치 전체) |
+| 이슈 | tasks.md의 그 이슈 계획 + design.md 중 그 계획이 구현한 부분 + requirements 중 맡은 합격 기준. 작은 이슈(두 번째 인자가 이슈번호)면 이슈 본문의 task 체크리스트·합격 기준·확인 명령 | `git diff main...` (이 브랜치 전체) |
 | 기능 | requirements 전체 + design 전체 | 그 기능의 첫 PR부터 지금까지 (`git log --grep` 또는 tasks.md의 PR 번호로) |
 
 ## 1. 증거 (verifier 에이전트에 맡긴다. 결과는 명령과 출력 일부로만)
@@ -20,7 +20,7 @@ argument-hint: "<이슈|기능> <tasks.md 또는 기능 폴더> [이터레이션
 5. 규칙: `data/goldsets/` import 없음, 키·비공개 파일이 diff에 없음 (`git diff main... | grep -iE "api[_-]?key|secret|token"`).
 
 ## 2. 문서 대조
-- 계획한 task를 다 했나 (tasks.md 진행 칸 ↔ 실제 커밋). 안 한 것은 이유와 함께 "다음으로".
+- 계획한 task를 다 했나 (tasks.md 진행 칸, 작은 이슈면 이슈 본문 체크박스 ↔ 실제 커밋). 안 한 것은 이유와 함께 "다음으로". 작은 이슈면 `확인 명령`을 돌린 결과도 표에 넣는다.
 - design.md와 다르게 만든 곳 (인터페이스, 데이터 모양, 흐름). 있으면 design.md를 고칠지, 코드를 고칠지 사람에게 묻는다.
 - 맡은 합격 기준마다 통과하는 테스트 이름.
 - 범위 밖 변경 (계획에 없던 파일).

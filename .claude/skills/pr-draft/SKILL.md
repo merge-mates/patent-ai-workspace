@@ -15,3 +15,4 @@ description: 지금 브랜치의 PR 제목과 본문 초안을 팀 틀에 맞춰
    gh pr create --title "<제목>" --body-file work/pr-draft.md --assignee @me
    ```
 6. `Closes #N` PR을 만들면 늘 이슈 #N 카드를 **In Review**로 옮긴다 (`Refs #N` PR이면 남은 계획이 있으니 카드는 In Progress 그대로 둔다): `.claude/scripts/board-status.sh N "In Review"`. 출력("보드: #N → In Review")을 사람에게 보여 주고, 실패하면 이유를 사람에게 전한다.
+7. worktree에서 일했으면(`git rev-parse --git-dir`이 `.git/worktrees/` 아래) 정리 명령을 한 줄 알린다: "머지 뒤 원래 폴더에서 `git worktree remove ../wt/<브랜치>` → `git branch -d <브랜치>`". 머지 전에는 지우지 않는다 (리뷰 고침을 이 폴더에서 한다). Claude는 지우지 않는다.
