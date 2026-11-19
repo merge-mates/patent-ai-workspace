@@ -74,16 +74,16 @@ graph LR
 
 ### task-4: `fake` 구현 (녹화 벡터)
 - 담당: 재아
-- 합격 기준: requirements.md 1 (`not_found_in_scope`, `unverified(text_missing)`, `skipped_unverified_edition`)
+- 합격 기준: requirements.md 1 (`not_found_in_scope`, `unverified(body_missing)`, `skipped_unverified_edition`)
 - 고칠 파일: `src/patent_ai/retrieval/fake.py`, `tests/fixtures/retrieval/query_vectors.json`, `tests/retrieval/test_fake_search.py`
 - 만들 함수·인터페이스 모양: `@register_impl("fake") class FakeSearcher`
   - `bm25`: 공백으로 자른 낱말이 질의와 겹치는 수
   - `vector`: 코사인 유사도 (녹화에 없는 질의 → `RecordedEmbeddingMissing`)
   - 점수 0 이하인 조각은 결과에서 뺀다
-  - 거른 문헌 조각이 0개면 `status=unverified`, `status_reason=text_missing`. 결과가 0개면 `status=not_found_in_scope`
+  - 거른 문헌 조각이 0개면 `status=unverified`, `status_reason=body_missing`. 결과가 0개면 `status=not_found_in_scope`
 - 테스트할 경우 (모두 `get_searcher("fake", …)`로, 래퍼를 거쳐서):
   - 평소: bm25·vector 상위 k, 같은 점수 `chunk_id` 오름차순, 한 공보 안만, 기준일 거르기 + `skipped_unverified_edition`
-  - 빈 입력: 겹치는 낱말 없는 질의 → `not_found_in_scope` + `scope`, 없는 공보 → `unverified(text_missing)`
+  - 빈 입력: 겹치는 낱말 없는 질의 → `not_found_in_scope` + `scope`, 없는 공보 → `unverified(body_missing)`
   - 실패: 녹화 없는 질의 → `RecordedEmbeddingMissing`
 - 확인 방법: `uv run pytest tests/retrieval` → 전부 통과
 - 먼저: task-2, task-3
