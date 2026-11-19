@@ -245,6 +245,16 @@ def _fits(r: ClaimRowExtraction, rej: dict, pages: PageText) -> bool:
     return head is None or head == rej["no"]
 
 
+def _outside_parentheses(
+    raw: str, parse_claims: Callable[[str], list[int] | None]
+) -> list[int] | None:
+    """괄호 안(인용항 등)을 뺀 나머지 글자의 청구항 번호. 괄호가 없거나 못 읽으면 None."""
+    if "(" not in raw:
+        return None
+    outside = re.sub(r"\([^)]*\)", "", raw)
+    return parse_claims(outside) if outside.strip() else None
+
+
 def _is_ambiguous(r: ClaimRowExtraction) -> bool:
     return any(i is not None and i.ambiguous for i in _all_items(r))
 
@@ -261,6 +271,7 @@ def build_claim_rows(
     """
     by_no = {r["no"]: r for r in rejections}
     made: list[ClaimRow] = []
+    fallback: list[tuple[int, int, UnverifiedReason]] = []  # 값 없이 남길 줄 (다른 줄이 없을 때만)
     seen: set[tuple[int, int]] = set()
     for r in rows:
         rej = by_no.get(r.rejection) if r.rejection is not None else None
@@ -271,13 +282,27 @@ def build_claim_rows(
         if r.rejection is not None and rej is None:
             logger.warning("청구항 줄이 없는 거절이유 %s를 가리킴: 확인되지 않음", r.rejection)
         no = rej["no"] if rej is not None else None
-        claims = parse_claims(r.claims.raw_text or "") if _on_page(r.claims, pages) else None
+        # 번호는 원문 대조를 통과한 청구항 원문 글자에서만 코드 규칙으로 읽는다 (모델 value 안 씀)
+        raw = r.claims.raw_text or "" if _on_page(r.claims, pages) else ""
+        claims = parse_claims(raw) if raw else None
 
         if claims is None:
+            cited = _outside_parentheses(raw, parse_claims) if raw else None
+            if cited and no is not None:
+                # "제9항(제6항 인용)"처럼 괄호 밖 번호만 읽히면 그 번호 줄을 애매로 남긴다.
+                # 확인됨은 금지. 같은 청구항의 다른 줄이 있으면 그 줄이 먼저 (끝에서 빈자리만 채움)
+                logger.warning("청구항 원문에 괄호가 있어 애매: 거절이유 %s", no)
+                targets = rej["claims"].value if rej is not None else None
+                # 대상 밖 청구항 줄은 만들지 않는다 (위 규칙과 같음)
+                fallback += [
+                    (c, no, UnverifiedReason.AMBIGUOUS) for c in cited if targets and c in targets
+                ]
+                continue
             # 번호 없는 줄은 만들지 않는다 (그 청구항은 끝에서 번호 있는 빈 줄로 채워짐)
             logger.warning("청구항 번호를 못 읽은 줄은 만들지 않음 (거절이유 %s)", no)
             continue
         if rej is not None and not _fits(r, rej, pages):
+            # 대상 청구항이면 끝에서 번호 있는 빈 줄로 채워진다 (대상 밖 청구항 줄은 만들지 않음)
             logger.warning("청구항·순번이 판단 원문과 안 맞는 줄은 번호 없이 만들지 않음")
             continue
 
@@ -321,6 +346,10 @@ def build_claim_rows(
     # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
     # (줄이 빠져도 조용히 지나가지 않게)
     produced = {(row.claim, row.rejection) for row in made}
+    for claim, no, reason in fallback:
+        if (claim, no) not in produced:
+            made.append(_unverified(claim, no, reason))
+            produced.add((claim, no))
     for rej in rejections:
         if not rej["supported"] or rej["claims"].value is None:
             continue  # 대상 청구항을 모르면 채울 수 없다 (거절이유 status가 이미 확인되지 않음)

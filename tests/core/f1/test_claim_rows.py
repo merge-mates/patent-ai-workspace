@@ -588,3 +588,55 @@ def test_목록_칸_말고_다른_곳의_문자열은_두_번째에도_검사에
     except ModelOutputInvalid:
         return
     raise AssertionError("ModelOutputInvalid가 나야 함")
+
+
+# ---- 청구항 번호 원문이 애매한 줄 (11/19 tune: "청구항 제9항(제6항 인용)") ----
+_CITED = ("청구항 제8항은", "청구항 제8항(제1항 인용)은")  # 8항 판단 원문에 인용항 괄호를 넣음
+
+
+def _cited_answer() -> dict:
+    answer = copy.deepcopy(_answer())
+    row = answer["claim_rows"][6]
+    row["claims"]["raw_text"] = "제8항(제1항 인용)"
+    row["judgment"]["raw_text"] = (
+        "청구항 제8항(제1항 인용)은 인용발명 1에 비추어 단순 부가에 해당합니다."
+    )
+    return answer
+
+
+def test_인용항_괄호가_붙은_번호는_괄호_밖_번호의_줄로_남기되_애매이고_확인됨이_아니다():
+    result = _read(_cited_answer(), _pages(_CITED))
+    row = _row(result, 8, 2)
+    _assert_dropped(row, UnverifiedReason.AMBIGUOUS)  # 값·원문·쪽 없음, 확인됨 금지
+    assert not [r for r in result.claim_rows if r.claim is None]  # 번호 없는 줄은 여전히 안 만듦
+
+
+def test_인용항_괄호_줄보다_같은_청구항의_확인된_줄이_있으면_그_줄이_남는다():
+    answer = _cited_answer()
+    good = copy.deepcopy(_answer()["claim_rows"][6])  # 평소 8항 줄 (원문 그대로)
+    answer["claim_rows"].append(good)
+    pages = _pages(_CITED)
+    # 평소 8항 줄의 판단 원문도 쪽에 있도록 원문 줄을 하나 더 둔다
+    data = json.loads(pages.model_dump_json())
+    data["pages"][3]["text"] += "\n2-7. 청구항 제8항은 인용발명 1에 비추어 단순 부가에 해당합니다."
+    result = _read(answer, PageText.model_validate(data))
+    assert _row(result, 8, 2).status.value == StatusValue.CONFIRMED
+
+
+def test_괄호_밖도_못_읽으면_번호_없는_줄은_만들지_않는다():
+    answer = _cited_answer()
+    answer["claim_rows"][6]["claims"]["raw_text"] = "제A항(제1항 인용)"
+    pages = _pages(("청구항 제8항은", "청구항 제A항(제1항 인용)은"))
+    answer["claim_rows"][6]["judgment"]["raw_text"] = (
+        "청구항 제A항(제1항 인용)은 인용발명 1에 비추어 단순 부가에 해당합니다."
+    )
+    result = _read(answer, pages)
+    assert not [r for r in result.claim_rows if r.claim is None]
+    _assert_dropped(_row(result, 8, 2))  # 대상 청구항 빈 줄로 채워짐 (not_extracted)
+
+
+def test_인용항_괄호_줄이라도_거절이유_대상_밖_청구항이면_줄을_만들지_않는다():
+    answer = _cited_answer()
+    answer["claim_rows"][6]["rejection"] = 3  # 거절이유 3의 대상은 제6·7항
+    result = _read(answer, _pages(_CITED))
+    assert not [r for r in result.claim_rows if (r.claim, r.rejection) == (8, 3)]
