@@ -8,7 +8,7 @@
      지휘 에이전트 뼈대(#15)는 F1만의 일이 아니라 F0 기반(다음 세션 문서)에 더 가깝다. F0 문서가 생기면 이 계획을 그쪽으로 옮기고 여기에는 링크만 남긴다. -->
 
 ## m1-i2-15  (11/19)  상태: 끝  (이슈 #15)
-**구현할 design 부분**: design.md 2-1 (진행 판단은 지휘, `extract_pages` → `read_oa` 순서, 출원번호 기다림), 4절 (OA 시점 자르기는 무조건 도는 단계), architecture.md 8절   **맡은 합격 기준**: requirements.md "실패할 때"(출원번호 기다림·같은 OA·모델 실패), 8 (자르기가 늘 돎), #15 합격 기준 "녹화 응답으로 사건 1건 끝까지", "최대 횟수에 닿으면 확인되지 않음과 찾아본 범위"
+**구현할 design 부분**: design.md 2-1 (진행 판단은 지휘, `extract_pages` → `read_oa` 순서, 출원번호 기다림), 4절 (OA 시점 자르기는 무조건 도는 단계), architecture.md 8절   **맡은 합격 기준**: requirements.md "실패할 때"(출원번호 기다림·같은 OA·모델 실패), 8 (자르기가 늘 돎), #15 합격 기준 "기록된 응답으로 사건 1건 끝까지", "최대 횟수에 닿으면 확인되지 않음과 찾아본 범위"
 **목표** (한 줄): 서버가 부르는 `run_case()` 하나 뒤에서 지휘 에이전트가 F1 도구를 부르고, 멈춤·사람 기다림·단계 기록을 남기는 뼈대를 만든다.
 **끝나면 보여 줄 것** (데모 한 줄): 가짜 전송층으로 지어낸 사건 1건을 `run_case()`로 끝까지 돌리면 `OAResult`가 나오고, 출원번호를 지운 통지서는 `waiting_for_human`으로 멈춘다 (`uv run pytest tests/core/agents -q`).
 **나눔** (11/18, PR 400줄): 이어 가기(`resume_case`, LangGraph 체크포인터)와 단계 기록 DB 구현은 #55 테이블 뒤 다음 이슈 계획(새 이슈)으로 뺀다.
@@ -52,7 +52,7 @@ graph LR
 
 ### task-4: 단계 기록(메모리)과 사건 1건 시나리오
 - 담당: 재아
-- 합격 기준: #15 "녹화 응답으로 사건 1건을 처음부터 끝까지 돌리는 테스트", "단계 기록"(메모리 구현까지)
+- 합격 기준: #15 "기록된 응답으로 사건 1건을 처음부터 끝까지 돌리는 테스트", "단계 기록"(메모리 구현까지)
 - 고칠 파일: `src/patent_ai/core/agents/steps.py`, `tests/core/agents/test_scenario.py`
 - 만들 함수·인터페이스 모양: `StepRecorder` 프로토콜 `record(step: StepRecord{run_id, step_kind, tool_name, reason, result_status, result_id(#55 뒤 채움), model_call_count(셀 수 없으면 None), outcome})` + 메모리 구현. 시나리오는 #14 `tests/fixtures/case_missing_citation/`과 #18 가짜 통지서·가짜 전송층 답을 쓴다
 - 테스트할 경우: 사건 1건 끝까지(`succeeded`, `OAResult`가 fixture와 같음, 도구 호출마다 기록 1줄 + 왜 불렀나) / 인용문헌 1건 없음 → 보류 목록에 뜨고 실행은 `succeeded` / 실패한 도구도 기록
