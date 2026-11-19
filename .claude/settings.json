@@ -26,7 +26,21 @@
       "Read(**/.env)",
       "Read(**/.env.*)",
       "Read(/data/goldsets/report/**)",
+      "Read(**/goldsets/report/**)",
       "Edit(/data/raw/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_report_goldset.py\""
+          }
+        ]
+      }
     ]
   },
   "worktree": {
