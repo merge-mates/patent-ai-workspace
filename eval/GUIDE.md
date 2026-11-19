@@ -15,7 +15,7 @@ data/goldsets/
 ├── tune/                    개발 중에 보는 세트
 │   ├── f1/                  F1 통지서 읽기: OA 한 통에 JSON 하나 (<출원번호>_<발송번호>.json)
 │   ├── retrieval/           F2·F3 검색: cite_gold.jsonl, law_gold.jsonl, cite_doc_ids.yaml
-│   ├── search_v0/           검색 정답을 만든 검수본 (retrieval/ 파일의 재료)
+│   ├── search_v0/           검색 정답을 만든 검수본 (retrieval/ 파일의 재료, 드라이브 이름 `tune_search_v0/`)
 │   └── f4/                  F4 대응 방향 (아직 없음, 6절)
 └── report/                  보고용. 마일스톤 끝에 채점기만 읽는다 (사람·Claude가 열지 않음)
 ```
