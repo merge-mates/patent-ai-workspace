@@ -1,4 +1,4 @@
-"""전송층. 모델 SDK(anthropic)는 이 파일 안에서만 import한다."""
+"""전송층. 모델 SDK(anthropic·openai)는 이 파일 안에서만 import한다."""
 
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -99,3 +99,38 @@ class FakeTransport:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+# ---- 임베딩 (#66) ----
+@dataclass(frozen=True)
+class EmbedResponse:
+    vectors: list[list[float]]  # 받은 글 순서 그대로
+    input_tokens: int
+
+
+def parse_openai_embeddings(resp) -> EmbedResponse:
+    """SDK 응답의 data를 index 순서로 줄 세워 벡터를 읽는다."""
+    rows = sorted(resp.data, key=lambda d: d.index)
+    return EmbedResponse([list(d.embedding) for d in rows], resp.usage.prompt_tokens)
+
+
+class OpenAIEmbedTransport:
+    """진짜 임베딩 전송층. 키는 SDK가 환경 변수(OPENAI_API_KEY)에서 읽는다."""
+
+    def __init__(self) -> None:
+        import openai  # 여기서만 import
+
+        self._client = openai.OpenAI()
+
+    def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse:
+        import openai
+
+        # SDK 예외를 TransportError로 바꿔 던진다 (429·5xx·연결 오류만 다시 부를 만함)
+        try:
+            resp = self._client.embeddings.create(model=model, input=texts)
+        except openai.APIStatusError as e:
+            retryable = e.status_code == 429 or e.status_code >= 500
+            raise TransportError(f"{e.status_code} {e.message}", retryable) from e
+        except openai.APIConnectionError as e:
+            raise TransportError(f"연결 오류: {e}", True) from e
+        return parse_openai_embeddings(resp)
