@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import AMBIGUOUS, ev  # noqa: E402  (같은 폴더 conftest의 도우미)
+from f1_oa_builder import AMBIGUOUS, ev
 
 from eval.f1.adapt import to_pred
 from eval.f1.config import F1EvalConfig
@@ -114,3 +114,29 @@ def test_확인되지_않은_청구항_줄은_뺀다(make_oa):
     m = _score(oa.model_copy(update={"claim_rows": rows}))["metrics"]
     assert m["field_accuracy"] == pytest.approx(33 / 37)
     assert m["fabricated_values"] == 0
+
+
+def test_확인되지_않은_보정_참고사항은_안_낸_칸으로(make_oa):
+    from patent_ai.core.schemas.oa_result import ExaminerHints
+
+    hints = ExaminerHints(allowable_claims=ev([]), amendment_note=ev(None, status=AMBIGUOUS))
+    oa = make_oa(examiner_hints=hints)
+    p = to_pred(oa)
+    assert p.amendment_note.given is False
+    # 정답이 '없음'이어도 맞음으로 세지 않는다
+    assert _score(oa)["metrics"]["field_accuracy"] == pytest.approx(36 / 37)
+
+
+def test_같은_라벨이_여러_거절이유에_있으면_확인된_키를_쓴다(make_oa):
+    from f1_oa_builder import D1, _citation
+
+    oa = make_oa()
+    r1, r2, r3 = oa.rejections
+    unsure = _citation(*D1).model_copy(update={"number": ev("KR20990000001A", D1[2], 2, AMBIGUOUS)})
+    r1 = r1.model_copy(update={"citations": [unsure, r1.citations[1]]})
+    r2 = r2.model_copy(update={"citations": [_citation(*D1)]})
+    p = to_pred(oa.model_copy(update={"rejections": [r1, r2, r3]}))
+    d1 = next(c for c in p.citations if c.label == "D1")
+    assert d1.key == "KR20990000001A"
+    assert d1.page == 2
+    assert d1.rejections == [1, 2]

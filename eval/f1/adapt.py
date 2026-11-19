@@ -41,13 +41,14 @@ def _page(v: ExtractedValue | None) -> int | None:
 
 def to_pred(oa: OAResult) -> F1Pred:
     def pv(v: ExtractedValue) -> PValue:
-        return PValue(value=_value(v), text=_text(v), page=_page(v))
+        # given: 확인됐을 때만 '냈다'. 값 None이 정답 '없음'과 맞음으로 세지지 않게
+        return PValue(value=_value(v), text=_text(v), page=_page(v), given=_ok(v))
 
     def pclaims(v: ExtractedValue) -> PClaims:
         return PClaims(value=_value(v), text=_text(v), page=_page(v))
 
     rejections = []
-    by_label: dict[str, dict] = {}  # 라벨 -> 인용 칸 (처음 나온 거절이유 기준)
+    by_label: dict[str, dict] = {}  # 라벨 -> 인용 칸 (확인된 번호가 있는 거절이유 기준)
     for r in oa.rejections:
         article_ok = _ok(r.article)
         rejections.append(
@@ -72,6 +73,9 @@ def to_pred(oa: OAResult) -> F1Pred:
                     "rejections": [],
                 },
             )
+            if entry["key"] is None and _ok(c.number):
+                # 앞 거절이유에서는 확인되지 않았고 여기서 확인됐으면 이쪽 번호를 쓴다
+                entry.update(key=_value(c.number), text=_text(c.number), page=_page(c.number))
             if r.no not in entry["rejections"]:
                 entry["rejections"].append(r.no)
 

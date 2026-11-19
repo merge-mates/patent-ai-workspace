@@ -36,6 +36,7 @@ from eval.f1.metrics import (
     text_eq,
 )
 from eval.f1.pred import F1Pred
+from patent_ai.core.f1_oa_reader.tables import cells_from_page
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
 
@@ -344,13 +345,28 @@ def _gold_sha256(folder: Path) -> str:
 
 
 def _page_texts(pt: PageText) -> list[str]:
-    """쪽 번호 순 글자 목록. 표 칸 글자도 붙인다 (#112 원문 대조가 표 칸에서도 찾음)."""
+    """쪽 번호 순 글자 목록. 그 쪽에서 시작하는 표 칸 글자도 붙인다.
+
+    앱 원문 대조(f1_oa_reader/verify.py raw_text_on_page)와 같은 규칙이다: 다음 쪽으로 넘어간
+    거절이유 표 칸은 cells_from_page가 시작 쪽에 이어 붙인다. 다르게 하면 앱이 확인한 값이
+    채점에서 가짜로 '확인하지 않은 위치'가 된다.
+    """
     n = max((p.page for p in pt.pages), default=0)
     out = [""] * n
     for p in pt.pages:
-        cells = " ".join(c for table in p.tables for row in table for c in row)
+        cells = " ".join(cells_from_page(pt, p.page))
         out[p.page - 1] = p.text + ("\n" + cells if cells else "")
     return out
+
+
+def default_scores_dir(goldsets_root: Path, experiment: str) -> Path:
+    """진짜 정답 폴더(…/data/goldsets)면 experiments/<실험>/, 아니면 work/f1/<실험>/.
+
+    가짜 정답으로 돌린 점수가 experiments/에 남아 점수 표에 섞이지 않게 한다.
+    """
+    if Path(goldsets_root).resolve().parts[-2:] == ("data", "goldsets"):
+        return REPO_ROOT / "experiments" / experiment
+    return REPO_ROOT / "work" / "f1" / experiment
 
 
 def load_predictions(folder: Path) -> dict[str, F1Pred]:
@@ -365,7 +381,11 @@ def load_predictions(folder: Path) -> dict[str, F1Pred]:
         except ValidationError:
             # 파일 이름(출원번호)과 원문 글자는 메시지에 넣지 않는다
             raise EvalError(f"예측 파일 {i}번째: OAResult 모양이 아니다") from None
-        preds[f.stem] = to_pred(oa)
+        try:
+            preds[f.stem] = to_pred(oa)
+        except ValidationError:
+            # OAResult는 맞는데 정답 꼴로 못 바꿈 (예: 라벨 꼴). 값 글자는 메시지에 넣지 않는다
+            raise EvalError(f"예측 파일 {i}번째: 정답 꼴로 바꿀 수 없다 (라벨·번호 꼴)") from None
     return preds
 
 
@@ -386,7 +406,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--goldsets-root", default="data/goldsets")
     ap.add_argument("--predictions", required=True, help="read_oa 결과 OAResult JSON 폴더 (git 밖)")
     ap.add_argument("--pages", default=None, help="extract_pages 결과 PageText JSON 폴더 (git 밖)")
-    ap.add_argument("--scores-dir", default=None, help="기본: experiments/<실험>/")
+    ap.add_argument(
+        "--scores-dir",
+        default=None,
+        help="기본: 진짜 정답이면 experiments/<실험>/, 아니면 work/f1/<실험>/",
+    )
     args = ap.parse_args(argv)
 
     try:
@@ -412,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
             cfg, golds, preds, pages, commit=git_commit(), gold_sha256=_gold_sha256(folder)
         )
         scores_dir = (
-            Path(args.scores_dir) if args.scores_dir else REPO_ROOT / "experiments" / cfg.experiment
+            Path(args.scores_dir) if args.scores_dir else default_scores_dir(root, cfg.experiment)
         )
         write_scores(scores_dir, scores)
     except EvalError as e:

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import PAGES  # noqa: E402
+from f1_oa_builder import PAGES
 
 import eval.run_eval as run_eval
 from eval.f1.score import main
@@ -121,3 +121,51 @@ def test_예측_폴더가_없으면_실패(setup, capsys):
     args[args.index("--predictions") + 1] = str(setup["tmp"] / "nope")
     assert main(args) == 1
     assert "예측 폴더" in capsys.readouterr().err
+
+
+def test_쪽을_넘은_표_칸은_시작_쪽에서_이어_붙여_찾는다():
+    # 앱 원문 대조(cells_from_page)와 같은 규칙: 잘린 칸을 시작 쪽에 이어 붙인다
+    from eval.f1.metrics import norm_text
+    from eval.f1.score import _page_texts
+
+    head = ["순번", "거절이유가 있는 부분", "관련 법조항"]
+    pt = PageText(
+        document_id="d",
+        pages=[
+            Page(
+                page=1,
+                text="본문",
+                status=OK,
+                tables=[[head, ["1", "청구항 제1항 내지", "특허법 제29조제2항"]]],
+            ),
+            Page(page=2, text="본문", status=OK, tables=[[["", "제3항", ""]]]),
+        ],
+        status=OK,
+    )
+    texts = _page_texts(pt)
+    assert norm_text("청구항 제1항 내지 제3항") in norm_text(texts[0])
+
+
+def test_가짜_정답으로_돌리면_기본_출력은_work_아래(setup):
+    from eval.f1.score import default_scores_dir
+
+    # 진짜 정답 폴더(…/data/goldsets)일 때만 experiments/<실험>/
+    assert (
+        default_scores_dir(REPO_ROOT / "data" / "goldsets", "e1")
+        == REPO_ROOT / "experiments" / "e1"
+    )
+    assert default_scores_dir(setup["root"], "e1") == REPO_ROOT / "work" / "f1" / "e1"
+
+
+def test_변환에서_틀리면_순번만_말하고_실패(setup, make_oa, capsys):
+    oa = make_oa()
+    r1 = oa.rejections[0]
+    bad = r1.model_copy(
+        update={"citations": [c.model_copy(update={"label": "인용1"}) for c in r1.citations]}
+    )
+    oa = oa.model_copy(update={"rejections": [bad, *oa.rejections[1:]]})
+    (setup["preds"] / f"{KEY}.json").write_text(oa.model_dump_json(), encoding="utf-8")
+    assert main(setup["args"]) == 1
+    err = capsys.readouterr().err
+    assert "예측 파일 1번째" in err
+    assert "인용1" not in err
