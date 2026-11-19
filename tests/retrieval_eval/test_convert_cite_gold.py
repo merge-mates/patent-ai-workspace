@@ -249,7 +249,9 @@ def test_결과가_0줄이면_종료_1이고_파일을_안_쓴다(env):
 def _bump_claim_text(env, text):
     p = env.cases / "10-2099-0000001" / "10-2099-0000001_청구항이력.txt"
     s = p.read_text(encoding="utf-8")
-    p.write_text(s.replace("시료를 가열하는 단계와", f"{text} 시료를 가열하는 단계와"), encoding="utf-8")
+    p.write_text(
+        s.replace("시료를 가열하는 단계와", f"{text} 시료를 가열하는 단계와"), encoding="utf-8"
+    )
 
 
 def test_질의에_정답_위치_표기가_있으면_종료_1_파일과_VERSION_그대로(env, capsys):
