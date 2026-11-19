@@ -6,7 +6,7 @@
 
 <!-- design.md를 바탕으로 쓴 구현 계획이다. 이슈 계획 하나 = 브랜치 하나 = PR 하나.
      이슈 #67에 PR 여러 개: m2-i1 = BM25 (Refs #67), 다음 계획 = 벡터 (Closes #67).
-     requirements·design은 상태: 초안. 이 계획은 재아가 문서와 함께 승인한다 (상대 리뷰는 PR에서).
+     requirements·design·이 계획은 11/19 재아가 함께 승인했다 (상대 리뷰는 PR에서).
      어림 크기는 코드 + 테스트 줄. fixture 데이터 줄은 세지 않는다. -->
 
 ## m2-i1  (11/19)  상태: 승인 (11/19 재아)  (이슈 #67, Refs)
@@ -117,7 +117,7 @@ graph LR
 - [x] task-3
 - [x] task-4
 - [x] task-5
-- 다음: code-reviewer 지적 반영 → /check → /experiment 카드 → /pr-draft. 11/19 첫 점수: n=69, Hit@1·3·5·10 = 0.116·0.319·0.493·0.609, CQ 27 (`experiments/m2-i1-cite-search-bm25-baseline/scores.json`)
+- 다음: /pr-draft. 점수 한 줄 (11/19, tune v2, n=69): BM25 Hit@1·3·5·10 = 0.116·0.319·0.493·0.609, 무작위 대비 1.65·2.04·2.36·1.92배, CQ 27 (`experiments/m2-i1-cite-search-bm25-baseline/`)
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
