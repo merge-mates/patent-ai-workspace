@@ -167,7 +167,7 @@ flowchart LR
 
 ## 7. AI
 ### 7-1. 공통 칸
-- 인터페이스: `read_oa(pages: PageText, document_id: str, oa_id: str, run_id: str) -> OAResult` (`core/f1_oa_reader/`). 지휘 에이전트는 이 함수를 도구로 등록한다 (#15 도구 규약).
+- 인터페이스: `read_oa(pages: PageText, document_id: str, oa_id: str, run_id: str, *, ctx: RunContext) -> OAResult` (`core/f1_oa_reader/`). 지휘 에이전트는 이 함수를 도구로 등록한다 (#15 도구 규약).
 - 평가 세트·지표: `data/goldsets/tune/` 통지서 읽기 정답 (판 번호는 #22에서 정함). 지표는 필드별 추출 정확도, 지어낸 값 수, 확인하지 않은 원문 위치 수 (뜻은 requirements 9번 아래). 정확도 문턱은 #20·#22 기준선 뒤 requirements 9번에 적는다 (이 설계는 지표 정의만). 지어낸 값·확인하지 않은 위치는 0건.
 - 데이터: tune 통지서 묶음 (#21·#22). 정답 형식은 PR #91.
 - 채점 스크립트: `eval/` (#20에서 생김).
@@ -196,7 +196,7 @@ flowchart LR
 | 순서: F1 읽기 → 자동 조회 + 자르기 | 자르기 먼저 (architecture 8절 그림) | 출원번호를 F1이 읽어야 조회할 수 있음 | 설계 (doc-review) | 4절 |
 
 ## 9. 테스트 방법
-- 어디서 테스트하나: `read_oa(pages, document_id, oa_id, run_id) -> OAResult` 한 곳 (#18). 글자·쪽 추출은 `extract_pages(pdf_path, document_id) -> PageText` 한 곳 (#17, 쪽마다 status, 모든 쪽에 글자가 없을 때만 문서 `unverified`). OA 시점 자르기는 고정 단계 `cut_to_oa`의 출력(실행 입력) 한 곳 (#54, 조회 결과와 올린 자료 둘 다).
+- 어디서 테스트하나: `read_oa(pages, document_id, oa_id, run_id, *, ctx: RunContext) -> OAResult` 한 곳 (#18). 글자·쪽 추출은 `extract_pages(pdf_path, document_id) -> PageText` 한 곳 (#17, 쪽마다 status, 모든 쪽에 글자가 없을 때만 문서 `unverified`). OA 시점 자르기는 고정 단계 `cut_to_oa`의 출력(실행 입력) 한 곳 (#54, 조회 결과와 올린 자료 둘 다).
 - 가짜 응답 / 녹화 응답: 테스트의 모델 답은 사람이 직접 쓴 가짜 전송층 답(fixture 이름으로 찾음, 아래 `llm/*`)이라 프롬프트를 고쳐도 깨지지 않는다. 네트워크·API 키 없이 돈다. 진짜 모델 답(녹화 응답, 입력 해시 → 답 파일)은 `scripts/record_llm.py`(#13)로 사람이 지어낸 통지서에 한 번 돌려 프롬프트가 실제로 도는지 손으로 볼 때만 쓴다. 녹화가 없으면 진짜 호출로 몰래 메우지 않는다.
 - 예시 파일 (`tests/fixtures/f1/`, 지어낸 글자만):
 
@@ -210,12 +210,12 @@ flowchart LR
 | `notice_missing_fields.pages.json` | 제출기일·식별번호 없음 | 그 필드 `unverified(not_extracted)`, 값·쪽 없음 | 2 |
 | `notice_unsupported.pages.json` | 42조 3항 + JP 인용문헌 | `supported=false`·`country_supported=false` + `needs_human_review` | 5 |
 | `notice_scanned.pages.json` | 쪽은 있는데 글자 없음 | 필드 전부 `unverified(input_unverified)`, failed 아님 | 2 |
-| `llm/hallucinated.json` (녹화 응답) | 모델이 원문에 없는 식별번호를 냄 | 그 값 버림, `unverified(not_extracted)` | 2 |
-| `llm/conflict.json` (녹화 응답) | 모델 출원번호 ≠ 규칙 출원번호 | `conflict`, 둘 다 남김 | 2 |
-| `llm/ambiguous.json` (녹화 응답) | 모델이 대상 청구항을 애매로 표시 | `value=null`, `unverified(ambiguous)` | 2 |
-| `llm/no_rejections.json` (녹화 응답) | 거절이유 0개 | 경고 로그 + 결과 `unverified(not_extracted)` | 2 |
+| `llm/hallucinated.json` (FakeTransport 답) | 모델이 원문에 없는 식별번호를 냄 | 그 값 버림, `unverified(not_extracted)` | 2 |
+| `llm/conflict.json` (FakeTransport 답) | 모델 출원번호 ≠ 규칙 출원번호 | `conflict`, 둘 다 남김 | 2 |
+| `llm/ambiguous.json` (FakeTransport 답) | 모델이 대상 청구항을 애매로 표시 | `value=null`, `unverified(ambiguous)` | 2 |
+| `llm/no_rejections.json` (FakeTransport 답) | 거절이유 0개 | 경고 로그 + 결과 `unverified(not_extracted)` | 2 |
 | `llm/error` (가짜 전송층) | 모델 호출 오류 | `failed` + 이유, 결과 저장 안 함 | 실패할 때 |
-| `llm/invalid_twice.json` (녹화 응답) | 출력 검사 두 번 실패 | 호출 2번 뒤 `failed` | 실패할 때 |
+| `llm/invalid_twice.json` (FakeTransport 답) | 출력 검사 두 번 실패 | 호출 2번 뒤 `failed` | 실패할 때 |
 | 모으기 단위 테스트 | 칸 하나 `conflict`, 지원 안 하는 이유 하나 | 전체 `conflict`, 지원 안 함은 status 안 바꿈 | 2, 5 |
 | `case_two_oas/` | OA ①·보정서·OA ② 이력 | OA ① 입력에 보정서·v1 없음, OA ② 입력에 있음 | 8 (#54) |
 | `case_two_oas_uploaded/` | OA ① 뒤 보정서를 사용자가 직접 올림 (`POST /cases/{id}/documents`) | OA ① 입력에 그 보정서 없음 | 8 (#54·#16) |
