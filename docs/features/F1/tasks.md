@@ -159,7 +159,7 @@ graph LR
 - 다음 이슈로: OCR은 범위 밖([가정]).
 
 ## m1-i2-13  (11/18~11/19)  상태: 끝  (이슈 #13)
-**구현할 design 부분**: design.md 2절 ④·7-1 (상한 키)·7-2 (모델 호출)·9절 (녹화 다시 하기), architecture.md 6절 "밖으로 나가는 호출"·7절   **맡은 합격 기준**: requirements.md 실패할 때 "모델 호출이 실패할 때", #13 합격 기준 5개
+**구현할 design 부분**: design.md 2절 ④·7-1 (상한 키)·7-2 (모델 호출)·9절 (기록된 응답 다시 받기), architecture.md 6절 "밖으로 나가는 호출"·7절   **맡은 합격 기준**: requirements.md 실패할 때 "모델 호출이 실패할 때", #13 합격 기준 5개
 **목표** (한 줄): 모델 호출을 `core/llm/` 한 곳에서만, 설정·프롬프트 파일·캐시·호출 상한·기록을 거쳐 하게 한다.
 **끝나면 보여 줄 것** (데모 한 줄): 가짜 전송층으로 같은 호출 두 번 → 두 번째는 캐시, 상한 넘으면 이유와 함께 멈춤 (`uv run pytest tests/core/llm -q`).
 **이슈 #13 본문에서 지울 것** (11/18, architecture.md 7절을 따름): 하는 일 "외부 모델로 보내도 되는 자료 표를 코드로 둔다…" 줄, 합격 기준 "막힌 자료 종류를 보내려 하면 거부된다" 줄.
@@ -180,12 +180,12 @@ graph LR
 - 확인 방법: `uv run pytest tests/core/llm/test_client.py -q` → 모두 통과 (API 키 없이)
 - 먼저: 없음
 
-### task-2: 캐시와 녹화 응답
+### task-2: 캐시와 기록된 응답
 - 담당: 재아
-- 합격 기준: #13 "같은 입력 두 번이면 두 번째는 캐시", "테스트가 API 키 없이 돈다", design.md 9절 녹화 다시 하기
+- 합격 기준: #13 "같은 입력 두 번이면 두 번째는 캐시", "테스트가 API 키 없이 돈다", design.md 9절 기록된 응답 다시 받기
 - 고칠 파일: `src/patent_ai/core/llm/cache.py`, `src/patent_ai/core/llm/recorded.py`, `scripts/record_llm.py`, `tests/core/llm/test_cache.py`
 - 만들 함수·인터페이스 모양: 캐시 키 = (모델, 프롬프트 파일 내용 해시, 변수, 설정 값, `attempt`)의 해시. `Cache` 프로토콜 + 파일 구현(`work/llm_cache/`, git 밖). `output_schema` 검사에 떨어진 답은 캐시에 쓰지 않는다. `RecordedTransport(dir)`: 키로 저장한 답 파일을 읽고, 없으면 `RecordingMissing` (조용히 진짜 호출하지 않음). `scripts/record_llm.py <단계> <입력 파일>`: 사람이 돌려 진짜 모델 답을 저장 (키 출력·저장 안 함)
-- 테스트할 경우: 평소(두 번째 호출 `from_cache=True`, 전송층 호출 1회) / 변수 하나 또는 프롬프트 파일 글자 하나 바뀌면 캐시 안 씀 / 검사 실패한 답 → 캐시 0건, `attempt=2` 호출은 전송층으로 감 / 녹화 없음 → `RecordingMissing`
+- 테스트할 경우: 평소(두 번째 호출 `from_cache=True`, 전송층 호출 1회) / 변수 하나 또는 프롬프트 파일 글자 하나 바뀌면 캐시 안 씀 / 검사 실패한 답 → 캐시 0건, `attempt=2` 호출은 전송층으로 감 / 기록된 응답 없음 → `RecordingMissing`
 - 확인 방법: `uv run pytest tests/core/llm/test_cache.py -q` → 모두 통과
 - 먼저: task-1
 
@@ -329,7 +329,7 @@ graph LR
 
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
-- 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
+- 진짜 모델 응답 기록: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
 - 쪽을 나눠 부르기 (design.md [가정] 10쪽 안쪽이 틀리면). 사건 묶기·심사 대상 판(#16·#54).
 
 ### 진행
