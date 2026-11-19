@@ -20,7 +20,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from patent_ai.core.f1_oa_reader.case_grouping import (
-    APPLICATION_VERSION,
+    AS_FILED_VERSION,
     GroupedMaterial,
     HistoryEvent,
     read_number,
@@ -326,9 +326,7 @@ def _plan_oas(
         examined = select_examined_version(record.history, e.doc_number)
         version = None
         if examined.status.value == StatusValue.CONFIRMED:
-            version = (
-                v0 if examined.value == APPLICATION_VERSION else by_receipt.get(examined.value)
-            )
+            version = v0 if examined.value == AS_FILED_VERSION else by_receipt.get(examined.value)
         rows.append(
             OARow(
                 id=new_id("oa"),
@@ -383,7 +381,7 @@ def examined_from_version(version: ClaimVersionRow | None) -> ExtractedValue[str
         )
     if version.source_kind == "application":
         return ExtractedValue[str](
-            value=APPLICATION_VERSION,
+            value=AS_FILED_VERSION,
             status=Status(value=StatusValue.CONFIRMED, checked="저장된 심사 대상 판: 출원 때 판"),
         )
     return ExtractedValue[str](

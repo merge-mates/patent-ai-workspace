@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from patent_ai.core.f1_oa_reader.case_grouping import APPLICATION_VERSION
+from patent_ai.core.f1_oa_reader.case_grouping import AS_FILED_VERSION
 from patent_ai.core.f1_oa_reader.case_repository import (
     CaseStoreError,
 )
@@ -43,7 +43,7 @@ def test_저장하고_다시_읽으면_같음(session):
     session.expire_all()  # 메모리에 남은 객체가 아니라 DB에서 다시 읽게
 
     assert repo.load_case_materials(CASE_ID) == record.materials
-    assert repo.examined_claim_version(CASE_ID, OA1).value == APPLICATION_VERSION
+    assert repo.examined_claim_version(CASE_ID, OA1).value == AS_FILED_VERSION
     second = repo.examined_claim_version(CASE_ID, OA2)
     assert (second.value, second.status.value) == ("112099000000112", StatusValue.CONFIRMED)
     assert {v.source_kind for v in repo.ai_input_claim_versions(CASE_ID)} == {

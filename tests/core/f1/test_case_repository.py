@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from patent_ai.core.f1_oa_reader.case_grouping import (
-    APPLICATION_VERSION,
+    AS_FILED_VERSION,
     HistoryEvent,
     MaterialInput,
     build_case_materials,
@@ -129,7 +129,7 @@ def test_심사_대상_판을_다시_읽음():
     repo.save_case(_record())
     first = repo.examined_claim_version(CASE_ID, OA1)
     second = repo.examined_claim_version(CASE_ID, "952099000000002")
-    assert (first.value, first.status.value) == (APPLICATION_VERSION, StatusValue.CONFIRMED)
+    assert (first.value, first.status.value) == (AS_FILED_VERSION, StatusValue.CONFIRMED)
     assert (second.value, second.status.value) == ("112099000000112", StatusValue.CONFIRMED)
 
 
@@ -261,7 +261,7 @@ def test_보정각하된_보정서는_판을_만들지_않음():
     repo = InMemoryCaseRepository()
     repo.save_case(_record(history=history))
     assert "amendment" not in {v.source_kind for v in repo.claim_versions(CASE_ID)}
-    assert repo.examined_claim_version(CASE_ID, OA2).value == APPLICATION_VERSION
+    assert repo.examined_claim_version(CASE_ID, OA2).value == AS_FILED_VERSION
 
 
 # --- 실패 ------------------------------------------------------------------------

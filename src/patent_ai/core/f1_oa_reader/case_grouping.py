@@ -203,10 +203,11 @@ def group_materials(
 
 # --- 심사 대상 판 고르기 (T3) ---------------------------------------------------
 
-# 출원 때 판(앞에 보정서 없음)을 가리키는 고정 글자. DB claim_versions.source_kind의
-# 'application'과 같은 말이다. "값 없음"은 늘 "못 읽음"이라 출원 때 판을 값 없음으로 두지 않는다.
-# 정함 (11/19 은진, #123 리뷰 참고). 보정서 판이면 그 접수번호(숫자 15자리)다.
-APPLICATION_VERSION = "application"
+# 출원 때 판(앞에 보정서 없음)을 가리키는 고정 글자. "값 없음"은 늘 "못 읽음"이라 출원 때 판을
+# 값 없음으로 두지 않는다. DB claim_versions.source_kind의 'application'(출원서 판)과는 다른
+# 칸이라 글자도 다르게 둔다 (11/19 은진 결정, #137 재아 리뷰로 "as_filed").
+# 보정서 판이면 그 접수번호(숫자 15자리)다.
+AS_FILED_VERSION = "as_filed"
 
 # 이력 사건 종류. DB case_events.kind CHECK 값과 같다 (#120, tests/test_db_models.py가 비교)
 HistoryKind = Literal[
@@ -238,7 +239,7 @@ def select_examined_version(
     """대상 OA(발송번호)가 심사한 청구항 판을 고른다 (design.md 4절).
 
     - 이력 순서에서 대상 OA **앞**의 마지막 보정서 접수번호가 그 판.
-      보정서가 없으면 출원 때 판(APPLICATION_VERSION, confirmed).
+      보정서가 없으면 출원 때 판(AS_FILED_VERSION, confirmed).
     - 의견서·결정서·기타는 판을 만들지 않으니 건너뛴다. 보정각하된 보정서도 건너뛴다.
       날짜는 보지 않는다.
     - 이력이 없거나 비었거나 대상 OA가 이력에 없으면 unverified(lookup_failed).
@@ -277,7 +278,7 @@ def select_examined_version(
     before = [e for e in history[: positions[0]] if e.kind == "amendment" and not e.dismissed]
     if not before:
         return ExtractedValue[str](
-            value=APPLICATION_VERSION,
+            value=AS_FILED_VERSION,
             status=Status(
                 value=StatusValue.CONFIRMED, checked="대상 OA 앞 보정서 없음: 출원 때 판"
             ),
