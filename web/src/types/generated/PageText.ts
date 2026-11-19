@@ -32,14 +32,14 @@ export interface Page {
   page: Page1
   text: Text
   status: Status
-  tables?: Tables
+  tables: Tables
 }
 /**
  * 상태 객체. 직렬화하면 늘 네 키(없는 키는 null).
  */
 export interface Status {
   value: StatusValue
-  reason?: UnverifiedReason | null
-  checked?: Checked
-  searched_scope?: SearchedScope
+  reason: UnverifiedReason | null
+  checked: Checked
+  searched_scope: SearchedScope
 }

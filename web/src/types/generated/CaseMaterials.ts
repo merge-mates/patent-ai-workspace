@@ -20,10 +20,10 @@ export type ReviewItemsCount = number
 
 export interface CaseMaterials {
   case_id: CaseId
-  documents?: Documents
-  missing?: Missing
-  held_tasks?: HeldTasks
-  review_items_count?: ReviewItemsCount
+  documents: Documents
+  missing: Missing
+  held_tasks: HeldTasks
+  review_items_count: ReviewItemsCount
 }
 export interface CaseDocument {
   document_id: DocumentId
@@ -32,7 +32,7 @@ export interface CaseDocument {
 }
 export interface MissingMaterial {
   what: What
-  depends_on_tasks?: DependsOnTasks
+  depends_on_tasks: DependsOnTasks
   lookup_result: LookupResult
   ask_upload: AskUpload
 }

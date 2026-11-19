@@ -21,7 +21,24 @@ MODELS = {
     "PageText": PageText,
 }
 
+
+def _all_required(node: object) -> None:
+    """직렬화한 JSON에는 기본값 칸도 늘 들어 있으므로 객체의 모든 칸을 필수로 표시한다.
+
+    (core/schemas/ 설정은 고치지 않고 뽑은 스키마만 바꾼다. 그래야 TS에서 `?`가 안 붙는다)
+    """
+    if isinstance(node, dict):
+        if node.get("type") == "object" and "properties" in node:
+            node["required"] = list(node["properties"])
+        for v in node.values():
+            _all_required(v)
+    elif isinstance(node, list):
+        for v in node:
+            _all_required(v)
+
+
 if __name__ == "__main__":
     # 화면은 서버 응답(직렬화된 JSON)을 받으므로 serialization 모드로 뽑는다
     out = {name: m.model_json_schema(mode="serialization") for name, m in MODELS.items()}
+    _all_required(out)
     print(json.dumps(out, ensure_ascii=False))

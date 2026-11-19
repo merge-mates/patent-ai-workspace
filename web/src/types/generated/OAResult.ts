@@ -87,11 +87,11 @@ export type ClaimRows = ClaimRow[]
 
 export interface OAResult {
   status: Status
-  evidence?: Evidence
-  origin?: Origin
-  needs_recheck?: NeedsRecheck
-  recheck_reason?: RecheckReason
-  flags?: Flags
+  evidence: Evidence
+  origin: Origin
+  needs_recheck: NeedsRecheck
+  recheck_reason: RecheckReason
+  flags: Flags
   oa_id: OaId
   application_number: ExtractedValueStr
   dispatch_number: ExtractedValueStr
@@ -99,67 +99,67 @@ export interface OAResult {
   response_due: ExtractedValueStr
   notice_kind: ExtractedValueNoticeKind
   examined_claims: ExtractedValueListInt
-  examined_claim_version?: ExtractedValueStr | null
+  examined_claim_version: ExtractedValueStr | null
   examiner_hints: ExaminerHints
-  rejections?: Rejections
-  claim_rows?: ClaimRows
+  rejections: Rejections
+  claim_rows: ClaimRows
 }
 /**
  * 상태 객체. 직렬화하면 늘 네 키(없는 키는 null).
  */
 export interface Status {
   value: StatusValue
-  reason?: UnverifiedReason | null
-  checked?: Checked
-  searched_scope?: SearchedScope
+  reason: UnverifiedReason | null
+  checked: Checked
+  searched_scope: SearchedScope
 }
 /**
  * 근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다.
  */
 export interface Evidence1 {
   document_id: DocumentId
-  page?: Page
-  raw_text?: RawText
-  edition?: Edition
-  checked_on?: CheckedOn
+  page: Page
+  raw_text: RawText
+  edition: Edition
+  checked_on: CheckedOn
 }
 export interface ExtractedValueStr {
-  value?: Value
-  raw_text?: RawText1
-  page?: Page1
+  value: Value
+  raw_text: RawText1
+  page: Page1
   status: Status
-  candidates?: Candidates
+  candidates: Candidates
 }
 export interface CandidateStr {
-  value?: Value1
-  raw_text?: RawText2
-  page?: Page2
+  value: Value1
+  raw_text: RawText2
+  page: Page2
   source: Source
 }
 export interface ExtractedValueNoticeKind {
-  value?: NoticeKind | null
-  raw_text?: RawText3
-  page?: Page3
+  value: NoticeKind | null
+  raw_text: RawText3
+  page: Page3
   status: Status
-  candidates?: Candidates1
+  candidates: Candidates1
 }
 export interface CandidateNoticeKind {
-  value?: NoticeKind | null
-  raw_text?: RawText4
-  page?: Page4
+  value: NoticeKind | null
+  raw_text: RawText4
+  page: Page4
   source: Source1
 }
 export interface ExtractedValueListInt {
-  value?: Value2
-  raw_text?: RawText5
-  page?: Page5
+  value: Value2
+  raw_text: RawText5
+  page: Page5
   status: Status
-  candidates?: Candidates2
+  candidates: Candidates2
 }
 export interface CandidateListInt {
-  value?: Value3
-  raw_text?: RawText6
-  page?: Page6
+  value: Value3
+  raw_text: RawText6
+  page: Page6
   source: Source2
 }
 export interface ExaminerHints {
@@ -171,17 +171,17 @@ export interface ExaminerHints {
  */
 export interface Rejection {
   status: Status
-  evidence?: Evidence2
-  origin?: Origin1
-  needs_recheck?: NeedsRecheck1
-  recheck_reason?: RecheckReason1
-  flags?: Flags1
+  evidence: Evidence2
+  origin: Origin1
+  needs_recheck: NeedsRecheck1
+  recheck_reason: RecheckReason1
+  flags: Flags1
   no: No
   kind: RejectionKind
   article: ExtractedValueStr
   supported: Supported
   claims: ExtractedValueListInt
-  citations?: Citations
+  citations: Citations
   examiner_reasoning: ExtractedValueStr
 }
 export interface Citation {
@@ -190,19 +190,19 @@ export interface Citation {
   country: ExtractedValueStr
   country_supported: CountrySupported
   cited_paragraphs: ExtractedValueListStr
-  flags?: Flags2
+  flags: Flags2
 }
 export interface ExtractedValueListStr {
-  value?: Value4
-  raw_text?: RawText7
-  page?: Page7
+  value: Value4
+  raw_text: RawText7
+  page: Page7
   status: Status
-  candidates?: Candidates3
+  candidates: Candidates3
 }
 export interface CandidateListStr {
-  value?: Value5
-  raw_text?: RawText8
-  page?: Page8
+  value: Value5
+  raw_text: RawText8
+  page: Page8
   source: Source3
 }
 /**
@@ -214,15 +214,15 @@ export interface CandidateListStr {
 export interface ClaimRow {
   claim: Claim
   rejection: Rejection1
-  citations?: Citations1
-  locations?: Locations
-  same_as?: SameAs
-  clarity_terms?: ClarityTerms
-  clarity_reason?: ClarityReason
-  clarity_reason_origin?: Origin2 | null
-  no_location?: NoLocation
-  raw_text?: RawText9
-  page?: Page9
+  citations: Citations1
+  locations: Locations
+  same_as: SameAs
+  clarity_terms: ClarityTerms
+  clarity_reason: ClarityReason
+  clarity_reason_origin: Origin2 | null
+  no_location: NoLocation
+  raw_text: RawText9
+  page: Page9
   status: Status
 }
 export interface Locations {
