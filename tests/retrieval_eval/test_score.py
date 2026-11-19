@@ -3,12 +3,14 @@
 기대값은 design.md 7-3 점검 예에서 가져온다 (구현을 보고 정하지 않음).
 """
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
 
 import pytest
 
+from eval.retrieval import score as score_mod
 from eval.retrieval.config import load_config
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.score import default_cq_dir, default_scores_dir, main, score
@@ -81,7 +83,7 @@ def test_점검_예_값이_나온다(tmp_path, goldsets_root):
         "excluded_no_location",
         "excluded_clarity",
         "excluded_same_as_other",
-        "excluded_text_missing",
+        "excluded_body_missing",
         "excluded_edition_unverified",
         "excluded_no_edition_in_scope",
         "cq_candidates",
@@ -163,8 +165,8 @@ def test_빼는_줄을_이유별로_센다(tmp_path, goldsets_root):
     assert report.scores["n"] == 2  # 종속항 줄·맞는 조각 없는 줄은 점수에 들어간다
 
 
-def test_본문_없는_공보는_text_missing으로_빠진다(tmp_path, goldsets_root):
-    # chunks_check.jsonl에는 KR1000000001A 조각이 없다 -> 남은 두 줄이 text_missing
+def test_본문_없는_공보는_body_missing으로_빠진다(tmp_path, goldsets_root):
+    # chunks_check.jsonl에는 KR1000000001A 조각이 없다 -> 남은 두 줄이 body_missing
     # (나머지 세 줄은 exclude) -> 남은 줄 0개라 실패
     cfg = load_config(make_config(tmp_path, "gold_excluded.jsonl"))
     repo = InMemoryChunkRepository.from_jsonl("cite", CHECK_CHUNKS)
@@ -187,7 +189,7 @@ def test_법령_판본_모름_줄은_빠진다(tmp_path, goldsets_root):
 def test_무작위_분모가_0이면_배수_키를_뺀다(tmp_path, goldsets_root):
     # 정답 항목에 맞는 조각이 범위에 하나도 없는 줄만 둔다
     lines = (FIX / "gold_excluded.jsonl").read_text(encoding="utf-8").splitlines()
-    only = [ln for ln in lines if '"ex-no-match"' in ln]
+    only = [ln for ln in lines if '"10-2020-0000108:r1:c1:KR1000000001A"' in ln]
     assert len(only) == 1
     (goldsets_root / "tune" / "retrieval" / "gold_nomatch.jsonl").write_text(only[0] + "\n")
     cfg = load_config(make_config(tmp_path, "gold_nomatch.jsonl"))
@@ -204,9 +206,54 @@ def test_무작위_분모가_0이면_배수_키를_뺀다(tmp_path, goldsets_roo
 # ---- 실패 -------------------------------------------------------------
 
 
-def test_chunks가_없으면_Postgres_안내와_1(tmp_path, goldsets_root, capsys):
-    assert run_main(tmp_path, goldsets_root, chunks=None) == 1
-    assert "Postgres 저장소 없음(m2-i2)" in capsys.readouterr().err
+def test_chunks가_없으면_Postgres_저장소로_돈다(tmp_path, goldsets_root, monkeypatch):
+    # 진짜 DB 대신 같은 조각을 담은 메모리 저장소를 끼운다
+    called = []
+
+    def fake_postgres():
+        called.append(True)
+        return InMemoryChunkRepository.from_jsonl("cite", CHECK_CHUNKS)
+
+    monkeypatch.setattr(score_mod, "postgres_repo", fake_postgres)
+    assert run_main(tmp_path, goldsets_root, chunks=None) == 0
+    assert called == [True]
+    assert read_scores(tmp_path)["metrics"]["hit@5"] == pytest.approx(1.0)
+
+
+def test_chunks가_없으면_기본_출력은_experiments_아래다(tmp_path, goldsets_root, monkeypatch):
+    # score에 넘기는 인자만 본다 (experiments/에 실제 파일을 쓰지 않게 score를 막는다)
+    seen = {}
+
+    def spy(cfg, repo, root, commit, **kw):
+        seen.update(kw)
+        raise RetrievalEvalError("테스트: 여기서 멈춤")
+
+    monkeypatch.setattr(
+        score_mod, "postgres_repo", lambda: InMemoryChunkRepository.from_jsonl("cite", CHECK_CHUNKS)
+    )
+    monkeypatch.setattr(score_mod, "score", spy)
+    cfg = make_config(tmp_path)
+    argv = ["--config", str(cfg), "--goldsets-root", str(goldsets_root)]
+    assert main(argv, commit="abc") == 1
+    exp = load_config(cfg).experiment
+    assert seen["chunks_mode"] is False
+    assert seen["scores_dir"] == REPO_ROOT / "experiments" / exp
+
+
+def test_scores_json에_색인_지문이_있다(tmp_path, goldsets_root):
+    # 기대값: chunks_check.jsonl의 chunk_id를 정렬해 줄바꿈으로 이은 글자의 sha256
+    # (make index-dump 지문과 같은 계산, design 5-2)
+    ids = sorted(
+        json.loads(line)["chunk_id"]
+        for line in CHECK_CHUNKS.read_text(encoding="utf-8").splitlines()
+        if line.strip() and json.loads(line)["index_version"] == "cite-idx-v1"
+    )
+    run_main(tmp_path, goldsets_root)
+    fp = read_scores(tmp_path)["index_fingerprint"]
+    assert fp == {
+        "chunks": len(ids),
+        "chunk_ids_sha256": hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest(),
+    }
 
 
 def test_줄_검색_예외는_main이_1을_돌려준다(tmp_path, goldsets_root, capsys):
@@ -244,7 +291,7 @@ def test_chunks와_experiments_scores_dir이면_1과_파일_없음(tmp_path, gol
 # ---- 제외 건수 키 ------------------------------------------------------
 
 
-def test_text_missing_건수가_1이다(tmp_path, goldsets_root):
+def test_body_missing_건수가_1이다(tmp_path, goldsets_root):
     # 점수에 드는 줄 하나(gold_ok와 같음) + 조각이 없는 공보 줄 하나
     cfg = load_config(make_config(tmp_path, "gold_cite_counts.jsonl"))
     repo = InMemoryChunkRepository.from_jsonl("cite", CHECK_CHUNKS)
@@ -252,7 +299,7 @@ def test_text_missing_건수가_1이다(tmp_path, goldsets_root):
         cfg, repo, goldsets_root, "abc", scores_dir=tmp_path / "out", cq_dir=tmp_path / "cq"
     )
     assert report.scores["n"] == 1
-    assert report.scores["failures"]["excluded_text_missing"] == 1
+    assert report.scores["failures"]["excluded_body_missing"] == 1
     assert report.scores["failures"]["excluded_edition_unverified"] == 0
 
 
@@ -265,7 +312,7 @@ def test_edition_unverified_건수가_1이다(tmp_path, goldsets_root):
     )
     assert report.scores["n"] == 1
     assert report.scores["failures"]["excluded_edition_unverified"] == 1
-    assert report.scores["failures"]["excluded_text_missing"] == 0
+    assert report.scores["failures"]["excluded_body_missing"] == 0
 
 
 def test_기준일로_범위가_비면_그_줄만_빼고_센다(tmp_path, goldsets_root):
@@ -283,4 +330,4 @@ def test_기준일로_범위가_비면_그_줄만_빼고_센다(tmp_path, goldse
     assert report.scores["n"] == 1
     assert report.scores["failures"]["excluded_no_edition_in_scope"] == 1
     # 뺀 줄은 CQ 후보가 아니다 (검색 범위가 없어서 못 찾은 것이지 검색이 놓친 게 아님)
-    assert all(r.row.row_id != "cnt-law-early" for r in report.rows)
+    assert all(r.row.row_id != "10-2020-0000201:r1" for r in report.rows)

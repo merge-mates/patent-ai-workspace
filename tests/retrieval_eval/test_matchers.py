@@ -26,6 +26,12 @@ def _등록표_되돌리기():
 
 
 @dataclass
+class GoldEdition:
+    status: str
+    effective_from: date | None = None
+
+
+@dataclass
 class Item:
     kind: str
     start: int | None = None
@@ -33,19 +39,13 @@ class Item:
     figures: list[int] = field(default_factory=list)
     claims: list[int] = field(default_factory=list)
     label: str = ""
-
-
-@dataclass
-class GoldEdition:
-    status: str
-    effective_from: date | None = None
+    gold_edition: GoldEdition | None = None  # 법령 항목마다 정답 판본
 
 
 @dataclass
 class Row:
     corpus: str
     doc_ids: list[str] | None
-    gold_edition: GoldEdition | None = None
 
 
 def chunk(
@@ -166,8 +166,10 @@ def law_chunk(start=3203, end=3203, label="3203쪽", status="confirmed", eff=dat
     )
 
 
-LAW_ROW = Row("law", None, GoldEdition("confirmed", date(2020, 1, 1)))
-LAW_ITEM = Item("page", 3203, 3204, label="3203~3204쪽")
+LAW_ROW = Row("law", None)
+LAW_ITEM = Item(
+    "page", 3203, 3204, label="3203~3204쪽", gold_edition=GoldEdition("confirmed", date(2020, 1, 1))
+)
 
 
 def test_law_판본_같고_위치_겹치면_맞다():
@@ -184,8 +186,28 @@ def test_law_조각_판본을_모르면_틀리다():
 
 
 def test_law_정답_판본을_모르면_틀리다():
-    row = Row("law", None, GoldEdition("unverified"))
-    assert not LawMatcher().matches(law_chunk(), LAW_ITEM, row)
+    item = Item("page", 3203, 3204, label="3203~3204쪽", gold_edition=GoldEdition("unverified"))
+    assert not LawMatcher().matches(law_chunk(), item, LAW_ROW)
+
+
+def test_law_판본은_항목마다_본다():
+    # 한 줄의 두 항목이 다른 판본이면, 조각 판본과 같은 항목만 맞다
+    new = Item(
+        "page",
+        3203,
+        3204,
+        label="3203~3204쪽",
+        gold_edition=GoldEdition("confirmed", date(2020, 1, 1)),
+    )
+    old = Item(
+        "page",
+        3203,
+        3204,
+        label="3203~3204쪽",
+        gold_edition=GoldEdition("confirmed", date(2019, 1, 1)),
+    )
+    assert LawMatcher().matches(law_chunk(), new, LAW_ROW)
+    assert not LawMatcher().matches(law_chunk(), old, LAW_ROW)
 
 
 def test_law_위치가_안_겹치면_틀리다():
@@ -193,7 +215,9 @@ def test_law_위치가_안_겹치면_틀리다():
 
 
 def test_law_정렬키가_null이면_label이_같을_때만_맞다():
-    item = Item("page", None, None, label="3203쪽")
+    item = Item(
+        "page", None, None, label="3203쪽", gold_edition=GoldEdition("confirmed", date(2020, 1, 1))
+    )
     assert LawMatcher().matches(law_chunk(start=None, end=None, label="3203쪽"), item, LAW_ROW)
     assert not LawMatcher().matches(law_chunk(start=None, end=None, label="3300쪽"), item, LAW_ROW)
 

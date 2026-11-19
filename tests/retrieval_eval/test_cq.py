@@ -20,7 +20,7 @@ from patent_ai.retrieval.repository import InMemoryChunkRepository
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "retrieval"
 CHECK_CHUNKS = FIX / "chunks_check.jsonl"
-MISS_ID = "10-2020-0000002:29-2:c1:KR2000000001A"
+MISS_ID = "10-2020-0000002:r1:c1:KR2000000001A"
 FIELDS = {
     "row_id",
     "goldset_version",

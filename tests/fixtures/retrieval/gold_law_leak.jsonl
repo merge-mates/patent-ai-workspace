@@ -1,1 +1,1 @@
-{"row_id": "leak-law", "corpus": "law", "query": "가짜 질의: 제29조 제2항 에 따른 거절", "doc_ids": null, "as_of": "2020-05-04", "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"}, "items": [{"kind": "article", "label": "제29조 제2항"}], "exclude": null}
+{"row_id": "10-2020-0000205:r1", "corpus": "law", "query": "가짜 질의: 제29조 제2항 에 따른 거절", "doc_ids": null, "as_of": "2020-05-04", "items": [{"kind": "article", "label": "제29조 제2항", "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"}}], "exclude": null}

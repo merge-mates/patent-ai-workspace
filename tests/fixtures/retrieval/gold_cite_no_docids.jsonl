@@ -1,1 +1,1 @@
-{"row_id": "no-docids", "corpus": "cite", "query": "가짜 청구항: 온도 300℃에서 처리", "doc_ids": null, "as_of": null, "gold_edition": null, "items": [{"kind": "paragraph", "start": 5, "end": 5, "label": "[0005]"}], "exclude": null}
+{"row_id": "10-2020-0000112:r1:c1:KR1000000001A", "corpus": "cite", "query": "가짜 청구항: 온도 300℃에서 처리", "doc_ids": null, "as_of": null, "items": [{"kind": "paragraph", "start": 5, "end": 5, "label": "[0005]"}], "exclude": null}

@@ -21,8 +21,13 @@ from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
 from eval.retrieval.metrics import random_hit, random_recall, row_hit, row_recall
+from patent_ai.db.index_dump import index_fingerprint
 from patent_ai.retrieval import get_searcher
-from patent_ai.retrieval.repository import ChunkRepository, InMemoryChunkRepository
+from patent_ai.retrieval.repository import (
+    ChunkRepository,
+    InMemoryChunkRepository,
+    PostgresChunkRepository,
+)
 
 METRIC_NAME = "심사관 지정 위치 회수율"
 # scores.json failures에 쓰는 이름 (정해진 것만)
@@ -30,7 +35,7 @@ FAILURE_KEYS = [
     "excluded_no_location",
     "excluded_clarity",
     "excluded_same_as_other",
-    "excluded_text_missing",
+    "excluded_body_missing",
     "excluded_edition_unverified",
     "excluded_no_edition_in_scope",
     "cq_candidates",
@@ -113,7 +118,7 @@ def score(
     """정답 줄마다 검색해 점수를 낸다. 파일은 쓰지 않는다 (쓰기는 main).
 
     돌려준 scores의 failures.cq_candidates는 0이다. 실제 건수는 main이 write_cq 뒤에 채운다.
-    Postgres 저장소로 돌릴 때(m2-i2)는 chunks_mode=False를 넘겨야 기본 출력이 experiments/로 간다.
+    Postgres 저장소로 돌릴 때는 chunks_mode=False를 넘겨야 기본 출력이 experiments/로 간다.
     """
     started = time.monotonic()
     goldsets_root = Path(goldsets_root)
@@ -144,9 +149,8 @@ def score(
                 raise RetrievalEvalError(f"줄 {row.row_id}: 모르는 exclude 값")
             failures[key] += 1
             continue
-        if cfg.corpus == "law" and (
-            row.gold_edition is None or row.gold_edition.status != "confirmed"
-        ):
+        if cfg.corpus == "law" and not row.edition_confirmed():
+            # 항목 하나라도 정답 판본을 모르면 그 줄을 뺀다 (항목만 빼면 Recall 분모가 바뀜)
             failures["excluded_edition_unverified"] += 1
             continue
         if not row.items:
@@ -163,7 +167,7 @@ def score(
             # 메시지에 질의 글자가 섞일 수 있어 예외 종류만 적는다
             raise RetrievalEvalError(f"줄 {row.row_id}: 검색 실패 ({type(e).__name__})") from None
         if result.status == "unverified":  # 본문 미확보는 여기서만 정한다
-            failures["excluded_text_missing"] += 1
+            failures["excluded_body_missing"] += 1
             continue
         # 채점기가 색인 판을 한 번 더 본다
         if any(h.index_version != cfg.index_version for h in result.hits):
@@ -223,6 +227,11 @@ def score(
         "gold_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "corpus": cfg.corpus,
         "index_version": cfg.index_version,
+        # 색인 판 이름만 같고 내용이 다른 경우를 가린다. make index-dump 지문과 같은 계산
+        # (design 5-2). 지문이 다른 실험끼리는 점수를 비교하지 않는다
+        "index_fingerprint": index_fingerprint(
+            c.chunk_id for c in repo.chunks(cfg.corpus, cfg.index_version, None, None)
+        ),
         "mode": cfg.mode,
         "impl": cfg.impl,
         "metric_name": METRIC_NAME,
@@ -240,26 +249,32 @@ def score(
     return ScoreReport(scores=scores, rows=results, k_max=k_max)
 
 
+def postgres_repo() -> ChunkRepository:
+    """진짜 색인 DB 저장소 (DATABASE_URL). 테스트는 이 함수를 바꿔 끼운다."""
+    return PostgresChunkRepository.from_url()
+
+
 def main(argv: list[str] | None = None, commit: str | None = None) -> int:
     ap = argparse.ArgumentParser(prog="eval.retrieval.score")
     ap.add_argument("--config", required=True)
     ap.add_argument("--goldsets-root", default="data/goldsets")
-    ap.add_argument("--chunks", default=None, help="조각 JSONL. 없으면 Postgres")
+    ap.add_argument("--chunks", default=None, help="조각 JSONL. 없으면 Postgres(DATABASE_URL)")
     ap.add_argument("--scores-dir", default=None)
     ap.add_argument("--cq-dir", default=None)
     args = ap.parse_args(argv)
 
-    if args.chunks is None:
-        # m2-i2가 PostgresChunkRepository를 만든 뒤 여기 한 줄로 잇는다
-        print("Postgres 저장소 없음(m2-i2). --chunks <조각 jsonl>을 주세요", file=sys.stderr)
-        return 1
+    # --chunks가 있으면 가짜 조각(출력은 work/), 없으면 진짜 색인 DB(출력은 experiments/)
+    chunks_mode = args.chunks is not None
     try:
         cfg = load_config(args.config)
-        repo = InMemoryChunkRepository.from_jsonl(cfg.corpus, args.chunks)
+        if chunks_mode:
+            repo = InMemoryChunkRepository.from_jsonl(cfg.corpus, args.chunks)
+        else:
+            repo = postgres_repo()
         scores_dir = (
             Path(args.scores_dir)
             if args.scores_dir
-            else default_scores_dir(cfg.experiment, chunks_mode=True)
+            else default_scores_dir(cfg.experiment, chunks_mode=chunks_mode)
         )
         cq_dir = Path(args.cq_dir) if args.cq_dir else default_cq_dir(cfg.experiment)
         report = score(
@@ -267,7 +282,7 @@ def main(argv: list[str] | None = None, commit: str | None = None) -> int:
             repo,
             Path(args.goldsets_root),
             commit if commit is not None else _git_commit(),
-            chunks_mode=True,
+            chunks_mode=chunks_mode,
             scores_dir=scores_dir,
             cq_dir=cq_dir,
         )

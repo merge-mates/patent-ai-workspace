@@ -1,5 +1,6 @@
 """채점기 실행 전 검사 (requirements 기준 3, design.md 2절 2번·7-3)."""
 
+import json
 import shutil
 from pathlib import Path
 
@@ -60,7 +61,9 @@ def run_preflight(
 
 
 def row(query, item):
-    return GoldRow(row_id="r1", corpus="cite", query=query, items=[item])
+    return GoldRow(
+        row_id="10-2020-0000001:r1:c1:KR1000000001A", corpus="cite", query=query, items=[item]
+    )
 
 
 PARA = GoldItem(kind="paragraph", start=23, end=23, label="[0023]")
@@ -196,15 +199,18 @@ def test_누출_줄이_있으면_실패하고_row_id와_건수만_말한다(repo
         run_preflight(cfg, repo, goldsets_root, gold_name="gold_leak.jsonl", tmp=tmp_path)
     msg = str(e.value)
     assert "2" in msg  # 누출 줄 2건
-    assert "leak-para" in msg and "leak-fig" in msg
-    assert "clean" not in msg
+    assert (
+        "10-2020-0000111:r1:c1:KR1000000001A" in msg
+        and "10-2020-0000110:r1:c1:KR1000000001A" in msg
+    )
+    assert "10-2020-0000103:r1:c1:KR1000000001A" not in msg
     for secret in ["가열 처리 방법", "기판 구조", "거절", "[0023]", "제29조"]:
         assert secret not in msg
 
 
 def test_법령_누출_줄도_실패(law_repo, goldsets_root, tmp_path):
     cfg = load_config(FIX / "config_law_ok.yaml")
-    with pytest.raises(RetrievalEvalError, match="leak-law"):
+    with pytest.raises(RetrievalEvalError, match="10-2020-0000205:r1"):
         run_preflight(cfg, law_repo, goldsets_root, gold_name="gold_law_leak.jsonl", tmp=tmp_path)
 
 
@@ -213,7 +219,7 @@ def test_인용문헌_줄에_doc_ids가_없으면_실패하고_row_id만_말한�
     with pytest.raises(RetrievalEvalError, match="doc_ids") as e:
         run_preflight(cfg, repo, goldsets_root, gold_name="gold_cite_no_docids.jsonl", tmp=tmp_path)
     msg = str(e.value)
-    assert "no-docids" in msg and "300" not in msg
+    assert "10-2020-0000112:r1:c1:KR1000000001A" in msg and "300" not in msg
 
 
 def test_설정_말뭉치와_다른_정답_줄이_있으면_실패(repo, goldsets_root, tmp_path):
@@ -221,7 +227,7 @@ def test_설정_말뭉치와_다른_정답_줄이_있으면_실패(repo, goldset
     cfg = load_config(FIX / "config_ok.yaml")
     with pytest.raises(RetrievalEvalError, match="corpus") as e:
         run_preflight(cfg, repo, goldsets_root, gold_name="gold_law_excluded.jsonl", tmp=tmp_path)
-    assert "ex-edition" in str(e.value)
+    assert "10-2020-0000203:r1" in str(e.value)
 
 
 def test_chunks_모드에서_scores_dir이_experiments_아래면_실패(repo, goldsets_root, tmp_path):
@@ -295,7 +301,85 @@ def test_정답_줄을_읽는다(goldsets_root):
     rows = load_gold(goldsets_root / "tune" / "retrieval" / "gold_ok.jsonl")
     assert len(rows) == 1
     assert rows[0].doc_ids == ["KR2000000001A"]
-    assert [i.label for i in rows[0].items] == ["[0022-0025]", "도 3"]
+    assert [i.label for i in rows[0].items] == ["[0022]-[0025]", "도 3"]
+
+
+# ---- 정답 줄 ID 꼴과 항목별 판본 (design 7-1) ----
+def _gold_file(tmp_path, row):
+    p = tmp_path / "g.jsonl"
+    p.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+    return p
+
+
+CITE_ROW = {
+    "row_id": "10-2020-0000001:r2:c3:KR1000000001A",
+    "corpus": "cite",
+    "query": "q",
+    "doc_ids": ["KR1000000001A"],
+    "items": [{"kind": "paragraph", "start": 1, "end": 1, "label": "[0001]"}],
+}
+LAW_ROW = {
+    "row_id": "10-2020-0000001:r1",
+    "corpus": "law",
+    "query": "q",
+    "as_of": "2020-05-04",
+    "items": [
+        {
+            "kind": "article",
+            "label": "제29조 제2항",
+            "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"},
+        },
+        {
+            "kind": "page",
+            "start": 3203,
+            "end": 3204,
+            "label": "3203~3204쪽",
+            "gold_edition": {"status": "unverified"},
+        },
+    ],
+}
+
+
+def test_꼴에_맞는_줄_ID와_항목별_판본을_읽는다(tmp_path):
+    assert load_gold(_gold_file(tmp_path, CITE_ROW))[0].row_id.endswith(":KR1000000001A")
+    row = load_gold(_gold_file(tmp_path, LAW_ROW))[0]
+    assert [i.gold_edition.status for i in row.items] == ["confirmed", "unverified"]
+    assert not row.edition_confirmed()  # 하나라도 모르면 줄을 뺀다
+
+
+@pytest.mark.parametrize(
+    "corpus_row, bad_id",
+    [
+        (LAW_ROW, "10-2020-0000001:29-2"),  # 옛 꼴 (조문)
+        (LAW_ROW, "10-2020-0000001:r0"),
+        (LAW_ROW, "10-2020-0000001:r1:c1:KR1000000001A"),  # 인용문헌 꼴
+        (CITE_ROW, "10-2020-0000001:r1:KR1000000001A"),  # 청구항 없음
+        (CITE_ROW, "10-2020-0000001:29-2:c1:KR1000000001A"),
+        (CITE_ROW, "r1"),
+    ],
+)
+def test_줄_ID_꼴이_틀리면_줄_번호와_ID로_실패(tmp_path, corpus_row, bad_id):
+    with pytest.raises(RetrievalEvalError, match=r"1번째 줄.*row_id") as e:
+        load_gold(_gold_file(tmp_path, {**corpus_row, "row_id": bad_id}))
+    assert "q" not in str(e.value).replace("query", "")  # 질의 글자는 없음
+
+
+def test_인용문헌_줄_ID의_공보가_doc_ids에_없으면_실패(tmp_path):
+    row = {**CITE_ROW, "row_id": "10-2020-0000001:r1:c1:KR2000000001A"}
+    with pytest.raises(RetrievalEvalError, match="doc_ids"):
+        load_gold(_gold_file(tmp_path, row))
+
+
+def test_인용문헌_항목에_gold_edition이_있으면_실패(tmp_path):
+    item = {**CITE_ROW["items"][0], "gold_edition": {"status": "not_applicable"}}
+    with pytest.raises(RetrievalEvalError, match="gold_edition"):
+        load_gold(_gold_file(tmp_path, {**CITE_ROW, "items": [item]}))
+
+
+def test_줄_단위_gold_edition은_옛_꼴이라_실패(tmp_path):
+    row = {**LAW_ROW, "gold_edition": {"status": "confirmed", "effective_from": "2020-01-01"}}
+    with pytest.raises(RetrievalEvalError):
+        load_gold(_gold_file(tmp_path, row))
 
 
 def test_정답_항목은_청구항_번호를_담는다():

@@ -1,2 +1,2 @@
-{"row_id": "all-ex-1", "corpus": "cite", "query": "가짜 청구항 E: 시료 가열 방법", "doc_ids": ["KR1000000001A"], "as_of": null, "gold_edition": null, "items": [{"kind": "paragraph", "start": 1, "end": 1, "label": "[0001]"}], "exclude": "no_location"}
-{"row_id": "all-ex-2", "corpus": "cite", "query": "가짜 청구항 F: 기판 냉각 방법", "doc_ids": ["KR1000000001A"], "as_of": null, "gold_edition": null, "items": [{"kind": "paragraph", "start": 2, "end": 2, "label": "[0002]"}], "exclude": "clarity"}
+{"row_id": "10-2020-0000101:r1:c1:KR1000000001A", "corpus": "cite", "query": "가짜 청구항 E: 시료 가열 방법", "doc_ids": ["KR1000000001A"], "as_of": null, "items": [{"kind": "paragraph", "start": 1, "end": 1, "label": "[0001]"}], "exclude": "no_location"}
+{"row_id": "10-2020-0000102:r1:c1:KR1000000001A", "corpus": "cite", "query": "가짜 청구항 F: 기판 냉각 방법", "doc_ids": ["KR1000000001A"], "as_of": null, "items": [{"kind": "paragraph", "start": 2, "end": 2, "label": "[0002]"}], "exclude": "clarity"}

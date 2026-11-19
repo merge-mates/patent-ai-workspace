@@ -11,6 +11,11 @@ from typing import Protocol
 from patent_ai.retrieval.schemas import Chunk, Corpus
 
 
+class GoldEdition(Protocol):
+    status: str
+    effective_from: date | None
+
+
 class GoldItem(Protocol):
     kind: str
     start: int | None
@@ -18,17 +23,12 @@ class GoldItem(Protocol):
     figures: list[int]
     claims: list[int]  # claim 항목용 청구항 번호들
     label: str
-
-
-class GoldEdition(Protocol):
-    status: str
-    effective_from: date | None
+    gold_edition: GoldEdition | None  # 법령 항목의 정답 판본 (항목마다)
 
 
 class GoldRow(Protocol):
     corpus: str
     doc_ids: list[str] | None
-    gold_edition: GoldEdition | None
 
 
 class Matcher(Protocol):
@@ -92,7 +92,7 @@ class CiteMatcher:
 
 
 class LawMatcher:
-    """법령: 판본(시행 시작일)이 정답과 같고 위치 규칙을 통과해야 맞음."""
+    """법령: 판본(시행 시작일)이 그 항목의 정답 판본과 같고 위치 규칙을 통과해야 맞음."""
 
     def __init__(self, location_rule: str = DEFAULT_LAW_LOCATION_RULE):
         if location_rule not in LAW_LOCATION_RULES:
@@ -103,7 +103,7 @@ class LawMatcher:
         self.location_rule = LAW_LOCATION_RULES[location_rule]
 
     def matches(self, chunk: Chunk, item: GoldItem, row: GoldRow) -> bool:
-        gold = row.gold_edition
+        gold = item.gold_edition
         # 판본을 모르는 쪽(조각 또는 정답)이 있으면 맞다고 하지 않는다
         if gold is None or gold.status != "confirmed" or gold.effective_from is None:
             return False
