@@ -13,6 +13,7 @@ from patent_ai.core.f1_oa_reader.claim_rows import build_claim_rows
 from patent_ai.core.f1_oa_reader.extraction import (
     CitationExtraction,
     Item,
+    LooseOAExtraction,
     OAExtraction,
     RejectionExtraction,
 )
@@ -117,15 +118,27 @@ def _result_without_text(document_id: str, oa_id: str) -> OAResult:
 
 
 # ---- 모델 호출 (검사 실패면 한 번 더) ----
+_RETRY_NOTE = (
+    "\n앞 답이 출력 형식 검사에 떨어졌습니다. 아래 오류를 고쳐 같은 형식으로 다시 답하세요.\n"
+    "검사 오류:\n{error}\n"
+)
+_MAX_ERROR_CHARS = 2000  # 오류 문구가 길면 앞부분만 (프롬프트가 불어나지 않게)
+
+
 def _call(pages: PageText, ctx: RunContext) -> OAExtraction:
     text = "\n\n".join(f"[쪽 {p.page}]\n{p.text}" for p in pages.pages)
     try:
-        first = call_model(STEP, {"pages": text}, OAExtraction, ctx=ctx, attempt=1)
+        first = call_model(
+            STEP, {"pages": text, "retry_note": ""}, OAExtraction, ctx=ctx, attempt=1
+        )
         return first.parsed
-    except ModelOutputInvalid:
-        logger.warning("read_oa: 모델 답이 검사에 떨어져 한 번 더 부름")
-    # 두 번째도 떨어지면 ModelOutputInvalid를 그대로 던진다. 전송 실패·상한도 그대로
-    second = call_model(STEP, {"pages": text}, OAExtraction, ctx=ctx, attempt=2)
+    except ModelOutputInvalid as e:
+        error = str(e)[:_MAX_ERROR_CHARS]
+        logger.warning("read_oa: 모델 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름")
+    # 두 번째: 검사 오류 문구를 프롬프트에 넣는다. 목록 칸의 문자열만 받아 두는 판으로 검사하고
+    # (그 줄은 claim_rows가 확인되지 않음으로 둔다) 그 밖의 검사 실패는 ModelOutputInvalid 그대로.
+    variables = {"pages": text, "retry_note": _RETRY_NOTE.format(error=error)}
+    second = call_model(STEP, variables, LooseOAExtraction, ctx=ctx, attempt=2)
     return second.parsed
 
 

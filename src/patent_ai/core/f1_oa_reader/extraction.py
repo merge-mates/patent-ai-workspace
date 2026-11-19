@@ -72,3 +72,17 @@ class OAExtraction(BaseModel):
     allowable_claims: Item | None = None  # 칸이 없으면 null
     amendment_note: Item | None = None  # 칸이 없으면 null
     claim_rows: list[ClaimRowExtraction] = []  # 청구항 줄 (없으면 빈 목록)
+
+
+# ---- 두 번째 답(재시도) 검사용 판 ----
+# 모델이 재시도 안내를 받고도 목록 칸(same_as·clarity_terms)에 객체 대신 문자열을 넣는 경우가 있다
+# (11/19 tune 5건 중 4건). 이때 실행 전체를 실패시키지 않으려고 두 번째 답만 이 판으로 검사한다.
+# 문자열은 Item으로 바꾸지 않고 그대로 둔다.
+# 원문·쪽이 없으니 claim_rows가 그 줄을 확인되지 않음으로 둔다.
+class LooseClaimRowExtraction(ClaimRowExtraction):
+    same_as: list[Item | str] = []  # type: ignore[assignment]
+    clarity_terms: list[Item | str] = []  # type: ignore[assignment]
+
+
+class LooseOAExtraction(OAExtraction):
+    claim_rows: list[LooseClaimRowExtraction] = []  # type: ignore[assignment]

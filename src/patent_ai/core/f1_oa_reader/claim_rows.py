@@ -54,8 +54,14 @@ def _need(item: Item | None, pages: PageText) -> str:
     return item.raw_text or ""
 
 
+def _has_bare_string(r: ClaimRowExtraction) -> bool:
+    """목록 칸에 Item 대신 문자열이 있나 (재시도 답에서만 들어올 수 있음, 원문·쪽이 없음)."""
+    return any(isinstance(i, str) for i in [*r.same_as, *r.clarity_terms])
+
+
 def _all_items(r: ClaimRowExtraction) -> list[Item | None]:
-    items: list[Item | None] = [r.claims, r.judgment, r.no_location, *r.same_as, *r.clarity_terms]
+    items: list[Item | None] = [r.claims, r.judgment, r.no_location]
+    items += [i for i in [*r.same_as, *r.clarity_terms] if isinstance(i, Item)]
     for c in r.citations:
         items += [c.number, c.location, c.no_location]
     return items
@@ -126,6 +132,10 @@ def _mentioned(judgment: str, rej: dict) -> set[str]:
 
 def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageText) -> dict:
     """줄 안 값을 원문과 맞춰 뽑는다. 하나라도 못 맞추면 _Fail (그 줄을 통째로 버림)."""
+    if _has_bare_string(r):
+        # 원문·쪽 없는 문자열은 대조할 수 없다: 그 줄을 확인되지 않음으로 (확인됨으로 새지 않게)
+        logger.warning("청구항 줄 목록 칸에 원문·쪽 없는 문자열: 그 줄은 확인되지 않음")
+        raise _Fail()
     if _is_ambiguous(r):
         raise _Fail(UnverifiedReason.AMBIGUOUS)
     judgment = _need(r.judgment, pages)  # 이 줄 판단 원문이 그 쪽에 있어야 확인됨

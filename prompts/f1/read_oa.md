@@ -43,8 +43,8 @@
         }
       ],
       "no_location": null,
-      "same_as": [],
-      "clarity_terms": [],
+      "same_as": [{"value": null, "raw_text": "같은 취지로 가리킨 대상 글자 (예: 제1항과 동일한 취지)", "page": 4, "ambiguous": false}],
+      "clarity_terms": [{"value": null, "raw_text": "심사관이 따옴표로 짚은 표현 글자", "page": 4, "ambiguous": false}],
       "clarity_reason": null,
       "judgment": {"value": null, "raw_text": "그 청구항 판단이 적힌 문장 그대로", "page": 4, "ambiguous": false}
     }
@@ -68,6 +68,8 @@
 - 명확성 거절이유의 줄은 인용 대신 clarity_terms에 심사관이 따옴표로 짚은 표현 글자를 적고, clarity_reason에 이유를 짧게 적습니다. 따옴표로 짚지 않았으면 clarity_terms는 빈 목록입니다.
 
 - examiner_reasoning만 value에 요약을 적습니다. 나머지 value는 null로 둬도 됩니다.
+- 목록 칸(same_as, clarity_terms)의 항목도 문자열이 아니라 {value, raw_text, page, ambiguous} 객체입니다. 해당하는 것이 없으면 빈 목록 []입니다.
+$retry_note
 
 통지서 글자
 $pages

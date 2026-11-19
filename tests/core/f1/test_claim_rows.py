@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 from patent_ai.core.f1_oa_reader.read_oa import read_oa
+from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.case_materials import CaseMaterials
@@ -524,3 +525,66 @@ def test_명확성_줄에_줄_단위_위치_없음이_오면_버리고_경고(ca
         row = _row(_read(answer), 6, 3)
     assert row.status.value == StatusValue.CONFIRMED and row.no_location is None
     assert "위치 없음" in caplog.text
+
+
+# ---- 목록 칸(clarity_terms·same_as)에 문자열이 온 답 (11/19 tune 5건 실패 원인) ----
+def _read_twice(first: dict, second: dict):
+    """첫 답·두 번째 답을 차례로 주는 가짜 전송층으로 read_oa를 돌린다."""
+    texts = [TransportResponse(json.dumps(a, ensure_ascii=False), 100, 50) for a in (first, second)]
+    transport = FakeTransport({STEP: texts})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    return read_oa(_pages(), "d_1", "oa_1", "r_1", ctx=ctx), transport
+
+
+def _string_terms() -> dict:
+    """6항 명확성 줄의 clarity_terms를 {raw_text, page} 객체 대신 문자열로 준 답."""
+    answer = _answer()
+    answer["claim_rows"][11]["clarity_terms"] = ["상기 프리뷰 이미지"]
+    return answer
+
+
+def _string_same_as() -> dict:
+    """3항 줄의 same_as를 객체 대신 문자열로 준 답."""
+    answer = _answer()
+    answer["claim_rows"][3]["same_as"] = ["제1항과 동일한 취지"]
+    return answer
+
+
+def test_첫_답의_목록_칸이_문자열이면_재시도_프롬프트에_검사_오류가_들어간다():
+    result, transport = _read_twice(_string_terms(), _answer())
+    assert len(transport.calls) == 2
+    first, second = transport.calls[0]["prompt"], transport.calls[1]["prompt"]
+    assert "출력 형식 검사" not in first  # 첫 호출에는 재시도 안내가 없다
+    assert "출력 형식 검사" in second and "clarity_terms" in second  # 검사 오류 문구
+    # 두 번째 답이 맞으면 그 줄은 평소대로 확인됨
+    assert _row(result, 6, 3).status.value == StatusValue.CONFIRMED
+
+
+def test_두_번째도_clarity_terms가_문자열이면_실행은_돌고_그_줄만_확인되지_않음():
+    result, transport = _read_twice(_string_terms(), _string_terms())
+    assert len(transport.calls) == 2
+    row = _row(result, 6, 3)
+    _assert_dropped(row)  # 문자열(원문·쪽 없음)은 확인됨으로 새지 않는다
+    assert row.clarity_terms == []
+    assert _row(result, 1, 1).status.value == StatusValue.CONFIRMED  # 다른 줄은 그대로
+    assert result.status.value == StatusValue.UNVERIFIED
+
+
+def test_두_번째도_same_as가_문자열이면_실행은_돌고_그_줄만_확인되지_않음():
+    result, _ = _read_twice(_string_same_as(), _string_same_as())
+    row = _row(result, 3, 2)
+    _assert_dropped(row)
+    assert row.same_as == []
+    assert _row(result, 4, 2).same_as == ["rejection:1"]  # 다른 줄의 같은 취지는 그대로
+
+
+def test_목록_칸_말고_다른_곳의_문자열은_두_번째에도_검사에_떨어진다():
+    answer = _answer()
+    answer["claim_rows"][0]["judgment"] = "판단 문장"  # Item 칸에 문자열
+    try:
+        _read_twice(answer, answer)
+    except ModelOutputInvalid:
+        return
+    raise AssertionError("ModelOutputInvalid가 나야 함")
