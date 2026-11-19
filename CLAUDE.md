@@ -5,7 +5,7 @@
 - 테스트(파이썬): `uv run pytest` (`make test`). 네트워크·DB·API 키 없이 돈다. 실제 DB가 필요한 테스트는 `@pytest.mark.db`, `make db` 뒤 `make test-db`.
 - 린트(파이썬): `uv run ruff check`, `uv run ruff format`. 설정은 `ruff.toml`.
 - 화면(`web/` 안에서): `npm run lint`, `npm run build`(타입 검사 포함).
-- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다. 지금 `retrieval`만, `f1`은 #20에서 더함. 그 밖의 명령은 짐작해서 돌리지 않는다). 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
+- 채점: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml` (설정 `feature:`로 채점기를 고른다: `retrieval`·`f1`. 그 밖의 명령은 짐작해서 돌리지 않는다). F1은 `--predictions <폴더>`(read_oa가 낸 OAResult JSON, git 밖)가 필요하고 `--pages <폴더>`(쪽 글자)는 고를 수 있다. 검색은 `--chunks`가 없으면 `DATABASE_URL`의 색인 DB를 읽는다. 점수 표: `uv run python eval/make_index.py`
 - PR마다 GitHub Actions(`.github/workflows/ci.yml`)가 위 테스트·린트·빌드를 돈다.
 
 ## 폴더
@@ -16,6 +16,7 @@
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 - DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
 - 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
+- 부르는 방향은 `api → core → retrieval·law_api·db`, 그리고 `retrieval → db`만이다 ([ADR 0003](docs/decisions/0003-tech-stack.md)). `db/`에는 표 정의(ORM 모델)만 두고 core·retrieval을 import하지 않는다. core 타입을 DB에 쓰고 읽는 저장소(repository)는 부르는 쪽(core 또는 retrieval)에 둔다.
 
 ## 진행 단위
 - 지금 위치와 문서 지도: @docs/README.md (맨 위 `지금`)
@@ -53,8 +54,8 @@
 ## 코드 규칙 (공통)
 - 스타일은 린터(위 명령)가 본다. 리뷰에서 스타일을 지적하지 않는다.
 - 모델 호출은 한 곳(모델 호출 모듈)에서만 한다. 외부 API 호출은 캐시와 호출 상한을 거친다.
-  - 예외: 한 번 쓰는 데이터 받기 스크립트(`scripts/fetch_*.py` 같은 수집용. `scripts/db/` 같은 앱 설정 스크립트는 아님)는 캐시·호출 상한을 안 거친다. 대신 이미 있는 파일이면 멈추고, 호출 사이를 두고, 키를 출력·저장하지 않는다. 앱 코드는 위 규칙대로.
-- 테스트는 네트워크·API 키 없이 돈다. 외부 API 응답은 저장해 둔 파일(녹화 응답)로 테스트한다.
+  - 예외: 한 번 쓰는 데이터 받기 스크립트(`scripts/fetch_*.py` 같은 수집용. `scripts/db/` 같은 앱 설정 스크립트는 아님)와 사람이 돌려 기록된 모델 응답을 만드는 `scripts/record_llm.py`는 캐시·호출 상한을 안 거친다. 대신 이미 있는 파일이면 멈추고, 호출 사이를 두고, 키를 출력·저장하지 않는다. 앱 코드는 위 규칙대로.
+- 테스트는 네트워크·API 키 없이 돈다. 외부 API 응답은 저장해 둔 파일(기록된 모델 응답, recorded response)로 테스트한다.
 - 프롬프트는 코드와 분리한 파일로 둔다. 실험할 값(모델, 하이퍼파라미터)은 실험 설정(config) 파일에서 읽는다. 각자 구현은 같은 인터페이스 뒤에 두고 config의 `impl`로 고른다 (전략 패턴).
 - 목록이 0개처럼 비면 경고를 남긴다. 실패했는데 성공 종료하거나 이유 없이 끝나지 않는다.
 - `.env`에는 비밀 키와 컴퓨터마다 다른 값(포트·`DATABASE_URL`)만. 모델·실험 값은 설정 파일(`config/`)에. `.env`는 읽지도 출력하지도 않는다.

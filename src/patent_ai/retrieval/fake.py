@@ -5,13 +5,10 @@
 core를 import하지 않는다.
 """
 
-import json
-import math
 from datetime import date
-from pathlib import Path
 
 from patent_ai.retrieval.contract import Embed, register_impl
-from patent_ai.retrieval.errors import RecordedEmbeddingMissing
+from patent_ai.retrieval.embedding import cosine, recorded_embed
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import (
     Chunk,
@@ -21,29 +18,6 @@ from patent_ai.retrieval.schemas import (
     SearchResult,
     SearchScope,
 )
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    if len(a) != len(b):
-        raise ValueError(f"벡터 차원이 다르다: {len(a)} != {len(b)}")
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(x * x for x in b))
-    if na == 0 or nb == 0:
-        return 0.0  # 길이 0 벡터는 비슷함을 말할 수 없다
-    return sum(x * y for x, y in zip(a, b, strict=True)) / (na * nb)
-
-
-def recorded_embed(path: str | Path) -> Embed:
-    """녹화해 둔 {질의: 벡터} 파일을 읽는 embed. 실제 모델을 부르지 않는다."""
-    with open(path, encoding="utf-8") as f:
-        recorded: dict[str, list[float]] = json.load(f)
-
-    def embed(query: str) -> list[float]:
-        if query not in recorded:
-            raise RecordedEmbeddingMissing(f"녹화에 없는 질의: {query!r}")
-        return recorded[query]
-
-    return embed
 
 
 @register_impl("fake")
@@ -69,7 +43,7 @@ class FakeSearcher:
             # 조용히 빠지면 안 된다. 녹화 데이터가 빠진 것이니 오류로 알린다
             raise ValueError(f"조각에 embedding이 없다: {chunk.chunk_id}")
         assert qvec is not None
-        return _cosine(qvec, chunk.embedding)
+        return cosine(qvec, chunk.embedding)
 
     def search(
         self,
