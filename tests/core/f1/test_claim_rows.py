@@ -10,6 +10,9 @@ import json
 import logging
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from patent_ai.core.f1_oa_reader.read_oa import read_oa
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
@@ -775,3 +778,55 @@ def test_3절_12_같은_취지가_돌아서_제자리로_오면_확인되지_않
 def test_3절_12_같은_취지_줄의_줄_단위_위치_없음은_어느_인용인지_몰라_애매():
     answer = _row_level(3, "동일한 취지")  # 3항 줄: 인용은 대상 줄에서 정해짐
     _assert_dropped(_row(_read(answer), 3, 2), UnverifiedReason.AMBIGUOUS)
+
+
+# ---- 같은 취지 줄이 위치를 짚은 경우 (PR #125 리뷰 고칠 것 1번) ----
+# 같은 취지 줄의 인용은 대상 줄에서 채우므로, 위치는 인용을 채운 뒤 붙여야 한다
+_NO_MENTION_4 = ("한편 인용발명 2의 [0043]에도", "한편 [0043]에도")  # 4항 줄에서 인용 언급을 뺌
+_SAME_AS_1 = ("거절이유 1과 같고", "청구항 제1항과 같고")  # 4항 줄의 대상을 (1, 2) 줄(인용 D1)로
+_REPRO = pytest.mark.xfail(raises=ValidationError, strict=True, reason="고칠 것 1번 재현")
+
+
+@_REPRO
+def test_같은_취지_줄이_위치를_짚어도_멈추지_않는다():
+    answer, pages = _variant(_NO_MENTION_4)  # 리뷰 재현 그대로
+    result = _read(answer, pages)  # 예외 없이 끝나야 함
+    # 대상 rejection:1 -> (4, 1) 줄은 없음 (거절이유 1의 대상은 제1항뿐)
+    # 3절 12 규칙대로 확인되지 않음
+    _assert_dropped(_row(result, 4, 2))
+    assert _row(result, 3, 2).status.value == StatusValue.CONFIRMED  # 다른 같은 취지 줄은 그대로
+
+
+@_REPRO
+def test_같은_취지_줄이_채운_인용_밖_라벨에_위치를_짚으면_애매():
+    answer, pages = _variant(_NO_MENTION_4, _SAME_AS_1)
+    row = _row(_read(answer, pages), 4, 2)
+    # 모델은 [0043]을 D2 아래 짚었는데 채운 인용은 D1뿐: 어느 인용의 위치인지 원문으로 못 정함
+    _assert_dropped(row, UnverifiedReason.AMBIGUOUS)
+
+
+@_REPRO
+def test_같은_취지_줄이_채운_인용_안_라벨에_위치를_짚으면_위치를_붙이고_확인됨():
+    # (1, 1): 거절이유 1(인용 D1 하나)의 판단에서 인용 언급을 빼고 2-1과 같은 취지로 바꿈
+    answer, pages = _variant(
+        ("청구항 제1항은 인용발명 1의 [0014]", "청구항 제1항은 2-1에서 본 바와 같이 [0014]")
+    )
+    answer["claim_rows"][0]["same_as"] = [
+        {"value": None, "raw_text": "2-1에서 본 바와 같이", "page": 3, "ambiguous": False}
+    ]
+    row = _row(_read(answer, pages), 1, 1)  # 대상 (1, 2) 줄의 인용 D1
+    assert row.same_as == ["rejection:2"] and row.citations == ["D1"]
+    assert row.locations == {"D1": ["[0014]", "[0056]", "도 4b"]}
+    assert row.status.value == StatusValue.CONFIRMED and "같은 취지" in row.status.checked
+
+
+@_REPRO
+def test_같은_취지_줄의_위치가_이미_애매여도_멈추지_않고_위치를_남긴_애매():
+    answer, pages = _variant(_NO_MENTION_4, _SAME_AS_1)
+    answer["claim_rows"][4]["citations"][0]["label"] = "D1"  # 채운 인용(D1) 안 라벨
+    row = _row(_read(answer, pages), 4, 2)
+    # 거절이유 2 인용이 둘이고 언급이 없어 location_ambiguous: 값은 남기되 애매 (원래 판정 그대로)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS
+    assert row.citations == ["D1"] and row.locations == {"D1": ["[0043]"]}
+    assert row.same_as == ["claim:1"] and row.page == 3 and row.raw_text
