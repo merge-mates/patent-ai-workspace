@@ -129,7 +129,7 @@ flowchart LR
 | `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, date}]`, `claim_versions[{version, created_by_receipt_number, claim_count}]`, 각 OA에 `examined_claim_version{version, created_by_receipt_number}`. events·claim_versions는 올라온 OA 중 가장 늦은 OA 시점까지. 청구항 본문은 넣지 않음 | 서버 담당 리뷰 |
 | 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | + 출원번호 입력 기다림 (`waiting_for: application_number`, 목록은 #15) | 서버 담당 리뷰 |
 | 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 (11/18 확인, requirements 실패할 때) | 서버 담당 리뷰 |
-| `GET /documents/{id}` | 원문과 쪽 | 메타 + `pages[{page, text}]` + 글자 추출 status | 서버 담당 리뷰 |
+| `GET /documents/{id}` | 원문과 쪽 | 메타 + `PageText` 그대로 (`pages[{page, text, status}]` + 문서 status). 화면이 쪽마다 "글자 없음"을 보임 | 서버 담당 리뷰 |
 | `GET /documents/{id}/file` | 없음 | 원본 PDF | 서버 담당 리뷰 |
 | 실행 `failed` 오류 | `{code, message}` | 같은 OA면 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | 결과 공통 칸 | data-model 3절 | 위 JSON (Status 객체, 이유 셋 더함, `needs_recheck`, `flags`) | #14 PR |
