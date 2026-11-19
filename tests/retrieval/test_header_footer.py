@@ -69,6 +69,21 @@ def test_도면쪽도_머리말_꼬리말만_빠짐():
     assert removed == 6
 
 
+def test_도면쪽이_절반_넘어도_도면_표지_줄은_남음():
+    # 리뷰 지적: 본문 2쪽 + 도면 3쪽이면 "도면N"이 숫자만 달라 되풀이로 빠졌다
+    pages = _공보()[:2]
+    for i in (3, 4, 5):
+        pages.append(
+            PageText(page=i, lines=["공개특허 10-2099-0000001", f"도면{i - 2}", f"- {i} -"])
+        )
+    cfg = load_header_footer_config(
+        Path(__file__).parent.parent.parent / "config" / "cite_search.yaml"
+    )
+    out, removed = strip_repeated(pages, cfg.scan_lines, cfg.min_page_ratio, cfg.keep_patterns)
+    assert [p.lines for p in out[2:]] == [["도면1"], ["도면2"], ["도면3"]]
+    assert removed == 10
+
+
 def test_입력_안_바뀜():
     pages = _공보()
     before = [list(p.lines) for p in pages]

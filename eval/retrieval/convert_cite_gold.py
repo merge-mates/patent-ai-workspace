@@ -166,6 +166,10 @@ def convert(
                             have.add(c)
                             specs.append((seq, c, doc_id, None, False))
 
+        # 인용이 없어 만들 줄이 없는 사건(42조만 등)은 질의를 찾지 않는다 (질의 없음으로 안 셈)
+        if not specs:
+            continue
+
         # 2단계: OA 당시 청구항 (질의). 파일·OA가 없으면 이 사건 줄은 모두 뺀다
         hist, admin = _case_paths(cases_root, app_no)
         try:
