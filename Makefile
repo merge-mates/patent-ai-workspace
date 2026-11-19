@@ -42,11 +42,27 @@ lint: ## 파이썬·화면 린트
 	uv run ruff format --check
 	cd web && npm run lint
 
-index-load: ## 검색 색인 덤프를 불러온다: make index-load DUMP=data/index/idx-v1.dump (pg_dump -Fc 형식)
-	@test -n "$(DUMP)" || { echo "DUMP=<파일> 을 붙여 주세요. 예: make index-load DUMP=data/index/idx-v1.dump"; exit 1; }
+IDX := uv run python -m patent_ai.db.index_dump
+
+index-load: ## 색인 덤프를 불러온다: make index-load DUMP=data/index/cite-idx-v1.dump (옆 .revision·.fingerprint.json이 없거나 다르면 멈춤)
+	@test -n "$(DUMP)" || { echo "DUMP=<파일> 을 붙여 주세요. 예: make index-load DUMP=data/index/cite-idx-v1.dump"; exit 1; }
 	@test -f "$(DUMP)" || { echo "파일이 없습니다: $(DUMP)"; exit 1; }
 	$(COMPOSE) up -d --wait db
+	$(IDX) check-before-load "$(DUMP)"
 	$(COMPOSE) exec -T db sh -c 'pg_restore -U $(DB_USER) -d $(DB_NAME) --clean --if-exists --no-owner' < "$(DUMP)"
+	$(IDX) check-after-load "$(DUMP)"
 
-index-dump: ## 색인 테이블만 덤프로 뽑는다 (색인 테이블 이름·판 규칙이 정해지면 이슈 #65에서 채움)
-	@echo "아직 없습니다: 색인 테이블 이름과 판 규칙은 이슈 #65에서 정해 이 명령을 채웁니다."; exit 1
+index-dump: ## 그 말뭉치 색인 표만 덤프로 뽑는다: make index-dump CORPUS=cite (data/index/<말뭉치>-idx-<판>.dump와 .revision·.fingerprint.json)
+	@test -n "$(CORPUS)" || { echo "CORPUS=law 또는 CORPUS=cite 를 붙여 주세요"; exit 1; }
+	$(COMPOSE) up -d --wait db
+	@mkdir -p data/index
+	@name=$$($(IDX) name "$(CORPUS)") || exit 1; \
+	base="data/index/$${name%.dump}"; \
+	cur=$$($(IDX) current-revision) || exit 1; \
+	printf '%s\n' "$$cur" > "$$base.revision.tmp" \
+	  && $(IDX) fingerprint "$(CORPUS)" > "$$base.fingerprint.json.tmp" \
+	  && $(COMPOSE) exec -T db sh -c 'pg_dump -U $(DB_USER) -d $(DB_NAME) -Fc -t $(CORPUS)_chunks' > "data/index/$$name.tmp" \
+	  && mv "data/index/$$name.tmp" "data/index/$$name" \
+	  && mv "$$base.revision.tmp" "$$base.revision" \
+	  && mv "$$base.fingerprint.json.tmp" "$$base.fingerprint.json" \
+	  && echo "만듦: data/index/$$name, $$base.revision, $$base.fingerprint.json"

@@ -25,8 +25,8 @@
 - 색인은 색인 스크립트가 `data/raw/`와 색인 설정 파일(청킹 방식, 임베딩 모델)을 읽어 만든다. 만들 때 색인 판 이름(`index_version`, 예: `law-idx-v1`, `cite-idx-v1`)을 같이 저장한다. 말뭉치는 `law`(법령·심사기준·판례)와 `cite`(인용문헌)이고 말뭉치마다 표가 하나다. 계약은 [검색 계약 requirements](../../../docs/features/retrieval/requirements.md) (이슈 #65).
 - 두 "판"을 섞지 않는다. **색인 판**(`index_version`, `idx-v1`·`idx-v2`)은 청킹·임베딩 설정을 바꾸면 올리는 것이고, 덤프 파일 이름의 판은 이것이다. **법령 판본**은 시행일별 법령·심사기준이고, 한 색인 판 안에 여러 판본이 같이 들어간다.
 - 임베딩 비용이 두 번 들지 않게, 한 사람이 만들고 덤프로 나눈다.
-  - 만든 사람: 자기 말뭉치 색인 테이블 하나만 `pg_dump -Fc`로 `<말뭉치>-idx-<색인 판>.dump`(예: `law-idx-v1.dump`, `cite-idx-v1.dump`)를 뽑아 팀 드라이브의 색인 폴더에 올린다. 파일 이름의 색인 판은 덤프에 든 가장 높은 색인 판이다 (`make index-dump`, 이슈 #65 구현에서 채움).
-  - 받는 사람: 드라이브에서 받아 `data/index/`에 두고 `make index-load DUMP=data/index/<말뭉치>-idx-<색인 판>.dump`. 그 말뭉치 표만 바뀌고 다른 말뭉치 표는 그대로다.
+  - 만든 사람: 자기 말뭉치 색인 테이블 하나만 `pg_dump -Fc`로 `<말뭉치>-idx-<색인 판>.dump`(예: `law-idx-v1.dump`, `cite-idx-v1.dump`)를 뽑아 팀 드라이브의 색인 폴더에 올린다. 파일 이름의 색인 판은 덤프에 든 가장 높은 색인 판이다 (`make index-dump`). 옆에 `.revision`(만든 DB의 마이그레이션 revision)과 `.fingerprint.json`(색인 판마다 조각 수 + chunk_id 목록 해시)이 같이 생기니 셋을 같이 올린다.
+  - 받는 사람: 드라이브에서 받아 `data/index/`에 두고 `make index-load DUMP=data/index/<말뭉치>-idx-<색인 판>.dump`. 그 말뭉치 표만 바뀌고 다른 말뭉치 표는 그대로다. 옆 파일 둘 중 하나가 없거나, revision이 다르거나, 넣은 뒤 다시 센 지문이 다르면 멈춘다.
   - 실행 결과 테이블은 덤프에 넣지 않는다. 덤프는 git에 넣지 않는다.
 - 새 색인 판은 덮어쓰지 않는다. 설정을 바꾼 말뭉치만 `<말뭉치>-idx-v2`로 새로 만들고(다른 말뭉치는 v1 그대로), 실험 설정의 `index_version`을 바꾸는 PR로 알린다.
 - 실험 설정에는 `index_version`을 적는다. 채점 스크립트는 DB의 색인 판이 설정과 다르면 멈춘다. 이 검사를 끄지 않는다.

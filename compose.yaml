@@ -14,7 +14,6 @@ services:
     volumes:
       # Postgres 18부터 데이터가 /var/lib/postgresql/18/docker에 생겨서 상위 폴더를 마운트한다
       - db-data:/var/lib/postgresql
-      - ./scripts/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 2s

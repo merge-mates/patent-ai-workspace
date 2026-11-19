@@ -1,6 +1,6 @@
-"""조각 저장소 (design.md 5-1절). 테스트용 메모리 저장소.
+"""조각 저장소 (design.md 5-1절). 메모리 저장소(테스트·--chunks)와 Postgres 저장소.
 
-core를 import하지 않는다. Postgres 저장소는 m2-i2에서 같은 Protocol로 더한다.
+core를 import하지 않는다. Postgres 저장소는 같은 Protocol로 같은 거르기를 한다.
 """
 
 from __future__ import annotations
@@ -8,9 +8,14 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
-from patent_ai.retrieval.schemas import Chunk, Corpus
+from sqlalchemy import and_, create_engine, func, or_, select
+from sqlalchemy.orm import Session
+
+from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.retrieval.schemas import Chunk, Corpus, Edition, Location
+from patent_ai.settings import get_settings
 
 
 class ChunkRepository(Protocol):
@@ -144,3 +149,133 @@ class InMemoryChunkRepository:
     ) -> int:
         rows = self._scope(corpus, index_version, doc_ids)
         return sum(1 for c in rows if _edition_unknown(c))
+
+
+# ---- Postgres 저장소 ----
+
+_TABLES: dict[str, type[LawChunk] | type[CiteChunk]] = {"law": LawChunk, "cite": CiteChunk}
+
+
+def chunk_to_row(corpus: Corpus, chunk: Chunk) -> LawChunk | CiteChunk:
+    """Chunk를 그 말뭉치 표의 행으로 바꾼다 (location -> loc_*, edition -> edition_*)."""
+    loc, ed = chunk.location, chunk.edition
+    return _TABLES[corpus](
+        chunk_id=chunk.chunk_id,
+        index_version=chunk.index_version,
+        doc_id=chunk.doc_id,
+        chunk_kind=chunk.chunk_kind,
+        loc_kind=loc.kind,
+        loc_start=loc.start,
+        loc_end=loc.end,
+        loc_figures=list(loc.figures),
+        loc_claims=list(loc.claims),
+        loc_label=loc.label,
+        edition_status=ed.status,
+        edition_effective_from=ed.effective_from,
+        edition_effective_to=ed.effective_to,
+        edition_label=ed.label,
+        text=chunk.text,
+        embedding=chunk.embedding,
+    )
+
+
+def row_to_chunk(row: LawChunk | CiteChunk) -> Chunk:
+    """표의 행을 Chunk로 되돌린다."""
+    emb: Any = row.embedding
+    return Chunk(
+        chunk_id=row.chunk_id,
+        index_version=row.index_version,
+        doc_id=row.doc_id,
+        chunk_kind=row.chunk_kind,  # type: ignore[arg-type]
+        location=Location(
+            kind=row.loc_kind,  # type: ignore[arg-type]
+            start=row.loc_start,
+            end=row.loc_end,
+            label=row.loc_label,
+            figures=list(row.loc_figures or []),
+            claims=list(row.loc_claims or []),
+        ),
+        edition=Edition(
+            status=row.edition_status,  # type: ignore[arg-type]
+            effective_from=row.edition_effective_from,
+            effective_to=row.edition_effective_to,
+            label=row.edition_label,
+        ),
+        text=row.text,
+        # pgvector는 numpy 배열로 돌려줄 수 있어 파이썬 list로 바꾼다
+        embedding=None if emb is None else [float(x) for x in emb],
+    )
+
+
+class PostgresChunkRepository:
+    """세션 하나로 조각 표를 읽는다. 거르기 규칙은 InMemoryChunkRepository와 같다."""
+
+    def __init__(self, session: Session):
+        self._session = session
+
+    @classmethod
+    def from_url(cls, url: str | None = None) -> PostgresChunkRepository:
+        """DB 주소로 저장소를 만든다. 주소가 없으면 설정의 DATABASE_URL (design 7-1 채점기)."""
+        engine = create_engine(url or get_settings().database_url)
+        return cls(Session(engine))
+
+    def _where(self, corpus: Corpus, index_version: str, doc_ids: list[str] | None):
+        _check_doc_ids(doc_ids)
+        t = _TABLES[corpus]
+        conds = [t.index_version == index_version]
+        if doc_ids is not None:
+            conds.append(t.doc_id.in_(doc_ids))
+        return t, conds
+
+    @staticmethod
+    def _unknown(t):
+        # 판본 모름: unverified, 또는 confirmed인데 시작일 없음 (_edition_unknown과 같다)
+        return or_(
+            t.edition_status == "unverified",
+            and_(t.edition_status == "confirmed", t.edition_effective_from.is_(None)),
+        )
+
+    @staticmethod
+    def _in_force(t, as_of: date):
+        # 인용문헌(not_applicable)은 거르지 않고, confirmed는 시작일 <= 기준일 <= 끝일(없으면 현행)
+        return or_(
+            t.edition_status == "not_applicable",
+            and_(
+                t.edition_status == "confirmed",
+                t.edition_effective_from <= as_of,
+                or_(t.edition_effective_to.is_(None), as_of <= t.edition_effective_to),
+            ),
+        )
+
+    def chunks(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        as_of: date | None = None,
+    ) -> list[Chunk]:
+        t, conds = self._where(corpus, index_version, doc_ids)
+        if as_of is not None:
+            conds.append(self._in_force(t, as_of))
+        rows = self._session.scalars(select(t).where(*conds)).all()
+        return [row_to_chunk(r) for r in rows]
+
+    def has_index_version(self, corpus: Corpus, index_version: str) -> bool:
+        t = _TABLES[corpus]
+        return (
+            self._session.scalar(select(select(t).where(t.index_version == index_version).exists()))
+            is True
+        )
+
+    def count_chunks(
+        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+    ) -> int:
+        t, conds = self._where(corpus, index_version, doc_ids)
+        return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0
+
+    def count_unverified_edition(
+        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+    ) -> int:
+        t, conds = self._where(corpus, index_version, doc_ids)
+        conds.append(self._unknown(t))
+        return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0

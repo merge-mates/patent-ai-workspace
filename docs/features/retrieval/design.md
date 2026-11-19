@@ -130,14 +130,15 @@ flowchart LR
 | `created_at` | timestamptz not null | |
 
 - 인덱스: `(index_version, doc_id)`, 법령 표는 `(index_version, edition_effective_from)`.
-- 마이그레이션은 `CREATE EXTENSION IF NOT EXISTS vector`를 먼저 한다.
+- 마이그레이션은 `CREATE EXTENSION IF NOT EXISTS vector`를 먼저 한다. 그래서 DB 첫 생성 때 확장을 만들던 `scripts/db/init.sql`은 지운다 (#79 때 정한 대로).
 - 폴더: ORM 모델은 `src/patent_ai/db/models/chunks.py`, 인터페이스 `ChunkRepository`·`InMemoryChunkRepository`·`PostgresChunkRepository`는 `src/patent_ai/retrieval/repository.py`. 부르는 방향에 `retrieval → db`를 더한다. db는 retrieval을 import하지 않는다. ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더 절에 같은 문장)
 - 저장소 인터페이스 `ChunkRepository`(조각 읽기·셈)를 두고, 테스트는 `InMemoryChunkRepository`(fixture JSONL을 읽음), 실제는 `PostgresChunkRepository`(기준 7, 있으면 좋음)다. 둘 다 같은 거르기(색인 판·문헌·기준일)를 한다.
 
 ### 5-2. 덤프 ([db/CLAUDE.md](../../../src/patent_ai/db/CLAUDE.md) 검색 색인 절)
 - `make index-dump CORPUS=law` → `pg_dump -Fc -t law_chunks` → `data/index/law-idx-<그 표의 가장 높은 색인 판>.dump`. 그 표의 모든 색인 판이 들어간다.
 - 같은 이름 옆에 `law-idx-v1.revision`(만든 DB의 Alembic revision 한 줄)을 쓴다.
-- `make index-load DUMP=…`는 옆 파일의 revision이 `alembic current`와 다르면 멈춘다 (기준 6, 있으면 좋음). 옆 파일이 없으면 경고만 하고 넣는다.
+- 같은 이름 옆에 `law-idx-v1.fingerprint.json`(색인 지문)도 쓴다. 색인 판마다 `{"chunks": 조각 수, "chunk_ids_sha256": chunk_id를 정렬해 줄바꿈(`\n`)으로 이은 UTF-8 글자의 sha256}`이고, 파일 모양은 `{"corpus": "law", "versions": {"law-idx-v1": {...}}}`다. 색인 판 이름만 같고 내용이 다른 경우(같은 이름으로 다시 만듦, 덜 받음)를 잡는다 (11/19 리뷰). 채점기 `scores.json`의 색인 지문도 같은 계산이다 (7-3).
+- `make index-load DUMP=…`는 넣기 전에 옆 `.revision`·`.fingerprint.json`이 둘 다 있는지 보고(하나라도 없으면 덜 받은 것이라 멈춤), revision이 `alembic current`와 다르면 멈춘다 (기준 6, 있으면 좋음). 넣은 뒤 DB를 다시 세어 지문이 옆 파일과 다르면 종료 1이다.
 - 명령 구현은 tasks.md에서 한다.
 
 ## 6. 화면 (시연용)

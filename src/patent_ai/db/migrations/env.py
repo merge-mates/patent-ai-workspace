@@ -1,10 +1,11 @@
-"""Alembic 실행 환경. DB 모델은 patent_ai.db.base.Base에 모인다 (첫 마이그레이션은 이슈 #55)."""
+"""Alembic 실행 환경. DB 모델은 patent_ai.db.base.Base에 모인다 ."""
 
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from patent_ai.db import models  # noqa: F401  (표를 Base.metadata에 올린다)
 from patent_ai.db.base import Base
 from patent_ai.settings import get_settings
 

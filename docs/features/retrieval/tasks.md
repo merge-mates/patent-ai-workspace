@@ -103,7 +103,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m2-i2  (11/20)  상태: 초안  (A2, 이슈 번호는 승인 뒤)
+## m2-i2  (11/20)  상태: 승인  (A2, 이슈 번호는 아침에. 11/18 승인, 상대 리뷰는 PR에서)
 **구현할 design 부분**: design.md 5-1 표·Postgres 저장소, 5-2   **맡은 합격 기준**: requirements.md 2, 6(있으면 좋음), 7(있으면 좋음)
 **목표** (한 줄): 조각 표 두 개를 마이그레이션으로 만들고, Postgres 저장소와 말뭉치별 덤프·받기를 채운다.
 **끝나면 보여 줄 것** (데모 한 줄): `make db` 뒤 `make test-db` 통과, `make index-dump CORPUS=cite`가 `data/index/cite-idx-v1.dump`와 `.revision`을 만든다.
@@ -157,18 +157,25 @@ graph LR
 - 테스트할 경우:
   - 평소: `["cite-idx-v1","cite-idx-v2"]` → `cite-idx-v2.dump`, `v9`·`v10` → `v10`, `"abc123 (head)"` → `abc123`
   - 빈 입력: 색인 판 없음 → 오류, `alembic current` 출력이 빔(마이그레이션 전) → 오류
-  - 실패: `CORPUS`가 `law`·`cite`가 아님, 다른 말뭉치 색인 판 섞임, revision 다름 → 오류. `.revision` 옆 파일이 없으면 경고만
-- 확인 방법: `uv run pytest tests/retrieval/test_index_dump.py` → 통과. 손 확인: `make db` → `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl` → `make index-dump CORPUS=cite` → `data/index/cite-idx-v1.dump`·`.revision` 생김
+  - 실패: `CORPUS`가 `law`·`cite`가 아님, 다른 말뭉치 색인 판 섞임, revision 다름 → 오류. `.revision`·`.fingerprint.json` 옆 파일이 없으면 멈춤 (11/19 리뷰 반영, 처음엔 경고만)
+- 확인 방법: `uv run pytest tests/retrieval/test_index_dump.py` → 통과. 손 확인: `make db` → `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl` → `make index-dump CORPUS=cite` → `data/index/cite-idx-v1.dump`·`.revision`·`.fingerprint.json` 생김
 - 먼저: task-1
+
+### 리뷰 반영 (11/19, PR #102)
+- 색인 지문: `index_fingerprint(chunk_ids)`, `fingerprints_by_version(rows)`, `compare_fingerprints(expected, actual)`. CLI `fingerprint <말뭉치>`, `check-before-load <덤프>`(옆 파일 둘이 있고 revision 같음), `check-after-load <덤프>`(다시 센 지문 같음). `check-revision` 하위 명령은 `check-before-load`로 바뀜.
+- `scripts/db/init.sql`과 `compose.yaml`의 마운트 줄을 지움 (마이그레이션이 확장을 만든다).
+
+### 열린 항목 (메모)
+- `PostgresChunkRepository.from_url()`이 세션을 닫지 않는다. 채점기 한 번 도는 데는 괜찮다. 서버(F2·F3 도구)가 쓸 때 요청마다 세션을 열고 닫게 바꾼다.
 
 ### 이번에 안 하는 것
 - 채점기 (→ m2-i3), 색인 스크립트·실제 조각 (→ #66·#67).
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- 다음: m2-i1 머지 뒤 `/implement docs/features/retrieval/tasks.md m2-i2`
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- 다음: /check 이슈.
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
