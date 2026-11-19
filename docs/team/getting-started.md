@@ -28,7 +28,7 @@ Docker Desktop이 켜져 있어야 한다. docker 명령을 직접 칠 일은 �
 ## 기능 하나를 만드는 순서 (자세한 표: [.claude/skills/README.md](../../.claude/skills/README.md))
 1. **정하기**: `/interview <기능>` → requirements·design 쓰기 → `/doc-review <문서>` → 둘 다 승인
 2. **계획**: 이터레이션 시작 때 `/plan-feature <기능> <m1-i3>` → tasks.md에 이슈 계획 → 승인 → "이슈 만들어" (이미 있는 이슈면 새로 만들지 않고 본문을 계획에 맞게 고친다)
-3. **구현**: `/start <이슈번호>`로 브랜치를 만들고 `/implement <tasks.md> <m1-i3>` (task마다 테스트 먼저 → 구현 → 리뷰 → 커밋. 끝에 `/check`가 이어서 돈다)
+3. **구현**: `/start <이슈번호>`로 브랜치를 만들고 `/implement <tasks.md> <m1-i3>` (task마다 테스트 먼저(실패는 로컬에서 확인) → 구현 → 통과하면 테스트와 함께 커밋 → 리뷰. 끝에 `/check`가 이어서 돈다)
 4. **점수**: AI 동작을 바꿨으면 `/experiment <실험 이름>` (비용을 먼저 묻는다)
 5. **PR**: `/pr-draft` → 초안 보고 OK → Claude가 push·PR 생성. push와 PR 생성은 매번 사람이 승인한다 (확인 창).
 6. **리뷰**: 상대가 `/pr-review <번호>` → 판정 확인 뒤 "올려" → 승인되면 사람이 머지(merge commit)
