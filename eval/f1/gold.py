@@ -161,6 +161,15 @@ def _cross_problems(g: F1Gold) -> list[str]:
     labels = [c.label for c in g.citations]
     if len(set(labels)) != len(labels):
         out.append("citations: 같은 라벨이 두 번 나온다")
+    # 같은 (청구항, 거절이유) 줄이 둘이면 그 줄이 두 번 채점된다
+    seen: set[tuple[int, int]] = set()
+    for row in g.claim_rows:
+        key = (row.claim, row.rejection)
+        if key in seen:
+            out.append(
+                f"claim_rows: 같은 청구항 줄이 두 번 나온다 (청구항 {key[0]}, 거절이유 {key[1]})"
+            )
+        seen.add(key)
     by_no = {r.no: r for r in g.rejections}
 
     for i, r in enumerate(g.rejections):

@@ -190,6 +190,13 @@ def test_같은_라벨이_두_번이면_실패(tmp_path):
     _fails(tmp_path, g, "라벨")
 
 
+def test_같은_청구항_줄이_두_번이면_실패(tmp_path):
+    # 같은 (청구항, 거절이유) 줄이 둘이면 그 줄이 두 번 채점된다 (#114 재아 리뷰)
+    g = _base()
+    g["claim_rows"].append(copy.deepcopy(g["claim_rows"][0]))
+    _fails(tmp_path, g, r"claim_rows: 같은 청구항 줄이 두 번 나온다 \(청구항 1, 거절이유 1\)")
+
+
 def test_인용문헌이_없는_거절이유에_쓰였다고_하면_실패(tmp_path):
     g = _base()
     g["citations"][0]["rejections"] = [9]
