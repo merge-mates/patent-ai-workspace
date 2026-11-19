@@ -23,7 +23,7 @@ class TransportError(Exception):
 
 class Transport(Protocol):
     def complete(
-        self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
+        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
     ) -> TransportResponse: ...
 
 
@@ -42,17 +42,17 @@ class AnthropicTransport:
         self._client = anthropic.Anthropic()
 
     def complete(
-        self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
+        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
     ) -> TransportResponse:
         import anthropic
 
-        # temperature는 SDK에 넘기지 않는다: 넘기면 실제 호출이 오류로 끝난다 (11/19 확인).
-        # 인자는 Transport 규약과 캐시 키를 위해 받기만 한다.
+        # effort는 output_config로 넘긴다. temperature는 API에서 빠져 넘기지 않는다 (#134).
         # SDK 예외를 TransportError로 바꿔 던진다 (429·5xx·연결 오류만 다시 부를 만함)
         try:
             message = self._client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
+                output_config={"effort": effort},
                 messages=[{"role": "user", "content": prompt}],
             )
         except anthropic.APIStatusError as e:
@@ -76,14 +76,14 @@ class FakeTransport:
     _used: dict[str, int] = field(default_factory=dict)
 
     def complete(
-        self, *, step: str, model: str, prompt: str, temperature: float, max_tokens: int
+        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
     ) -> TransportResponse:
         self.calls.append(
             dict(
                 step=step,
                 model=model,
                 prompt=prompt,
-                temperature=temperature,
+                effort=effort,
                 max_tokens=max_tokens,
             )
         )

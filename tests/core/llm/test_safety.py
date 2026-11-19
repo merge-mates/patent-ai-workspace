@@ -85,7 +85,7 @@ def write_cfg(tmp_path, body):
     return tmp_path
 
 
-BASE = "  model: m\n  temperature: 0.0\n  max_tokens: 10\n  prompt: p.txt\n"
+BASE = "  model: m\n  effort: medium\n  max_tokens: 10\n  prompt: p.txt\n"
 PRICES = "  price_per_mtok_input: 1\n  price_per_mtok_output: 2\n"
 
 
@@ -103,14 +103,52 @@ def test_가격_값을_숫자로_못_바꾸면_ModelConfigError(tmp_path):
         load_step_config("t.s", d)
 
 
-def test_temperature를_숫자로_못_바꾸면_ModelConfigError(tmp_path):
-    d = write_cfg(tmp_path, "s:\n  model: m\n  temperature: hot\n  max_tokens: 10\n  prompt: p\n")
-    with pytest.raises(ModelConfigError, match="temperature"):
+# #134: temperature는 API에서 빠졌다. 설정에 남아 있으면 조용히 무시하지 않고 읽기를 멈춘다
+@pytest.mark.parametrize("key", ["temperature", "top_p", "top_k"])
+def test_빠진_키가_설정에_남아_있으면_ModelConfigError(tmp_path, key):
+    d = write_cfg(tmp_path, "s:\n" + BASE + f"  {key}: 0\n")
+    with pytest.raises(ModelConfigError, match=key):
         load_step_config("t.s", d)
 
 
+def test_effort가_빠지면_ModelConfigError(tmp_path):
+    d = write_cfg(tmp_path, "s:\n  model: m\n  max_tokens: 10\n  prompt: p\n")
+    with pytest.raises(ModelConfigError, match="effort"):
+        load_step_config("t.s", d)
+
+
+@pytest.mark.parametrize("value", ["hot", "Medium", "0", ""])
+def test_effort가_정해진_값이_아니면_ModelConfigError(tmp_path, value):
+    d = write_cfg(tmp_path, f"s:\n  model: m\n  effort: '{value}'\n  max_tokens: 10\n  prompt: p\n")
+    with pytest.raises(ModelConfigError, match="effort"):
+        load_step_config("t.s", d)
+
+
+@pytest.mark.parametrize("value", ["low", "medium", "high", "xhigh", "max"])
+def test_effort_다섯_값은_읽힌다(tmp_path, value):
+    d = write_cfg(tmp_path, f"s:\n  model: m\n  effort: {value}\n  max_tokens: 10\n  prompt: p\n")
+    assert load_step_config("t.s", d).effort == value
+
+
+def test_저장소_config의_모든_단계가_temperature_없이_effort로_읽힌다():
+    import yaml
+
+    from patent_ai.core.llm.config import REPO_ROOT
+
+    # 모델 단계 설정(칸 안에 model이 있는 것)만 본다. cite_search.yaml 같은 다른 설정은 건너뜀
+    steps = []
+    for path in sorted((REPO_ROOT / "config").glob("*.yaml")):
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for name, section in data.items():
+            if isinstance(section, dict) and "model" in section:
+                steps.append(f"{path.stem}.{name}")
+    assert "f1.read_oa" in steps and "agents.orchestrator" in steps
+    for step in steps:
+        assert load_step_config(step).effort in ("low", "medium", "high", "xhigh", "max")
+
+
 def test_max_tokens가_비어_있으면_ModelConfigError(tmp_path):
-    d = write_cfg(tmp_path, "s:\n  model: m\n  temperature: 0\n  max_tokens:\n  prompt: p\n")
+    d = write_cfg(tmp_path, "s:\n  model: m\n  effort: medium\n  max_tokens:\n  prompt: p\n")
     with pytest.raises(ModelConfigError, match="max_tokens"):
         load_step_config("t.s", d)
 
@@ -174,11 +212,23 @@ def test_캐시_키에_step이_들어간다():
         model="m",
         prompt_template="p",
         variables={},
-        temperature=0.0,
+        effort="medium",
         max_tokens=1,
         attempt=1,
     )
     assert make_cache_key(step="a.x", **kw) != make_cache_key(step="a.y", **kw)
+
+
+def test_캐시_키에_effort가_들어간다():
+    kw = dict(step="a.x", model="m", prompt_template="p", variables={}, max_tokens=1, attempt=1)
+    assert make_cache_key(effort="low", **kw) != make_cache_key(effort="high", **kw)
+
+
+def test_녹화_키에_effort가_들어간다():
+    from patent_ai.core.llm.recorded import recording_key
+
+    kw = dict(step="a.x", model="m", prompt="p", max_tokens=1)
+    assert recording_key(effort="low", **kw) != recording_key(effort="high", **kw)
 
 
 def test_JSON으로_못_바꾸는_변수는_ModelConfigError():

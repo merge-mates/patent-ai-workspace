@@ -111,7 +111,7 @@ def call_model(
             model=cfg.model,
             prompt_template=(root / cfg.prompt).read_text(encoding="utf-8"),
             variables=variables,
-            temperature=cfg.temperature,
+            effort=cfg.effort,
             max_tokens=cfg.max_tokens,
             attempt=attempt,
         )
@@ -178,7 +178,7 @@ def call_model(
                     step=step,
                     model=cfg.model,
                     prompt=prompt,
-                    temperature=cfg.temperature,
+                    effort=cfg.effort,
                     max_tokens=cfg.max_tokens,
                 )
             except RecordingMissing, ModelConfigError:
