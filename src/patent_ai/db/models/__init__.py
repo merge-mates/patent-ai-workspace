@@ -2,16 +2,36 @@
 
 from patent_ai.db.models.cases import OA, Case, CaseEvent, Claim, ClaimVersion, Document, User
 from patent_ai.db.models.chunks import ChunkColumns, CiteChunk, LawChunk
+from patent_ai.db.models.results import (
+    CaseMaterialsRow,
+    CitedReference,
+    OAResultRow,
+    Rejection,
+    RejectionCitation,
+    RejectionClaim,
+    ResultInput,
+)
+from patent_ai.db.models.runs import AgentStep, ApiCache, Run
 
 __all__ = [
     "OA",
+    "AgentStep",
+    "ApiCache",
     "Case",
     "CaseEvent",
+    "CaseMaterialsRow",
     "ChunkColumns",
     "CiteChunk",
+    "CitedReference",
     "Claim",
     "ClaimVersion",
     "Document",
     "LawChunk",
+    "OAResultRow",
+    "Rejection",
+    "RejectionCitation",
+    "RejectionClaim",
+    "ResultInput",
+    "Run",
     "User",
 ]

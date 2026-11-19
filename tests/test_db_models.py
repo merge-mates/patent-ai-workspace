@@ -3,10 +3,17 @@
 실제 Postgres에서 도는지는 마이그레이션 테스트(test_db_migrations.py, CI)가 본다.
 """
 
+import dataclasses
 import re
+from typing import get_args
 
 from sqlalchemy import CheckConstraint, Date, DateTime, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 
+from patent_ai.core.agents.steps import StepRecord
+from patent_ai.core.llm.limits import CallRecord
+from patent_ai.core.schemas.common import Origin, StatusValue
+from patent_ai.core.schemas.oa_result import RejectionKind
 from patent_ai.db import models  # noqa: F401  (표를 Base.metadata에 올린다)
 from patent_ai.db.base import Base
 from patent_ai.db.ids import new_id
@@ -20,6 +27,21 @@ CASE_TABLES = {
     "claims",
     "oas",
 }
+RESULT_TABLES = {
+    "rejections",
+    "cited_references",
+    "rejection_claims",
+    "rejection_citations",
+    "oa_results",
+    "case_materials",
+    "runs",
+    "agent_steps",
+    "result_inputs",
+    "api_cache",
+}
+M1_TABLES = CASE_TABLES | RESULT_TABLES
+# API 명세(docs/api/README.md)의 실행 상태 state
+RUN_STATES = {"queued", "running", "waiting_for_human", "succeeded", "failed", "cancelled"}
 
 
 def _table(name):
@@ -34,10 +56,16 @@ def _check_sql(table_name, constraint_name):
     raise AssertionError(f"{table_name}에 CHECK {constraint_name}이 없다")
 
 
+def _check_values(table_name, constraint_name):
+    """`x IN ('a', 'b')` 꼴 CHECK에서 따옴표 안 값들."""
+    return set(re.findall(r"'([^']*)'", _check_sql(table_name, constraint_name)))
+
+
 def _unique_column_sets(table_name):
-    """unique 제약·unique 인덱스·unique 칸마다 칸 이름 묶음."""
+    """기본 키·unique 제약·unique 인덱스·unique 칸마다 칸 이름 묶음."""
     t = _table(table_name)
-    sets = [
+    sets = [{col.name for col in t.primary_key.columns}]
+    sets += [
         {col.name for col in c.columns} for c in t.constraints if isinstance(c, UniqueConstraint)
     ]
     sets += [{col.name for col in i.columns} for i in t.indexes if i.unique]
@@ -124,8 +152,81 @@ def test_claim_versions_and_claims_numbering_unique():
 
 def test_no_date_column_in_any_unique_key():
     # 날짜만으로 묶거나 합치지 않는다 (CLAUDE.md 특허 도메인 규칙, 이슈 #55 합격 기준 3)
-    for name in CASE_TABLES:
+    for name in M1_TABLES:
         t = _table(name)
         date_cols = {c.name for c in t.columns if isinstance(c.type, Date | DateTime)}
         for cols in _unique_column_sets(name):
             assert not (cols & date_cols), f"{name}: {cols}"
+
+
+# --- task 2: 거절이유·결과·실행 표 ---
+
+
+def test_result_tables_exist():
+    assert RESULT_TABLES <= set(Base.metadata.tables)
+
+
+def test_rejections_kind_matches_code_and_numbered_per_oa():
+    assert _check_values("rejections", "ck_rejections_kind") == {k.value for k in RejectionKind}
+    assert {"oa_id", "no"} in _unique_column_sets("rejections")
+
+
+def test_rejection_links_are_one_row_per_pair():
+    # 대상 청구항은 OA 당시 번호로 담는다 (그 판의 claims 줄이 아직 없을 수 있다)
+    assert {"rejection_id", "claim_number"} in _unique_column_sets("rejection_claims")
+    assert {"rejection_id", "cited_reference_id"} in _unique_column_sets("rejection_citations")
+    assert {"case_id", "number"} in _unique_column_sets("cited_references")
+
+
+def test_oa_results_body_is_jsonb_with_status_origin_columns():
+    t = _table("oa_results")
+    assert isinstance(t.c.body.type, JSONB)
+    for col in ("oa_id", "run_id", "status", "origin"):
+        assert not t.c[col].nullable
+    assert _check_values("oa_results", "ck_oa_results_status") == {s.value for s in StatusValue}
+    assert _check_values("oa_results", "ck_oa_results_origin") == {o.value for o in Origin}
+
+
+def test_oa_results_has_index_for_latest_per_oa():
+    # OA마다 가장 최근 succeeded 결과를 고를 때 쓴다 (고르는 코드는 #56)
+    idx = [[c.name for c in i.columns] for i in _table("oa_results").indexes]
+    assert ["oa_id", "created_at"] in idx
+
+
+def test_case_materials_one_row_per_case():
+    t = _table("case_materials")
+    assert [c.name for c in t.primary_key.columns] == ["case_id"]
+    assert isinstance(t.c.body.type, JSONB)
+
+
+def test_runs_state_matches_api():
+    assert _check_values("runs", "ck_runs_state") == RUN_STATES
+    assert not _table("runs").c.oa_id.nullable
+
+
+def test_agent_steps_hold_step_record_and_call_record():
+    cols = set(_table("agent_steps").c.keys())
+    assert set(StepRecord.model_fields) <= cols
+    # CallRecord.step은 tool_name 칸에 담는다
+    call_fields = {f.name for f in dataclasses.fields(CallRecord)} - {"step"}
+    assert call_fields <= cols
+    kinds = _check_values("agent_steps", "ck_agent_steps_step_kind")
+    assert set(get_args(StepRecord.model_fields["step_kind"].annotation)) | {"model_call"} == kinds
+
+
+def test_agent_steps_outcome_covers_both_records():
+    outcomes = _check_values("agent_steps", "ck_agent_steps_outcome")
+    assert set(get_args(StepRecord.model_fields["outcome"].annotation)) <= outcomes
+    assert {"ok", "cache_hit", "transport_error", "limit_exceeded", "invalid_output"} <= outcomes
+
+
+def test_result_inputs_point_to_result_or_document():
+    key = {"result_id", "input_kind", "input_id"}
+    assert key in _unique_column_sets("result_inputs")
+    assert _check_values("result_inputs", "ck_result_inputs_input_kind") == {"result", "document"}
+
+
+def test_api_cache_key_is_primary_and_value_jsonb():
+    t = _table("api_cache")
+    assert [c.name for c in t.primary_key.columns] == ["key"]
+    assert isinstance(t.c.value.type, JSONB)
