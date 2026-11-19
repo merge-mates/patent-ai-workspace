@@ -110,3 +110,14 @@ def test_bm25_요청은_이_구현이_안_한다():
 def test_길이_0_질의_벡터는_비슷함_0():
     res = _searcher([_chunk("d", 1, [1.0, 0.0])], fixed([0.0, 0.0])).search("q", "law", "vector", 5)
     assert math.isclose(res.hits[0].score, 0.0)
+
+
+def test_vector는_테스트용_fake_모듈에_기대지_않는다():
+    import ast
+    from pathlib import Path
+
+    import patent_ai.retrieval.vector as mod
+
+    tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
+    imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    assert "patent_ai.retrieval.fake" not in imported

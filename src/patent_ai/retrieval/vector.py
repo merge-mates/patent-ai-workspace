@@ -11,8 +11,8 @@ core를 import하지 않는다 (모델 호출은 부르는 쪽 embed가 한다).
 from datetime import date
 
 from patent_ai.retrieval.contract import Embed, register_impl
+from patent_ai.retrieval.embedding import cosine, recorded_embed
 from patent_ai.retrieval.errors import ModeNotSupportedError
-from patent_ai.retrieval.fake import _cosine, recorded_embed
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
 
@@ -59,7 +59,7 @@ class VectorSearcher:
         for chunk in self._repo.chunks(corpus, self._index_version, doc_ids, as_of):
             if chunk.embedding is None:
                 raise ValueError(f"조각에 embedding이 없다: {chunk.chunk_id}")
-            scored.append((_cosine(qvec, chunk.embedding), chunk))
+            scored.append((cosine(qvec, chunk.embedding), chunk))
         # 점수 내림차순, 같으면 chunk_id 오름차순 (계약)
         scored.sort(key=lambda sc: (-sc[0], sc[1].chunk_id))
 
