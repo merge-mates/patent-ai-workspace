@@ -64,6 +64,12 @@ def _scores(exp_dir: Path) -> dict | None:
         raise EvalError(f"{exp_dir.name}: scores.json JSON 문법이 틀리다") from None
 
 
+def _edition(scores: dict | None) -> tuple:
+    """점수가 어느 정답으로 났나: (세트 이름, 판). 둘 다 같아야 비교한다."""
+    s = scores or {}
+    return (s.get("goldset"), s.get("goldset_version"))
+
+
 def _primary(name: str, scores: dict, metric: str) -> float:
     value = (scores.get("metrics") or {}).get(metric)
     if not isinstance(value, int | float) or isinstance(value, bool):
@@ -105,7 +111,14 @@ def build_index(experiments_dir: str | Path) -> str:
             # 기준선 점수가 없거나 그 지표가 없으면 비교하지 않는다
             base_scores = _scores(root / base) if (root / base).is_dir() else None
             base_value = ((base_scores or {}).get("metrics") or {}).get(metric)
-            diff = "-" if not isinstance(base_value, int | float) else f"{value - base_value:+.3f}"
+            if not isinstance(base_value, int | float):
+                diff = "-"
+            elif _edition(base_scores) != _edition(scores):
+                # 정답 세트·판이 다른 점수끼리는 비교하지 않는다 (.claude/rules/eval.md)
+                logger.warning("%s: 기준선 %s와 정답 세트·판이 달라 비교하지 않는다", d.name, base)
+                diff = "판 다름"
+            else:
+                diff = f"{value - base_value:+.3f}"
         usd = (scores.get("cost") or {}).get("usd")
         cost = f"${usd:.2f}" if isinstance(usd, int | float) else "-"
         rows.append(
