@@ -15,7 +15,9 @@ def _공보(tops=None):
     # 지어낸 3쪽: 쪽마다 머리말(번호 같음)·꼬리말(`- n -`)·본문 두 줄
     pages = []
     for i in (1, 2, 3):
-        body = [f"본문 {i}쪽 첫째 줄", f"본문 {i}쪽 둘째 줄"]
+        # 본문은 쪽마다 글자가 다르다 (숫자만 다르면 되풀이로 보이므로 낱말로 구분)
+        w = "가나다"[i - 1]
+        body = [f"본문 {w} 첫째 줄", f"본문 {w} 둘째 줄"]
         if tops:
             body[0] = tops[i - 1]
         pages.append(PageText(page=i, lines=["공개특허 10-2099-0000001", *body, f"- {i} -"]))
@@ -25,7 +27,7 @@ def _공보(tops=None):
 def test_머리말_꼬리말_빠지고_본문_남음():
     out, removed = strip_repeated(_공보(), 3, 0.5, KEEP)
     assert removed == 6
-    assert out[0].lines == ["본문 1쪽 첫째 줄", "본문 1쪽 둘째 줄"]
+    assert out[0].lines == ["본문 가 첫째 줄", "본문 가 둘째 줄"]
     assert [p.page for p in out] == [1, 2, 3]
 
 
@@ -76,7 +78,7 @@ def test_입력_안_바뀜():
 
 def test_비율_미달이면_안_뺌():
     # 4쪽 중 1쪽에만 나오는 줄은 min_page_ratio 0.5 미달
-    pages = [PageText(page=i, lines=[f"고유 {i}", "본문"]) for i in (1, 2, 3, 4)]
+    pages = [PageText(page=i, lines=[f"고유{c}"]) for i, c in enumerate("가나다라", 1)]
     pages[0].lines.insert(0, "한 번만")
     out, removed = strip_repeated(pages, 3, 0.5, KEEP)
     assert removed == 0
