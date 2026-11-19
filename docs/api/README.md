@@ -14,6 +14,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 ## 2. 공통 규칙
 - 로그인은 없다. DB에 기본 사용자 한 명을 두고 모든 요청은 그 사용자로 처리한다. `cases` 테이블에는 `user_id` 컬럼을 둔다.
 - 결과 상태(확인됨 / 확인되지 않음 / 조회 범위 내 없음 / 충돌)는 200 응답 안의 `status`로 준다. HTTP 오류 코드는 요청이 잘못됐을 때만 쓴다.
+- 응답 바깥 `status`는 `result.status.value`를 복사한다(기준은 result). `result.status`는 객체 `{value, reason, checked, searched_scope}`다.
 - `status`·`origin` 값은 [데이터 모델](../data-model.md) 3절의 영어 코드(`confirmed`·`ai_generated` 등)를 쓴다. 화면에서 한국어로 보여 준다.
 - 결과가 아직 없으면(실행 전·실행 중) 404 `{code: "result_not_ready"}`다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다.
 - 오류 본문은 한 형식이다: `{code, message}`.

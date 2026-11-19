@@ -25,7 +25,7 @@ graph LR
     I18 --> I15
 ```
 
-## m1-i2-14  (11/18~11/19)  상태: 승인  (이슈 #14)
+## m1-i2-14  (11/18~11/19)  상태: 끝  (이슈 #14)
 **구현할 design 부분**: design.md 3-2 (공통 칸, `OAResult`, `CaseMaterials` F1 칸)   **맡은 합격 기준**: requirements.md 1·2·4·5 (모양), product.md 5절 F5 1·2·3
 **목표** (한 줄): F1이 내고 화면·서버가 받는 결과 스키마와 상태 규칙을 `core/schemas/`에 코드로 둔다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run pytest tests/core/schemas -q` 통과 + 사건 1건 fixture가 스키마 검사를 통과하고, 네 값 밖 status는 저장 전에 거부된다.
@@ -51,7 +51,7 @@ graph LR
 - 담당: 재아
 - 합격 기준: requirements.md 1·3·5·6, 4 (빠진 자료·보류 모양)
 - 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`, `src/patent_ai/core/schemas/case_materials.py`, `tests/core/schemas/test_oa_result.py`
-- 만들 함수·인터페이스 모양: `OAResult`, `Rejection{article, supported, claims, citations, examiner_reasoning}`, `Citation{number, country, country_supported, cited_paragraphs}`, `ExaminerHints{allowable_claims, amendment_notes}`, `NoticeKind`(`initial`/`final`/`unknown`, 정답 형식 f1-oa-gold.md와 같은 코드), `CaseMaterials{case_id, documents, missing[{what, depends_on_tasks, lookup_result, ask_upload}], held_tasks[{task, waiting_for}], review_items_count}` (design.md 3-2 그대로)
+- 만들 함수·인터페이스 모양: `OAResult`, `Rejection{article, supported, claims, citations, examiner_reasoning}`, `Citation{number, country, country_supported, cited_paragraphs}`, `ExaminerHints{allowable_claims, amendment_note}`, `NoticeKind`(`initial`/`final`/`unknown`, 정답 형식 f1-oa-gold.md와 같은 코드), `CaseMaterials{case_id, documents, missing[{what, depends_on_tasks, lookup_result, ask_upload}], held_tasks[{task, waiting_for}], review_items_count}` (design.md 3-2 그대로)
 - 테스트할 경우: 평소(청구항 1이 거절이유 둘에 들어간 결과, 쪽 없는 `confirmed` 값: 통지 종류 `initial`·힌트 "없음") / 빈 입력(거절이유 0개 → 결과 status `unverified(not_extracted)`) / 실패(`notice_kind=unknown`인데 `confirmed` → 거부, 날짜 칸에 `value`를 넣음 → 거부, `supported=false`인데 `needs_human_review` 없음 → 거부, 지원 안 하는 나라인데 `ask_upload=true` → 거부)
 - 확인 방법: `uv run pytest tests/core/schemas/test_oa_result.py -q` → 모두 통과
 - 먼저: task-1
@@ -61,7 +61,7 @@ graph LR
 - 합격 기준: requirements.md 4, F5 3, data-model 3절 규칙 1·2
 - 고칠 파일: `src/patent_ai/core/schemas/propagation.py`, `tests/core/schemas/test_propagation.py`
 - 만들 함수·인터페이스 모양: `propagate(depends_on: list[Status]) -> Status` (기대는 입력이 `confirmed`가 아니면 `unverified(input_unverified)`), `mark_recheck(result, reason) -> result` (덮어쓰지 않고 새 값), `ReviewItem{kind: unverified|conflict|needs_recheck|needs_human_judgment|needs_human_review|missing_material, target, reason}`, `collect_review_items(results: list[ResultBase], materials: CaseMaterials) -> list[ReviewItem]`
-- 테스트할 경우: 평소(앞 결과 `unverified` → 뒤 결과가 검토할 사항에 뜸, 빠진 자료가 뜸) / 빈 입력(결과 0개 → 빈 목록 + 경고 로그. 결과는 있는데 검토할 사항 0건 → 빈 목록, 경고 없음) / 기대지 않는 입력은 영향 없음 / `needs_recheck`가 status를 바꾸지 않음
+- 테스트할 경우: 평소(앞 결과 `unverified` → 뒤 결과가 검토할 사항에 뜸, 빠진 자료가 뜸) / 빈 입력(결과 0개 → 결과 줄은 없고 경고 로그, 빠진 자료 줄은 남음. 결과는 있는데 검토할 사항 0건 → 빈 목록, 경고 없음) / 기대지 않는 입력은 영향 없음 / `needs_recheck`가 status를 바꾸지 않음
 - 확인 방법: `uv run pytest tests/core/schemas/test_propagation.py -q` → 모두 통과
 - 먼저: task-2
 
@@ -89,16 +89,18 @@ graph LR
 - 화면 TS 타입 생성은 화면 설계.
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- [ ] task-5
-- 다음: 
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- [x] task-5
+- 다음: /pr-draft (아침, 사람 확인 뒤)
 - 막힌 것: 
 
-### 끝난 뒤 (이슈가 끝난 날)
-- 된 것 / 안 된 것 / 다음 이슈로
+### 끝난 뒤 (11/19)
+- 된 것: 공통 칸(Status 객체·이유 여섯·ExtractedValue·candidates·frozen·extra forbid), OAResult·CaseMaterials, build_*·summarize_*·collect_evidence, 상태 전파·검토할 사항(필드마다 한 줄), 사건 1건 fixture(`tests/fixtures/case_missing_citation/`), data-model.md·api/README.md 줄이기. `uv run pytest -q` 105 passed. /check: 증거 통과, 이슈 리뷰 막음 1 → 2회차 통과.
+- 안 된 것·사람 판단: 코드(테스트 제외) 약 670줄로 400줄 기준을 넘음(나눌지). pdfplumber·reportlab 의존성 커밋(c077068)이 이 브랜치에 있음(#17용). API 예시와 fixture는 겉 키만 비교. 정답 형식의 청구항×거절이유 줄·인용 라벨(D1)·거절이유 kind는 OAResult에 없음(#20 전에 정함).
+- 다음 이슈로: ②~⑤ 결과 스키마(F2~F4 설계), review_items_count를 collect_review_items로 채우기(#16·#54).
 
 ## m1-i2-17  (11/18~11/19)  상태: 승인  (이슈 #17)
 **구현할 design 부분**: design.md 2절 ①, 9절 (#17 줄)   **맡은 합격 기준**: requirements.md 1 (쪽 위치의 바탕), 2 (스캔본 = 확인되지 않음)
