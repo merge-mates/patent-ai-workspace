@@ -21,6 +21,7 @@ KNOWN_KEYS = {
     "max_model_calls",
     "max_input_tokens",
     "max_retries",
+    "model_input",
 }
 
 # 저장소 루트 (src/patent_ai/core/llm/config.py 기준 네 단계 위)
@@ -39,6 +40,8 @@ class StepConfig:
     max_model_calls: int | None = None
     max_input_tokens: int | None = None
     max_retries: int | None = None
+    # 모델 입력 모양 (단계마다 다름, 값 검사는 그 단계 코드가 한다. 예: f1.read_oa의 raw·tables_md)
+    model_input: str | None = None
 
 
 def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
@@ -94,5 +97,6 @@ def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
         prompt=section["prompt"],
         price_per_mtok_input=price_in,
         price_per_mtok_output=price_out,
+        model_input=section.get("model_input"),
         **limits,
     )

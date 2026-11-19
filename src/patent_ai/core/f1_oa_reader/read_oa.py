@@ -17,6 +17,7 @@ from patent_ai.core.f1_oa_reader.extraction import (
     OAExtraction,
     RejectionExtraction,
 )
+from patent_ai.core.f1_oa_reader.model_input import MODES, ModelInput, model_input
 from patent_ai.core.f1_oa_reader.rules import (
     expand_claims,
     extract_by_rules,
@@ -31,7 +32,8 @@ from patent_ai.core.f1_oa_reader.support import citation_key, country_of, is_sup
 from patent_ai.core.f1_oa_reader.tables import RejectionRow, rejection_rows
 from patent_ai.core.f1_oa_reader.verify import Found, merge, unverified
 from patent_ai.core.llm.client import call_model
-from patent_ai.core.llm.errors import ModelOutputInvalid
+from patent_ai.core.llm.config import load_step_config
+from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import (
     ExtractedValue,
@@ -125,8 +127,17 @@ _RETRY_NOTE = (
 _MAX_ERROR_CHARS = 2000  # 오류 문구가 길면 앞부분만 (프롬프트가 불어나지 않게)
 
 
+def _input_mode() -> ModelInput:
+    """config/f1.yaml read_oa.model_input. 없거나 모르는 값이면 멈춘다 (raw로 넘어가지 않음)."""
+    mode = load_step_config(STEP).model_input
+    if mode not in MODES:
+        raise ModelConfigError(f"{STEP}의 model_input은 {MODES} 중 하나여야 함: {mode!r}")
+    return mode  # type: ignore[return-value]
+
+
 def _call(pages: PageText, ctx: RunContext) -> OAExtraction:
-    text = "\n\n".join(f"[쪽 {p.page}]\n{p.text}" for p in pages.pages)
+    # 모델에 넣는 글자만 바꾼다. 원문 대조는 아래에서 원본 pages로 한다
+    text = model_input(pages, _input_mode())
     try:
         first = call_model(
             STEP, {"pages": text, "retry_note": ""}, OAExtraction, ctx=ctx, attempt=1

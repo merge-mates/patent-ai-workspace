@@ -1,0 +1,197 @@
+{
+  "experiment": "m1-i3-f1-pdf-tool",
+  "commit": "106a38b932141cc787f0970ac071641dc7029ce3",
+  "goldset": "tune/f1_jaea",
+  "goldset_version": 2,
+  "gold_version_in_files": [
+    "tune-f1-v0"
+  ],
+  "gold_sha256": "7095049cff511ef7a5d5d64095065641be22239c3d4f8c92cd499723da1defa7",
+  "n": 58,
+  "n_docs": 5,
+  "metrics": {
+    "pdfplumber.task2_raw": 0.9655,
+    "pdfplumber.task2_stripped": 0.9655,
+    "pdfplumber.task2_with_cells": 1.0,
+    "pdfplumber.task1_rows_merge_off": 0.9,
+    "pdfplumber.task1_docs_merge_off": 0.8,
+    "pdfplumber.task1_rows_merge_on": 1.0,
+    "pdfplumber.task1_docs_merge_on": 1.0,
+    "pdfplumber.secs_per_page": 0.066,
+    "pymupdf4llm.task2_raw": 0.9655,
+    "pymupdf4llm.task2_stripped": 0.9655,
+    "pymupdf4llm.task2_with_cells": 0.9655,
+    "pymupdf4llm.task1_rows_merge_off": 0.8,
+    "pymupdf4llm.task1_docs_merge_off": 0.6,
+    "pymupdf4llm.task1_rows_merge_on": 0.8,
+    "pymupdf4llm.task1_docs_merge_on": 0.6,
+    "pymupdf4llm.secs_per_page": 0.132,
+    "upstage_standard.task2_raw": 0.9828,
+    "upstage_standard.task2_stripped": 0.9828,
+    "upstage_standard.task2_with_cells": 0.9828,
+    "upstage_standard.task1_rows_merge_off": 0.9,
+    "upstage_standard.task1_docs_merge_off": 0.8,
+    "upstage_standard.task1_rows_merge_on": 0.9,
+    "upstage_standard.task1_docs_merge_on": 0.8,
+    "upstage_standard.secs_per_page": 2.192,
+    "upstage_enhanced.task2_raw": 0.9828,
+    "upstage_enhanced.task2_stripped": 0.9828,
+    "upstage_enhanced.task2_with_cells": 1.0,
+    "upstage_enhanced.task1_rows_merge_off": 0.9,
+    "upstage_enhanced.task1_docs_merge_off": 0.8,
+    "upstage_enhanced.task1_rows_merge_on": 1.0,
+    "upstage_enhanced.task1_docs_merge_on": 1.0,
+    "upstage_enhanced.secs_per_page": 2.976
+  },
+  "counts": {
+    "pdfplumber": {
+      "t2": {
+        "raw": 56,
+        "stripped": 56,
+        "with_cells": 58,
+        "n": 58
+      },
+      "t1": {
+        "merge_off": {
+          "gold_rows": 10,
+          "tool_rows": 10,
+          "article_ok": 10,
+          "targets_ok": 9,
+          "row_ok": 9,
+          "docs_count_ok": 5,
+          "docs_all_rows_ok": 4
+        },
+        "merge_on": {
+          "gold_rows": 10,
+          "tool_rows": 10,
+          "article_ok": 10,
+          "targets_ok": 10,
+          "row_ok": 10,
+          "docs_count_ok": 5,
+          "docs_all_rows_ok": 5
+        }
+      },
+      "speed": {
+        "secs": 1.65,
+        "pages": 25,
+        "secs_per_page": 0.066
+      }
+    },
+    "pymupdf4llm": {
+      "t2": {
+        "raw": 56,
+        "stripped": 56,
+        "with_cells": 56,
+        "n": 58
+      },
+      "t1": {
+        "merge_off": {
+          "gold_rows": 10,
+          "tool_rows": 9,
+          "article_ok": 9,
+          "targets_ok": 8,
+          "row_ok": 8,
+          "docs_count_ok": 4,
+          "docs_all_rows_ok": 3
+        },
+        "merge_on": {
+          "gold_rows": 10,
+          "tool_rows": 9,
+          "article_ok": 9,
+          "targets_ok": 8,
+          "row_ok": 8,
+          "docs_count_ok": 4,
+          "docs_all_rows_ok": 3
+        }
+      },
+      "speed": {
+        "secs": 3.3,
+        "pages": 25,
+        "secs_per_page": 0.132
+      }
+    },
+    "upstage_standard": {
+      "t2": {
+        "raw": 57,
+        "stripped": 57,
+        "with_cells": 57,
+        "n": 58
+      },
+      "t1": {
+        "merge_off": {
+          "gold_rows": 10,
+          "tool_rows": 10,
+          "article_ok": 10,
+          "targets_ok": 9,
+          "row_ok": 9,
+          "docs_count_ok": 5,
+          "docs_all_rows_ok": 4
+        },
+        "merge_on": {
+          "gold_rows": 10,
+          "tool_rows": 10,
+          "article_ok": 10,
+          "targets_ok": 9,
+          "row_ok": 9,
+          "docs_count_ok": 5,
+          "docs_all_rows_ok": 4
+        }
+      },
+      "speed": {
+        "secs": 54.79,
+        "pages": 25,
+        "secs_per_page": 2.192
+      }
+    },
+    "upstage_enhanced": {
+      "t2": {
+        "raw": 57,
+        "stripped": 57,
+        "with_cells": 58,
+        "n": 58
+      },
+      "t1": {
+        "merge_off": {
+          "gold_rows": 10,
+          "tool_rows": 10,
+          "article_ok": 10,
+          "targets_ok": 9,
+          "row_ok": 9,
+          "docs_count_ok": 5,
+          "docs_all_rows_ok": 4
+        },
+        "merge_on": {
+          "gold_rows": 10,
+          "tool_rows": 10,
+          "article_ok": 10,
+          "targets_ok": 10,
+          "row_ok": 10,
+          "docs_count_ok": 5,
+          "docs_all_rows_ok": 5
+        }
+      },
+      "speed": {
+        "secs": 74.41,
+        "pages": 25,
+        "secs_per_page": 2.976
+      }
+    }
+  },
+  "failures": {
+    "pdfplumber.task1.merge_off: 칸이 쪽을 넘어 잘린 채": 1,
+    "pymupdf4llm.task2_with_cells.다른 쪽에만 있음 (본문 언급 등)": 1,
+    "pymupdf4llm.task2_with_cells.표 칸이 다음 쪽으로 넘어가 이어지지 않음": 1,
+    "pymupdf4llm.task1.merge_off: 행 없음": 1,
+    "pymupdf4llm.task1.merge_off: 칸이 쪽을 넘어 잘린 채": 1,
+    "pymupdf4llm.task1.merge_on: 행 없음": 1,
+    "pymupdf4llm.task1.merge_on: 칸이 쪽을 넘어 잘린 채": 1,
+    "upstage_standard.task2_with_cells.표 칸이 다음 쪽으로 넘어가 이어지지 않음": 1,
+    "upstage_standard.task1.merge_off: 칸이 쪽을 넘어 잘린 채": 1,
+    "upstage_standard.task1.merge_on: 칸이 쪽을 넘어 잘린 채": 1,
+    "upstage_enhanced.task1.merge_off: 칸이 쪽을 넘어 잘린 채": 1
+  },
+  "cost": {
+    "external_calls": 0,
+    "upstage_pages_billed_earlier": 94
+  }
+}
