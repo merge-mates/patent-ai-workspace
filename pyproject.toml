@@ -20,6 +20,8 @@ dependencies = [
     "pgvector>=0.5.1",
     "pdfplumber>=0.11.10",
     "pyyaml>=6.0.3",
+    "kiwipiepy>=0.24.1",
+    "bm25s>=0.3.16",
 ]
 
 [dependency-groups]

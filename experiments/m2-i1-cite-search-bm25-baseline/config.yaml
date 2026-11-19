@@ -1,0 +1,20 @@
+# 인용문헌 문단 검색 BM25 기준선 (이 실험이 기준선이라 baseline 없음)
+experiment: m2-i1-cite-search-bm25-baseline
+goldset: tune
+goldset_version: 2   # 11/19 같은이유 고침으로 2
+corpus: cite
+index_version: cite-idx-v1
+mode: bm25
+impl: bm25
+k: [1, 3, 5, 10]
+gold: retrieval/cite_gold.jsonl
+settings:
+  tokenizer: kiwi        # kiwipiepy 0.24.1
+  pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
+  bm25:                  # bm25s 0.3.16
+    method: lucene
+    k1: 1.5
+    b: 0.75
+budget:
+  max_usd: 0
+  max_external_calls: 0

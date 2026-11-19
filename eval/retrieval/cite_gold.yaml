@@ -1,0 +1,10 @@
+# 인용문헌 정답 변환 설정 (경로만. 문헌 이름·tune 내용은 여기에 쓰지 않는다)
+cases_root: data/raw/cases          # <출원번호>/<출원번호>_청구항이력.txt·_행정이력.txt
+output: tune/retrieval/cite_gold.jsonl   # <goldsets_root> 기준
+report: work/cite_search/gold_convert_report.json
+# 정답 표기 -> doc_id 표 (git 밖, <goldsets_root> 기준). 한국 공보(KR...A/B)는 표기가 곧 doc_id라
+# 논문만 적는다. 값은 두 꼴 중 하나:
+#   "<정답 표기>": NPL-제목줄임-학회연도                  # doc_id만
+#   "<정답 표기>": {doc_id: NPL-제목줄임-학회연도, pages: 9}  # 쪽 수를 주면 "N쪽"이 쪽 수를 넘을 때 멈춤
+# doc_id에는 ':'와 공백이 없다. 표에도 없고 KR 꼴도 아닌 표기가 나오면 변환이 멈춘다.
+doc_ids_table: tune/retrieval/cite_doc_ids.yaml
