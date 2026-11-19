@@ -3,6 +3,8 @@
 한 줄 = OA 거절이유 하나. 질의는 그 거절이유 본문에서 조문 표기를 [조문]으로 가린 글.
 정답 항목은 거절이유가 짚은 조문(6자리 위치 번호)과 그 법령의 적용 판본.
 판본을 못 찾은 항목은 unverified로 두고, 채점기가 그 줄을 분모에서 뺀다 (재아 11/19 규칙).
+찾은 판의 시행 시작일이 발송일 뒤인 항목도 unverified로 두고 경고한다 (#129):
+그 판은 그날 검색 범위에 없어서 검색기가 못 찾고, 그게 "못 찾은 질문"처럼 보이면 안 된다.
 
 실행:
   uv run python -m eval.retrieval.law_gold --gold-json <검수 정답.json> \
@@ -14,7 +16,7 @@ import json
 import logging
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from eval.retrieval.checks import find_leaks
@@ -117,6 +119,24 @@ def edition_for(applied: dict, law: str) -> Edition:
     return Edition(status="unverified")
 
 
+def _in_scope_edition(ed: Edition, as_of: date, row_id: str) -> Edition:
+    """정답 판의 시행 시작일이 기준일(발송일) 뒤면 unverified로 바꾸고 경고한다.
+
+    검색기는 발송일에 시행 중인 판만 보므로, 그 판은 범위에 없어 맞힐 수 없다.
+    시작일이 발송일과 같으면 그날 시행 중이라 그대로 둔다. 로그에는 row_id와 판 이름만 쓴다.
+    """
+    if ed.status != "confirmed" or ed.effective_from is None or ed.effective_from <= as_of:
+        return ed
+    logger.warning(
+        "정답 판본이 발송일 뒤라 unverified로 둔다: %s (%s, 시행 %s > 발송일 %s)",
+        row_id,
+        ed.label,
+        ed.effective_from,
+        as_of,
+    )
+    return Edition(status="unverified", label=ed.label)
+
+
 def convert(cases: list[dict], oa_dir: str | Path) -> tuple[list[GoldRow], int]:
     """사건 목록 → (정답 줄, 못 만든 거절이유 수). 못 만든 것은 발송번호만 로그에 남긴다."""
     rows: list[GoldRow] = []
@@ -142,18 +162,21 @@ def convert(cases: list[dict], oa_dir: str | Path) -> tuple[list[GoldRow], int]:
             continue
         as_of = datetime.strptime(case["발송일"], "%Y-%m-%d").date()
         for r in reasons:
+            row_id = f"{oa_no}:r{r['순번']}"
             items = [
                 GoldItem(
                     kind="article",
                     start=loc,
                     end=loc,
                     label=label,
-                    gold_edition=edition_for(case["적용판본"], law),
+                    gold_edition=_in_scope_edition(
+                        edition_for(case["적용판본"], law), as_of, row_id
+                    ),
                 )
                 for law, loc, label in parse_articles(r["조문"])
             ]
             row = GoldRow(
-                row_id=f"{oa_no}:r{r['순번']}",
+                row_id=row_id,
                 corpus="law",
                 query=mask_articles(segs[r["순번"]]),
                 doc_ids=None,
