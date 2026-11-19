@@ -316,6 +316,10 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 법령 정답 파일 `retrieval/law_gold.jsonl` (인용문헌과 따로) | `gold.jsonl` 하나 | 채점기가 다른 말뭉치 줄이 섞이면 멈춤 | 구현 중 문제 (#66) | |
 | `law_bm25`: Okapi BM25, 두 글자 낱말, 통계는 그 검색 범위(기준일 판) 안에서 | 공백 낱말 / 형태소 분석기 / 전체 판 통계 | 조사·줄바꿈에 덜 흔들리고 의존성 없음. 옛 판이 idf를 흔들지 않음 | 설계 (#66) | experiments/m2-i1-law-bm25-baseline |
 | 넣기는 `retrieval/law_index_db.py` (이번 판 줄만 한 트랜잭션으로 다시 씀). 그 판이 DB에 있으면 내용 해시가 같을 때만 | `db/`에 / `make index-load` / 있으면 무조건 멈춤 | `db`는 `retrieval`을 import하지 않음. 공유 DB라 다른 판·표는 안 건드림. 같은 판 이름에 다른 내용이면 덤프 받은 쪽과 어긋나서 새 판으로 | 구현 중 문제 (#66, 리뷰 11/19) | |
+| 법령 벡터 색인 = 새 판 `law-idx-v2` (v1 조각 그대로 + `embedding`). 심사기준은 `law-idx-v3` | v1에 벡터만 채움 / 벡터를 DB 밖 파일로 | v1 덤프를 이미 공유했고 "설정을 바꾸면 새 판" 규칙. v2에서 BM25를 다시 돌려 v1과 점수가 같음을 확인 | 설계 (#66, 11/19) | experiments/m2-i2-law-vector-baseline |
+| 임베딩 모델 = OpenAI `text-embedding-3-small` (기준선), 설정 `config/law_search.yaml` | 3-large / 로컬 모델 | 싸고(고유 글 1,142개 + 질의 19개 $0.0046) 비교는 설정만 바꿔서. 로컬 모델은 torch 같은 의존성 | 설계 (#66, 11/19) | |
+| 같은 글은 한 번만 임베딩 (`core/index_embed`) | 조각마다 | 법령은 판마다 같은 조문이 많아 조각 10,649개에 고유 글 1,142개 | 구현 중 문제 (#66) | |
+| `vector` 검색기는 말뭉치를 안 가리고, 질의 벡터는 `settings.query_vectors` 파일로 받아 채점기를 안 고침 | 채점기에 embed 넘기기 | 공용 채점기를 바꾸지 않고 fake와 같은 길. 질의 벡터는 `core/index_embed queries`로 미리 만들어 git 밖에 | 설계 (#66) | |
 
 - ADR 세 조건을 다 맞는 결정은 없다고 본다. 표 나누기는 되돌릴 때 마이그레이션 하나와 덤프 다시 뽑기라 "되돌리기 어렵다"가 약하다.
 
