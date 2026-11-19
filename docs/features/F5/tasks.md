@@ -23,7 +23,7 @@ graph LR
     N4 --> W1["19 task-1·2·3 F5 부품"]
 ```
 
-## m1-i3-new  (11/20~11/21)  상태: 초안  (이슈: 새로 만듦, 번호는 만든 뒤 적음)
+## m1-i3-new  (11/20~11/21)  상태: 초안  (이슈 [#140](https://github.com/merge-mates/patent-ai-workspace/issues/140))
 **구현할 design 부분**: design.md 2절(마무리 함수, 문서 줄, 묶기 규칙), 3-2절(⑥ `review_items`, `CaseDocument.status`, 보류 작업 이름 규칙)   **맡은 합격 기준**: requirements.md 3 (검토할 사항 한곳, N = 줄 수, 전파 줄 묶기, 올리면 줄·보류가 사라짐), 근거 절 (원인 줄)
 **목표** (한 줄): 검토할 사항 목록을 ⑥ `CaseMaterials`에 담아, 화면이 개수만이 아니라 줄을 받게 한다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run pytest tests/core/schemas tests/core/f1 -q` 통과 + `case_missing_citation`·`case_scanned`의 ⑥에 `review_items` 줄이 있고 `review_items_count`와 같다.
@@ -89,7 +89,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m1-i3-19  (11/20~11/21)  상태: 초안  (이슈 #19의 F5 부분. 이 계획 PR은 `Refs #19`)
+## m1-i3-19  (11/20~11/21)  상태: 초안  (이슈 [#19](https://github.com/merge-mates/patent-ai-workspace/issues/19)의 F5 부분. 이 계획 PR은 `Refs #19`)
 **구현할 design 부분**: design.md 6절 (상태 표시 규칙, 사람 판단 표시, 검토할 사항 패널)   **맡은 합격 기준**: requirements.md 1·2·3의 화면 줄
 **목표** (한 줄): 모든 결과 화면이 쓸 상태 표시·사람 판단 표시·검토할 사항 패널 부품을 만든다.
 **끝나면 보여 줄 것** (데모 한 줄): 미리보기 페이지 `/#/f5-preview`에 `case_all_statuses`를 넣은 스크린샷에서 네 값·"직접 확인"·"직접 검토 필요"·검토할 사항 N건이 보인다.
