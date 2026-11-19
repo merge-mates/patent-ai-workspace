@@ -5,6 +5,9 @@
 COMPOSE := docker compose
 DB_USER := $${POSTGRES_USER:-patent}
 DB_NAME := $${POSTGRES_DB:-patent_ai}
+# db 테스트 전용 DB. 개발 DB와 분리한다. 포트를 바꿨다면 make test-db TEST_DATABASE_URL=... 로 덮어쓴다
+TEST_DB_NAME := patent_ai_test
+TEST_DATABASE_URL ?= postgresql+psycopg://patent:patent@localhost:5432/$(TEST_DB_NAME)
 
 help: ## 명령 목록
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-11s %s\n", $$1, $$2}'
@@ -34,8 +37,12 @@ api: ## 서버만 맥에서 바로 띄운다 (DB는 make db로 먼저). 화면 �
 test: ## 파이썬 테스트 (DB·네트워크·API 키 없이)
 	uv run pytest
 
-test-db: ## 실제 DB가 필요한 테스트 (@pytest.mark.db). make db를 먼저
-	uv run pytest -m db
+test-db: ## 별도 테스트 DB(patent_ai_test)에서 @pytest.mark.db 테스트 (개발 DB는 안 건드림)
+	$(COMPOSE) up -d --wait db
+	@$(COMPOSE) exec -T db psql -U $(DB_USER) -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$(TEST_DB_NAME)'" | grep -q 1 \
+	  || $(COMPOSE) exec -T db psql -U $(DB_USER) -d postgres -c "CREATE DATABASE $(TEST_DB_NAME)"
+	DATABASE_URL="$(TEST_DATABASE_URL)" uv run alembic upgrade head
+	DATABASE_URL="$(TEST_DATABASE_URL)" uv run pytest -m db
 
 lint: ## 파이썬·화면 린트
 	uv run ruff check
