@@ -236,6 +236,21 @@ def test_진짜_임베딩_전송층은_테스트에서_만들_수_없다():
         OpenAIEmbedTransport()
 
 
+def test_OPENAI_API_KEY가_없으면_SDK_오류_대신_한_줄_설정_오류(monkeypatch):
+    import openai
+
+    from patent_ai.core.llm import transport
+
+    def no_key(*a, **k):
+        raise openai.OpenAIError(
+            "Missing credentials"
+        )  # SDK가 키 없을 때 내는 오류 (네트워크 없음)
+
+    monkeypatch.setattr(openai, "OpenAI", no_key)
+    with pytest.raises(ModelConfigError, match="OPENAI_API_KEY"):
+        transport.make_openai_client()
+
+
 class _EmbedWrapper:
     """진짜 임베딩 SDK를 감싼 래퍼 흉내. 돈 안 드는 표시(is_real=False)가 없다."""
 

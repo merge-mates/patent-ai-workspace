@@ -1,0 +1,5 @@
+# 법령 색인 law-idx-v2 설정 (#66). v1 조각 그대로 + embedding. 설정을 바꾸면 새 판(v3)으로, 이 파일은 고치지 않는다.
+index_version: law-idx-v2
+from: data/processed/law/law-idx-v1.jsonl
+embed_step: law_search.embed
+out: data/processed/law/law-idx-v2.jsonl

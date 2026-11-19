@@ -70,6 +70,9 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
   - 버리는 것: 장·절 제목(`조문여부=전문`), 삭제된 조·항·호(글이 "삭제"뿐), `<개정 …>`처럼 날짜가 든 꺾쇠 꼬리표.
   - 원본 모양 주의: `항`이 목록이 아니라 하나(dict)이거나 `항번호` 없이 `호`만 있는 조가 있고(항 0 조각), `목내용`이 겹목록인 곳이 있다(시행령 제7조).
   - DB: `uv run python -m patent_ai.retrieval.law_index_db --jsonl … --index-version law-idx-v1` → `make index-dump CORPUS=law`.
+- 법령 색인 `law-idx-v2` (#66, 11/19): `law-idx-v1.jsonl` → `uv run --env-file <.env> python -m patent_ai.core.index_embed chunks --config config/index/law-idx-v2.yaml` → `data/processed/law/law-idx-v2.jsonl` (약 320MB).
+  - v1과 조각·글·위치·판본이 같고 `embedding`(text-embedding-3-small, 1536차원)만 더함. 고유 글 1,142개만 보냄 (입력 토큰 201,250, $0.0040).
+  - 덤프 `law-idx-v2.dump`(약 73MB)에는 v1·v2가 같이 들어간다 (`.fingerprint.json`에 판마다 지문).
 
 ## 5. 쓰면 안 되는 곳
 - 저장소에 원문(조문·판결문·심사기준 본문)을 넣지 않는다. 이 카드에는 건수와 필드 이름만 둔다.
