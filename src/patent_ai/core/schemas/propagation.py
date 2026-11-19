@@ -14,7 +14,7 @@ from patent_ai.core.schemas.common import (
     StatusValue,
     UnverifiedReason,
 )
-from patent_ai.core.schemas.oa_result import Citation, OAResult, Rejection
+from patent_ai.core.schemas.oa_result import Citation, ClaimRow, OAResult, Rejection
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def _text(v: ExtractedValue) -> str:
     return v.raw_text or "알 수 없음"
 
 
-def _field_item(v: ExtractedValue, target: str, label: str) -> list[ReviewItem]:
+def _field_item(v: ExtractedValue | ClaimRow, target: str, label: str) -> list[ReviewItem]:
     """필드(ExtractedValue) 하나: unverified·conflict면 그 필드 경로에서 한 줄."""
     if v.status.value == StatusValue.UNVERIFIED:
         return [
@@ -126,6 +126,15 @@ def _items_of_rejection(rej: Rejection, target: str) -> list[ReviewItem]:
     return items
 
 
+def _items_of_claim_row(row: ClaimRow, target: str) -> list[ReviewItem]:
+    """청구항 줄 하나: 확인되지 않았으면 그 줄 경로에서 한 줄 (값은 이미 비어 있음)."""
+    if row.claim is None or row.rejection is None:
+        label = "청구항 줄"
+    else:
+        label = f"청구항 {row.claim}·거절이유 {row.rejection}"
+    return _field_item(row, target, label)
+
+
 def _items_of_oa_result(oa: OAResult, target: str) -> list[ReviewItem]:
     """OAResult 하나: 결과 단위 status 줄은 없이, 확인되지 않은 필드마다 한 줄."""
     items: list[ReviewItem] = []
@@ -135,6 +144,7 @@ def _items_of_oa_result(oa: OAResult, target: str) -> list[ReviewItem]:
         "notice_date",
         "response_due",
         "notice_kind",
+        "examined_claims",
         "examined_claim_version",
     ]
     for name in named:
@@ -149,6 +159,8 @@ def _items_of_oa_result(oa: OAResult, target: str) -> list[ReviewItem]:
     items += _flag_items(oa.flags, target, oa.oa_id, {})
     for i, rej in enumerate(oa.rejections):
         items += _items_of_rejection(rej, f"{target}.rejections[{i}]")
+    for i, row in enumerate(oa.claim_rows):
+        items += _items_of_claim_row(row, f"{target}.claim_rows[{i}]")
     return items
 
 

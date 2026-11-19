@@ -145,6 +145,7 @@ def _ev(value, raw="원문", status=OK):
 
 def _citation(number, country, supported, flags=(), country_status=OK):
     return {
+        "label": "D1",
         "number": _ev(number),
         "country": _ev(country, status=country_status),
         "country_supported": supported,
@@ -155,6 +156,7 @@ def _citation(number, country, supported, flags=(), country_status=OK):
 
 def _rej_fields(article, supported=True, citations=(), flags=()):
     return {
+        "no": 1,
         "article": _ev(article),
         "supported": supported,
         "claims": _ev([1]),
@@ -182,6 +184,7 @@ def _oa(rejections, **override):
         "notice_date": _ev(None, "2099.01.26"),
         "response_due": _ev(None, "2099.03.26"),
         "notice_kind": {**none_value, "value": "initial"},
+        "examined_claims": _ev([1, 2, 3], "제1항 내지 제3항"),
         "examiner_hints": ExaminerHints(
             allowable_claims={**none_value, "value": []}, amendment_note=none_value
         ),
@@ -220,6 +223,7 @@ def test_제출기일과_거절이유_청구항이_확인되지_않으면_필드
     bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
     rej = build_rejection(
         document_id="d_1",
+        no=1,
         article=_ev("29-2"),
         supported=True,
         claims=_ev(None, status=bad),
@@ -249,6 +253,7 @@ def test_청구항_못_뽑음과_인용_나라_못_정함은_필드마다_따로
     c = _citation("US 2099/0000001", None, False, [Flag.NEEDS_HUMAN_REVIEW], amb)
     rej = build_rejection(
         document_id="d_1",
+        no=1,
         article=_ev("29-2"),
         supported=True,
         claims=_ev(None, status=bad),
@@ -279,6 +284,7 @@ def test_지원_안_하는_거절이유_안의_확인되지_않은_필드도_한
     bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
     rej = build_rejection(
         document_id="d_1",
+        no=1,
         article=_ev("42-3"),
         supported=False,
         claims=_ev(None, status=bad),
@@ -349,3 +355,67 @@ def test_build_oa_result는_거절이유를_dict로_받아도_됨():
 
 def test_OAResult가_멀쩡하면_검토할_사항_없음():
     assert collect_review_items([_oa([_rej("29-2")])], _empty_materials()) == []
+
+
+def test_심사_대상_청구항이_확인되지_않으면_필드_한_줄로_검토_사항에_든다():
+    bad = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    oa = _oa([_rej("29-2")], examined_claims=_ev(None, "제1항 내지 제3항", status=bad))
+    assert collect_review_items([oa], _empty_materials()) == [
+        ReviewItem(
+            kind="unverified",
+            target="oa_result[0].examined_claims",
+            label="oa_1",
+            reason="not_extracted",
+        )
+    ]
+
+
+# ---------- #18 task-6: 청구항 줄 ----------
+def _row(**extra):
+    data = {
+        "claim": 1,
+        "rejection": 1,
+        "citations": ["D1"],
+        "locations": {"D1": ["[0014]"]},
+        "raw_text": "원문",
+        "page": 3,
+        "status": Status(value="confirmed", checked="3쪽 원문 대조"),
+    }
+    data.update(extra)
+    return data
+
+
+def _bad_row(**extra):
+    data = {
+        "claim": 2,
+        "rejection": 1,
+        "raw_text": None,
+        "page": None,
+        "status": Status(value="unverified", reason="not_extracted"),
+    }
+    data.update(extra)
+    return data
+
+
+def test_확인되지_않은_청구항_줄은_그_줄_경로에서_한_줄():
+    oa = _oa([_rej("29-2")], claim_rows=[_row(), _bad_row()])
+    items = collect_review_items([oa], CaseMaterials(case_id="c_1"))
+    assert items == [
+        ReviewItem(
+            kind="unverified",
+            target="oa_result[0].claim_rows[1]",
+            label="청구항 2·거절이유 1",
+            reason="not_extracted",
+        )
+    ]
+
+
+def test_청구항_번호를_못_읽은_줄은_이름만():
+    oa = _oa([_rej("29-2")], claim_rows=[_bad_row(claim=None, rejection=None)])
+    (item,) = collect_review_items([oa], CaseMaterials(case_id="c_1"))
+    assert (item.target, item.label) == ("oa_result[0].claim_rows[0]", "청구항 줄")
+
+
+def test_확인됨_청구항_줄은_검토할_사항이_아니다():
+    oa = _oa([_rej("29-2")], claim_rows=[_row()])
+    assert collect_review_items([oa], CaseMaterials(case_id="c_1")) == []

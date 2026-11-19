@@ -233,13 +233,19 @@ graph LR
 graph LR
     task-1 --> task-3
     task-2 --> task-3
+    task-3 --> task-4
+    task-4 --> task-5
+    task-5 --> task-6
+    task-6 --> task-7
+    task-7 --> task-8
+    task-8 --> task-9
 ```
 
 ### task-1: 규칙 추출 (번호·날짜 글자·조문·청구항 범위·통지 종류)
 - 담당: 재아
 - 합격 기준: requirements.md 1·2·6
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/rules.py`, `tests/core/f1/test_rules.py`
-- 만들 함수·인터페이스 모양: `Candidate{value, raw_text, page, ambiguous}`, `RuleFields` = 필드 이름(출원번호·발송번호·통지일·제출기일·통지 종류) → `Candidate | None`, `extract_by_rules(pages: PageText) -> RuleFields`, `normalize_article(text) -> str | None` (`"특허법 제29조제2항"` → `"29-2"`), `expand_claims(text) -> list[int] | None` (`"제1항 내지 제4항, 제6항"` → `[1,2,3,4,6]`), `notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]` ("최후거절이유통지" 표시 → `final` + 원문·쪽 / 1쪽 머리말을 읽었는데 표시 없음 → `initial`, 쪽 없음, `confirmed` + 본 범위 / 1쪽 머리말 없음 → `unknown` + `unverified(not_extracted)`, design.md 필드 출처 표)
+- 만들 함수·인터페이스 모양: `Found{value, raw_text, page, ambiguous}`(verify.py에 있음, rules가 import), `RuleFields{application_number, dispatch_number, notice_date, response_due}` → 각각 `Found | None` (통지 종류는 `notice_kind_of`로 따로), `extract_by_rules(pages: PageText) -> RuleFields`, `normalize_article(text) -> str | None` (`"특허법 제29조제2항"` → `"29-2"`), `expand_claims(text) -> list[int] | None` (`"제1항 내지 제4항, 제6항"` → `[1,2,3,4,6]`), `notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]` ("최후거절이유통지" 표시가 모든 쪽 중 어디든 있으면 → `final` + 원문·쪽 / 1쪽 머리말(첫 15줄)에 "의견제출통지서"가 있는데 표시 없음 → `initial`, 쪽 없음, `confirmed` + 본 범위 / 머리말에 제목 없음 → `unknown` + `unverified(not_extracted)`, design.md 필드 출처 표)
 - 테스트할 경우: 평소(형식마다 하나, 통지 종류 셋: 최후 표시 / 표시 없음 / 머리말 잘림) / 빈 입력(빈 쪽 → 모든 필드 `None`, 통지 종류 `unknown`) / 실패·애매(`제1항 내지 제A항`, 조문 표기 깨짐 → `None`, 지어내지 않음)
 - 확인 방법: `uv run pytest tests/core/f1/test_rules.py -q` → 모두 통과
 - 먼저: #14 task-1, #17 task-1 (`PageText`)
@@ -248,7 +254,7 @@ graph LR
 - 담당: 재아
 - 합격 기준: requirements.md 2 (지어낸 값·확인하지 않은 원문 위치 0건), 5
 - 고칠 파일: `src/patent_ai/core/f1_oa_reader/verify.py`, `src/patent_ai/core/f1_oa_reader/support.py`, `tests/core/f1/test_verify.py`
-- 만들 함수·인터페이스 모양: `raw_text_on_page(pages, page, raw_text) -> bool` (공백·줄바꿈만 무시), `merge(rule: Candidate | None, model: Candidate | None, pages) -> ExtractedValue` (design.md 필드 출처 표: 대조 실패 → `unverified(not_extracted)`, 둘이 다름 → `conflict` + `candidates`, `ambiguous` → `value=null` + `unverified(ambiguous)`), `SUPPORTED_ARTICLES = {"29-1","29-2","42-4-2"}`, `country_of(text) -> str | None` (design.md 2절 ⑥ 정규식)
+- 만들 함수·인터페이스 모양: `raw_text_on_page(pages, page, raw_text) -> bool` (공백·줄바꿈만 무시), `merge(rule: Candidate | None, model: Candidate | None, pages) -> ExtractedValue` (design.md 필드 출처 표: 대조 실패 → `unverified(not_extracted)`, 둘이 다름 → `conflict` + `candidates`, `ambiguous` → `value=null` + `unverified(ambiguous)`), `SUPPORTED_ARTICLES = {"29-1-1","29-1-2","29-2","42-4-2"}`, `country_of(text) -> str | None` (design.md 2절 ⑥ 정규식)
 - 테스트할 경우: 평소(같은 값) / 빈 입력(둘 다 없음 → `unverified(not_extracted)`) / 실패(원문에 없는 글자, 다른 쪽 번호, 둘이 다름) / 지원 안 하는 조문·JP 인용 → flags / 나라 표기 맞는 것 없음 → `unverified(ambiguous)`
 - 확인 방법: `uv run pytest tests/core/f1/test_verify.py -q` → 모두 통과
 - 먼저: #14 task-2, #17 task-1 (`PageText`)
@@ -262,17 +268,86 @@ graph LR
 - 확인 방법: `uv run pytest tests/core/f1/test_read_oa.py -q` → 모두 통과 (API 키 없이)
 - 먼저: task-1, task-2, #13 task-3
 
+### task-4: 결과 값 모양을 정답 형식에 맞추기 (11/19 결정)
+- 담당: 재아
+- 합격 기준: requirements.md 1·2·9 (값 모양이 정답 형식과 같아야 채점기가 비교함)
+- 고칠 파일: `src/patent_ai/core/f1_oa_reader/{rules,support,read_oa,extraction}.py`, `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `prompts/f1/read_oa.md`, `docs/features/F1/design.md`, `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/`
+- 만든 함수·칸: `support.citation_key(text) -> str | None`(인용문헌 키 꼴: KR·US·JP, 종류 코드가 없으면 None), `rules.parse_cited_locations(raw) -> list[str] | None`(식별번호 `[0016]`·`[0080]-[0081]`·`도 4c`·`청구항 9`·`요약`·`3:5-10`), `OAResult.examined_claims`(심사 대상 청구항, `청구항 전항` 펼칠 때 씀), `Rejection.no`, `Citation.label`, 출원·발송번호 숫자만, 조문 호 여럿 `29-1-1|29-1-2`
+- 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과
+- 먼저: task-3
+
+### task-5: 거절이유 종류 `Rejection.kind` (11/19 승인)
+- 담당: 재아
+- 합격 기준: requirements.md 1·9 (정답 형식 2.2 종류·4절 `kind` 코드와 같아야 채점기가 비교함)
+- 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`, `tests/core/schemas/test_oa_result.py`, `tests/core/f1/test_read_oa.py`, `tests/fixtures/case_missing_citation/*.json`
+- 만들 함수·칸: `RejectionKind`(`novelty`/`inventive_step`/`clarity`/`other`), `kind_of_article(article: str | None) -> RejectionKind`(규칙, 모델 안 씀: `29-1-1`·`29-1-2`·`29-1-1|29-1-2` → novelty, `29-2` → inventive_step, `42-4-2` → clarity, 그 밖·조문 모름 → other), `Rejection.kind`(필수 칸, `build_rejection`이 조문에서 채우고 사람이 넣지 못함, 조문과 안 맞으면 거부). 조문이 unverified면 kind는 other이되 supported·flags·status 규칙은 그대로
+- 테스트할 경우: 조문 코드마다 / 조문 모름·충돌 → other / 호 여럿 / kind를 직접 넣으면 TypeError / 조문과 안 맞는 kind는 거부 / read_oa 결과에 kind가 붙음
+- 확인 방법: `uv run pytest tests/core -q` → 모두 통과
+- 먼저: task-4
+
+### task-6: 청구항 줄 `claim_rows`와 명확성 표현 (11/19 승인)
+- 담당: 재아
+- 합격 기준: requirements.md 1·3·9 (정답 형식 2.4 청구항 줄, 3절 애매한 경우 1~11, 4절 JSON)
+- 고칠 파일: `src/patent_ai/core/schemas/{oa_result,propagation}.py`, `src/patent_ai/core/f1_oa_reader/{rules,read_oa,extraction}.py`, 새 파일 `src/patent_ai/core/f1_oa_reader/claim_rows.py`(줄 대조), `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2 JSON·필드 출처 표), `docs/data-model.md`(① 줄), `tests/core/f1/*`, `tests/core/schemas/*`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`, `tests/fixtures/case_missing_citation/*.json`(`build_*` 도우미로 다시 만듦)
+- 만들 칸·함수 모양: `ClaimRow{claim, rejection(=Rejection.no), citations: 라벨 목록, locations: {라벨: 정답 꼴 위치 목록}, same_as: [`claim:<n>`·`rejection:<n>`], clarity_terms, clarity_reason, raw_text, page, status}`, `OAResult.claim_rows`. 모델 추출 `OAExtraction.claim_rows`(청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현 원문, 같은 취지 원문, 명확성 표현 원문, 판단이 적힌 원문 글자·쪽). 코드가 원문 대조: 행 `raw_text`가 그 쪽에 있어야 confirmed, 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 값 안 씀), 명확성 표현은 따옴표 안 글자이고 원문에 있어야 함, 청구항 번호는 `expand_claims`. 대조 실패 → 그 행 `unverified(not_extracted)`, 값 버림
+- 정답 3절과 대응: 1 같은 취지 → locations 비우고 same_as만 / 2 짝 없는 같은 취지 → 펼친 목록 / 3 자기 위치 + 같은 취지 둘 다 / 4 위치 없음 → `위치 없음 (<OA 표현>)` / 5 도면 부호만 → 부호 그대로(`parse_cited_locations`에 부호 꼴 추가) / 6 `[16, 38, 78]` → `[0016]`… (task-4에서 됨) / 7 결합 진보성 → citations `D1`+`D2`, 위치는 짚은 것만 / 8 "1-1에서 본 바와 같이" → same_as `rejection:1` / 9 지원 안 하는 이유 → 거절이유 표에만, 줄 없음 / 10 묶어서 짚은 청구항 → 5·6·7 줄에 같은 위치 / 11 따옴표 없는 명확성 → clarity_terms 빈 목록
+- 결과 status 모으기·검토할 사항: `claim_rows` 행을 넣는다 (행 unverified → 그 행 경로 한 줄, 지원 안 하는 이유 행은 없음)
+- 테스트할 경우: 평소(청구항 1이 이유 둘) / 3절 1~11 / 대조 실패(원문에 없는 글자·없는 쪽) → 그 행만 unverified / 스키마 검사 / 모으기·검토할 사항. 프롬프트 문구는 테스트하지 않음
+- 확인 방법: `uv run pytest -q` → 모두 통과
+- 먼저: task-5
+
+### task-7: 인용 없는 줄의 `위치 없음 (<OA 표현>)` (11/19 승인, 구현은 11/19 아침)
+- 담당: 재아
+- 합격 기준: requirements.md 1·3 (정답 형식 3절 4번: 인용 위치가 없으면 `위치 없음 (<OA 표현>)`), 정답 4절 JSON
+- 왜: 지금은 `위치 없음 (…)`을 인용 라벨 아래(`locations[라벨]`)에만 담을 수 있어, 인용이 하나도 없는 줄(예: "설계 사항"만 적은 줄)은 담을 자리가 없다 (work/gold_diff_f1.md 4절 3번)
+- 고칠 파일: `src/patent_ai/core/schemas/oa_result.py`(`ClaimRow`), `src/patent_ai/core/f1_oa_reader/{claim_rows,extraction}.py`, `prompts/f1/read_oa.md`, `docs/features/F1/design.md`(3-2·필드 출처 표), `tests/core/f1/test_claim_rows.py`, `tests/core/schemas/test_oa_result.py`, `tests/fixtures/f1/notice_claim_rows*.pages.json`, `tests/fixtures/f1/llm/claim_rows*.json`
+- 만들 칸·함수 모양: `ClaimRow.no_location: str | None` — 인용 없는 줄의 `위치 없음 (<OA 표현>)`. 모델 추출에 줄 단위 `no_location` 원문 칸을 더하고, 코드가 판단 원문(`judgment.raw_text`) 안에 그 표현이 있는지 대조(모델 값 안 씀). 인용이 있는 줄은 지금처럼 `locations[라벨]`. 정답 JSON으로 낼 때의 키 이름은 #20 채점기와 맞춘다
+- 테스트할 경우: 인용 없는 줄 + "설계 사항" → `no_location = "위치 없음 (설계 사항)"`, confirmed / 표현이 판단 원문에 없음 → 그 줄 unverified(not_extracted) / 인용 있는 줄의 위치 없음은 그대로 `locations` / 스키마: `no_location`과 `locations`·`clarity_terms`를 같이 두면 거부
+- 확인 방법: `uv run pytest tests/core/f1/test_claim_rows.py -q` → 모두 통과
+- 먼저: task-6
+
+### task-8: 쪽을 넘어간 거절이유 표 칸 (11/19 승인, 이슈 #18 은진 님 댓글)
+- 담당: 재아
+- 합격 기준: requirements.md 1·2 (거절이유의 대상 청구항·조문이 빠지지 않고, 지어낸 값 0건)
+- 왜: tune 10건 중 2건은 1쪽 거절이유 표의 "대상 청구항" 칸이 2쪽으로 넘어감(1쪽 "…제8항 내지", 2쪽 맨 위 "제10항"). 쪽 글자만 보면 값이 두 쪽에 걸쳐 원문 대조가 `unverified`가 되고 대상 청구항 일부가 빠짐
+- 고칠 파일: `src/patent_ai/core/schemas/document.py`(`Page.tables`, 기본 빈 목록, 공유 스키마), `src/patent_ai/core/f1_oa_reader/{pages,tables,verify,read_oa}.py`, `docs/features/F1/design.md`(2절 ①·3-2·필드 출처 표), `tests/core/f1/{test_pages,test_tables,test_verify,test_read_oa}.py`
+- 만들 칸·함수 모양: `Page.tables: list[list[list[str]]] = []` (표마다 행, 행마다 칸 글자. `extract_pages`가 pdfplumber `extract_tables`(=`find_tables`)로 채움, 빈 칸은 ""). `tables.py`: `merged_tables(pages)` — 다음 쪽 첫 표의 첫 줄 첫 칸(순번)이 비면 앞 쪽 마지막 표 마지막 줄 같은 칸에 붙임(시작 쪽 번호로). `rejection_rows(pages) -> list[RejectionRow(no, page, part, article)]` — "순번 / 거절이유가 있는 부분 / 관련 법조항" 머리 줄 뒤 줄들(다음 쪽 첫 표가 순번을 이어 가면 그 줄도). `read_oa`는 이 줄을 대상 청구항·조문의 규칙 쪽 값으로 merge에 넘김. 원문 대조(`raw_text_on_page`)는 쪽 글자 + 그 쪽에서 시작하는 (이어 붙인) 표 칸 글자에서 찾음 → 시작 쪽 번호
+- 테스트할 경우: PDF 표가 `Page.tables`에 행·칸으로 / 표 없는 쪽은 빈 목록, 예전 JSON(`tables` 없음)도 읽힘 / 평소(한 쪽 안) / 잘린 칸(다음 쪽 첫 줄 순번 빈칸 → 앞 줄에 붙음, 시작 쪽) / 줄 사이 끊김(다음 쪽 첫 줄 순번 4 → 줄로 이어짐) / 앞 쪽에 표가 없거나 앞 표가 거절이유 표가 아니거나 목록 이음말이 없으면 붙이지 않음 / 쪽 끝 줄인데 조각을 못 찾으면 규칙 값을 안 씀(리뷰에서 더함) / 표 찾기만 실패하면 그 쪽 표는 빈 목록 + 경고 / 원문 대조가 이어 붙인 칸에서 통과, 아무 칸에도 없는 글자는 실패 / read_oa: 쪽을 넘은 칸이 확인됨 [1..4]·시작 쪽, 표와 모델 값이 다르면 conflict
+- 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과
+- 먼저: task-7
+
+### task-9: tune 5건 진짜 모델 실패 원인 (11/19 승인, work/f1_real_model_tune5.md)
+- 담당: 재아
+- 합격 기준: requirements.md 1·2 (지어낸 값 0건, 못 뽑은 것은 확인되지 않음), 실패할 때 (조용히 실패하지 않음)
+- 왜: 5건 중 4건이 `clarity_terms`·`same_as`에 객체 대신 문자열을 넣어 검사에 두 번 떨어져 실행 전체가 실패. 성공 1건은 `제9항(제6항 인용)` 같은 청구항 원문을 못 읽어 줄이 빠짐
+- 고칠 파일: `prompts/f1/read_oa.md`(목록 칸 예시를 객체로, `$retry_note`), `src/patent_ai/core/f1_oa_reader/{extraction,read_oa,claim_rows}.py`, `tests/core/f1/test_claim_rows.py`, `docs/features/F1/design.md`
+- 만들 칸·함수 모양: 재시도 프롬프트에 검사 오류 문구. 두 번째 답 검사용 `LooseOAExtraction`(목록 칸만 `Item | str`, 문자열은 바꾸지 않음) → 그 줄만 `unverified(not_extracted)`. `_outside_parentheses`: 괄호 밖 번호만 읽히면 그 번호 줄 `unverified(ambiguous)` (대상 청구항일 때만, 다른 줄이 먼저)
+- 테스트할 경우: 첫 답 문자열 → 두 번째 프롬프트에 검사 오류, 두 번째가 맞으면 확인됨 / 두 번째도 문자열(clarity_terms·same_as) → 실행은 돌고 그 줄만 확인되지 않음, 다른 줄 그대로 / Item 칸의 문자열은 두 번째에도 `ModelOutputInvalid` / 괄호 줄 → 애매, 확인됨 아님, 번호 없는 줄 안 만듦 / 같은 청구항의 확인된 줄이 있으면 그 줄 / 괄호 밖도 못 읽으면 줄 안 만듦 / 대상 밖이면 안 만듦
+- 확인 방법: `uv run pytest tests/core/f1 -q` → 모두 통과. tune 5건 다시 돌려 성공 건수·확인됨/확인 안 됨 개수·비용
+- 먼저: task-8
+- 정하지 않고 둔 것: 번호를 못 읽은 줄은 계속 만들지 않음 (11/19 사람 확인, 정한 규칙 유지)
+
 ### 이번에 안 하는 것
 - tune 점수 (requirements 9번): 11/18 "데이터 받은 뒤 따로". #20 채점기·#21 데이터·#22 정답 뒤 `/experiment m1-i2-f1-read-oa-baseline`으로 한 줄 내고 이 계획 "끝난 뒤" 칸과 #18에 적는다. PR은 점수 없이 연다 (PR 본문에 "tune 점수: 데이터 뒤" 명시).
 - 진짜 모델 녹화: 지어낸 통지서로 `scripts/record_llm.py`를 한 번 돌려 프롬프트가 실제로 도는지 손으로 본다 (비용 아주 작음, 돌리기 전에 사람에게 물음). 테스트에는 쓰지 않는다.
 - 쪽을 나눠 부르기 (design.md [가정] 10쪽 안쪽이 틀리면). 사건 묶기·심사 대상 판(#16·#54).
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- 다음: 
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- [x] task-5
+- [x] task-6
+- [x] task-7
+- [x] task-8
+- [x] task-9
+- 다음: tune 점수 (#20·#22 뒤), /pr-draft
 - 막힌 것: 
 
-### 끝난 뒤 (이슈가 끝난 날)
-- 된 것 / 안 된 것 / 다음 이슈로
+### 끝난 뒤 (11/19)
+- 된 것: 규칙 추출(rules.py: 번호·날짜 글자·조문·청구항·통지 종류 initial/final/unknown, 본문 속 최후 언급 거름, 조의N 거부), 원문 대조·합치기(verify.py: 값은 원문 글자에서 다시 뽑음, 한쪽이라도 애매하면 확인되지 않음), 지원 표(support.py: 29-1-1·29-1-2·29-2·42-4-2, 나라 판정), `read_oa(pages, document_id, oa_id, run_id, *, ctx)` + OAExtraction·프롬프트·config/f1.yaml. 조문을 모르면 결과 status에 넣고 힌트 칸 누락을 확인되지 않음으로(공유 스키마 oa_result.py 규칙 변경, 문서 맞춤). `uv run pytest -q` 289 passed(task-1~3 /check 때), task-6 뒤 455 passed(11/19 2차, /check 증거 다시 모음: 통과). 진짜 모델 호출 없음(FakeTransport 답만).
+- 안 된 것·사람 판단: tune 점수(#20·#22 뒤). 프롬프트가 진짜 모델에서 도는지(scripts/record_llm.py, 비용 작음, 사람 확인 뒤). 코드(테스트 제외) 약 660줄로 400줄 기준을 넘음. 값 모양은 task-4에서 맞춤, 구조 차이(claim_rows·clarity_terms·kind)는 work/gold_diff_f1.md 4절. 호 없는 "제29조제1항"은 지원 안 함으로 둠(Claude 판단). 칸 제목 표기·인용 표기·OA 쪽 수는 [가정](#22 표본으로).
+- 11/19 2차: task-5 kind(조문 코드 → novelty/inventive_step/clarity/other), task-6 claim_rows·clarity_terms(정답 2.4·3절 1~11). 리뷰 막음(줄 빠짐·엇붙음, 인용 언급 규칙) 고침, 재리뷰 2회 다 씀 — 마지막 고침(b52d3a4)은 3회차 리뷰 없이 사람 확인. 남은 정답 차이는 work/gold_diff_f1.md 4절.
+- 11/19 3차: task-8 쪽을 넘어간 거절이유 표 칸(`Page.tables` 공유 스키마 칸, 기본 빈 목록). 리뷰 막음 없음·고칠 것 3(잘렸을 수 있는 쪽 끝 줄, 이음말 없는 붙이기, 시작 쪽 단언) 고침. `uv run pytest -q` 496 passed. 실제 OA 5건(로컬)에서 표 줄이 나오고 C 파일 3번 줄이 "…제8항 내지 제10항"으로 이어짐. 한계: 표가 1쪽 안에서 끝나도 그 쪽 마지막 표의 마지막 줄은 `may_be_cut`이라 규칙 값을 안 씀(예전처럼 모델 값만, 5건 중 3건의 마지막 줄).
+- 다음 이슈로: config/f1.yaml max_input_tokens, 가격 키(비용 기록).

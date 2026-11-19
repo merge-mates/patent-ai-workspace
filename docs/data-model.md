@@ -51,7 +51,7 @@ erDiagram
 ## 3. 공통 속성 (모든 결과에 붙음)
 - API·DB 값은 영어 코드이고 화면에서 한국어로 보여 준다.
 - `status`: 확인됨 `confirmed` / 확인되지 않음 `unverified` / 조회 범위 내 없음 `not_found_in_scope` / 충돌 `conflict`. 뜻은 "이 결과가 기대는 사실을 원문에서 확인했나"이다. AI 판단이 맞는지는 사람이 본다. 값은 객체 `{value, reason, checked, searched_scope}`이고 직렬화하면 늘 네 필드다. `confirmed`면 `checked`(무엇을 확인했나), `unverified`면 `reason`, `not_found_in_scope`면 `searched_scope`(찾아본 범위)를 꼭 채운다. `unverified` 이유는 여섯: `lookup_failed` · `body_missing` · `edition_unknown` · `not_extracted` · `ambiguous` · `input_unverified`. 기준은 코드 [`common.py`](../src/patent_ai/core/schemas/common.py).
-- 결과 전체 `status`는 안쪽 필드 status 중 가장 나쁜 값이다 (`conflict` > `unverified` > `not_found_in_scope` > `confirmed`). 지원 안 하는 거절이유·나라는 빼고 `flags`로만 남긴다 (`worst_status`는 `common.py`, 모으는 쪽은 [`oa_result.py`](../src/patent_ai/core/schemas/oa_result.py)).
+- 결과 전체 `status`는 안쪽 필드 status 중 가장 나쁜 값이다 (`conflict` > `unverified` > `not_found_in_scope` > `confirmed`). 지원 안 하는 거절이유·나라는 빼고 `flags`로만 남긴다. 단 거절이유는 조문이 `confirmed`일 때만 빼고, 조문을 모르면(`unverified`·`conflict`) 넣는다. 거절이유 0개이고 위쪽 필드가 모두 `input_unverified`(스캔본)면 결과 `reason`은 `input_unverified`이고 경고는 남기지 않는다 (`worst_status`는 `common.py`, 모으는 쪽은 [`oa_result.py`](../src/patent_ai/core/schemas/oa_result.py)).
 - `evidence` 목록: 문서 ID(`Document`) + 위치(쪽·문단·조문) + 판본 + 확인 기준일.
 - `origin`: AI 생성 `ai_generated` / AI 기본값 `ai_default` / 사람이 고름 `human_selected` / 사람이 고침 `human_edited`. 사람이 고치는 것은 초안뿐이고, 고치면 AI 원본 값을 같이 남긴다 (덮어쓰지 않음). 중간 결과(F1·F2·F3)는 사람이 고치지 않는다.
 - 그 밖 표시: `needs_recheck`(다시 확인 필요)는 status 값이 아니라 별도 필드(`recheck_reason` 같이)이고, 직접 판단 필요 `needs_human_judgment`·직접 검토 필요 `needs_human_review`는 `flags` 목록에 둔다. 기준은 `common.py`.
@@ -64,7 +64,7 @@ erDiagram
 
 | # | 결과 스키마 | 누가 → 누구 | 필드 |
 |---|---|---|---|
-| ① | `OAResult` OA 정리 | F1 → 지휘·F3·F4 | 필드: oa_id, 출원번호·발송번호, 통지일·제출기일, 통지 종류, 심사 대상 ClaimVersion, 심사관 힌트, rejections(조문·지원 여부·대상 청구항·인용문헌·심사관 논리), 공통 필드. 기준은 코드 [`oa_result.py`](../src/patent_ai/core/schemas/oa_result.py) |
+| ① | `OAResult` OA 정리 | F1 → 지휘·F3·F4 | 필드: oa_id, 출원번호·발송번호, 통지일·제출기일, 통지 종류, examined_claims(심사 대상 청구항 번호), 심사 대상 ClaimVersion, 심사관 힌트, rejections(no(OA 순번)·kind(novelty·inventive_step·clarity·other, 조문에서 정함)·조문·지원 여부·대상 청구항·인용문헌(label D1·D2…·키 꼴 번호·식별번호)·심사관 논리), claim_rows(청구항 x 거절이유 줄: claim·rejection·citations 라벨·locations·same_as·clarity_terms·clarity_reason + 원문 글자·쪽·status), 공통 필드. 기준은 코드 [`oa_result.py`](../src/patent_ai/core/schemas/oa_result.py) |
 | ② | `JudgmentUnit` 판단 단위 | 판단 단위 나누기 도구(기본 묶기)·지휘(더 나누기) → F3·F4 | unit_id(내용으로 정함: `OA ID:조문:대표 청구항`, 예 `oa_1:29-2:c1`. 지휘가 더 나눈 하위 단위는 `oa_1:29-2:c1/a`. 다시 돌려도 같은 묶음은 같은 ID라 사람이 고른 선택이 이어진다. 청구항이 바뀌어 묶음이 달라지면 ID도 달라지고 "다시 확인 필요"), rejection, 단위 종류(독립항 묶음: 진보성·신규성 / 청구항 하나: 명확성), 결과: 신규성은 묶음 순서로 보되 청구항마다 ([ADR 0001](decisions/0001-ai-amended-claim-draft.md)), 청구항(대표 독립항 + 묶음 안 종속항), 가지("또는"형 종속항), 함께 읽을 청구항(명확성), 순서(독립항 먼저), 부모 단위(무너진 묶음을 나눌 때), 공통 칸 |
 | ③ | `ComparisonTable` 대비표 | F3 → F4 | unit, 거절이유 유형(진보성/신규성), 신규성이면 비교 대상 인용문헌 하나, 인용문헌마다 대비함/지원 안 함(나라), rows[청구항 요소(문구+위치), 인용문헌, 위치(식별번호 또는 도면 번호), 판단(개시됨/차이 후보/불명), 문단 출처(심사관 지정/AI가 새로 찾음), 왜 가져왔나(AI가 새로 찾은 문단만), 공통 칸], 유형별 정리(이름만), 공통 칸. 명확성은 "명확성 문구 검토" 스키마(이름만) |
 | ④ | `LegalEvidenceBundle` 법률 근거 묶음 | F2 → F3·F4 | 질문(원문 + 선택 조건: 시점·자료 유형), 기준일(사용자 시점, 없으면 현행 + 확인 기준일, 사건 적용일로 자동 확정 안 함), 주장들[주장 문장, 근거(공통 evidence + 자료 종류·식별자·전문/요지·법원 판단/당사자 주장), 공통 칸], 공통 칸. 근거 검토 결과는 상태로 남긴다. "적용된다" 칸은 두지 않는다 |

@@ -40,6 +40,13 @@
       },
       {
         "document_id": "doc_oa_1",
+        "page": 1,
+        "raw_text": "제1항 내지 제5항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
         "page": 4,
         "raw_text": "특허 가능한 청구항 5",
         "edition": null,
@@ -90,7 +97,7 @@
       {
         "document_id": "doc_oa_1",
         "page": 2,
-        "raw_text": "US 2099/0000001",
+        "raw_text": "US 2099/0000001 A1",
         "edition": null,
         "checked_on": null
       },
@@ -142,6 +149,27 @@
         "raw_text": "실시할 수 있",
         "edition": null,
         "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "쉽게 발명할 수 있",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 2,
+        "raw_text": "쉽게 발명할 수 있",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "doc_oa_1",
+        "page": 3,
+        "raw_text": "불명확",
+        "edition": null,
+        "checked_on": null
       }
     ],
     "origin": "ai_generated",
@@ -150,7 +178,7 @@
     "flags": [],
     "oa_id": "oa_1",
     "application_number": {
-      "value": "10-2099-0000001",
+      "value": "1020990000001",
       "raw_text": "10-2099-0000001",
       "page": 1,
       "status": {
@@ -162,7 +190,7 @@
       "candidates": []
     },
     "dispatch_number": {
-      "value": "9-5-2099-000000001",
+      "value": "952099000000001",
       "raw_text": "9-5-2099-000000001",
       "page": 1,
       "status": {
@@ -205,6 +233,24 @@
         "value": "confirmed",
         "reason": null,
         "checked": "최후 표시 없음, 1쪽 머리말·거절이유 표 아래·[첨 부] 앞을 봄",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claims": {
+      "value": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "raw_text": "제1항 내지 제5항",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
         "searched_scope": null
       },
       "candidates": []
@@ -292,7 +338,7 @@
           {
             "document_id": "doc_oa_1",
             "page": 2,
-            "raw_text": "US 2099/0000001",
+            "raw_text": "US 2099/0000001 A1",
             "edition": null,
             "checked_on": null
           },
@@ -308,6 +354,8 @@
         "needs_recheck": false,
         "recheck_reason": null,
         "flags": [],
+        "no": 1,
+        "kind": "inventive_step",
         "article": {
           "value": "29-2",
           "raw_text": "특허법 제29조 제2항",
@@ -340,8 +388,9 @@
         },
         "citations": [
           {
+            "label": "D1",
             "number": {
-              "value": "KR 10-2099-0000001",
+              "value": "KR20990000001A",
               "raw_text": "공개특허공보 제10-2099-0000001호",
               "page": 2,
               "status": {
@@ -367,8 +416,8 @@
             "country_supported": true,
             "cited_paragraphs": {
               "value": [
-                "0023",
-                "0031"
+                "[0023]",
+                "[0031]"
               ],
               "raw_text": "식별번호 [0023], [0031]",
               "page": 2,
@@ -383,9 +432,10 @@
             "flags": []
           },
           {
+            "label": "D2",
             "number": {
-              "value": "US 2099/0000001",
-              "raw_text": "US 2099/0000001",
+              "value": "US20990000001A1",
+              "raw_text": "US 2099/0000001 A1",
               "page": 2,
               "status": {
                 "value": "confirmed",
@@ -470,6 +520,8 @@
         "needs_recheck": false,
         "recheck_reason": null,
         "flags": [],
+        "no": 2,
+        "kind": "clarity",
         "article": {
           "value": "42-4-2",
           "raw_text": "특허법 제42조 제4항 제2호",
@@ -547,6 +599,8 @@
         "flags": [
           "needs_human_review"
         ],
+        "no": 3,
+        "kind": "other",
         "article": {
           "value": "42-3",
           "raw_text": "특허법 제42조 제3항",
@@ -586,6 +640,71 @@
             "searched_scope": null
           },
           "candidates": []
+        }
+      }
+    ],
+    "claim_rows": [
+      {
+        "claim": 1,
+        "rejection": 1,
+        "citations": [
+          "D1",
+          "D2"
+        ],
+        "locations": {
+          "D1": [
+            "[0023]",
+            "[0031]"
+          ]
+        },
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "raw_text": "쉽게 발명할 수 있",
+        "page": 2,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "2쪽 원문 대조",
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 2,
+        "rejection": 1,
+        "citations": [
+          "D1"
+        ],
+        "locations": {},
+        "same_as": [
+          "claim:1"
+        ],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "raw_text": "쉽게 발명할 수 있",
+        "page": 2,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "2쪽 원문 대조",
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 1,
+        "rejection": 2,
+        "citations": [],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "raw_text": "불명확",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "3쪽 원문 대조",
+          "searched_scope": null
         }
       }
     ]

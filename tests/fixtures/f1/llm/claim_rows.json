@@ -1,0 +1,578 @@
+{
+  "application_number": {
+    "value": "10-2099-0000002",
+    "raw_text": "10-2099-0000002",
+    "page": 1,
+    "ambiguous": false
+  },
+  "dispatch_number": {
+    "value": "9-5-2099-000000002",
+    "raw_text": "9-5-2099-000000002",
+    "page": 1,
+    "ambiguous": false
+  },
+  "examined_claims": {
+    "value": null,
+    "raw_text": "제1항 내지 제13항",
+    "page": 1,
+    "ambiguous": false
+  },
+  "rejections": [
+    {
+      "article": {
+        "value": null,
+        "raw_text": "특허법 제29조제1항제1호",
+        "page": 2,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제1항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "citations": [
+        {
+          "number": {
+            "value": null,
+            "raw_text": "공개특허공보 제10-2099-0000011호",
+            "page": 2,
+            "ambiguous": false
+          },
+          "cited_paragraphs": {
+            "value": null,
+            "raw_text": "식별번호 [0014], [0056], 도 4b",
+            "page": 2,
+            "ambiguous": false
+          }
+        }
+      ],
+      "examiner_reasoning": {
+        "value": "인용발명 1과 동일하다는 판단",
+        "raw_text": "청구항 제1항은 인용발명 1과 동일합니다.",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "article": {
+        "value": null,
+        "raw_text": "특허법 제29조제2항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제1항 내지 제13항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "citations": [
+        {
+          "number": {
+            "value": null,
+            "raw_text": "공개특허공보 제10-2099-0000011호",
+            "page": 2,
+            "ambiguous": false
+          },
+          "cited_paragraphs": {
+            "value": null,
+            "raw_text": "식별번호 [0020], [0069]",
+            "page": 2,
+            "ambiguous": false
+          }
+        },
+        {
+          "number": {
+            "value": null,
+            "raw_text": "공개특허공보 제10-2099-0000012호",
+            "page": 2,
+            "ambiguous": false
+          },
+          "cited_paragraphs": {
+            "value": null,
+            "raw_text": "식별번호 [0043], [0050]",
+            "page": 2,
+            "ambiguous": false
+          }
+        }
+      ],
+      "examiner_reasoning": {
+        "value": "결합 진보성 판단",
+        "raw_text": "인용발명 1에 인용발명 2를 결합하면 쉽게 발명할 수 있습니다.",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "article": {
+        "value": null,
+        "raw_text": "특허법 제42조제4항제2호",
+        "page": 3,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제6항, 제7항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "citations": [],
+      "examiner_reasoning": {
+        "value": "표현이 불명확하다는 판단",
+        "raw_text": "청구항의 표현이 불명확합니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    },
+    {
+      "article": {
+        "value": null,
+        "raw_text": "특허법 제42조제3항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제13항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "citations": [],
+      "examiner_reasoning": {
+        "value": "뒷받침 부족 판단",
+        "raw_text": "발명의 설명 뒷받침이 부족합니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    }
+  ],
+  "allowable_claims": null,
+  "amendment_note": null,
+  "claim_rows": [
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 1,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "[0014], [0056] 및 도 4b",
+            "page": 3,
+            "ambiguous": false
+          },
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제1항은 인용발명 1의 [0014], [0056] 및 도 4b에 개시되어 있어 신규성이 없습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": null,
+          "no_location": null
+        }
+      ],
+      "same_as": [
+        {
+          "value": null,
+          "raw_text": "1-1에서 본 바와 같이",
+          "page": 3,
+          "ambiguous": false
+        }
+      ],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제1항은 1-1에서 본 바와 같이 인용발명 1에 의해 쉽게 발명할 수 있습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제2항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "[0020]",
+            "page": 3,
+            "ambiguous": false
+          },
+          "no_location": null
+        },
+        {
+          "label": "D2",
+          "number": null,
+          "location": null,
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제2항은 인용발명 1 내지 2의 결합으로 쉽게 발명할 수 있고, 인용발명 1의 [0020]에 개시되어 있습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제3항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": null,
+          "no_location": null
+        }
+      ],
+      "same_as": [
+        {
+          "value": null,
+          "raw_text": "제1항과 동일한 취지",
+          "page": 3,
+          "ambiguous": false
+        }
+      ],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제3항은 제1항과 동일한 취지의 거절이유가 있습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제4항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D2",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "[0043]",
+            "page": 3,
+            "ambiguous": false
+          },
+          "no_location": null
+        }
+      ],
+      "same_as": [
+        {
+          "value": null,
+          "raw_text": "거절이유 1과 같고",
+          "page": 3,
+          "ambiguous": false
+        }
+      ],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제4항은 거절이유 1과 같고, 한편 인용발명 2의 [0043]에도 개시되어 있습니다.",
+        "page": 3,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제5-7항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "[0069]",
+            "page": 4,
+            "ambiguous": false
+          },
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "제5-7항 발명에서 한정하고 있는 기술적 특징은 [0069]에 개시되어 있습니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제8항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": null,
+          "no_location": {
+            "value": null,
+            "raw_text": "단순 부가",
+            "page": 4,
+            "ambiguous": false
+          }
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제8항은 인용발명 1에 비추어 단순 부가에 해당합니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제9항 내지 제10항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": null,
+          "no_location": null
+        }
+      ],
+      "same_as": [
+        {
+          "value": null,
+          "raw_text": "청구항 제1항 내지 제2항과 같",
+          "page": 4,
+          "ambiguous": false
+        }
+      ],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제9항 내지 제10항은 청구항 제1항 내지 제2항과 같습니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제11항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D1",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "[16, 38, 78]",
+            "page": 4,
+            "ambiguous": false
+          },
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제11항은 인용발명 1의 [16, 38, 78]에 개시되어 있습니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제12항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D2",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "폐곡선(310, 320)",
+            "page": 4,
+            "ambiguous": false
+          },
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제12항은 인용발명 2의 폐곡선(310, 320)에 개시되어 있습니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제13항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [
+        {
+          "label": "D2",
+          "number": null,
+          "location": {
+            "value": null,
+            "raw_text": "[0050]",
+            "page": 4,
+            "ambiguous": false
+          },
+          "no_location": null
+        }
+      ],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제13항은 인용발명 2의 [0050]에 개시되어 있습니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제6항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 3,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [
+        {
+          "value": null,
+          "raw_text": "상기 프리뷰 이미지",
+          "page": 4,
+          "ambiguous": false
+        }
+      ],
+      "clarity_reason": "앞에 정의 없음",
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제6항의 '상기 프리뷰 이미지'는 앞에 정의가 없어 불명확합니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제7항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 3,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제7항의 모듈들은 장치 구성을 특정할 수 없다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제13항",
+        "page": 4,
+        "ambiguous": false
+      },
+      "rejection": 4,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 제13항은 발명의 설명에 뒷받침되지 않습니다.",
+        "page": 4,
+        "ambiguous": false
+      }
+    }
+  ]
+}

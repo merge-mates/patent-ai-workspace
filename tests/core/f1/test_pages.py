@@ -112,3 +112,71 @@ def test_blank_0쪽_PDF는_unverified와_경고(tmp_path, monkeypatch, caplog):
     assert result.status.value == StatusValue.UNVERIFIED
     assert result.status.reason == UnverifiedReason.BODY_MISSING
     assert any("0쪽" in r.message for r in caplog.records)
+
+
+# ---- 쪽마다 표 (task-8: 쪽을 넘어간 거절이유 표 칸) ----
+def _make_table_pdf(path: Path, tables_by_page: list[list[list[str]]]) -> Path:
+    """쪽마다 칸선 있는 표 하나. 한글은 reportlab 내장 CID 글꼴 (글꼴 파일 없이 CI에서도 돈다)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.platypus import PageBreak, SimpleDocTemplate, Table, TableStyle
+
+    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
+    style = TableStyle(
+        [
+            ("FONT", (0, 0), (-1, -1), "HYSMyeongJo-Medium", 9),
+            ("GRID", (0, 0), (-1, -1), 0.5, "black"),
+        ]
+    )
+    story: list = []
+    for i, rows in enumerate(tables_by_page):
+        if i:
+            story.append(PageBreak())
+        story.append(Table(rows, style=style))
+    SimpleDocTemplate(str(path), pagesize=A4).build(story)
+    return path
+
+
+def test_표가_있는_쪽은_tables에_행과_칸이_나온다(tmp_path):
+    pdf = _make_table_pdf(
+        tmp_path / "t.pdf",
+        [
+            [
+                ["순번", "거절이유가 있는 부분", "관련 법조항"],
+                ["1", "청구항 제1항 내지 제4항, 제8항 내지", "특허법 제29조제2항"],
+            ],
+            [["", "제10항", ""]],
+        ],
+    )
+    result = extract_pages(pdf, "doc-1")
+    assert result.pages[0].tables == [
+        [
+            ["순번", "거절이유가 있는 부분", "관련 법조항"],
+            ["1", "청구항 제1항 내지 제4항, 제8항 내지", "특허법 제29조제2항"],
+        ]
+    ]
+    assert result.pages[1].tables == [[["", "제10항", ""]]]  # 빈 칸은 "" (None 아님)
+
+
+def test_표가_없는_쪽은_tables가_빈_목록이고_예전_JSON도_읽힌다(tmp_path):
+    result = extract_pages(_make_pdf(tmp_path / "a.pdf", ["hello"]), "doc-1")
+    assert result.pages[0].tables == []
+    # tables 칸이 없는 예전 모양(#17 응답)도 그대로 읽힌다 (기본값 빈 목록)
+    ok = {"value": "confirmed", "reason": None, "checked": "x", "searched_scope": None}
+    old = {"document_id": "d", "pages": [{"page": 1, "text": "a", "status": ok}], "status": ok}
+    assert PageText.model_validate(old).pages[0].tables == []
+
+
+def test_표_찾기만_실패하면_그_쪽_표는_빈_목록이고_글자는_그대로(tmp_path, monkeypatch, caplog):
+    pdf = _make_pdf(tmp_path / "a.pdf", ["hello"])
+
+    def boom(self, *a, **k):
+        raise ValueError("표 찾기 실패")
+
+    monkeypatch.setattr(pdfplumber.page.Page, "extract_tables", boom)
+    with caplog.at_level(logging.WARNING):
+        result = extract_pages(pdf, "doc-1")
+    assert result.pages[0].text == "hello"
+    assert result.pages[0].tables == []
+    assert any("표를 못 읽음" in r.message for r in caplog.records)
