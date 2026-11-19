@@ -4,6 +4,7 @@ import { CaseShell } from './layout/CaseShell'
 import { caseLoader, casesLoader, compareLoader, oaLoader } from './loaders'
 import { CaseListPage } from './pages/CaseListPage'
 import { ComparePage } from './pages/compare/ComparePage'
+import { LegalPage } from './pages/legal/LegalPage'
 import { RouteError } from './pages/RouteError'
 import { WorkbenchPage } from './pages/workbench/WorkbenchPage'
 
@@ -16,6 +17,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, loader: () => redirect('/cases') },
       { path: 'cases', loader: casesLoader, element: <CaseListPage />, errorElement: <RouteError /> },
+      { path: 'legal', element: <LegalPage /> },
       { path: 'cases/:caseId', loader: caseLoader, errorElement: <RouteError /> },
       {
         id: 'oa',

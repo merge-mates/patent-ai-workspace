@@ -32,7 +32,7 @@ export function AppShell() {
           style={{ flex: 1, minWidth: 0, borderBottom: 'none' }}
           items={[
             { key: 'cases', label: <Link to="/cases">사건</Link> },
-            LEGAL_MENU,
+            { key: 'legal', label: <Link to="/legal">법률 질문</Link> },
           ]}
         />
         <Space size={8}>
@@ -50,6 +50,3 @@ export function AppShell() {
     </Layout>
   )
 }
-
-// 법률 질문 화면은 다음 브랜치(#34)에서 연다
-const LEGAL_MENU = { key: 'legal', label: '법률 질문', disabled: true }
