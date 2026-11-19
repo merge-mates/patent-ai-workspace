@@ -229,3 +229,29 @@ def test_판본_모르는_조각은_빠지고_센다():
     res = _law_searcher(chunks).search("가나", "law", "bm25", 5, as_of=date(2021, 1, 1))
     assert [h.doc_id for h in res.hits] == ["a"]
     assert res.skipped_unverified_edition == 1
+
+
+# --- 질의 낱말 겹침 (긴 법령 질의에서 흔한 두 글자가 여러 번 세지지 않게) ---
+
+
+def _ws_searcher(**bm25):
+    rows = [_law("a", 1, "가나 마바"), _law("b", 1, "다라 마바")]
+    repo = InMemoryChunkRepository({"law": rows})
+    settings = {"index_version": LV, "tokenizer": "whitespace", "bm25": bm25}
+    return get_searcher("bm25", repo, settings)
+
+
+def test_기본은_질의에_여러_번_나온_낱말을_그만큼_센다():
+    hits = _ws_searcher().search("가나 가나 다라", "law", "bm25", 5).hits
+    assert [h.doc_id for h in hits] == ["a", "b"]
+    assert hits[0].score == pytest.approx(2 * hits[1].score)
+
+
+def test_unique_query_terms면_질의_낱말을_한_번씩만_센다():
+    hits = _ws_searcher(unique_query_terms=True).search("가나 가나 다라", "law", "bm25", 5).hits
+    assert hits[0].score == pytest.approx(hits[1].score)
+
+
+def test_unique_query_terms는_참거짓만():
+    with pytest.raises(ValueError, match="unique_query_terms"):
+        _ws_searcher(unique_query_terms="yes")

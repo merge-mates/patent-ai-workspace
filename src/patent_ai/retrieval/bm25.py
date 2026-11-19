@@ -17,7 +17,9 @@ from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
 from patent_ai.retrieval.tokenizer import make_tokenizer
 
-_DEFAULTS = {"method": "lucene", "k1": 1.5, "b": 0.75}
+# unique_query_terms: 질의에 같은 낱말이 여러 번 나와도 한 번만 센다 (Okapi 교과서 식).
+# 기본 False는 bm25s 그대로(나온 만큼 셈)라 인용문헌 기준선 점수가 그대로 나온다.
+_DEFAULTS = {"method": "lucene", "k1": 1.5, "b": 0.75, "unique_query_terms": False}
 
 
 @register_impl("bm25")
@@ -29,6 +31,8 @@ class Bm25Searcher:
             settings.get("tokenizer", "kiwi"), settings.get("pos_tags")
         )
         self._bm25 = {**_DEFAULTS, **(settings.get("bm25") or {})}
+        if not isinstance(self._bm25["unique_query_terms"], bool):
+            raise ValueError("bm25.unique_query_terms는 true/false만 쓴다")
         # 조각 글을 질의마다 다시 분석하지 않게 chunk_id별로 기억한다
         self._token_cache: dict[str, list[str]] = {}
 
@@ -65,6 +69,10 @@ class Bm25Searcher:
             else 0
         )
         q_tokens = self._tokenizer.tokenize(query)
+        if self._bm25["unique_query_terms"]:
+            # 긴 질의(법령 거절이유 본문)에서 흔한 낱말이 반복돼 점수를 끌고 가지 않게
+            # 처음 나온 순서로 한 번씩만 남긴다
+            q_tokens = list(dict.fromkeys(q_tokens))
         doc_tokens = [self._tokens(c.chunk_id, c.text) for c in chunks]
 
         scores: list[float] = [0.0] * len(chunks)
