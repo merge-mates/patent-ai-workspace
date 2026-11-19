@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk
 from patent_ai.retrieval.cite_index.chunker import ChunkingConfig, chunk_document
-from patent_ai.retrieval.cite_index.header_footer import strip_repeated
+from patent_ai.retrieval.cite_index.header_footer import HeaderFooterConfig, strip_repeated
 from patent_ai.retrieval.cite_index.pages import PageExtractor, PdfplumberExtractor
 from patent_ai.retrieval.repository import chunk_to_row
 from patent_ai.retrieval.schemas import Chunk
@@ -87,7 +87,7 @@ def _list_pdfs(raw_root: Path) -> list[Path]:
 
 def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], IndexReport]:
     iv = cfg["index_version"]
-    hf = cfg["header_footer"]
+    hf = HeaderFooterConfig.from_dict(cfg["header_footer"])
     chunking = _chunking_config(cfg)
     table_path = _resolve(cfg["doc_id_table"])
     table = yaml.safe_load(table_path.read_text(encoding="utf-8")) if table_path.exists() else {}
@@ -138,7 +138,7 @@ def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], Index
             continue
 
         stripped, removed = strip_repeated(
-            pages, hf["scan_lines"], hf["min_page_ratio"], hf.get("keep_patterns", [])
+            pages, hf.scan_lines, hf.min_page_ratio, hf.keep_patterns
         )
         doc_chunks, warns = chunk_document(doc_id, stripped, iv, chunking)
         for w in warns:

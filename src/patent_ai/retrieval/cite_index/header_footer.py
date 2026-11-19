@@ -16,13 +16,19 @@ class HeaderFooterConfig:
     min_page_ratio: float
     keep_patterns: list[str]
 
+    @classmethod
+    def from_dict(cls, cfg: dict) -> HeaderFooterConfig:
+        # 설정 파일의 header_footer 칸 -> 값. 색인 명령과 파일 로더가 이 하나만 쓴다
+        return cls(
+            scan_lines=int(cfg["scan_lines"]),
+            min_page_ratio=float(cfg["min_page_ratio"]),
+            keep_patterns=list(cfg.get("keep_patterns", [])),
+        )
+
 
 def load_header_footer_config(path: Path) -> HeaderFooterConfig:
-    cfg = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["header_footer"]
-    return HeaderFooterConfig(
-        scan_lines=int(cfg["scan_lines"]),
-        min_page_ratio=float(cfg["min_page_ratio"]),
-        keep_patterns=list(cfg.get("keep_patterns", [])),
+    return HeaderFooterConfig.from_dict(
+        yaml.safe_load(Path(path).read_text(encoding="utf-8"))["header_footer"]
     )
 
 

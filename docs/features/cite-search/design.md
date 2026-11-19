@@ -23,13 +23,13 @@ requirements: ./requirements.md
 ## 2. 흐름
 ```mermaid
 flowchart LR
-    A[cited_v2 PDF] --> B[extract_pages<br/>pdfplumber] --> C[머리말·꼬리말 빼기] --> D[청킹<br/>식별번호·청구항·요약·도면·쪽] --> E[cite_chunks<br/>+ 색인 보고]
+    A[cited_v2 PDF] --> B[PageExtractor<br/>pdfplumber] --> C[머리말·꼬리말 빼기] --> D[청킹<br/>식별번호·청구항·요약·도면·쪽] --> E[cite_chunks<br/>+ 색인 보고]
     G[은진 님 정답 JSON + 청구항이력] --> H[정답 변환] --> I[cite_gold.jsonl]
     E --> J[bm25 impl] --> K[eval.retrieval.score] --> L[scores.json · CQ]
     I --> K
     B -- 글자 못 읽음 --> X[경고 + 건너뜀]
 ```
-1. 글자 추출: `extract_pages(pdf_path) -> list[PageText]`(쪽 번호, 줄 목록) 인터페이스 뒤에 pdfplumber 구현 하나. 이슈 #17(F1 `extract_pages`)과 같은 도구라 바꿀 때 한 번에 바꾼다. #17 코드가 머지되기 전이라 #67 안에 두고, #17이 머지되면 합칠지 그때 본다 [확인 필요: #17 머지 뒤].
+1. 글자 추출: `PageExtractor` Protocol `extract(pdf_path) -> list[PageText]`(쪽 번호, 줄 목록) 뒤에 `PdfplumberExtractor` 하나. 이슈 #17(F1, PR #109로 main에 머지됨)의 `core/f1_oa_reader/pages.py` `extract_pages`와 같은 도구(pdfplumber)다. 다만 retrieval은 core를 import하지 않아(ADR 0003 부르는 방향) 따로 둔다. 이름이 같은 `PageText`도 모양이 다르다: 여기는 쪽 하나 `{page, lines}`, core는 문서 한 건 `{document_id, pages, status}`. 도구를 바꿀 때는 두 곳을 같이 바꾼다.
 2. 머리말·꼬리말 빼기: 쪽마다 맨 위 `header_footer.scan_lines`줄·맨 아래 같은 수의 줄에서, 숫자를 `#`로 바꾼 글자가 그 문헌 쪽의 `header_footer.min_page_ratio` 이상에서 되풀이되면 뺀다(공보 번호, 쪽 번호 `- 3 -` 등). 본문 줄은 쪽마다 글자가 달라 안 빠진다. 문헌별 뺀 줄 수를 색인 보고에 남긴다.
 3. 청킹: 머리말을 뺀 줄을 쪽 순서대로 이은 뒤 나눈다 (쪽을 넘어가는 문단은 이어 붙는다). 3-2 표.
 4. 색인: 조각을 `cite_chunks`에 쓴다(계약 `chunk_to_row`). 같은 판을 다시 쓰면 그 판을 지우고 다시 넣는다. 색인 보고(git 밖 `work/cite_search/<index_version>/index_report.json`): 문헌별 쪽 수, 조각 종류별 수, 뺀 줄 수, 건너뛴 문헌과 이유.
@@ -108,7 +108,7 @@ flowchart LR
 | 논문 `doc_id` `NPL-<제목 줄임>-<학회 연도>` | f1-oa-gold 2.3 `NPL: …` | `row_id`·`chunk_id`가 `:`로 칸을 나눔 | 설계 중 | 계약 gold.py `row_id` 정규식 |
 
 ## 9. 테스트 방법
-- 경계: `extract_pages` 뒤(줄 목록 → 조각)와 정답 변환(JSON → gold 줄), bm25 impl(메모리 저장소 → `SearchResult`).
+- 경계: `PageExtractor.extract` 뒤(줄 목록 → 조각)와 정답 변환(JSON → gold 줄), bm25 impl(메모리 저장소 → `SearchResult`).
 - PDF 글자 추출은 지어낸 작은 PDF 하나(테스트가 만들거나 fixture)로 한 번만. 나머지는 줄 목록 fixture.
 - 경우: 지어낸 3쪽 공보에서 머리말·쪽 번호가 빠지고 본문 줄은 남음 / 쪽을 넘는 문단이 이어짐 / 청구항·요약·도면 설명 조각 / 미국 문헌 건너뜀 경고 / 식별번호 0개 경고 / 정답 범위 펼치기·같은이유·위치 없음·질의 없음 / 두 번 색인 같음 / bm25 같은 점수 순서.
 - Postgres 쓰기는 `@pytest.mark.db`.

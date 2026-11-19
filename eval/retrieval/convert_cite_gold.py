@@ -106,7 +106,7 @@ def _items(entry: dict, doc_id: str, pages: int | None) -> list[GoldItem]:
             items.append(GoldItem(kind="abstract", label="요약"))
             continue
         m = _PAGE.match(s)
-        if m and doc_id.startswith("NPL"):
+        if m and doc_id.startswith("NPL-"):
             n = int(m.group(1))
             if pages is not None and n > pages:
                 raise RetrievalEvalError(f"쪽 번호가 문헌 쪽 수를 넘는다 ({doc_id})")

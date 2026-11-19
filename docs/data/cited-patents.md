@@ -29,7 +29,7 @@
 - 머리말·꼬리말로 뺀 줄: 685줄 (식별번호 줄은 0줄 빠짐)
 
 ## 4. 가공
-- raw → 색인: `extract_pages`(pdfplumber) → 머리말·꼬리말 빼기 → 청킹 → `cite_chunks` (설계 [cite-search design](../features/cite-search/design.md) 2절)
+- raw → 색인: `PdfplumberExtractor.extract` → 머리말·꼬리말 빼기 → 청킹 → `cite_chunks` (설계 [cite-search design](../features/cite-search/design.md) 2절)
 - 결과 위치: Postgres `cite_chunks` (색인 판 `cite-idx-v1`), 덤프 `data/index/cite-idx-v1.dump`, 색인 보고 `work/cite_search/`
 
 ## 5. 쓰면 안 되는 곳
