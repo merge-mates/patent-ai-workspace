@@ -44,9 +44,15 @@ def test_진짜_전송층은_테스트에서_만들_수_없다():
         AnthropicTransport()
 
 
-def test_transport_없이_call_model을_부르면_막힌다():
+def test_transport_없이_call_model을_부르면_막힌다(tmp_path):
+    # 호출 수 상한이 있어야 진짜 전송층을 만들러 간다 (없으면 그 전에 ModelConfigError)
+    (tmp_path / "test.yaml").write_text(
+        "summarize:\n  model: fake-model-1\n  temperature: 0.0\n  max_tokens: 256\n"
+        "  prompt: prompts/summarize.txt\n  max_model_calls: 1\n",
+        encoding="utf-8",
+    )
     with pytest.raises(RuntimeError, match="진짜 호출 막힘"):
-        call(None, cache=False)
+        call(None, cache=False, config_dir=tmp_path)
 
 
 def test_키_환경_변수가_지워져_있다():

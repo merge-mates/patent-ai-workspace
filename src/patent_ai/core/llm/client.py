@@ -119,6 +119,13 @@ def call_model(
         raise ModelConfigError(f"변수를 JSON으로 바꿀 수 없음: {e}") from e
     hit = cache.get(key) if cache is not None else None
 
+    # 진짜 전송층을 부를 차례면(캐시 적중 아님) 호출 수 상한이 꼭 있어야 한다 (과금 방지).
+    # 가짜·기록 전송층은 돈이 안 들어 지금처럼 경고만 한다 (CallBudget.check)
+    calls_real = transport is None or isinstance(transport, AnthropicTransport)
+    if hit is None and calls_real and cfg.max_model_calls is None:
+        raise ModelConfigError(
+            f"{step}: 진짜 전송층을 부르는데 설정에 max_model_calls가 없음 (config/에 넣는다)"
+        )
     if hit is None and transport is None:
         transport = AnthropicTransport()
 
