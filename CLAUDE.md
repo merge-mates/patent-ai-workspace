@@ -43,10 +43,10 @@
 - 사건 진행을 에이전트가 정하는 범위, 에이전트가 골라 부르는 코드 도구, 무조건 도는 코드 단계의 경계는 [ADR 0003](docs/decisions/0003-tech-stack.md)을 따른다.
 
 ## Git
-- 흐름은 GitHub flow: main에서 브랜치 → PR → squash 머지 → 브랜치 삭제. 브랜치는 이터레이션 하나(하루~이틀) 안에 끝낸다. develop·release 브랜치는 없다. 마일스톤 끝에 태그(`m1`).
+- 흐름은 GitHub flow: main에서 브랜치 → PR → merge commit으로 머지 → 브랜치 삭제 (쌓인 PR을 머지해도 위 브랜치를 옮기지 않도록 squash는 쓰지 않는다). 브랜치는 이터레이션 하나(하루~이틀) 안에 끝낸다. develop·release 브랜치는 없다. 마일스톤 끝에 태그(`m1`).
 - `main`에 직접 푸시하지 않는다. Claude는 `git add -f`로 gitignore된 파일을 넣지 않는다 (settings로 막힘). 브랜치: `<type>/<이슈번호>-<짧은설명>` (예: `feat/12-<기능>-baseline`). 둘이 같은 기능을 각자 구현할 때만 뒤에 사람: `feat/12-<기능>-<사람>`.
 - 커밋 제목: `<type>(<영역>): <한국어 한 줄>`. type은 `feat` `fix` `test` `refactor` `docs` `chore`, 영역은 `backend` `frontend` `ai` `eval` `docs` `infra`. 자세한 건 `.claude/rules/git.md`.
-- PR 하나 = 계획 하나 (이슈 하나에 PR 여러 개 가능). 제목은 커밋 제목 모양 (squash 머지로 main 커밋이 된다). 본문은 `.github/pull_request_template.md` 칸을 채우고, 그 이슈의 마지막 PR이면 `Closes #N`, 아니면 `Refs #N`.
+- PR 하나 = 계획 하나 (이슈 하나에 PR 여러 개 가능). 제목은 커밋 제목 모양 (merge commit 제목이 된다). 본문은 `.github/pull_request_template.md` 칸을 채우고, 그 이슈의 마지막 PR이면 `Closes #N`, 아니면 `Refs #N`.
 - 이슈 일은 `/start <이슈번호>`로 시작한다. 진행 보드(Projects 탭) 카드는 스킬이 옮긴다: `/start`는 In Progress, `/pr-draft`는 `Closes` PR을 만든 뒤 In Review(`Refs` PR은 그대로), 마지막 PR이 머지되면 Done(보드 규칙). 훅은 쓰지 않는다. 보드 번호·id는 적지 않는다 (`.claude/scripts/board-status.sh`가 찾음).
 - 남의 브랜치를 merge·rebase하지 않는다. 커밋은 Claude가 해도 된다. push와 PR 생성은 매번 사람이 승인한다 (확인 창). 사람이 `/pr-draft` 초안을 보고 OK하면 Claude가 한다. `main`에 직접 push하지 않는다. 머지는 사람이 한다.
 
