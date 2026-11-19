@@ -7,13 +7,13 @@ CQ 후보 파일은 main이 write_cq로 쓴다 (cq.py).
 
 import argparse
 import hashlib
-import json
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from eval.common.paths import check_experiment_name, git_commit
+from eval.common.scores import write_scores
 from eval.retrieval.checks import REPO_ROOT, gold_path, preflight
 from eval.retrieval.config import RetrievalEvalConfig, load_config
 from eval.retrieval.cq import write_cq
@@ -67,36 +67,17 @@ class ScoreReport:
     k_max: int = 0  # 검색에 쓴 가장 큰 k (CQ 파일의 k)
 
 
-def _check_experiment(experiment: str) -> None:
-    # 실험 이름이 경로 조각이면 폴더 밖으로 나갈 수 있다
-    if not experiment or "/" in experiment or "\\" in experiment or ".." in experiment:
-        raise RetrievalEvalError("실험 이름에 경로 조각(/, .. 등)이 있다")
-
-
 def default_scores_dir(experiment: str, chunks_mode: bool) -> Path:
     """--chunks(가짜 조각)이면 work/ 아래, 진짜 저장소면 experiments/ 아래."""
-    _check_experiment(experiment)
+    check_experiment_name(experiment)
     if chunks_mode:
         return REPO_ROOT / "work" / "retrieval" / experiment
     return REPO_ROOT / "experiments" / experiment
 
 
 def default_cq_dir(experiment: str) -> Path:
-    _check_experiment(experiment)
+    check_experiment_name(experiment)
     return REPO_ROOT / "work" / "retrieval" / experiment
-
-
-def _git_commit() -> str:
-    try:
-        r = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return r.stdout.strip() or "unknown"
-    except subprocess.CalledProcessError, OSError:
-        return "unknown"
 
 
 def _matcher_for(cfg: RetrievalEvalConfig) -> Matcher:
@@ -281,7 +262,7 @@ def main(argv: list[str] | None = None, commit: str | None = None) -> int:
             cfg,
             repo,
             Path(args.goldsets_root),
-            commit if commit is not None else _git_commit(),
+            commit if commit is not None else git_commit(),
             chunks_mode=chunks_mode,
             scores_dir=scores_dir,
             cq_dir=cq_dir,
@@ -296,10 +277,12 @@ def main(argv: list[str] | None = None, commit: str | None = None) -> int:
 
     # CQ 후보 파일은 git 밖 폴더에 쓰고, 건수만 scores.json에 남긴다
     report.scores["failures"]["cq_candidates"] = write_cq(report, cq_dir / "cq_candidates.jsonl")
-    scores_dir.mkdir(parents=True, exist_ok=True)
-    (scores_dir / "scores.json").write_text(
-        json.dumps(report.scores, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    # 필수 칸·꼴 검사 뒤 쓴다 (eval/common/scores.py)
+    try:
+        write_scores(scores_dir, report.scores)
+    except RetrievalEvalError as e:
+        print(f"채점 실패: {e}", file=sys.stderr)
+        return 1
     print(f"scores.json 저장: n={report.scores['n']}", file=sys.stderr)
     return 0
 
