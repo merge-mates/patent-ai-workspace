@@ -78,7 +78,11 @@ def _score_basic(g: F1Gold, p: F1Pred, s: OAScore) -> None:
         (g.allowable_claims, p.allowable_claims),
     ):
         s.add("basic", pc.value is not None and set(pc.value) == set(gc.value))
-    s.add("basic", text_eq(p.amendment_note.value, g.amendment_note.value))
+    # 안 낸 칸(given=False)은 정답이 '없음'(None)이어도 틀림
+    s.add(
+        "basic",
+        p.amendment_note.given and text_eq(p.amendment_note.value, g.amendment_note.value),
+    )
 
     # 지어낸 값: 정답이 '없음'인데 값을 냄 (특허 가능한 청구항·보정 참고사항)
     if not g.allowable_claims.value:

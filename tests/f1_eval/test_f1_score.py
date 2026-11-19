@@ -259,3 +259,28 @@ def test_원문이_붙은_쪽에_없으면_하나씩_센다():
     p["notice_date"]["page"] = 2  # 통지일 원문은 1쪽에만 있음
     s = _score([g], {oa_key(g): _pred(p)}, {oa_key(g): pages})
     assert s["metrics"]["unverified_locations"] == 2
+
+
+def test_안_낸_칸은_정답이_없음이어도_틀림():
+    # 앱이 '확인되지 않음'으로 낸 칸(given=False)은 값이 None이어도 '없음'과 같다고 보지 않는다
+    p = _pred_dict()
+    p["amendment_note"]["given"] = False
+    m = _one(p)["metrics"]
+    assert m["field_accuracy"] == pytest.approx(36 / 37)
+    assert m["fabricated_values"] == 0
+
+
+def test_OA_평균과_전체_합산이_갈린다():
+    # 칸 수가 다른 OA 둘: OA1은 37칸 다 맞음, OA2는 거절이유 하나만 남겨 칸 수를 줄이고 하나 틀림
+    g1 = _gold()
+    d2 = _gold_dict()
+    d2["application_number"]["value"] = "1020990000002"
+    d2["rejections"] = [d2["rejections"][1]]  # 명확성(2)만
+    d2["citations"] = []
+    d2["claim_rows"] = [d2["claim_rows"][3]]
+    g2 = _gold(d2)  # 칸: 기본 8 + 거절이유 4 + 줄 3 = 15
+    p2 = _pred_dict(d2)
+    p2["notice_kind"]["value"] = "final"  # 15칸 중 14 맞음
+    s = _score([g1, g2], {oa_key(g1): _pred(_pred_dict()), oa_key(g2): _pred(p2)})
+    assert s["metrics"]["field_accuracy"] == pytest.approx((1 + 14 / 15) / 2)
+    assert s["metrics"]["field_accuracy_micro"] == pytest.approx((37 + 14) / (37 + 15))
