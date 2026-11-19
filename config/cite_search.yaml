@@ -1,4 +1,13 @@
-# 인용문헌 문단 검색 색인 설정. 섹션마다 한 단계 (청킹·doc_id 표는 이후 task에서 추가)
+# 인용문헌 문단 검색 색인 설정. 섹션마다 한 단계
+# 색인 판. 조각 ID·DB 줄의 index_version이 된다
+index_version: cite-idx-v1
+# 인용문헌 PDF 폴더 (사건 폴더 아래에 PDF). 저장소 밖 data/라 git에 안 들어간다
+raw_root: data/raw/cited_v2
+# 파일 이름 → doc_id 표와 건너뛸 파일 (git 밖). 한국 공보(KR숫자A)는 표 없이 파일 이름이 doc_id
+doc_id_table: data/processed/cite_search/file_doc_ids.yaml
+# 색인 보고서를 두는 곳 (<report_dir>/<index_version>/index_report.json)
+report_dir: work/cite_search
+
 header_footer:
   # 쪽 맨 위·맨 아래에서 몇 줄까지 머리말·꼬리말 후보로 볼지
   scan_lines: 3
