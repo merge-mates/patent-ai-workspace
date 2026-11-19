@@ -31,6 +31,66 @@ def test_없는_글자나_없는_쪽_번호는_False():
     assert not raw_text_on_page(PAGES, 0, "제출기일")
 
 
+# ---- 두 쪽에 걸친 판단 문장 (정답 형식 f1-oa-gold.md 2.4 쪽 칸) ----
+# 쪽 글자 꼴은 실제 OA처럼 첫 줄 출원번호(머리말), 끝 줄 쪽 번호(꼬리말: `- N -` 또는 `N/M`)
+SPLIT = _pages(
+    "10-2099-0000001\n"
+    "2-1. 청구항 제1항은 인용발명 1의 [0014]에 개시되어 있어 쉽게 발명할 수 있\n"
+    "- 3 -",
+    "10-2099-0000001\n습니다.\n2-2. 청구항 제2항은 인용발명 2와 같습니다.\n4/6",
+)
+JUDGMENT = "청구항 제1항은 인용발명 1의 [0014]에 개시되어 있어 쉽게 발명할 수 있습니다."
+
+
+def test_한_쪽_안의_글자는_그대로_통과():
+    assert raw_text_on_page(SPLIT, 2, "청구항 제2항은 인용발명 2와 같습니다.")
+    assert raw_text_on_page(SPLIT, 1, "청구항 제1항은 인용발명 1의 [0014]")
+
+
+def test_두_쪽에_걸친_글자는_시작_쪽으로_통과():
+    two = _pages(
+        "2-1. 청구항 제1항은 인용발명 1의 [0014]에 개시되어 있어 쉽게 발명할 수 있", "습니다."
+    )
+    assert raw_text_on_page(two, 1, JUDGMENT)
+    assert not raw_text_on_page(two, 2, JUDGMENT)  # 끝 쪽 번호로는 안 됨
+
+
+def test_머리말_꼬리말이_끼어_있어도_두_쪽에_걸친_글자는_통과():
+    assert raw_text_on_page(SPLIT, 1, JUDGMENT)  # 사이의 `- 3 -`·출원번호 줄을 빼고 이어 붙임
+
+
+def test_다음_쪽에도_없으면_확인되지_않음():
+    assert not raw_text_on_page(
+        SPLIT, 1, "청구항 제1항은 인용발명 1의 [0014]에 개시되어 있지 않습니다."
+    )
+
+
+def test_마지막_쪽이면_다음_쪽이_없어_확인되지_않음():
+    assert not raw_text_on_page(SPLIT, 2, "인용발명 2와 같습니다. 청구항 제3항은")
+
+
+def test_글자가_통째로_다음_쪽에만_있으면_앞_쪽_번호로는_확인되지_않음():
+    assert not raw_text_on_page(SPLIT, 1, "청구항 제2항은 인용발명 2와 같습니다.")
+    assert not raw_text_on_page(SPLIT, 1, "습니다. 2-2. 청구항 제2항은")  # 시작이 다음 쪽
+
+
+def test_원본_쪽_글자는_바꾸지_않는다():
+    before = SPLIT.model_dump()
+    raw_text_on_page(SPLIT, 1, JUDGMENT)
+    assert SPLIT.model_dump() == before
+    assert SPLIT.pages[0].text.startswith("10-2099-0000001")
+
+
+def test_가운데_줄의_출원번호와_쪽_번호는_빼지_않는다():
+    # 머리말은 첫 줄, 꼬리말은 끝 줄만: 본문 속 같은 꼴 글자는 그대로 둔다
+    pages = _pages(
+        "본문 첫 줄\n10-2099-0000001\n출원의 청구항 제1항은 쉽게 발명할 수 있", "습니다."
+    )
+    assert raw_text_on_page(
+        pages, 1, "10-2099-0000001 출원의 청구항 제1항은 쉽게 발명할 수 있습니다."
+    )
+
+
 # ---- merge ----
 def test_쪽을_넘어_이어_붙인_표_칸_글자는_시작_쪽에서_통과한다():
     ok = Status(value=StatusValue.CONFIRMED, checked="글자 있음")

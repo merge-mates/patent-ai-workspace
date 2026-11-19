@@ -61,14 +61,15 @@ def _with_row(index: int, **change) -> dict:
 
 
 # ---- 평소 ----
-def test_평소_줄은_청구항_x_거절이유_하나씩이고_인용_언급이_없는_여섯_줄만_애매():
+def test_평소_줄은_청구항_x_거절이유_하나씩이고_인용_없이_위치를_짚은_5_7항만_애매():
     result = _read()
     # 거절이유 2는 청구항 1~13 줄, 1은 청구항 1, 3은 청구항 6·7. 4번(지원 안 함)은 줄 없음
     keys = sorted((r.claim, r.rejection) for r in result.claim_rows)
     assert keys == sorted([(1, 1), *[(c, 2) for c in range(1, 14)], (6, 3), (7, 3)])
-    # 거절이유 2는 인용이 둘인데 3·5·6·7·9·10항 판단 원문에 인용발명 번호가 없어 애매
+    # 3절 12: 3·9·10항은 같은 취지 대상 줄의 인용으로 정해져 확인됨.
+    # 5-7항은 인용 언급 없이 위치([0069])를 짚었는데 거절이유 2 인용이 둘이라 어느 문헌인지 모름
     ambiguous = {(r.claim, r.rejection) for r in result.claim_rows if r.status.reason}
-    assert ambiguous == {(c, 2) for c in (3, 5, 6, 7, 9, 10)}
+    assert ambiguous == {(c, 2) for c in (5, 6, 7)}
     assert all(
         r.status.value == StatusValue.CONFIRMED
         for r in result.claim_rows
@@ -336,31 +337,29 @@ def test_거절이유에_없는_인용_라벨은_그_줄이_확인되지_않음(
     _assert_dropped(_row(_read(answer), 1, 1))
 
 
-def test_인용이_여럿인데_판단_원문에_인용_언급이_없으면_모델_라벨을_남기고_애매():
+def test_인용_언급이_없는_줄의_인용은_모델_라벨이_아니라_규칙으로_정한다():
     answer = _answer()
-    answer["claim_rows"][3]["citations"][0]["label"] = (
-        "D2"  # 3항 같은 취지 줄 (거절이유 2의 인용은 D1·D2)
-    )
-    result = _read(answer)
-    row = _row(result, 3, 2)
-    assert row.status.value == StatusValue.UNVERIFIED
-    assert row.status.reason == UnverifiedReason.AMBIGUOUS
-    assert row.citations == ["D2"] and row.same_as == ["claim:1"]  # ambiguous면 값·원문·쪽을 남김
-    assert row.page == 3 and row.raw_text
-    assert result.status.value == StatusValue.UNVERIFIED
-    items = collect_review_items([result], CaseMaterials(case_id="c_1"))
-    idx = result.claim_rows.index(row)
-    assert any(
-        i.target == f"oa_result[0].claim_rows[{idx}]" and i.reason == "ambiguous" for i in items
-    )
+    answer["claim_rows"][3]["citations"][0]["label"] = "D2"  # 3항 같은 취지 줄
+    row = _row(_read(answer), 3, 2)
+    # 3절 12: 모델이 D2라 해도 같은 취지 대상 (1, 2) 줄의 인용 D1
+    assert row.citations == ["D1"] and row.same_as == ["claim:1"]
+    assert row.status.value == StatusValue.CONFIRMED
 
 
-def test_5_7항_줄은_정답_값_그대로이고_status만_애매():
+def test_5_7항_줄은_인용은_규칙으로_정하고_위치는_어느_문헌인지_몰라_애매():
     result = _read()
     for claim in (5, 6, 7):  # 3절 10: "제5-7항 ... [0069]에 개시" (인용발명 언급 없음, 인용 둘)
         row = _row(result, claim, 2)
-        assert row.citations == ["D1"] and row.locations == {"D1": ["[0069]"]}
-        assert row.status.reason == UnverifiedReason.AMBIGUOUS
+        # 3절 12 규칙 3: 인용은 거절이유 2 인용 전부. 위치는 모델 라벨 아래 그대로 남김
+        assert row.citations == ["D1", "D2"] and row.locations == {"D1": ["[0069]"]}
+        assert row.status.reason == UnverifiedReason.AMBIGUOUS  # ambiguous면 값·원문·쪽을 남김
+        assert row.page == 4 and row.raw_text
+    assert result.status.value == StatusValue.UNVERIFIED
+    items = collect_review_items([result], CaseMaterials(case_id="c_1"))
+    idx = result.claim_rows.index(_row(result, 5, 2))
+    assert any(
+        i.target == f"oa_result[0].claim_rows[{idx}]" and i.reason == "ambiguous" for i in items
+    )
 
 
 def _single_citation_variant():
@@ -457,8 +456,15 @@ def _no_citation_variant(expression: str = "설계 사항"):
     return answer, pages
 
 
-def test_인용_없는_줄은_위치_없음_표현을_no_location에_담는다():
+def test_인용_언급_없는_줄의_위치_없음은_거절이유_인용이_여럿이면_애매():
     answer, pages = _no_citation_variant()
+    # 3절 12 규칙 3으로 인용이 D1·D2가 되고, 3절 4: 위치 없음이 어느 인용 것인지 원문에 없음
+    _assert_dropped(_row(_read(answer, pages), 8, 2), UnverifiedReason.AMBIGUOUS)
+
+
+def test_인용이_없는_거절이유의_줄은_위치_없음_표현을_no_location에_담는다():
+    answer, pages = _no_citation_variant()
+    answer["rejections"][1]["citations"] = []  # 거절이유 2에 인용문헌이 없다고 본 답
     row = _row(_read(answer, pages), 8, 2)
     assert row.status.value == StatusValue.CONFIRMED
     assert row.no_location == "위치 없음 (설계 사항)"
@@ -640,3 +646,179 @@ def test_인용항_괄호_줄이라도_거절이유_대상_밖_청구항이면_�
     answer["claim_rows"][6]["rejection"] = 3  # 거절이유 3의 대상은 제6·7항
     result = _read(answer, _pages(_CITED))
     assert not [r for r in result.claim_rows if (r.claim, r.rejection) == (8, 3)]
+
+
+# ---- 정답 3절 12: 판단 문장에 인용발명이 없는 줄의 인용 (모델이 고르지 않음) ----
+def _variant(*pairs: tuple[str, str]):
+    """통지서 글자와 모델 답 글자에서 old를 new로 바꾼 것 (pairs 순서대로)."""
+    text = json.dumps(_answer(), ensure_ascii=False)
+    data = json.loads((FIXTURES / "notice_claim_rows.pages.json").read_text("utf-8"))
+    for old, new in pairs:
+        text = text.replace(old, new)
+        for page in data["pages"]:
+            page["text"] = page["text"].replace(old, new)
+    return json.loads(text), PageText.model_validate(data)
+
+
+_RULE_ALL = "문장에 인용 표기 없음, 거절이유 인용 전부로 봄"
+
+
+def test_3절_12_문장에_인용이_있으면_그_문헌만():
+    result = _read()
+    assert _row(result, 13, 2).citations == ["D2"]  # 거절이유 2 인용은 둘이지만 문장엔 인용발명 2
+    row = _row(result, 1, 2)  # 같은 취지(rejection:1)도 있지만 문장에 인용발명 1이 먼저
+    assert row.citations == ["D1"] and row.status.value == StatusValue.CONFIRMED
+    assert _RULE_ALL not in (row.status.checked or "")
+
+
+def test_3절_12_문장에_적힌_인용은_모델이_빠뜨려도_넣는다():
+    answer = _answer()
+    answer["claim_rows"][2]["citations"] = answer["claim_rows"][2]["citations"][:1]  # D1만 줌
+    row = _row(_read(answer), 2, 2)  # "인용발명 1 내지 2의 결합"
+    assert row.citations == ["D1", "D2"] and row.locations == {"D1": ["[0020]"]}
+    assert row.status.value == StatusValue.CONFIRMED
+
+
+def test_3절_12_같은_취지_claim은_같은_거절이유_청구항_줄의_인용():
+    row = _row(_read(), 3, 2)  # 제1항과 동일한 취지 -> (1, 2) 줄의 인용 D1 (D1·D2 전부가 아님)
+    assert row.citations == ["D1"] and row.same_as == ["claim:1"]
+    assert row.locations == {}  # 3절 1: 대상 줄의 위치는 복사하지 않음
+    assert row.status.value == StatusValue.CONFIRMED and "같은 취지" in row.status.checked
+
+
+def test_3절_12_같은_취지_rejection은_같은_청구항_거절이유_줄의_인용():
+    answer, pages = _variant(
+        ("1-1에서 본 바와 같이 인용발명 1에 의해 쉽게", "1-1에서 본 바와 같이 쉽게")
+    )
+    result = _read(answer, pages)
+    row = _row(result, 1, 2)  # 2-1에 인용발명 언급이 없어짐 -> (1, 1) 줄의 인용 D1
+    assert row.citations == ["D1"] and row.same_as == ["rejection:1"]
+    assert row.status.value == StatusValue.CONFIRMED
+    assert _row(result, 3, 2).citations == ["D1"]  # 대상의 대상까지 따라간다
+
+
+def test_3절_12_같은_취지_대상이_여럿이면_인용을_합친다():
+    result = _read()
+    for claim in (9, 10):  # 청구항 제1항(D1) 내지 제2항(D1+D2)과 같음
+        row = _row(result, claim, 2)
+        assert row.citations == ["D1", "D2"] and row.locations == {}
+        assert row.status.value == StatusValue.CONFIRMED
+        assert "같은 취지" in row.status.checked and _RULE_ALL not in row.status.checked
+
+
+def test_3절_12_같은_취지_대상이_여럿이면_중복_빼고_합친다():
+    answer, pages = _variant(("청구항 제1항 내지 제2항과 같", "청구항 제1항 및 제3항과 같"))
+    row = _row(_read(answer, pages), 9, 2)  # (1, 2)=D1, (3, 2)=D1 -> D1 하나
+    assert row.same_as == ["claim:1", "claim:3"] and row.citations == ["D1"]
+    assert row.status.value == StatusValue.CONFIRMED
+
+
+def test_3절_12_인용_언급도_같은_취지도_없으면_거절이유_인용_전부이고_확인됨():
+    answer = _answer()
+    answer["claim_rows"][5]["citations"][0]["location"] = None  # 5-7항 줄이 위치를 안 짚게
+    result = _read(answer)
+    for claim in (5, 6, 7):
+        row = _row(result, claim, 2)
+        assert row.citations == ["D1", "D2"] and row.locations == {}
+        assert row.status.value == StatusValue.CONFIRMED and _RULE_ALL in row.status.checked
+
+
+def test_3절_12_언급_없는_줄도_거절이유_밖_라벨이면_확인되지_않음():
+    answer = _answer()
+    answer["claim_rows"][5]["citations"][0]["label"] = "D9"
+    _assert_dropped(_row(_read(answer), 5, 2))
+
+
+def test_3절_12_같은_취지_대상_줄이_확인되지_않음이면_이_줄도(caplog):
+    answer = _with_row(
+        1, judgment={"value": None, "raw_text": "지어낸 문장", "page": 3, "ambiguous": False}
+    )
+    with caplog.at_level(logging.WARNING):
+        result = _read(answer)
+    _assert_dropped(_row(result, 1, 2))
+    for claim in (3, 9, 10):  # (1, 2) 줄을 가리키는 같은 취지 줄
+        _assert_dropped(_row(result, claim, 2))
+    assert "같은 취지" in caplog.text
+
+
+def test_3절_12_같은_취지_대상_청구항_줄이_없으면_확인되지_않음(caplog):
+    answer, pages = _variant(("제1항과 동일한 취지", "제20항과 동일한 취지"))  # 대상 밖 청구항
+    with caplog.at_level(logging.WARNING):
+        result = _read(answer, pages)
+    _assert_dropped(_row(result, 3, 2))
+    assert "같은 취지" in caplog.text
+
+
+def test_3절_12_같은_취지_대상이_지원_안_하는_거절이유면_확인되지_않음():
+    answer, pages = _variant(
+        ("1-1에서 본 바와 같이 인용발명 1에 의해 쉽게", "4-1에서 본 바와 같이 쉽게"),
+        ('"1-1에서 본 바와 같이"', '"4-1에서 본 바와 같이"'),
+    )
+    result = _read(answer, pages)
+    row = _row(result, 1, 2)  # (1, 4) 줄은 만들지 않음 (3절 9)
+    _assert_dropped(row)
+
+
+def test_3절_12_같은_취지가_돌아서_제자리로_오면_확인되지_않음(caplog):
+    answer, pages = _variant(
+        ("제1항과 동일한 취지", "제9항과 동일한 취지"),
+        ("청구항 제1항 내지 제2항과 같", "청구항 제3항과 같"),
+    )
+    with caplog.at_level(logging.WARNING):
+        result = _read(answer, pages)
+    for claim in (3, 9, 10):  # 3 -> 9 -> 3, 10 -> 3 -> 9 -> 3
+        _assert_dropped(_row(result, claim, 2))
+    assert "순환" in caplog.text
+    assert _row(result, 2, 2).status.value == StatusValue.CONFIRMED  # 다른 줄은 그대로
+
+
+def test_3절_12_같은_취지_줄의_줄_단위_위치_없음은_어느_인용인지_몰라_애매():
+    answer = _row_level(3, "동일한 취지")  # 3항 줄: 인용은 대상 줄에서 정해짐
+    _assert_dropped(_row(_read(answer), 3, 2), UnverifiedReason.AMBIGUOUS)
+
+
+# ---- 같은 취지 줄이 위치를 짚은 경우 (PR #125 리뷰 고칠 것 1번) ----
+# 같은 취지 줄의 인용은 대상 줄에서 채우므로, 위치는 인용을 채운 뒤 붙여야 한다
+_NO_MENTION_4 = ("한편 인용발명 2의 [0043]에도", "한편 [0043]에도")  # 4항 줄에서 인용 언급을 뺌
+_SAME_AS_1 = ("거절이유 1과 같고", "청구항 제1항과 같고")  # 4항 줄의 대상을 (1, 2) 줄(인용 D1)로
+
+
+def test_같은_취지_줄이_위치를_짚어도_멈추지_않는다():
+    answer, pages = _variant(_NO_MENTION_4)  # 리뷰 재현 그대로
+    result = _read(answer, pages)  # 예외 없이 끝나야 함
+    # 대상 rejection:1 -> (4, 1) 줄은 없음 (거절이유 1의 대상은 제1항뿐)
+    # 3절 12 규칙대로 확인되지 않음
+    _assert_dropped(_row(result, 4, 2))
+    assert _row(result, 3, 2).status.value == StatusValue.CONFIRMED  # 다른 같은 취지 줄은 그대로
+
+
+def test_같은_취지_줄이_채운_인용_밖_라벨에_위치를_짚으면_애매():
+    answer, pages = _variant(_NO_MENTION_4, _SAME_AS_1)
+    row = _row(_read(answer, pages), 4, 2)
+    # 모델은 [0043]을 D2 아래 짚었는데 채운 인용은 D1뿐: 어느 인용의 위치인지 원문으로 못 정함
+    _assert_dropped(row, UnverifiedReason.AMBIGUOUS)
+
+
+def test_같은_취지_줄이_채운_인용_안_라벨에_위치를_짚으면_위치를_붙이고_확인됨():
+    # (1, 1): 거절이유 1(인용 D1 하나)의 판단에서 인용 언급을 빼고 2-1과 같은 취지로 바꿈
+    answer, pages = _variant(
+        ("청구항 제1항은 인용발명 1의 [0014]", "청구항 제1항은 2-1에서 본 바와 같이 [0014]")
+    )
+    answer["claim_rows"][0]["same_as"] = [
+        {"value": None, "raw_text": "2-1에서 본 바와 같이", "page": 3, "ambiguous": False}
+    ]
+    row = _row(_read(answer, pages), 1, 1)  # 대상 (1, 2) 줄의 인용 D1
+    assert row.same_as == ["rejection:2"] and row.citations == ["D1"]
+    assert row.locations == {"D1": ["[0014]", "[0056]", "도 4b"]}
+    assert row.status.value == StatusValue.CONFIRMED and "같은 취지" in row.status.checked
+
+
+def test_같은_취지_줄의_위치가_이미_애매여도_멈추지_않고_위치를_남긴_애매():
+    answer, pages = _variant(_NO_MENTION_4, _SAME_AS_1)
+    answer["claim_rows"][4]["citations"][0]["label"] = "D1"  # 채운 인용(D1) 안 라벨
+    row = _row(_read(answer, pages), 4, 2)
+    # 거절이유 2 인용이 둘이고 언급이 없어 location_ambiguous: 값은 남기되 애매 (원래 판정 그대로)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS
+    assert row.citations == ["D1"] and row.locations == {"D1": ["[0043]"]}
+    assert row.same_as == ["claim:1"] and row.page == 3 and row.raw_text
