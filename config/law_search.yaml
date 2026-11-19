@@ -1,0 +1,8 @@
+# 법령 검색 모델 설정 (#66). 단계마다 한 칸 (core/llm/embed.py가 읽는다)
+embed:
+  model: text-embedding-3-small   # 11/19 기준선으로 정함. 다른 모델은 비교 실험에서 이 줄만 바꾼다
+  batch_size: 100                 # 묶음 하나 = 호출 1번
+  price_per_mtok_input: 0.02      # [확인 필요] 달러 / 입력 토큰 100만. 시작 전 OpenAI 가격표로 확인
+  # 고유 글 1,142개 → 묶음 12번 + 질의 19개 묶음 1번. 넉넉히 잡되 실수로 크게 돌지 않게
+  max_model_calls: 30
+  max_retries: 3
