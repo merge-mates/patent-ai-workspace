@@ -319,7 +319,8 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 법령 벡터 색인 = 새 판 `law-idx-v2` (v1 조각 그대로 + `embedding`). 심사기준은 `law-idx-v3` | v1에 벡터만 채움 / 벡터를 DB 밖 파일로 | v1 덤프를 이미 공유했고 "설정을 바꾸면 새 판" 규칙. v2에서 BM25를 다시 돌려 v1과 점수가 같음을 확인 | 설계 (#66, 11/19) | experiments/m2-i2-law-vector-baseline |
 | 임베딩 모델 = OpenAI `text-embedding-3-small` (기준선), 설정 `config/law_search.yaml` | 3-large / 로컬 모델 | 싸고(고유 글 1,142개 + 질의 19개 $0.0046) 비교는 설정만 바꿔서. 로컬 모델은 torch 같은 의존성 | 설계 (#66, 11/19) | |
 | 같은 글은 한 번만 임베딩 (`core/index_embed`) | 조각마다 | 법령은 판마다 같은 조문이 많아 조각 10,649개에 고유 글 1,142개 | 구현 중 문제 (#66) | |
-| `vector` 검색기는 말뭉치를 안 가리고, 질의 벡터는 `settings.query_vectors` 파일로 받아 채점기를 안 고침 | 채점기에 embed 넘기기 | 공용 채점기를 바꾸지 않고 fake와 같은 길. 질의 벡터는 `core/index_embed queries`로 미리 만들어 git 밖에 | 설계 (#66) | |
+| `vector` 검색기는 말뭉치를 안 가리고, 질의 벡터는 `settings.query_vectors` 파일로 받아 채점기를 안 고침 | 채점기에 embed 넘기기 | 공용 채점기를 바꾸지 않고 fake와 같은 길. 질의 벡터는 `eval/retrieval/embed_queries`로 미리 만들어 git 밖에 (정답 파일은 채점기 쪽만 읽음) | 설계 (#66) | |
+| `vector`는 점수 문턱 없이 범위 안 조각을 다 순위 매김 (`fake`·`law_bm25`는 점수 0 이하를 뺌) | 코사인 문턱 | 문턱은 기준선을 잰 뒤 정하기로 함 (이 문서 2절). 그래서 범위 안 조각이 있으면 `not_found_in_scope`가 사실상 안 나옴: F2가 쓸 때 "못 찾음 ≠ 없음"을 문턱으로 다시 볼 것 | 리뷰 (#66, 11/19) | |
 
 - ADR 세 조건을 다 맞는 결정은 없다고 본다. 표 나누기는 되돌릴 때 마이그레이션 하나와 덤프 다시 뽑기라 "되돌리기 어렵다"가 약하다.
 
