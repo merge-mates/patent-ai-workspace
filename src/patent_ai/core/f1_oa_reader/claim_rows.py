@@ -261,11 +261,14 @@ def _target_key(row: ClaimRow, target: str) -> tuple[int | None, int | None]:
     return row.claim, int(number)
 
 
-def _resolve_same_as(made: list[ClaimRow], pending: set[int]) -> list[ClaimRow]:
+def _resolve_same_as(
+    made: list[ClaimRow], pending: dict[int, dict[str, list[str]]]
+) -> list[ClaimRow]:
     """규칙 2: 같은 취지 줄의 인용 = 대상 줄 인용의 합 (중복 빼고 라벨 순).
 
     대상 줄이 없거나(지원 안 하는 거절이유·대상 밖 청구항), 확인되지 않음이거나,
     같은 취지가 돌아서 제자리로 오면(순환) 그 줄도 확인되지 않음 (지어내지 않는다).
+    pending: 줄 번호 -> 그 줄이 짚은 위치. 위치는 인용을 채운 뒤에 붙인다 (라벨이 인용 안이어야 함).
     """
     index = {(row.claim, row.rejection): i for i, row in enumerate(made)}
     done: dict[int, list[str] | None] = {}  # 줄 번호 -> 정한 인용 (못 정하면 None)
@@ -306,10 +309,18 @@ def _resolve_same_as(made: list[ClaimRow], pending: set[int]) -> list[ClaimRow]:
     for i in sorted(pending):
         citations = citations_of(i, frozenset())
         row = made[i]
+        locations = pending[i]
         if citations is None:
             out[i] = _unverified(row.claim, row.rejection, UnverifiedReason.NOT_EXTRACTED)
+        elif set(locations) - set(citations):
+            # 짚은 위치의 라벨이 채운 인용 밖: 어느 인용의 위치인지 원문으로 못 정함 (값 비움)
+            logger.warning("같은 취지 줄의 위치 라벨이 채운 인용 밖 (청구항 %s): 애매", row.claim)
+            out[i] = _unverified(row.claim, row.rejection, UnverifiedReason.AMBIGUOUS)
         else:
-            out[i] = row.model_copy(update={"citations": citations})
+            # model_copy는 검사를 다시 안 돌아서 새로 만들어 스키마 검사를 탄다
+            data = row.model_dump()
+            data.update(citations=citations, locations=locations)
+            out[i] = ClaimRow.model_validate(data)
     return out
 
 
@@ -365,7 +376,9 @@ def build_claim_rows(
     """
     by_no = {r["no"]: r for r in rejections}
     made: list[ClaimRow] = []
-    pending: set[int] = set()  # 같은 취지 대상 줄로 인용을 정할 줄 (made 안 번호)
+    # 같은 취지 대상 줄로 인용을 정할 줄 (made 안 번호) -> 그 줄이 짚은 위치.
+    # 인용이 아직 비어 있어 위치는 ClaimRow에 넣지 않고 따로 들고 있다가 인용을 채운 뒤 붙인다
+    pending: dict[int, dict[str, list[str]]] = {}
     fallback: list[tuple[int, int, UnverifiedReason]] = []  # 값 없이 남길 줄 (다른 줄이 없을 때만)
     seen: set[tuple[int, int]] = set()
     for r in rows:
@@ -440,7 +453,7 @@ def build_claim_rows(
                     checked += f", {_RULE_NOTE[rule]}"
                 status = Status(value=StatusValue.CONFIRMED, checked=checked)
             if rule == _BY_SAME_AS:
-                pending.add(len(made))
+                pending[len(made)] = values.pop("locations")
             made.append(ClaimRow(claim=claim, rejection=no, status=status, **values))
     # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
     # (줄이 빠져도 조용히 지나가지 않게)

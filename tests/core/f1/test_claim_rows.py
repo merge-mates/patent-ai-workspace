@@ -10,9 +10,6 @@ import json
 import logging
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
 from patent_ai.core.f1_oa_reader.read_oa import read_oa
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
@@ -784,10 +781,8 @@ def test_3절_12_같은_취지_줄의_줄_단위_위치_없음은_어느_인용�
 # 같은 취지 줄의 인용은 대상 줄에서 채우므로, 위치는 인용을 채운 뒤 붙여야 한다
 _NO_MENTION_4 = ("한편 인용발명 2의 [0043]에도", "한편 [0043]에도")  # 4항 줄에서 인용 언급을 뺌
 _SAME_AS_1 = ("거절이유 1과 같고", "청구항 제1항과 같고")  # 4항 줄의 대상을 (1, 2) 줄(인용 D1)로
-_REPRO = pytest.mark.xfail(raises=ValidationError, strict=True, reason="고칠 것 1번 재현")
 
 
-@_REPRO
 def test_같은_취지_줄이_위치를_짚어도_멈추지_않는다():
     answer, pages = _variant(_NO_MENTION_4)  # 리뷰 재현 그대로
     result = _read(answer, pages)  # 예외 없이 끝나야 함
@@ -797,7 +792,6 @@ def test_같은_취지_줄이_위치를_짚어도_멈추지_않는다():
     assert _row(result, 3, 2).status.value == StatusValue.CONFIRMED  # 다른 같은 취지 줄은 그대로
 
 
-@_REPRO
 def test_같은_취지_줄이_채운_인용_밖_라벨에_위치를_짚으면_애매():
     answer, pages = _variant(_NO_MENTION_4, _SAME_AS_1)
     row = _row(_read(answer, pages), 4, 2)
@@ -805,7 +799,6 @@ def test_같은_취지_줄이_채운_인용_밖_라벨에_위치를_짚으면_�
     _assert_dropped(row, UnverifiedReason.AMBIGUOUS)
 
 
-@_REPRO
 def test_같은_취지_줄이_채운_인용_안_라벨에_위치를_짚으면_위치를_붙이고_확인됨():
     # (1, 1): 거절이유 1(인용 D1 하나)의 판단에서 인용 언급을 빼고 2-1과 같은 취지로 바꿈
     answer, pages = _variant(
@@ -820,7 +813,6 @@ def test_같은_취지_줄이_채운_인용_안_라벨에_위치를_짚으면_�
     assert row.status.value == StatusValue.CONFIRMED and "같은 취지" in row.status.checked
 
 
-@_REPRO
 def test_같은_취지_줄의_위치가_이미_애매여도_멈추지_않고_위치를_남긴_애매():
     answer, pages = _variant(_NO_MENTION_4, _SAME_AS_1)
     answer["claim_rows"][4]["citations"][0]["label"] = "D1"  # 채운 인용(D1) 안 라벨
