@@ -6,3 +6,4 @@ read_oa:
   prompt: prompts/f1/read_oa.md
   max_model_calls: 2   # 첫 호출 + 출력 검사 실패 때 한 번
   max_retries: 2       # 전송 오류(429·연결)를 다시 부르는 횟수
+  model_input: raw     # 모델 입력 모양: raw(쪽 글자만) | tables_md(쪽 끝에 이어 붙인 표를 마크다운으로, #122)
