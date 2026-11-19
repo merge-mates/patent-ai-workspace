@@ -1,0 +1,16 @@
+# F1 read_oa 모델 입력 모양 비교 (이슈 #122 task-b). 설정 비교: config/f1.yaml read_oa.model_input 하나만
+experiment: m1-i3-f1-model-input-tables
+baseline: m1-i3-f1-model-input-tables   # raw 실행(11/19 오후, work/f1_real_model_tune5_after)을 같은 scores.json 안에 둠
+goldset: tune/f1_jaea
+goldset_version: 2
+impl: 재아
+settings:
+  model: claude-haiku-5-5
+  max_tokens: 16000
+  max_model_calls: 2
+  model_input: tables_md   # changed (기준 raw)
+runner: work/run_f1_tune5_tables_md.py   # git 밖. run_f1_tune5.py + 전체 전송 상한
+scorer: work/score_model_input.py        # git 밖. 값·청구항 줄 status 개수 (정답 대비 채점은 #20 뒤)
+budget:
+  max_usd: 0.1
+  max_external_calls: 7     # 5건 + 출력 검사 실패 재시도 (실제 6회)

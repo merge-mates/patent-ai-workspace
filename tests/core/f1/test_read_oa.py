@@ -555,3 +555,73 @@ def test_표_줄과_모델의_대상_청구항이_다르면_conflict():
     claims = result.rejections[0].claims
     assert claims.status.value == StatusValue.CONFLICT
     assert sorted(tuple(c.value) for c in claims.candidates) == [(1,), (1, 2, 3, 4)]
+
+
+# ---- 모델 입력 모양 (이슈 #122 task-b): config read_oa.model_input ----
+def _with_model_input(monkeypatch, value):
+    """read_oa가 읽는 단계 설정의 model_input만 바꾼다 (나머지는 config/f1.yaml 그대로)."""
+    import dataclasses
+
+    from patent_ai.core.f1_oa_reader import read_oa as module
+    from patent_ai.core.llm.config import load_step_config
+
+    real = load_step_config(STEP)
+    monkeypatch.setattr(
+        module, "load_step_config", lambda step: dataclasses.replace(real, model_input=value)
+    )
+
+
+def _pages_with_table() -> PageText:
+    pages = _pages("notice_basic")
+    first = pages.pages[0].model_copy(
+        update={
+            "tables": [
+                [
+                    ["순번", "거절이유가 있는 부분", "관련 법조항"],
+                    ["1", "청구항 제1항", "특허법 제29조제2항"],
+                ]
+            ]
+        }
+    )
+    return pages.model_copy(update={"pages": [first, *pages.pages[1:]]})
+
+
+def _prompt_for(pages: PageText) -> str:
+    transport = FakeTransport({STEP: _ok("basic")})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    read_oa(pages, "d_1", "oa_1", "r_1", ctx=ctx)
+    return transport.calls[0]["prompt"]
+
+
+def test_config의_model_input은_정한_값_중_하나다():
+    from patent_ai.core.f1_oa_reader.model_input import MODES
+    from patent_ai.core.llm.config import load_step_config
+
+    assert load_step_config(STEP).model_input in MODES
+
+
+def test_tables_md면_표가_마크다운으로_모델_입력에_들어간다(monkeypatch):
+    _with_model_input(monkeypatch, "tables_md")
+    prompt = _prompt_for(_pages_with_table())
+    assert "[쪽 1 표]\n| 순번 | 거절이유가 있는 부분 | 관련 법조항 |" in prompt
+
+
+def test_raw면_표를_덧붙이지_않는다(monkeypatch):
+    _with_model_input(monkeypatch, "raw")
+    assert "[쪽 1 표]" not in _prompt_for(_pages_with_table())
+
+
+@pytest.mark.parametrize("value", [None, "markdown"])
+def test_model_input이_없거나_모르는_값이면_모델을_부르지_않고_멈춘다(monkeypatch, value):
+    from patent_ai.core.llm.errors import ModelConfigError
+
+    _with_model_input(monkeypatch, value)
+    transport = FakeTransport({STEP: _ok("basic")})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    with pytest.raises(ModelConfigError, match="model_input"):
+        read_oa(_pages("notice_basic"), "d_1", "oa_1", "r_1", ctx=ctx)
+    assert transport.calls == []

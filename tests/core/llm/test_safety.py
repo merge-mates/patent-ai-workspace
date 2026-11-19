@@ -249,3 +249,13 @@ def test_git_공통_폴더의_부모를_메인_checkout으로_본다():
 
 def test_기본_캐시_폴더는_테스트마다_임시_폴더(tmp_path):
     assert cache_mod.DEFAULT_CACHE_DIR.is_relative_to(tmp_path)
+
+
+def test_model_input_키는_조용히_읽혀_설정에_남는다(tmp_path, caplog):
+    # 이슈 #122: 단계가 모델 입력 모양을 고르는 키 (값 검사는 그 단계 코드가 한다)
+    d = write_cfg(tmp_path, "s:\n" + BASE + PRICES + "  model_input: tables_md\n")
+    with caplog.at_level(logging.WARNING):
+        cfg = load_step_config("t.s", d)
+    assert caplog.text == ""
+    assert cfg.model_input == "tables_md"
+    assert load_step_config("t.s", write_cfg(tmp_path, "s:\n" + BASE + PRICES)).model_input is None
