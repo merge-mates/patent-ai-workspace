@@ -79,13 +79,15 @@ erDiagram
 - 한 사건분 가짜 결과 파일(`tests/fixtures/`)은 결과 스키마 코드와 같이 만든다 (#14).
 
 ## 5. DB 모델 (저장)
-여기 적은 테이블 이름과 컬럼은 v0 방향이다. 컬럼 타입·제약·인덱스·마이그레이션은 서버 이슈(#55)에서 서버 코드로 정하고, 그때 이 절을 맞춘다.
+컬럼 타입·제약·인덱스의 기준은 DB 모델 코드 [`src/patent_ai/db/models/`](../src/patent_ai/db/models/)와 마이그레이션이다. 여기에는 표의 뜻과 규칙만 둔다. ID는 종류 앞글자 + 무작위 글자(`c_…`, `oa_…`, `doc_…`, `r_…`)다.
 
-- 엔티티 표: `users`(기본 한 명) · `cases`(`user_id`) · `case_events` · `documents`(경로·해시·출처·받은 시각) · `claim_versions` · `claims` · `oas` · `rejections` · `cited_references` · N:M `rejection_claims`, `rejection_citations`(심사관 지정 위치).
-- 결과 표: 결과 스키마마다 표 하나. 본문은 `jsonb`, `status`·`origin`·`run_id`·`oa_id`는 보통 컬럼. M1은 `oa_results`와 `case_materials`(⑥, 사건마다 최신 한 줄). ⑥은 지휘가 실행이 끝날 때·자료가 더해질 때 다시 써서 저장하고, 사건을 다시 열면 저장본을 읽는다. 스키마 검증은 Pydantic이 한다.
-- 같은 OA를 여러 번 돌리면 API는 판단 단위마다 가장 최근에 성공한 실행(`succeeded`)의 결과를 준다. 판단 단위가 없는 결과(①, 사건 전체 검사)는 OA마다, ⑥은 사건마다 가장 최근 것을 준다. 앞 결과는 지우지 않고 남긴다 (이력·채점용). 고르는 방법은 서버 코드에서 정한다 (#55·#56).
-- 실행 기록: `runs`(API 실행 상태 겸) · `agent_steps`(LLM 단계와 코드 도구 단계 모두. 모델·토큰·비용·시간·만든 결과 ID).
-- `result_inputs`(뒤 결과 → 기댄 앞 결과·자료): 상태 전파와 "다시 확인 필요"에 쓴다.
+- 엔티티 표: `users`(기본 한 명 `u_default`, 마이그레이션이 넣음) · `cases`(`user_id`) · `case_events` · `documents`(경로·해시·출처·받은 시각, 같은 사건에 같은 해시는 한 번) · `claim_versions` · `claims` · `oas` · `rejections` · `cited_references` · N:M `rejection_claims`(OA 당시 청구항 번호), `rejection_citations`(심사관 지정 위치).
+- 묶는 칸: 출원번호는 `cases.application_number`(출원번호를 읽기 전 임시 사건은 비어 있음), 발송번호(OA)·접수번호(보정서)는 `case_events.doc_number` 한 곳에 둔다. `oas`는 `case_events` 한 줄과 1:1이다. 날짜 칸은 표시용이고 어떤 unique에도 넣지 않는다.
+- 청구항 판: `claim_versions.source_kind`(`application` 출원서 / `amendment` 보정서 / `publication` 공개공보 / `registration` 등록공보)와 `source_doc_number`(보정서면 접수번호가 꼭 있음, 공보면 공개·등록번호)로 어느 서류의 판인지 가른다. `oas.examined_claim_version_id`가 비어 있으면 심사 대상 판은 "확인되지 않음"이다.
+- 결과 표: 결과 스키마마다 표 하나. **원본은 결과 표의 본문(`jsonb`)이다.** `status`·`origin`·`run_id`·`oa_id`는 거르기용 보통 컬럼. M1은 `oa_results`와 `case_materials`(⑥, 사건마다 최신 한 줄). ⑥은 지휘가 실행이 끝날 때·자료가 더해질 때 다시 써서 저장하고, 사건을 다시 열면 저장본을 읽는다. 스키마 검증은 Pydantic이 한다. 거절이유 엔티티 표 4개(`rejections`·`cited_references`·`rejection_claims`·`rejection_citations`)는 M1에서 비어 있고, M2에서 F3가 청구항·인용문헌으로 찾아야 할 때 결과에서 채운다.
+- 같은 OA를 여러 번 돌리면 API는 판단 단위마다 가장 최근에 성공한 실행(`succeeded`)의 결과를 준다. 판단 단위가 없는 결과(①, 사건 전체 검사)는 OA마다, ⑥은 사건마다 가장 최근 것을 준다. 앞 결과는 지우지 않고 남긴다 (이력·채점용). 고르는 코드는 #56 (`oa_results`의 `(oa_id, created_at)` 인덱스 + `runs.state`).
+- 실행 기록: `runs`(API 실행 상태 겸, `state` 6값) · `agent_steps`(지휘 단계 `StepRecord`와 모델 호출 `CallRecord`를 한 표에. 모델 호출은 `step_kind = model_call`. 모델·토큰·비용·시간·만든 결과 ID).
+- `result_inputs`(뒤 결과 → 기댄 앞 결과 `result` 또는 자료 `document`): 상태 전파와 "다시 확인 필요"에 쓴다. 가리키는 표가 여럿이라 외래 키는 걸지 않는다.
 - `api_cache`: 외부 API 응답. 외부 API 호출은 이 캐시와 호출 상한을 거친다.
 - 원본 파일은 디스크에 두고 DB에는 경로만 둔다. 위치: `data/raw/cases/<출원번호>/`(평가 사건, 자동 조회, 사용자 업로드가 같은 자리) → 가공본 `data/processed/cases/<출원번호>/`, 법령은 `data/raw/legal/`. 파일 이름 규칙은 자동 조회 이슈(#54)에서 정한다.
 - 벡터 조각과 그래프는 원본에서 만든 검색 인덱스라 여기서 정하지 않는다 (벡터 조각은 F2·F3 설계, M2. 그래프는 M3에 넣기로 하면 그때).
