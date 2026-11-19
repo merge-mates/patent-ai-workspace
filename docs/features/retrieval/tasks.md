@@ -289,7 +289,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m2-i2-bm25  (11/20)  상태: 승인  (BM25 하나로, PR #117 리뷰 요청 2 후속. 11/20 은진 승인, 이슈 번호는 은진 님이 만든 뒤)
+## m2-i2-bm25  (11/20)  상태: 승인  (BM25 하나로, PR #117 리뷰 요청 2 후속. 11/20 은진 승인, 이슈 #149)
 **구현할 design 부분**: design.md 8절 결정 표 `bm25` 줄   **맡은 합격 기준**: requirements.md 1 (`impl` 고르기)
 **목표** (한 줄): 법령 `law_bm25`를 인용문헌 `bm25`로 합치고 낱말 자르기만 설정(`settings.tokenizer`)으로 고르게 해서, 법령을 Kiwi·두 글자 둘 다 채점한다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run python eval/run_eval.py --config experiments/m2-i2-law-bm25-kiwi/config.yaml` → `scores.json` n=19.
@@ -327,5 +327,5 @@ graph LR
 - [x] task-1
 - [x] task-2
 - [x] task-3 (index.md만 남음)
-- 다음: 이슈 만들기, PR
+- 다음: PR
 - 막힌 것: 없음
