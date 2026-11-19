@@ -2,7 +2,7 @@
 experiment: m2-i1-law-bm25-baseline
 baseline: null                # 첫 기준선
 goldset: tune
-goldset_version: 1            # 이 worktree data/goldsets/VERSION (공용 VERSION이 정수가 아니라 임시)
+goldset_version: 2
 corpus: law
 index_version: law-idx-v1
 mode: bm25
