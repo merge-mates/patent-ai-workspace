@@ -228,3 +228,14 @@ def test_case_without_oa_warns_and_fails_when_nothing_to_cut(tmp_path, capsys):
     code = main(["--src", str(tmp_path / "src"), "--out", str(tmp_path / "out")])
     assert code == 1
     assert "OA 없음" in capsys.readouterr().err
+
+
+def test_non_case_folders_like_report_are_skipped_unopened(tmp_path, capsys):
+    _make_case(tmp_path / "src")
+    sealed = tmp_path / "src" / "_report" / APP
+    sealed.mkdir(parents=True)  # 이력 파일이 없어 열면 오류가 난다
+    out = tmp_path / "out"
+    code = main(["--src", str(tmp_path / "src"), "--out", str(out), "--write"])
+    assert code == 0
+    assert [p.name for p in out.iterdir()] == [APP]
+    assert "_report" in capsys.readouterr().err

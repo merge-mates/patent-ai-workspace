@@ -193,7 +193,12 @@ def main(argv: list[str]) -> int:
 
     if not args.src or not args.out:
         ap.error("--src와 --out이 필요하다 (검사만 하려면 --audit)")
-    cases = sorted(p for p in args.src.iterdir() if p.is_dir()) if args.src.is_dir() else []
+    dirs = sorted(p for p in args.src.iterdir() if p.is_dir()) if args.src.is_dir() else []
+    # 사건 폴더는 출원번호(숫자)만. `_report/` 같은 묶음 폴더는 열지 않고 건너뛴다 (report는 봉인)
+    cases = [p for p in dirs if p.name.isdigit()]
+    for p in dirs:
+        if not p.name.isdigit():
+            print(f"경고: 출원번호 폴더가 아니라 건너뜀(열지 않음): {p.name}", file=sys.stderr)
     if not cases:
         print(f"경고: 사건 폴더가 없음: {args.src}", file=sys.stderr)
         return 1
