@@ -201,3 +201,11 @@ def test_왕복():
     )
     again = LegalEvidenceBundle.model_validate(b.model_dump(mode="json"))
     assert again == b
+
+
+def test_묶음_unit_id_꼴이_틀리면_거부_null은_통과():
+    data = bundle().model_dump(mode="json")
+    with pytest.raises(ValidationError, match="unit_id 꼴"):
+        LegalEvidenceBundle.model_validate({**data, "unit_id": "nonsense"})
+    # 법률 질문 흐름은 판단 단위가 없다
+    assert LegalEvidenceBundle.model_validate({**data, "unit_id": None}).unit_id is None

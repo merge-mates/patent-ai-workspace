@@ -1,6 +1,6 @@
 """LegalEvidenceBundle(④): F2가 내는 법률 근거 묶음.
 
-모양의 기준은 docs/data-model.md 3절 ④ 줄. 결과 status는 안쪽 가장 나쁜 값과 같아야 한다.
+기준은 이 코드, 설명은 docs/data-model.md 4절 ④ 줄. 결과 status는 안쪽 가장 나쁜 값과 같아야 한다.
 법령·심사기준은 판본(시행일·개정일)을 모르면 confirmed가 될 수 없다.
 "이 사건에 적용된다"는 칸은 두지 않는다 (사건 적용일로 자동 확정하지 않는다, 사람이 판단).
 근거 위치는 공통 Evidence를 쓴다 (edition=판본, location=원문 위치, raw_text=발췌).
@@ -18,6 +18,7 @@ from patent_ai.core.schemas.common import (
     StatusValue,
     worst_status,
 )
+from patent_ai.core.schemas.judgment_unit import UnitId
 
 ALL_SOURCES_CHECKED = "모든 근거 원문 대조"  # 주장 안 근거가 모두 confirmed일 때 checked
 ALL_CLAIMS_CHECKED = "모든 주장 근거 확인"  # 묶음 안 주장이 모두 confirmed일 때 checked
@@ -99,7 +100,7 @@ def summarize_bundle_status(claims: list[LegalClaim]) -> Status:
 
 class LegalEvidenceBundle(ResultBase):
     bundle_id: str
-    unit_id: str | None = None  # OA 흐름이면 판단 단위, 법률 질문이면 null
+    unit_id: UnitId | None = None  # OA 흐름이면 판단 단위, 법률 질문이면 null
     question: str
     as_of: date | None = None  # 사용자가 정한 시점, 없으면 현행
     checked_on: date  # 확인 기준일

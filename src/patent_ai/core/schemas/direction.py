@@ -1,4 +1,6 @@
-"""DirectionCandidates(⑤): F4가 내는 대응 방향 후보. 기준은 data-model.md 4절 ⑤ 줄과 ADR 0001.
+"""DirectionCandidates(⑤): F4가 내는 대응 방향 후보.
+
+기준은 이 코드, 설명은 docs/data-model.md 4절 ⑤ 줄과 ADR 0001.
 
 AI는 방향을 확정하지 않는다. 순위·이유·확신도까지만 내고, 확신이 낮으면 순위 없이
 "직접 판단 필요"로 둔다. 고르는 것은 사람이다 (selection.origin으로 AI 기본값과 사람 선택을 구분).
@@ -19,6 +21,7 @@ from patent_ai.core.schemas.common import (
     UnverifiedReason,
     worst_status,
 )
+from patent_ai.core.schemas.judgment_unit import UnitId
 from patent_ai.core.schemas.oa_result import RejectionKind
 
 logger = logging.getLogger(__name__)
@@ -210,7 +213,7 @@ def summarize_direction_status(
 
 
 class DirectionCandidates(ResultBase):
-    unit_id: str
+    unit_id: UnitId
     candidates: list[DirectionCandidate]
     selection: DirectionSelection | None
     amendment_limit: ExtractedValue[AmendmentLimit]

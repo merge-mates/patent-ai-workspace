@@ -1,6 +1,6 @@
 """ComparisonTable(③)·ClarityReview: F3가 내는 대비표와 명확성 문구 검토.
 
-모양의 기준은 docs/data-model.md 3절 ③ 줄. 결과 status는 rows의 가장 나쁜 값과 같아야 한다.
+기준은 이 코드, 설명은 docs/data-model.md 4절 ③ 줄. 결과 status는 rows의 가장 나쁜 값과 같아야 한다.
 인용문헌 위치(식별번호·도면 번호)는 공통 칸 evidence[].location에 둔다.
 """
 
@@ -16,7 +16,7 @@ from patent_ai.core.schemas.common import (
     Status,
     worst_status,
 )
-from patent_ai.core.schemas.judgment_unit import UNIT_ID_FORM
+from patent_ai.core.schemas.judgment_unit import UNIT_ID_FORM, UnitId
 from patent_ai.core.schemas.oa_result import RejectionKind
 
 ALL_ROWS_CHECKED = "모든 줄 원문 대조"  # 모두 confirmed일 때 결과 status의 checked
@@ -105,7 +105,7 @@ def summarize_table_status(rows: list[ComparisonRow]) -> Status:
 
 
 class ComparisonTable(ResultBase):
-    unit_id: str
+    unit_id: UnitId
     rejection_kind: RejectionKind
     citations: list[ComparedCitation]
     rows: list[ComparisonRow]
@@ -146,7 +146,7 @@ class ComparisonTable(ResultBase):
 class ClarityReview(ResultBase):
     """명확성 문구 검토: 청구항 하나에서 짚은 문구와 최초 명세서의 정의."""
 
-    unit_id: str
+    unit_id: UnitId
     claim: int
     term: str  # 짚은 문구
     claim_location: str  # 청구항 안 위치

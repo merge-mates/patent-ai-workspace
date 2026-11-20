@@ -147,8 +147,8 @@ def test_based_on_unit_중복_거부():
     with pytest.raises(ValidationError, match="중복"):
         drafts(
             based_on=[
-                BasedOn(unit_id="u", candidate_id="a"),
-                BasedOn(unit_id="u", candidate_id="b"),
+                BasedOn(unit_id="oa_1:29-2:c1", candidate_id="a"),
+                BasedOn(unit_id="oa_1:29-2:c1", candidate_id="b"),
             ]
         )
 
@@ -194,3 +194,10 @@ def test_claims_based_on은_비어도_통과():
 def test_보류_청구항은_spec_basis가_비어야_함():
     with pytest.raises(ValidationError, match="spec_basis"):
         held(spec_basis=[Evidence(document_id="d_spec", location="[0016]")])
+
+
+def test_초안_unit_id_꼴이_틀리면_거부():
+    with pytest.raises(ValidationError, match="unit_id 꼴"):
+        BasedOn(unit_id="nonsense", candidate_id="c1")
+    with pytest.raises(ValidationError, match="unit_id 꼴"):
+        claim(unit_id="nonsense")

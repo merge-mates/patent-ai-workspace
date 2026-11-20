@@ -1,4 +1,4 @@
-"""JudgmentUnit(②): 판단 단위. 모양의 기준은 docs/data-model.md 3절 ② 줄.
+"""JudgmentUnit(②): 판단 단위. 기준은 이 코드, 설명은 docs/data-model.md 4절 ② 줄.
 
 unit_id는 내용으로 정한다: `<OA ID>:<조문>:c<대표 청구항>` (하위 단위는 `/<글자>`를 덧붙임).
 같은 묶음은 다시 돌려도 같은 ID라 사람이 고른 선택이 이어진다.
@@ -6,8 +6,9 @@ unit_id는 내용으로 정한다: `<OA ID>:<조문>:c<대표 청구항>` (하�
 
 import re
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import model_validator
+from pydantic import AfterValidator, model_validator
 
 from patent_ai.core.schemas.common import ResultBase
 from patent_ai.core.schemas.oa_result import RejectionKind
@@ -18,13 +19,25 @@ _ARTICLE = r"[0-9]+(?:-[0-9]+)*"
 UNIT_ID_FORM = re.compile(rf"[^:]+:{_ARTICLE}(?:\|{_ARTICLE})*:c(?P<claim>[1-9]\d*)(?:/[a-z])*")
 
 
+def _unit_id_꼴_검사(value: str) -> str:
+    # 결과끼리(대비표·법률 근거·대응 방향·초안) unit_id로 잇는다.
+    # 꼴이 틀린 ID는 조인에서 조용히 빠지므로 저장 전에 막는다
+    if not UNIT_ID_FORM.fullmatch(value):
+        raise ValueError(f"unit_id 꼴이 아님: {value}")
+    return value
+
+
+# 판단 단위 ID. unit_id를 갖는 결과 스키마는 모두 이 타입을 쓴다
+UnitId = Annotated[str, AfterValidator(_unit_id_꼴_검사)]
+
+
 class UnitKind(StrEnum):
     INDEPENDENT_GROUP = "independent_group"  # 독립항 묶음 (진보성·신규성)
     SINGLE_CLAIM = "single_claim"  # 청구항 하나 (명확성)
 
 
 class JudgmentUnit(ResultBase):
-    unit_id: str
+    unit_id: UnitId
     rejection: int  # OAResult rejections[].no
     rejection_kind: RejectionKind
     unit_kind: UnitKind

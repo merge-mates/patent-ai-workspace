@@ -1,4 +1,4 @@
-"""Drafts(⑤): 의견서 초안과 보정 청구항 초안. 모양의 기준은 docs/data-model.md 4절 ⑤ 줄.
+"""Drafts(⑤): 의견서 초안과 보정 청구항 초안. 기준은 이 코드, 설명은 docs/data-model.md 4절 ⑤ 줄.
 
 AI 원문(ai_text)은 늘 남기고, 사람이 고친 글은 human_text에 따로 둔다 (origin=human_edited).
 """
@@ -8,6 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from patent_ai.core.schemas.common import Evidence, Origin, ResultBase
+from patent_ai.core.schemas.judgment_unit import UnitId
 
 
 class OpinionKey(StrEnum):
@@ -54,7 +55,7 @@ class AmendedClaim(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     claim: int
-    unit_id: str
+    unit_id: UnitId
     before: str  # OA 당시 청구항
     ai_text: str | None  # 보정 초안 AI 원문. 보류면 null
     human_text: str | None = None
@@ -84,7 +85,7 @@ class BasedOn(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    unit_id: str
+    unit_id: UnitId
     candidate_id: str
 
 

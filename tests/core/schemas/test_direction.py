@@ -329,3 +329,9 @@ def test_후보_0개면_도우미가_경고하고_not_extracted(caplog):
         s = summarize_direction_status([], LIMIT)
     assert s.value == StatusValue.UNVERIFIED and s.reason == "not_extracted"
     assert caplog.records
+
+
+def test_대응_방향_unit_id_꼴이_틀리면_거부():
+    data = group().model_dump(mode="json")
+    with pytest.raises(ValidationError, match="unit_id 꼴"):
+        DirectionCandidates.model_validate({**data, "unit_id": "nonsense"})

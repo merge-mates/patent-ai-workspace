@@ -303,3 +303,10 @@ def test_ClarityReview_왕복():
     assert ClarityReview.model_validate(review.model_dump(mode="json")) == review
     none_def = review.model_copy(update={"spec_definition": None})
     assert ClarityReview.model_validate(none_def.model_dump(mode="json")) == none_def
+
+
+def test_대비표_unit_id_꼴이_틀리면_거부():
+    # 결과끼리 unit_id로 잇기 때문에 꼴이 틀린 ID는 저장 전에 막는다 (#164 이슈 리뷰)
+    data = table().model_dump(mode="json")
+    with pytest.raises(ValidationError, match="unit_id 꼴"):
+        ComparisonTable.model_validate({**data, "unit_id": "nonsense"})
