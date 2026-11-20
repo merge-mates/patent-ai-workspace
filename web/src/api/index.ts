@@ -5,6 +5,7 @@ import type { ComparisonTable } from '../types/generated/ComparisonTable'
 import type { DirectionCandidates } from '../types/generated/DirectionCandidates'
 import type { JudgmentUnit } from '../types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle } from '../types/generated/LegalEvidenceBundle'
+import type { CaseListExtra } from '../types/provisional/caseListExtra'
 import type { CaseCheck, DraftsWithCheck } from '../types/provisional/pending'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { PageText } from '../types/generated/PageText'
@@ -24,6 +25,8 @@ export const API_MODE = import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'ser
 
 const httpApi: typeof mockApi = {
   listCases: () => getJson<CaseSummary[]>('/cases'),
+  // API v0 사건 목록에 제출기일 글자·단계·직접 할 일 칸이 없다. 빈 목록 = 모든 사건의 칸이 "모름"
+  listCaseExtras: async (): Promise<CaseListExtra[]> => [],
   getCase: (caseId) => getJson<CaseDetail>(`/cases/${caseId}`),
   getOA: (oaId) => getJson<OADetail>(`/oas/${oaId}`),
   getOAResult: (oaId) => getJson<OAResultResponse>(`/oas/${oaId}/oa-result`),

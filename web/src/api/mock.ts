@@ -27,6 +27,8 @@ import {
 import type { CaseCheck, DraftPatch, DraftsWithCheck, LegalQuestion } from '../types/provisional/pending'
 import { exampleCaseChecks, exampleDirections, exampleDrafts } from '../types/provisional/directionExamples'
 import demoFiles from 'virtual:demo-results'
+import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
+import { directTodos } from '../todos'
 import { ApiError } from './errors'
 
 // fixture 한 묶음 = 사건 하나 + OA 하나
@@ -136,9 +138,27 @@ export const mockApi = {
     return m
   },
   async getReviewItems(caseId: string): Promise<ReviewItem[]> {
-    const items = (await byCase(caseId)).review_items
-    if (!items) throw new ApiError('result_not_ready', '검토할 사항 목록이 아직 없습니다', 404)
-    return items
+    const b = await byCase(caseId)
+    if (!b.review_items) throw new ApiError('result_not_ready', '검토할 사항 목록이 아직 없습니다', 404)
+    return [...b.review_items, ...judgmentItems(b.oa_id)]
+  },
+  // 사건 목록에 더 보이는 값 (fixture·예시에서 채운다). 서버 모드는 비어 있어 "모름"
+  async listCaseExtras(): Promise<CaseListExtra[]> {
+    return (await bundles()).map((b) => {
+      const items = b.review_items === null ? null : [...b.review_items, ...judgmentItems(b.oa_id)]
+      const todos = directTodos({
+        reviewItems: items,
+        materials: b.materials,
+        oaResult: { result: b.oa_result },
+        directions: directions[b.oa_id] ?? [],
+      })
+      return {
+        case_id: b.case_id,
+        response_due_raw: b.oa_result.response_due.raw_text,
+        stage: stageOf(b.oa_id),
+        todo_count: todos?.length ?? null,
+      }
+    })
   },
   async getDocument(documentId: string): Promise<PageText> {
     const found = (await bundles()).find((b) => b.document?.document_id === documentId)
@@ -222,6 +242,28 @@ export const mockApi = {
 // mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)
 const directions: Record<string, DirectionCandidates[]> = structuredClone(exampleDirections)
 const drafts: Record<string, DraftsWithCheck> = structuredClone(exampleDrafts)
+
+// ⑤ 대응 방향에서 사람이 판단해야 하는 묶음마다 "직접 판단 필요" 줄 하나.
+// fixture의 review_items에는 이 줄이 없어서 서버 ⑥(collect_review_items)처럼 mock이 더한다.
+// target 끝 대괄호에 판단 단위 ID를 둔다 (화면이 고른 묶음을 셈에서 빼려고)
+function judgmentItems(oaId: string): ReviewItem[] {
+  return (directions[oaId] ?? [])
+    .filter((d) => d.flags.includes('needs_human_judgment'))
+    .map((d): ReviewItem => ({
+      kind: 'needs_human_judgment',
+      target: `directions[${d.unit_id}]`,
+      label: d.unit_id,
+      reason: '직접 판단 필요',
+    }))
+}
+
+// 지금 단계(mock 짐작): 결과가 있는 가장 뒤 단계
+function stageOf(oaId: string): CaseStage {
+  if (drafts[oaId]) return 'drafts'
+  if ((directions[oaId] ?? []).length > 0) return 'directions'
+  if ((exampleUnits[oaId] ?? []).length > 0) return 'compare'
+  return 'summary'
+}
 
 // unit_id가 `<oa_id>:`로 시작하는 예시만 (판단 단위 ID는 OA ID로 시작한다)
 function ofOA<T>(table: Record<string, T>, oaId: string): T[] {
