@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from eval.retrieval.claim_history import claims_at_oa
 from scripts.split_cases_at_oa import audit, main, plan_case, write_plan
 
 SEP = "¶"
@@ -218,6 +219,9 @@ def test_audit_finds_leaked_material(tmp_path):
         f.write(_admin_row(GRANT, "20990601", "등록결정서") + "\n")
     problems = audit(out)
     assert len(problems) == 3
+    assert any("마지막 줄이 대상 OA가 아님" in p for p in problems)
+    assert any("시점 모를 파일" in p for p in problems)
+    assert any("행정이력에 없는 번호의 파일" in p for p in problems)
 
 
 def test_case_without_oa_warns_and_fails_when_nothing_to_cut(tmp_path, capsys):
@@ -239,3 +243,34 @@ def test_non_case_folders_like_report_are_skipped_unopened(tmp_path, capsys):
     assert code == 0
     assert [p.name for p in out.iterdir()] == [APP]
     assert "_report" in capsys.readouterr().err
+
+
+def test_cut_history_gives_same_claims_at_oa_as_full(tmp_path):
+    case = _make_case(tmp_path / "src", two_oas=True, ghost_claim=True)
+    out = tmp_path / "out"
+    for plan in plan_case(case):
+        d = write_plan(plan, out)
+        full = claims_at_oa(
+            case / f"{APP}_청구항이력.txt", case / f"{APP}_행정이력.txt", plan.oa_no
+        )
+        cut = claims_at_oa(d / f"{APP}_청구항이력.txt", d / f"{APP}_행정이력.txt", plan.oa_no)
+        assert cut == full and cut
+
+
+def test_write_checks_all_targets_first_and_writes_nothing(tmp_path, capsys):
+    _make_case(tmp_path / "src", two_oas=True)
+    out = tmp_path / "out"
+    (out / APP / OA2).mkdir(parents=True)
+    log = tmp_path / "work" / "split.log"
+    code = main(["--src", str(tmp_path / "src"), "--out", str(out), "--write", "--log", str(log)])
+    assert code == 1
+    assert not (out / APP / OA1).exists()
+    assert not log.exists()
+    assert "이미 있는 대상 1개" in capsys.readouterr().err
+
+
+def test_audit_counts_missing_claim_history(tmp_path):
+    (plan,) = plan_case(_make_case(tmp_path / "src"))
+    d = write_plan(plan, tmp_path / "out")
+    (d / f"{APP}_청구항이력.txt").unlink()
+    assert audit(tmp_path / "out") == [f"{APP}/{OA1}: 청구항이력 없음"]

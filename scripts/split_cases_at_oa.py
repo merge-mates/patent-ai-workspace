@@ -11,7 +11,9 @@
   uv run python scripts/split_cases_at_oa.py --src <받은 묶음 폴더> --out data/processed/cases
   ... --write --log work/split_cases_<날짜>.log   # 실제로 쓰기, 파일 이름 목록은 git 밖 로그로
   uv run python scripts/split_cases_at_oa.py --audit data/processed/cases   # 다 쓴 뒤 새는 것 세기
-출력에는 원문 글자를 넣지 않는다. 이미 있는 대상 폴더는 덮어쓰지 않고 멈춘다.
+출력에는 원문 글자를 넣지 않는다. 대상 폴더가 하나라도 이미 있으면 아무것도 안 쓰고 멈춘다.
+--src는 받은 묶음 폴더다. tune은 정답 쪽 `data/goldsets/tune/case_full/`에 있어 이 스크립트가
+거기를 읽는다 (입력을 만드는 데이터 준비 단계라 예외. 앱 코드는 여전히 goldsets를 읽지 않는다).
 """
 
 import argparse
@@ -152,7 +154,9 @@ def audit(out_root: Path) -> list[str]:
             problems.append(f"{app_no}/{oa_no}: 행정이력 마지막 줄이 대상 OA가 아님")
         nos = {_cell(r, head, "접수발송번호") for r in rows}
         claim_path = oa_dir / f"{app_no}_{CLAIMS}"
-        if claim_path.exists():
+        if not claim_path.exists():
+            problems.append(f"{app_no}/{oa_no}: 청구항이력 없음")
+        else:
             claims = _lines(claim_path)
             c_head = claims[0].rstrip("\r\n").split(SEP)
             bad = sum(
@@ -233,11 +237,25 @@ def main(argv: list[str]) -> int:
         print("경고: 행정이력에 없는 접수의 청구항 줄은 입력에서 뺐다", file=sys.stderr)
 
     if args.write:
-        for p in plans:
-            write_plan(p, args.out)
+        # 쓰기 전에 대상을 한꺼번에 본다 (일부만 쓰고 멈추면 다음 실행이 꼬인다)
+        taken = [
+            f"{p.app_no}/{p.oa_no}"
+            for p in plans
+            if (args.out / p.app_no / p.oa_no).exists()
+            or (args.out / p.app_no / f"{p.oa_no}.tmp").exists()
+        ]
+        if taken:
+            print(f"이미 있는 대상 {len(taken)}개, 아무것도 안 씀: {taken}", file=sys.stderr)
+            return 1
+    log = None
     if args.log:
         args.log.parent.mkdir(parents=True, exist_ok=True)
-        with args.log.open("x", encoding="utf-8") as f:  # 이미 있으면 멈춤
+        log = args.log.open("x", encoding="utf-8")  # 이미 있으면 멈춤 (쓰기 전에 연다)
+    if args.write:
+        for p in plans:
+            write_plan(p, args.out)
+    if log:
+        with log as f:
             for p in plans:
                 f.write(f"## {p.app_no}/{p.oa_no}\n")
                 f.writelines(f"입력 {n}\n" for n in p.copy_files)
