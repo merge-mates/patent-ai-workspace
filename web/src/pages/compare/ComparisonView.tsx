@@ -27,6 +27,7 @@ const judgmentTag: Record<Judgment, { color: string; text: string; icon: ReactNo
 }
 
 const columns: ColumnsType<ComparisonRow> = [
+  { title: '청구항', render: (_, r) => `청구항 ${r.claim}` }, // OA 시점 청구항 번호
   {
     title: '구성요소',
     render: (_, r) => (
@@ -154,7 +155,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
       {t.summary.kind === 'inventive_step' ? <InventiveSteps s={t.summary} /> : <NoveltyLine s={t.summary} />}
       <Table<ComparisonRow>
         size="small"
-        rowKey={(r, i) => `${r.element_location}-${r.citation}-${i}`}
+        rowKey={(r, i) => `${r.claim}-${r.element_location}-${r.citation}-${i}`}
         columns={columns}
         dataSource={t.rows}
         pagination={false}

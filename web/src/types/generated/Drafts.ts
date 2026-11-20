@@ -8,7 +8,14 @@ export type StatusValue = 'confirmed' | 'unverified' | 'not_found_in_scope' | 'c
  * `unverified`일 때 왜 확인되지 않았나.
  */
 export type UnverifiedReason =
-  'lookup_failed' | 'body_missing' | 'edition_unknown' | 'not_extracted' | 'ambiguous' | 'input_unverified'
+  | 'lookup_failed'
+  | 'body_missing'
+  | 'edition_unknown'
+  | 'not_extracted'
+  | 'ambiguous'
+  | 'input_unverified'
+  | 'evidence_rejected'
+  | 'limit_reached'
 export type Checked = string | null
 export type SearchedScope = string | null
 export type DocumentId = string
@@ -17,6 +24,8 @@ export type Location = string | null
 export type RawText = string | null
 export type Edition = string | null
 export type CheckedOn = string | null
+export type ChunkId = string | null
+export type IndexVersion = string | null
 export type Evidence = Evidence1[]
 export type Origin = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited'
 export type NeedsRecheck = boolean
@@ -69,6 +78,8 @@ export interface Status {
 }
 /**
  * 근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다.
+ *
+ * document_id: 원문을 여는 문서 ID. 올린 문서면 DB 문서 ID, 색인 조각이면 색인 doc_id(+ chunk_id).
  */
 export interface Evidence1 {
   document_id: DocumentId
@@ -77,6 +88,8 @@ export interface Evidence1 {
   raw_text: RawText
   edition: Edition
   checked_on: CheckedOn
+  chunk_id: ChunkId
+  index_version: IndexVersion
 }
 /**
  * 이 초안을 만들 때 쓴 선택 (묶음마다 후보 하나).

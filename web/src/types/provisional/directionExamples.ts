@@ -181,7 +181,7 @@ export const exampleCaseChecks: Record<string, CaseCheck> = {
 // ---- 의견서·보정 청구항 초안 ----
 export const exampleDrafts: Record<string, DraftsWithCheck> = {
   oa_1: {
-    draft_id: 'dr_1', ...common(ok('초안 검사')),
+    draft_id: 'dr_1', ...common(ok('초안 검사'), [], [], 'human_edited'), // 고친 칸이 있으니 맨 위도 human_edited
     based_on: [
       { unit_id: 'oa_1:29-1-1:c1', candidate_id: 'd1a' },
       { unit_id: 'oa_1:29-2:c1', candidate_id: 'd2a' },

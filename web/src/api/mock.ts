@@ -175,7 +175,7 @@ export const mockApi = {
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
     found.selection = { candidate_id: candidateId, origin: 'human_selected' }
-    found.origin = 'human_selected' // 묶음 결과도 사람이 고른 것으로 표시
+    // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
     return found
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {

@@ -27,7 +27,8 @@ export type DraftPatch =
   | { section: OpinionKey; claim?: undefined; text: string }
   | { claim: number; section?: undefined; text: string }
 
-// 법률 질문 선택 조건
+// 법률 질문 선택 조건 (요청 본문). 생성된 LegalQuestion(결과 안 질문 객체)과는 다르다:
+// 요청에는 source·as_of_source가 없고 서버가 채운다. 요청 스키마(#56·#57)가 정해지면 바꾼다.
 export interface LegalQuestion {
   text: string
   as_of: string | null
