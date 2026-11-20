@@ -3,6 +3,7 @@
 기준은 이 코드, 설명은 docs/data-model.md 4절 ④ 줄. 결과 status는 안쪽 가장 나쁜 값과 같아야 한다.
 법령·심사기준은 판본(시행일·개정일)을 모르면 confirmed가 될 수 없다.
 "이 사건에 적용된다"는 칸은 두지 않는다 (사건 적용일로 자동 확정하지 않는다, 사람이 판단).
+질문(question)·검토(review)·더 볼 조각(further_review)·검색 기록(search_log)은 F2 design 3-2절.
 근거 위치는 공통 Evidence를 쓴다 (edition=판본, location=원문 위치, raw_text=발췌).
 """
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.schemas.common import (
     Evidence,
+    Flag,
     ResultBase,
     Status,
     StatusValue,
@@ -25,10 +27,12 @@ ALL_CLAIMS_CHECKED = "모든 주장 근거 확인"  # 묶음 안 주장이 모�
 
 
 class LegalSourceKind(StrEnum):
+    """자료 종류. 값은 #24 색인의 source_kind와 같다."""
+
     STATUTE = "statute"  # 법령
-    EXAM_GUIDELINE = "exam_guideline"  # 심사기준
+    GUIDELINE = "guideline"  # 심사기준
     PRECEDENT = "precedent"  # 판례
-    TRIAL_DECISION = "trial_decision"  # 심결례
+    TRIAL = "trial"  # 심결
 
 
 class TextKind(StrEnum):
@@ -39,10 +43,79 @@ class TextKind(StrEnum):
 class Speaker(StrEnum):
     COURT = "court"  # 법원 판단
     PARTY = "party"  # 당사자 주장
+    UNKNOWN = "unknown"  # 누구 말인지 모름 (직접 검토 필요)
+
+
+class QuestionSource(StrEnum):
+    OA_REJECTION = "oa_rejection"  # OA 거절이유에서 나온 질문
+    USER_QUESTION = "user_question"  # 사용자가 직접 한 질문
+
+
+class AsOfSource(StrEnum):
+    USER_TEXT = "user_text"  # 질문 글에서 읽음
+    USER_CONDITION = "user_condition"  # 사용자가 조건으로 정함
+    OA_DISPATCH_DATE = "oa_dispatch_date"  # OA 발송일
+    NONE = "none"  # 없음 (현행)
+
+
+class ReviewVerdict(StrEnum):
+    SUPPORTED = "supported"  # 근거가 뒷받침
+    PARTIAL = "partial"  # 일부만
+    NOT_SUPPORTED = "not_supported"  # 뒷받침 못 함
+    UNDETERMINED = "undetermined"  # 판정 못 함
+
+
+class FurtherReviewWhy(StrEnum):
+    OPPOSITE_HOLDING = "opposite_holding"  # 반대 취지 판례
+    EDITION_UNKNOWN = "edition_unknown"  # 판본을 모름
+    OTHER_EDITION = "other_edition"  # 다른 판본
+    EDITION_OUT_OF_SCOPE = "edition_out_of_scope"  # 기준일 밖 판본
+    NOT_USED_CANDIDATE = "not_used_candidate"  # 후보였지만 쓰지 않음
 
 
 # 판본(시행일·개정일)이 있는 근거 종류
-_VERSIONED = (LegalSourceKind.STATUTE, LegalSourceKind.EXAM_GUIDELINE)
+_VERSIONED = (LegalSourceKind.STATUTE, LegalSourceKind.GUIDELINE)
+
+
+class LegalQuestion(BaseModel):
+    """F2가 받은 질문 하나. oa_id·rejection은 묶음 맨 위 칸에 둔다."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str
+    source: QuestionSource
+    as_of: date | None = None  # 검색 기준일, 없으면 현행
+    as_of_source: AsOfSource
+    source_kinds: list[LegalSourceKind]  # 어디를 찾을지 (비지 않음, 중복 없음)
+    article_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _검사(self) -> LegalQuestion:
+        if not self.text.strip():
+            raise ValueError("text가 비어 있음")
+        if not self.source_kinds:
+            raise ValueError("source_kinds가 비어 있음")
+        if len(set(self.source_kinds)) != len(self.source_kinds):
+            raise ValueError("source_kinds에 중복이 있음")
+        # 기준일과 그 출처는 함께 있거나 함께 없다
+        if (self.as_of is None) != (self.as_of_source == AsOfSource.NONE):
+            raise ValueError("as_of가 없을 때만, 그리고 없으면 꼭 as_of_source는 none")
+        return self
+
+
+class Review(BaseModel):
+    """주장이 근거로 뒷받침되는지 검토한 결과 (AI 판정, 사람이 확인)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verdict: ReviewVerdict
+    reason: str
+
+    @model_validator(mode="after")
+    def _검사(self) -> Review:
+        if not self.reason.strip():
+            raise ValueError("reason이 비어 있음")
+        return self
 
 
 class LegalSource(BaseModel):
@@ -52,10 +125,12 @@ class LegalSource(BaseModel):
 
     source_kind: LegalSourceKind
     identifier: str  # 조문·판결 번호·심결 번호·심사기준 절
-    text_kind: TextKind
-    speaker: Speaker | None = None  # 판례·심결례에서만
     evidence: Evidence  # raw_text=발췌, edition=판본, location=원문 위치
     status: Status
+    text_kind: TextKind | None = None  # 판례·심결만
+    speaker: Speaker | None = None  # 판례·심결만
+    decided_on: date | None = None  # 판례 선고일·심결 심결일, 모르면 null
+    court: str | None = None
 
     @model_validator(mode="after")
     def _검사(self) -> LegalSource:
@@ -68,8 +143,15 @@ class LegalSource(BaseModel):
                 self.status.value == StatusValue.CONFIRMED
             ):
                 raise ValueError("판본(edition) 없는 법령·심사기준은 confirmed 불가")
-            if self.speaker is not None:
-                raise ValueError("법령·심사기준은 speaker가 null")
+            if (
+                self.text_kind is not None
+                or self.speaker is not None
+                or self.decided_on is not None
+                or self.court is not None
+            ):
+                raise ValueError("법령·심사기준은 text_kind·speaker·decided_on·court가 null")
+        elif self.text_kind is None or self.speaker is None:
+            raise ValueError("판례·심결은 text_kind와 speaker가 필수")
         return self
 
 
@@ -92,11 +174,22 @@ class LegalClaim(ResultBase):
     no: int = Field(ge=1)
     text: str  # 주장 문장
     sources: list[LegalSource]
+    review: Review | None = None
 
     @model_validator(mode="after")
     def _검사(self) -> LegalClaim:
         if not self.text.strip():
             raise ValueError("text가 비어 있음")
+        # 사람이 꼭 봐야 하는 경우는 flags로 드러낸다
+        if (
+            self.review is not None and self.review.verdict != ReviewVerdict.SUPPORTED
+        ) and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
+            raise ValueError("review가 supported가 아니면 flags에 needs_human_review가 필요")
+        if (
+            any(s.speaker == Speaker.UNKNOWN for s in self.sources)
+            and Flag.NEEDS_HUMAN_REVIEW not in self.flags
+        ):
+            raise ValueError("speaker가 unknown인 근거가 있으면 flags에 needs_human_review가 필요")
         if not self.sources:
             # 근거 0개는 모을 값이 없다: 확인됨·충돌만 막는다
             _빈_목록_status_검사(self.status, "sources")
@@ -112,17 +205,59 @@ def summarize_bundle_status(claims: list[LegalClaim]) -> Status:
     return worst_status([c.status for c in claims], ALL_CLAIMS_CHECKED)
 
 
+class FurtherReview(BaseModel):
+    """주장에 쓰지 않았지만 사람이 더 볼 만한 색인 조각."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chunk_id: str
+    why: FurtherReviewWhy
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _검사(self) -> FurtherReview:
+        if not self.chunk_id.strip():
+            raise ValueError("chunk_id가 비어 있음")
+        return self
+
+
+class SearchLogEntry(BaseModel):
+    """자료 종류 하나를 어떻게 찾았나 (못 찾음 ≠ 없음을 가르는 기록)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_kind: LegalSourceKind
+    index_version: str | None = None
+    as_of: date | None = None
+    queries: int = Field(ge=0)
+    hits: int = Field(ge=0)
+    skipped_unverified_edition: int = Field(default=0, ge=0)  # 판본을 몰라 뺀 조각 수
+    skipped_unknown_date: int = Field(default=0, ge=0)  # 날짜를 몰라 뺀 조각 수
+
+
 class LegalEvidenceBundle(ResultBase):
     bundle_id: str
     unit_id: UnitId | None = None  # OA 흐름이면 판단 단위, 법률 질문이면 null
-    question: str
-    as_of: date | None = None  # 사용자가 정한 시점, 없으면 현행
+    oa_id: str | None = None  # DB 거르기 칸: oa_rejection 질문일 때만
+    rejection: int | None = Field(default=None, ge=1)  # 거절이유 번호, oa_rejection일 때만
+    question: LegalQuestion
     checked_on: date  # 확인 기준일
+    clarifications: list[str] = Field(default_factory=list)  # 시점이 부딪힐 때 확인한 글
     claims: list[LegalClaim]
-    further_review: list[str] = Field(default_factory=list)
+    further_review: list[FurtherReview] = Field(default_factory=list)
+    search_log: list[SearchLogEntry] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _검사(self) -> LegalEvidenceBundle:
+        from_oa = self.question.source == QuestionSource.OA_REJECTION
+        # OA 거절이유 질문이면 oa_id·rejection이 둘 다, 직접 질문이면 둘 다 null
+        if from_oa != (self.oa_id is not None and self.rejection is not None):
+            raise ValueError("oa_rejection이면 oa_id·rejection 둘 다 있고, 아니면 둘 다 null")
+        if not from_oa and (self.oa_id is not None or self.rejection is not None):
+            raise ValueError("user_question이면 oa_id·rejection은 null")
+        if self.unit_id is not None:
+            if not from_oa or self.oa_id is None or not self.unit_id.startswith(self.oa_id + ":"):
+                raise ValueError("unit_id는 oa_rejection 질문이고 oa_id + ':'로 시작해야 함")
         nos = [c.no for c in self.claims]
         if len(set(nos)) != len(nos):
             raise ValueError("claims의 no에 중복이 있음")

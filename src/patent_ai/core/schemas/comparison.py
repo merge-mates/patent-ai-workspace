@@ -40,6 +40,7 @@ class NoveltyVerdict(StrEnum):
 
 
 class ComparisonRow(ResultBase):
+    claim: int = Field(ge=1)  # OA 시점 청구항 번호 (정답·채점이 청구항마다)
     element: str  # 청구항 구성요소 문구
     element_location: str  # 청구항 안 위치
     citation: str  # 인용문헌 라벨 D1…

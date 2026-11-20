@@ -176,6 +176,7 @@ def test_왕복():
             claim(human_text="고친 초안", origin="human_edited"),
             held(unit_id="oa_1:29-2:c5", claim=5),
         ],
+        origin="human_edited",
     )
     again = Drafts.model_validate(d.model_dump(mode="json"))
     assert again == d
@@ -208,3 +209,24 @@ def test_보정_청구항_번호_중복_거부():
     with pytest.raises(ValidationError, match="claim 번호"):
         drafts(claims=[claim(claim=1), claim(claim=1, unit_id="oa_1:29-1-1:c1")])
     assert len(drafts(claims=[claim(claim=1), held(claim=7)]).claims) == 2
+
+
+def test_Drafts_origin은_고친_칸이_있으면_human_edited_아니면_ai_generated():
+    edited_sec = [sec(k, human_text="고침", origin="human_edited") if k == "points" else sec(k)
+                  for k in OpinionKey]  # fmt: skip
+    # 의견서 칸을 고쳤는데 맨 위가 ai_generated면 거부
+    with pytest.raises(ValidationError, match="origin"):
+        drafts(opinion=edited_sec)
+    assert drafts(opinion=edited_sec, origin="human_edited").origin == "human_edited"
+    # 보정 청구항을 고친 경우도 같다
+    edited_claim = claim(human_text="고친 초안", origin="human_edited")
+    with pytest.raises(ValidationError, match="origin"):
+        drafts(claims=[edited_claim])
+    assert drafts(claims=[edited_claim], origin="human_edited").origin == "human_edited"
+    # 고친 칸이 없는데 human_edited면 거부
+    with pytest.raises(ValidationError, match="origin"):
+        drafts(origin="human_edited")
+    # 그 밖의 값은 거부
+    for bad in ("ai_default", "human_selected"):
+        with pytest.raises(ValidationError, match="origin"):
+            drafts(origin=bad)

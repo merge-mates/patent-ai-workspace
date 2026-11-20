@@ -31,6 +31,8 @@ class UnverifiedReason(StrEnum):
     NOT_EXTRACTED = "not_extracted"
     AMBIGUOUS = "ambiguous"
     INPUT_UNVERIFIED = "input_unverified"  # 기대는 앞 입력이 확인되지 않음
+    EVIDENCE_REJECTED = "evidence_rejected"  # 출처 확인에서 근거가 빠짐
+    LIMIT_REACHED = "limit_reached"  # 실행 상한에 닿음
 
 
 class Origin(StrEnum):
@@ -76,7 +78,10 @@ class Status(BaseModel):
 
 
 class Evidence(BaseModel):
-    """근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다."""
+    """근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다.
+
+    document_id: 원문을 여는 문서 ID. 올린 문서면 DB 문서 ID, 색인 조각이면 색인 doc_id(+ chunk_id).
+    """
 
     model_config = ConfigDict(
         frozen=True, extra="forbid"
@@ -88,6 +93,15 @@ class Evidence(BaseModel):
     raw_text: str | None = None
     edition: str | None = None  # 법령·심사기준 판본
     checked_on: date | None = None
+    chunk_id: str | None = None  # 색인 조각 ID (색인에서 찾은 근거만)
+    index_version: str | None = None  # 색인 판 (chunk_id가 있으면 꼭)
+
+    @model_validator(mode="after")
+    def _조각이_있으면_색인_판도(self) -> Evidence:
+        # 어느 판 색인의 조각인지 모르면 다시 찾아갈 수 없다
+        if self.chunk_id is not None and self.index_version is None:
+            raise ValueError("chunk_id가 있으면 index_version도 있어야 함")
+        return self
 
 
 class ResultBase(BaseModel):

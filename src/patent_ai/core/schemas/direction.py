@@ -157,6 +157,13 @@ class DirectionCandidate(ResultBase):
     rebuttal: Rebuttal | None
 
     @model_validator(mode="after")
+    def _origin은_AI_생성만(self) -> DirectionCandidate:
+        # 사람 선택은 selection.origin 한 곳에만 (맨 위 origin은 DB 거르기 칸이라 거짓이면 안 됨)
+        if self.origin != Origin.AI_GENERATED:
+            raise ValueError("origin은 ai_generated만 (사람 선택은 selection.origin)")
+        return self
+
+    @model_validator(mode="after")
     def _검사(self) -> DirectionCandidate:
         if not self.reason.strip():
             raise ValueError("reason이 비어 있음")
@@ -217,6 +224,13 @@ class DirectionCandidates(ResultBase):
     candidates: list[DirectionCandidate]
     selection: DirectionSelection | None
     amendment_limit: ExtractedValue[AmendmentLimit]
+
+    @model_validator(mode="after")
+    def _origin은_AI_생성만(self) -> DirectionCandidates:
+        # 사람 선택은 selection.origin 한 곳에만 (맨 위 origin은 DB 거르기 칸이라 거짓이면 안 됨)
+        if self.origin != Origin.AI_GENERATED:
+            raise ValueError("origin은 ai_generated만 (사람 선택은 selection.origin)")
+        return self
 
     @model_validator(mode="after")
     def _검사(self) -> DirectionCandidates:

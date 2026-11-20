@@ -108,6 +108,13 @@ class Drafts(ResultBase):
         nums = [c.claim for c in self.claims]
         if len(set(nums)) != len(nums):
             raise ValueError("claims의 claim 번호에 중복이 있음")
+        # 맨 위 origin: 고친 칸이 하나라도 있으면 human_edited, 아니면 ai_generated
+        edited = any(s.origin == Origin.HUMAN_EDITED for s in self.opinion) or any(
+            c.origin == Origin.HUMAN_EDITED for c in self.claims
+        )
+        expected = Origin.HUMAN_EDITED if edited else Origin.AI_GENERATED
+        if self.origin != expected:
+            raise ValueError(f"origin은 {expected.value}여야 함 (고친 칸이 있으면 human_edited)")
         units = [b.unit_id for b in self.based_on]
         if len(set(units)) != len(units):
             raise ValueError("based_on의 unit_id에 중복이 있음")

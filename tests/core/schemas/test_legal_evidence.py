@@ -9,9 +9,14 @@ from patent_ai.core.schemas.common import Evidence, Status, StatusValue
 from patent_ai.core.schemas.legal_evidence import (
     ALL_CLAIMS_CHECKED,
     ALL_SOURCES_CHECKED,
+    FurtherReview,
     LegalClaim,
     LegalEvidenceBundle,
+    LegalQuestion,
     LegalSource,
+    LegalSourceKind,
+    Review,
+    SearchLogEntry,
     summarize_bundle_status,
     summarize_claim_status,
 )
@@ -22,16 +27,20 @@ NOT_EXTRACTED = Status(value="unverified", reason="not_extracted")
 
 
 def source(kind="statute", edition="2024-01-01 시행", status=OK, **kw):
+    case = kind in ("precedent", "trial")
     data = {
         "source_kind": kind,
         "identifier": "특허법 제29조 제2항",
-        "text_kind": "full",
+        "text_kind": "full" if case else None,
+        "speaker": "court" if case else None,
         "evidence": Evidence(
             document_id="law_patent",
             location="제29조 제2항",
             raw_text="발췌 문장",
             edition=edition,
             checked_on=date(2026, 11, 20),
+            chunk_id="law_patent#12",
+            index_version="law-idx-v2",
         ),
         "status": status,
     }
@@ -51,13 +60,27 @@ def claim(no=1, sources=None, status=None, **kw):
     return LegalClaim(**data)
 
 
+def question(**kw):
+    data = {
+        "text": "진보성 판단 기준은?",
+        "source": "oa_rejection",
+        "as_of": None,
+        "as_of_source": "none",
+        "source_kinds": ["statute", "precedent"],
+        "article_refs": ["특허법 제29조 제2항"],
+    }
+    data.update(kw)
+    return LegalQuestion(**data)
+
+
 def bundle(claims=None, status=None, **kw):
     claims = [claim()] if claims is None else claims
     data = {
         "bundle_id": "lb_1",
         "unit_id": "oa_1:29-2:c1",
-        "question": "진보성 판단 기준은?",
-        "as_of": None,
+        "oa_id": "oa_1",
+        "rejection": 1,
+        "question": question(),
         "checked_on": date(2026, 11, 20),
         "claims": claims,
         "status": status or summarize_bundle_status(claims),
@@ -69,7 +92,7 @@ def bundle(claims=None, status=None, **kw):
 # ---------- 근거 하나: 판본 ----------
 
 
-@pytest.mark.parametrize("kind", ["statute", "exam_guideline"])
+@pytest.mark.parametrize("kind", ["statute", "guideline"])
 @pytest.mark.parametrize("edition", [None, "", "   "])
 def test_판본_없는_법령_심사기준은_confirmed_불가(kind, edition):
     with pytest.raises(ValidationError):
@@ -82,7 +105,7 @@ def test_판본_없어도_unverified_edition_unknown은_통과():
 
 
 def test_판례는_판본_없이_confirmed_통과():
-    s = source(kind="precedent", edition=None, identifier="대법원 2020후1234", speaker="court")
+    s = source(kind="precedent", edition=None, identifier="대법원 2020후1234")
     assert s.status.value == StatusValue.CONFIRMED
 
 
@@ -90,11 +113,42 @@ def test_법령_심사기준은_speaker_거부():
     with pytest.raises(ValidationError):
         source(kind="statute", speaker="court")
     with pytest.raises(ValidationError):
-        source(kind="exam_guideline", speaker="party")
+        source(kind="guideline", speaker="party")
 
 
-def test_심결례는_speaker_가능():
-    assert source(kind="trial_decision", edition=None, speaker="party").speaker == "party"
+@pytest.mark.parametrize("kind", ["statute", "guideline"])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"text_kind": "full"},
+        {"decided_on": date(2020, 1, 1)},
+        {"court": "대법원"},
+    ],
+)
+def test_법령_심사기준은_text_kind_decided_on_court도_null(kind, extra):
+    with pytest.raises(ValidationError):
+        source(kind=kind, **extra)
+
+
+def test_심결은_speaker_가능():
+    assert source(kind="trial", edition=None, speaker="party").speaker == "party"
+
+
+@pytest.mark.parametrize("kind", ["precedent", "trial"])
+@pytest.mark.parametrize("missing", ["text_kind", "speaker"])
+def test_판례_심결은_text_kind와_speaker_필수(kind, missing):
+    with pytest.raises(ValidationError):
+        source(kind=kind, edition=None, **{missing: None})
+
+
+def test_판례는_선고일_법원_가능_모르면_null():
+    s = source(kind="precedent", edition=None, decided_on=date(2020, 5, 1), court="대법원")
+    assert s.decided_on == date(2020, 5, 1) and s.court == "대법원"
+    assert source(kind="precedent", edition=None).decided_on is None
+
+
+def test_자료_종류_값은_색인_source_kind와_같다():
+    assert {k.value for k in LegalSourceKind} == {"statute", "guideline", "precedent", "trial"}
 
 
 def test_identifier는_비지_않음():
@@ -202,15 +256,41 @@ def test_왕복():
                 1,
                 sources=[
                     source(),
-                    source("precedent", None, identifier="대법원 2020후1234", speaker="court"),
+                    source(
+                        "precedent",
+                        None,
+                        identifier="대법원 2020후1234",
+                        decided_on=date(2020, 5, 1),
+                        court="대법원",
+                    ),
                 ],
             ),
             claim(
-                2, sources=[source("exam_guideline", "2024-03 개정", identifier="심사지침 5부 3장")]
+                2,
+                sources=[source("guideline", "2024-03 개정", identifier="심사지침 5부 3장")],
+                review=Review(verdict="partial", reason="일부만 뒷받침"),
+                flags=["needs_human_review"],
             ),
         ],
-        as_of=date(2026, 1, 1),
-        further_review=["최신 개정 여부"],
+        question=question(
+            as_of=date(2026, 1, 1), as_of_source="user_text", article_refs=["특허법 제29조"]
+        ),
+        clarifications=["2024년 개정 전후 모두 확인"],
+        further_review=[
+            FurtherReview(chunk_id="prec_1#4", why="opposite_holding", note="반대 취지"),
+            FurtherReview(chunk_id="law_patent#9", why="edition_unknown"),
+        ],
+        search_log=[
+            SearchLogEntry(
+                source_kind="statute",
+                index_version="law-idx-v2",
+                as_of=date(2026, 1, 1),
+                queries=2,
+                hits=7,
+                skipped_unverified_edition=1,
+                skipped_unknown_date=0,
+            )
+        ],
     )
     again = LegalEvidenceBundle.model_validate(b.model_dump(mode="json"))
     assert again == b
@@ -221,4 +301,127 @@ def test_묶음_unit_id_꼴이_틀리면_거부_null은_통과():
     with pytest.raises(ValidationError, match="unit_id 꼴"):
         LegalEvidenceBundle.model_validate({**data, "unit_id": "nonsense"})
     # 법률 질문 흐름은 판단 단위가 없다
+    # unit_id를 빼도 oa 흐름 칸은 그대로 통과 (판단 단위 없이 거절이유만 가리킬 수 있다)
     assert LegalEvidenceBundle.model_validate({**data, "unit_id": None}).unit_id is None
+
+
+# ---------- 질문 ----------
+
+
+def test_질문_text는_비지_않음():
+    with pytest.raises(ValidationError):
+        question(text="  ")
+
+
+@pytest.mark.parametrize("kinds", [[], ["statute", "statute"]])
+def test_질문_source_kinds는_비지_않고_중복_없음(kinds):
+    with pytest.raises(ValidationError):
+        question(source_kinds=kinds)
+
+
+def test_질문_as_of와_as_of_source는_함께_있거나_함께_없음():
+    with pytest.raises(ValidationError):
+        question(as_of=date(2026, 1, 1), as_of_source="none")
+    with pytest.raises(ValidationError):
+        question(as_of=None, as_of_source="user_text")
+    for src in ("user_text", "user_condition", "oa_dispatch_date"):
+        assert question(as_of=date(2026, 1, 1), as_of_source=src).as_of_source == src
+
+
+def test_질문_rejection은_1부터_article_refs_기본_빈_목록():
+    assert question(source_kinds=["trial"], article_refs=[]).article_refs == []
+    with pytest.raises(ValidationError):
+        question(oa_id="oa_1")  # oa_id·rejection은 질문 안이 아니라 묶음 맨 위 칸
+
+
+# ---------- oa_id·rejection·unit_id (묶음 맨 위) ----------
+
+
+def test_oa_rejection_질문은_oa_id와_rejection이_둘_다_있어야_함():
+    with pytest.raises(ValidationError, match="oa_id"):
+        bundle(oa_id=None, rejection=None, unit_id=None)
+    with pytest.raises(ValidationError, match="oa_id"):
+        bundle(rejection=None)
+    with pytest.raises(ValidationError, match="oa_id"):
+        bundle(oa_id=None)
+
+
+def test_user_question이면_oa_id_rejection_unit_id는_null():
+    q = question(source="user_question")
+    ok = bundle(question=q, oa_id=None, rejection=None, unit_id=None)
+    assert ok.oa_id is None and ok.rejection is None
+    with pytest.raises(ValidationError):
+        bundle(question=q, oa_id="oa_1", rejection=1, unit_id=None)
+    with pytest.raises(ValidationError):
+        bundle(question=q, oa_id=None, rejection=None, unit_id="oa_1:29-2:c1")
+
+
+def test_rejection은_1부터():
+    with pytest.raises(ValidationError):
+        bundle(rejection=0)
+
+
+def test_unit_id는_oa_id로_시작해야_함():
+    with pytest.raises(ValidationError, match="unit_id"):
+        bundle(oa_id="oa_2")
+    assert bundle(oa_id="oa_1").unit_id == "oa_1:29-2:c1"
+
+
+def test_묶음_맨_위_as_of_칸은_없음():
+    assert "as_of" not in LegalEvidenceBundle.model_fields
+    with pytest.raises(ValidationError):
+        bundle(as_of=date(2026, 1, 1))
+
+
+# ---------- 검토 판정·직접 검토 필요 ----------
+
+
+def test_Review_reason은_비지_않음_verdict_네_값():
+    with pytest.raises(ValidationError):
+        Review(verdict="supported", reason=" ")
+    assert {v.value for v in type(Review(verdict="supported", reason="ok").verdict)} == {
+        "supported", "partial", "not_supported", "undetermined",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize("verdict", ["partial", "not_supported", "undetermined"])
+def test_review가_supported_아니면_needs_human_review_필수(verdict):
+    r = Review(verdict=verdict, reason="이유")
+    with pytest.raises(ValidationError, match="needs_human_review"):
+        claim(review=r)
+    assert claim(review=r, flags=["needs_human_review"]).review.verdict == verdict
+
+
+def test_review가_supported면_flag_없이_통과():
+    assert claim(review=Review(verdict="supported", reason="뒷받침")).review is not None
+
+
+def test_speaker_unknown_근거가_있으면_needs_human_review_필수():
+    unk = source(kind="precedent", edition=None, speaker="unknown")
+    with pytest.raises(ValidationError, match="needs_human_review"):
+        claim(sources=[unk])
+    assert claim(sources=[unk], flags=["needs_human_review"]).sources[0].speaker == "unknown"
+
+
+# ---------- 더 볼 조각·검색 기록 ----------
+
+
+def test_FurtherReview_chunk_id_비지_않음_why_다섯_값():
+    with pytest.raises(ValidationError):
+        FurtherReview(chunk_id=" ", why="other_edition")
+    for why in (
+        "opposite_holding", "edition_unknown", "other_edition",
+        "edition_out_of_scope", "not_used_candidate",
+    ):  # fmt: skip
+        assert FurtherReview(chunk_id="c#1", why=why).note is None
+    with pytest.raises(ValidationError):
+        FurtherReview(chunk_id="c#1", why="whatever")
+
+
+def test_SearchLogEntry_개수는_음수_불가_기본_0():
+    e = SearchLogEntry(source_kind="precedent", queries=1, hits=0)
+    assert (e.skipped_unverified_edition, e.skipped_unknown_date) == (0, 0)
+    for name in ("queries", "hits", "skipped_unverified_edition", "skipped_unknown_date"):
+        data = {"source_kind": "precedent", "queries": 1, "hits": 0, name: -1}
+        with pytest.raises(ValidationError):
+            SearchLogEntry(**data)

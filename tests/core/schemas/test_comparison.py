@@ -23,6 +23,7 @@ def row(citation="D1", status=OK, **kw):
     data = {
         "status": status,
         "evidence": [Evidence(document_id="d_D1", location="[0016]")],
+        "claim": 1,
         "element": "센서",
         "element_location": "청구항 1 둘째 줄",
         "citation": citation,
@@ -310,3 +311,13 @@ def test_대비표_unit_id_꼴이_틀리면_거부():
     data = table().model_dump(mode="json")
     with pytest.raises(ValidationError, match="unit_id 꼴"):
         ComparisonTable.model_validate({**data, "unit_id": "nonsense"})
+
+
+def test_대비표_줄은_청구항_번호가_필수이고_1부터():
+    data = row().model_dump()
+    del data["claim"]
+    with pytest.raises(ValidationError):
+        ComparisonRow.model_validate(data)
+    with pytest.raises(ValidationError):
+        row(claim=0)
+    assert row(claim=3).claim == 3

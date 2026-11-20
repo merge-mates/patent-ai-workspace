@@ -335,3 +335,14 @@ def test_대응_방향_unit_id_꼴이_틀리면_거부():
     data = group().model_dump(mode="json")
     with pytest.raises(ValidationError, match="unit_id 꼴"):
         DirectionCandidates.model_validate({**data, "unit_id": "nonsense"})
+
+
+def test_후보와_묶음의_origin은_ai_generated만():
+    # 사람 선택은 selection.origin 한 곳에만 (맨 위 origin은 DB 거르기 칸)
+    for bad in ("human_selected", "ai_default", "human_edited"):
+        with pytest.raises(ValidationError, match="origin"):
+            cand(origin=bad)
+        with pytest.raises(ValidationError, match="origin"):
+            group(origin=bad)
+    assert cand().origin == "ai_generated"
+    assert group().origin == "ai_generated"
