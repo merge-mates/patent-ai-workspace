@@ -7,7 +7,7 @@ import pytest
 from patent_ai.core.llm import cache as llm_cache
 from patent_ai.core.llm import transport as llm_transport
 from patent_ai.settings import get_settings
-from tests.db_guard import 테스트_DB_거부_사유
+from tests.db_guard import CI_환경인가, 테스트_DB_거부_사유
 
 
 @pytest.fixture(autouse=True)
@@ -32,9 +32,10 @@ def _전역_상태_격리(monkeypatch, tmp_path):
 
 @pytest.fixture(autouse=True)
 def _개발_DB_보호(request):
-    # db 마커 테스트만 검사한다. 로컬에서 DB 이름이 _test로 안 끝나면 실행 전에 멈춘다 (CI는 통과)
+    # db 마커 테스트만 검사한다. 로컬에서 DB 이름이 _test로 안 끝나면 실행 전에 멈춘다
+    # (CI=1·true일 때만 통과)
     if request.node.get_closest_marker("db") is None:
         return
-    사유 = 테스트_DB_거부_사유(get_settings().database_url, ci=bool(os.environ.get("CI")))
+    사유 = 테스트_DB_거부_사유(get_settings().database_url, ci=CI_환경인가(os.environ.get("CI")))
     if 사유:
         pytest.fail(사유, pytrace=False)

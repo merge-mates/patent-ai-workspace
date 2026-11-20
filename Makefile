@@ -5,9 +5,10 @@
 COMPOSE := docker compose
 DB_USER := $${POSTGRES_USER:-patent}
 DB_NAME := $${POSTGRES_DB:-patent_ai}
-# db 테스트 전용 DB. 개발 DB와 분리한다. 포트를 바꿨다면 make test-db TEST_DATABASE_URL=... 로 덮어쓴다
+# db 테스트 전용 DB. 개발 DB와 분리한다.
+# 주소는 .env의 DATABASE_URL(계정·포트)을 따르고 DB 이름만 바꾼다 (tests/db_guard.py). 다른 주소는 make test-db TEST_DATABASE_URL=... 로 덮어쓴다
 TEST_DB_NAME := patent_ai_test
-TEST_DATABASE_URL ?= postgresql+psycopg://patent:patent@localhost:5432/$(TEST_DB_NAME)
+TEST_DATABASE_URL ?=
 
 help: ## 명령 목록
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-11s %s\n", $$1, $$2}'
@@ -39,10 +40,14 @@ test: ## 파이썬 테스트 (DB·네트워크·API 키 없이)
 
 test-db: ## 별도 테스트 DB(patent_ai_test)에서 @pytest.mark.db 테스트 (개발 DB는 안 건드림)
 	$(COMPOSE) up -d --wait db
-	@$(COMPOSE) exec -T db psql -U $(DB_USER) -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$(TEST_DB_NAME)'" | grep -q 1 \
-	  || $(COMPOSE) exec -T db psql -U $(DB_USER) -d postgres -c "CREATE DATABASE $(TEST_DB_NAME)"
-	DATABASE_URL="$(TEST_DATABASE_URL)" uv run alembic upgrade head
-	DATABASE_URL="$(TEST_DATABASE_URL)" uv run pytest -m db
+	@# psql 계정은 컨테이너 안 셸이 펼치게 sh -c로 감싼다 (index-load와 같이). SQL은 표준 입력으로 넘긴다
+	@echo "SELECT 1 FROM pg_database WHERE datname='$(TEST_DB_NAME)'" | $(COMPOSE) exec -T db sh -c 'psql -U $(DB_USER) -d postgres -tA' | grep -q 1 \
+	  || echo "CREATE DATABASE $(TEST_DB_NAME)" | $(COMPOSE) exec -T db sh -c 'psql -U $(DB_USER) -d postgres'
+	@# 주소에 비밀번호가 들어 있어 명령 줄을 화면에 찍지 않는다 (@)
+	@url="$(TEST_DATABASE_URL)"; url="$${url:-$$(uv run python -m tests.db_guard)}" \
+	  && echo "테스트 DB: $(TEST_DB_NAME)" \
+	  && DATABASE_URL="$$url" uv run alembic upgrade head \
+	  && DATABASE_URL="$$url" uv run pytest -m db
 
 lint: ## 파이썬·화면 린트
 	uv run ruff check

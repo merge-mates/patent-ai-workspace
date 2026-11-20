@@ -33,8 +33,8 @@ make index-load DUMP=data/index/law-idx-v1.dump
 - 넣은 뒤 조각 수·chunk_id 목록(지문)을 다시 세어 `.fingerprint.json`과 다르면 실패로 끝난다. 덤프를 다시 받아 다시 한다.
 - 손 확인(가짜 조각): `make db` 뒤 `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl`, `make index-dump CORPUS=cite`로 `data/index/cite-idx-v1.dump`·`.revision`·`.fingerprint.json`이 생기는지 본다.
   - `make test-db`는 개발 DB가 아니라 테스트 DB `patent_ai_test`를 쓴다. 손 확인으로 fixture를 넣어 둬도 충돌하지 않고, 테스트가 개발 DB 데이터를 지우지도 않는다.
-  - 포트를 바꿨다면(`DB_PORT=5433`) `make test-db TEST_DATABASE_URL=postgresql+psycopg://patent:patent@localhost:5433/patent_ai_test`처럼 덮어쓴다.
-  - 안전망: 로컬에서 db 테스트의 DB 이름이 `_test`로 끝나지 않으면(`CI` 환경 제외) 테스트가 시작 전에 멈춘다. `uv run pytest -m db`를 직접 칠 때는 `DATABASE_URL`을 테스트 DB로 지정한다.
+  - 테스트 DB 주소는 `.env`의 `DATABASE_URL`(계정·포트)을 따르고 DB 이름만 `patent_ai_test`로 바꾼다. 포트를 바꿨다면(`DB_PORT=5433`) `DATABASE_URL`도 같은 포트로 적어 두면 따로 덮어쓸 일이 없다. 다른 주소를 쓰려면 `make test-db TEST_DATABASE_URL=...`로 덮어쓴다.
+  - 안전망: 로컬에서 db 테스트의 DB 이름이 `_test`로 끝나지 않으면(`CI=true`·`CI=1`인 CI 환경 제외) 테스트가 시작 전에 멈춘다. `uv run pytest -m db`를 직접 칠 때는 `DATABASE_URL`을 테스트 DB로 지정한다.
 - 덤프에 든 테이블만 지우고 다시 만든다 (`pg_restore --clean`). 다른 테이블은 그대로다.
 - 덤프는 git에 올리지 않는다.
 
