@@ -2,7 +2,6 @@
 name: implement
 description: 승인된 tasks.md의 이슈 계획 하나(PR 하나), 또는 작은 이슈의 본문 task 체크리스트를 task 순서대로 구현 → 리뷰 → 고침 → 테스트 → 커밋까지 돌린다. 계획 하나를 시작할 때 쓴다. 구현 계획 없는 일, 문구 한 줄 같은 아주 작은 일에는 쓰지 않는다.
 argument-hint: "<tasks.md 경로> <이터레이션 예: m1-i3> [task 번호부터] | <이슈번호> [task 번호부터]"
-disable-model-invocation: true
 ---
 
 # 구현: $ARGUMENTS
@@ -28,7 +27,7 @@ disable-model-invocation: true
 4. implementer 보고를 받는다. "막힘"이거나 "목적이 다른 일이라 나누자"면 진행 칸 `막힌 것`에 적고(작은 이슈 모드면 진행 칸이 없으니 이슈 댓글 `gh issue comment $0`로 남긴다) 사람에게 넘긴 뒤 멈춘다.
 5. **보고를 믿지 않고 직접 확인한다**: 보고가 비었거나 칸이 빠졌으면 `git log`, `git show --stat`, 테스트를 직접 돌려 본다. 실패하는 테스트만 담은 커밋이 있으면 implementer에게 `<시작>`을 넘겨 `git reset --soft <시작>` 뒤 한 커밋으로 다시 하게 한다 (이 task 범위, 푸시 전).
 6. task마다 **code-reviewer 에이전트**(task 모드)에 넘긴다: task 항목, 합격 기준, `git diff <시작>..HEAD`, 커밋 본문 `git log --format=%B <시작>..HEAD` (`실패 확인:` 줄을 보게). implementer 보고는 넘기지 않는다.
-7. 막음이 있으면 implementer에게 지적만 넘겨 고치게 하고 (이 폴더에서), 테스트를 다시 돌리고, code-reviewer가 **바뀐 부분만** 다시 본다. 최대 2회. 그래도 막음이 남으면 멈추고 사람에게.
+7. 막음이나 고칠 것이 있으면 implementer에게 지적만 넘겨 고치게 하고 (이 폴더에서), 테스트를 다시 돌리고, code-reviewer가 **바뀐 부분만** 다시 본다. implementer가 고칠 것에 이유를 달아 반박하면 그 이유도 같이 넘긴다. 최대 2회. 그래도 막음이 남으면 멈추고 사람에게. 고칠 것만 남으면 진행 칸 `막힌 것`(작은 이슈 모드면 이슈 댓글)에 적고 다음 task로 간다 (PR 본문에 옮긴다).
 8. 그 폴더 전체 테스트가 통과하는지 다시 본다 (코드 커밋은 implementer가 이미 했다). 진행을 적는다:
    - 계획 모드: 진행 칸에서 task를 `[x]`로, `다음`을 고쳐 따로 커밋한다: `docs(docs): <기능> $1 task N 진행`.
    - 작은 이슈 모드: 커밋은 없다. 이슈 본문의 그 task 줄을 `- [x]`로 바꾼다 (`gh issue view $0 --json body -q .body` → 그 줄만 바꿔 `gh issue edit $0 --body-file <파일>`. 다른 줄은 그대로 둔다). 실패하면 사람에게 알리고 다음 task로 가지 않는다.

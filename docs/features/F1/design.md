@@ -133,7 +133,7 @@ flowchart LR
 - 결과 전체 `status` = 칸들 중 가장 나쁜 값 (`conflict` > `unverified` > `not_found_in_scope` > `confirmed`). 단 지원 안 하는 거절이유는 상태를 나쁘게 하지 않는다 (flags로만). 예외 둘: (a) 빼는 것은 조문이 `confirmed`이고 지원 표 밖일 때만이다. 조문을 모르면(`unverified`·`conflict`) 결과 `status`에 넣는다. (b) 거절이유 0개이고 위쪽 필드(출원번호·발송번호·통지일·제출기일·통지 종류)가 모두 `input_unverified`(스캔본)면 결과 `reason`은 `input_unverified`이고 "거절이유 0개" 경고는 남기지 않는다. 전체 `reason`은 가장 나쁜 칸의 `reason`(같은 값이 여럿이면 앞 칸 순서: 식별 정보 → 통지 → 거절이유 순), `confirmed`면 `checked = "모든 칸 원문 대조"`. 거절이유 하나의 `status`도 같은 규칙으로 그 안 칸들을 모은다.
 - 결과 단위 `evidence` = 값마다 `{document_id, page, raw_text}`를 모은 목록 (대조에 통과한 것만).
 - LLM 출력 스키마 `OAExtraction` ([data-model.md](../../data-model.md) 6절 열린 것을 여기서 정함): 결과 스키마의 일부. 값마다 `{value, raw_text, page, ambiguous: bool}`만 두고 `status`·`supported`·`country`·`flags`는 없다 (코드가 ⑤⑥에서 붙임). 모델이 상태를 정하지 않게 하려는 것이다.
-- `CaseMaterials`(⑥) 중 F1에서 쓰는 칸: `documents[]`, `missing[{what, depends_on_tasks, lookup_result, ask_upload: true}]`, `held_tasks[{task, waiting_for}]`, `review_items_count`. 채우는 것은 #16·#54, 모양은 #14.
+- `CaseMaterials`(⑥) 중 F1에서 쓰는 칸: `documents[{document_id, kind, source, status}]` (status = 묶기 상태, 다른 출원번호·번호 못 읽음이 다시 열어도 남음, #16 T6), `missing[{what, depends_on_tasks, lookup_result, ask_upload: true}]`, `held_tasks[{task, waiting_for}]`, `review_items_count`. 채우는 것은 #16·#54, 모양은 #14.
 - 앞 기능 결과가 바뀌면 "다시 확인 필요": F1은 맨 앞이라 없다. 다만 사람이 출원번호를 넣거나(`PATCH /cases/{id}`) 빠진 자료를 올리면, 그 자료에 기댄 뒤 결과(F3·F4)에 `needs_recheck`를 붙인다 (data-model 3절 규칙 2, #14).
 - 인터페이스 변경: **있음**. 받는 쪽에 알림 (서버 담당: API, 결과 스키마 #14).
 
@@ -153,7 +153,7 @@ flowchart LR
 승인되면 api/README.md·data-model.md는 #14·#56 PR에서 같이 고친다 (이 문서가 기준이 되지 않게).
 
 ## 4. 판과 근거
-- **쓰는 청구항 판:** F1은 청구항 본문을 읽지 않고 번호만 뽑는다. 심사 대상 판(`examined_claim_version`)은 #16·#54가 정한다: 행정 이력 순서에서 대상 OA(발송번호) **앞**에 있는 마지막 보정서(접수번호)가 만든 판, 보정서가 없으면 출원 때 판(v0). 날짜만으로 고르지 않는다. 이력을 못 가져오면 `unverified(lookup_failed)`.
+- **쓰는 청구항 판:** F1은 청구항 본문을 읽지 않고 번호만 뽑는다. 심사 대상 판(`examined_claim_version`)은 #16·#54가 정한다: 행정 이력 순서에서 대상 OA(발송번호) **앞**에 있는 마지막 보정서(접수번호)가 만든 판, 보정서가 없으면 출원 때 판(v0, 값은 고정 글자 `"as_filed"`. DB `claim_versions.source_kind`의 `application`과는 다른 칸). 보정각하된 보정서는 건너뛴다 (특허법 제51조). 날짜만으로 고르지 않는다. 이력을 못 가져오면 `unverified(lookup_failed)`.
 - **OA 시점 자르기 (합격 기준 8):** 이력 순서·발송번호·접수번호로 대상 OA 뒤 이벤트를 버린다. 자른 사건 자료가 그 OA 실행의 코어 입력이다. 자르기는 #54 조회 결과와 #16 올린 자료(`POST /cases/{id}/documents`) **모두**에, F1이 출원번호를 읽은 뒤 무조건 도는 코드 단계로 돈다 ([ADR 0003](../../decisions/0003-tech-stack.md) 고정 단계). 지휘는 건너뛸 수 없다. 이력에서 순서를 정할 수 없는 자료는 입력에서 빼고 `unverified`. 시험은 9절 `case_two_oas/`·`case_unordered/`.
 - [architecture.md](../../architecture.md) 8절 그림은 자르기(CUT)가 F1보다 앞이지만, 출원번호는 F1이 읽어야 알 수 있어 순서는 "F1 OA 읽기 → 자동 조회 + 자르기"다. 그림은 #15 PR에서 맞춘다.
 - **쓰는 법령·심사기준 판:** 해당 없음 (F1은 조문 번호만 읽고 본문을 보지 않는다).
@@ -195,7 +195,7 @@ flowchart LR
 - 재아: 규칙으로 되는 것(번호·조문·청구항 범위·날짜 글자·통지 종류 문구)은 정규식 코드, 블록 나누기와 관계 잇기·요지·힌트만 모델 한 번. 모델 출력은 원문 글자를 같이 받아 코드로 대조한다 (지어낸 값 0건의 장치).
 - 모델 호출: `core/llm/` (#13)에서만, OA마다 한 번 (+ 출력 검사 실패 때 한 번). 두 번째 호출 프롬프트에는 첫 답의 검사 오류 문구를 넣고(`$retry_note`), 두 번째 답은 목록 칸의 문자열만 받아 두는 `LooseOAExtraction`으로 검사한다 (문자열은 `Item`으로 바꾸지 않음, 그 줄은 확인되지 않음). 그 밖의 검사 실패는 `ModelOutputInvalid`.
 - 프롬프트 파일: `prompts/f1/read_oa.md`
-- 실험 설정: `config/f1.yaml`의 `read_oa.model`, `read_oa.temperature`, `read_oa.prompt` (모델은 [ADR 0003](../../decisions/0003-tech-stack.md)대로 Haiku 5.5로 시작).
+- 실험 설정: `config/f1.yaml`의 `read_oa.model`, `read_oa.effort`, `read_oa.prompt` (temperature는 API에서 빠져 설정에 두지 않는다, #134) (모델은 [ADR 0003](../../decisions/0003-tech-stack.md)대로 Haiku 5.5로 시작).
 
 ## 8. 이 기능 안의 결정
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |
