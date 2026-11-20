@@ -9,7 +9,7 @@ class ModelOutputInvalid(Exception):
     """모델 답이 JSON이 아니거나 output_schema 검사에 떨어짐. 메시지에 이유.
 
     stop_reason은 모델이 답을 끝낸 이유(모르면 None). truncated가 True면 답이 max_tokens에
-    닿아 잘린 것이다 (모양이 틀린 답과 가르려고 둔다).
+    닿아 잘린 것이다 (모양이 틀린 답과 가르려고 둔다. 호출 기록에는 output_truncated).
     """
 
     def __init__(self, message: str, stop_reason: str | None = None) -> None:

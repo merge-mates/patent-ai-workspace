@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from patent_ai.core.llm.cache import Cache, FileCache, make_cache_key
 from patent_ai.core.llm.config import REPO_ROOT, load_step_config
 from patent_ai.core.llm.errors import (
+    TRUNCATED_STOP_REASON,
     ModelCallFailed,
     ModelCallLimitExceeded,
     ModelConfigError,
@@ -162,6 +163,7 @@ def call_model(
                 attempt=attempt,
                 outcome=outcome,
                 transport_try=transport_try,
+                stop_reason=resp.stop_reason if resp else None,
             )
         )
 
@@ -217,14 +219,17 @@ def call_model(
     # 스키마가 있으면 답을 JSON으로 읽어 Pydantic 검사한다
     parsed = None
     if output_schema is not None:
-        # 예외에 stop_reason을 실어 보낸다 (max_tokens면 잘린 답: ModelOutputInvalid.truncated)
+        # 검사에 떨어진 이유를 둘로 나눠 기록한다: max_tokens에 닿아 잘린 답(output_truncated)과
+        # 끝까지 답했는데 모양이 틀린 답(invalid_output). 예외에도 stop_reason을 실어 보낸다
+        truncated = resp.stop_reason == TRUNCATED_STOP_REASON
+        failed = "output_truncated" if truncated else "invalid_output"
         try:
             parsed = output_schema.model_validate(json.loads(resp.text))
         except json.JSONDecodeError as e:
-            record(resp, elapsed_ms, hit is not None, "invalid_output", tries)
+            record(resp, elapsed_ms, hit is not None, failed, tries)
             raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason) from e
         except ValidationError as e:
-            record(resp, elapsed_ms, hit is not None, "invalid_output", tries)
+            record(resp, elapsed_ms, hit is not None, failed, tries)
             raise ModelOutputInvalid(f"스키마 검사 실패: {e}", resp.stop_reason) from e
 
     # 검사를 통과한 답만 캐시에 쓴다 (위에서 예외가 나면 여기까지 오지 않음)
