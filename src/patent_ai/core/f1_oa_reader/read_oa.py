@@ -258,7 +258,14 @@ def _hint_claims(item: Item | None, pages: PageText) -> ExtractedValue:
 def _hint_note(item: Item | None, pages: PageText) -> ExtractedValue:
     if item is None:
         return ExtractedValue(status=_hint_missing(pages, _NOTE_TITLES))
-    return merge(None, _found(item), pages, compare_by="raw_text", field="amendment_note")
+    # 값 = 원문 대조를 통과한 글자 그대로 (모델이 준 value는 쓰지 않는다, 이슈 #154).
+    # 정답 형식(f1-oa-gold.md)도 원문 문장 그대로라 화면·채점이 value를 바로 쓴다.
+    return merge(None, _found(item), pages, derive=_original_sentence, field="amendment_note")
+
+
+def _original_sentence(raw_text: str) -> str | None:
+    """보정 참고사항 값: 원문 글자의 앞뒤 공백만 뺀다. 비면 None(못 씀)."""
+    return raw_text.strip() or None
 
 
 def read_oa(

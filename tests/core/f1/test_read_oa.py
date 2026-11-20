@@ -159,6 +159,31 @@ def test_심사관_힌트_칸이_없으면_없음이고_확인됨():
     assert result.status.value == StatusValue.CONFIRMED
 
 
+# ---- 보정 참고사항 값 = 원문 문장 (이슈 #154) ----
+def test_보정_참고사항이_있으면_값에_원문_문장이_들어간다():
+    result, _ = _run("notice_basic", _ok("basic"))
+    note = result.examiner_hints.amendment_note
+    assert note.status.value == StatusValue.CONFIRMED
+    assert note.value == "청구항 5의 종속 관계를 정리하세요."  # 정답 형식: 원문 문장 그대로
+    assert note.raw_text == note.value and note.page == 3
+
+
+def test_보정_참고사항_값은_모델이_준_값이_아니라_대조한_원문_글자다():
+    answer = _answer("basic")
+    answer["amendment_note"]["value"] = "종속항 정리 권고"  # 모델이 줄여 쓴 값은 쓰지 않는다
+    result, _ = _run("notice_basic", _text(answer))
+    assert result.examiner_hints.amendment_note.value == "청구항 5의 종속 관계를 정리하세요."
+
+
+def test_보정_참고사항_글자가_원문에_없으면_값이_비고_확인되지_않음():
+    answer = _answer("basic")
+    answer["amendment_note"]["raw_text"] = "청구항 9를 삭제하세요."  # 쪽 글자에 없는 문장
+    result, _ = _run("notice_basic", _text(answer))
+    note = result.examiner_hints.amendment_note
+    assert (note.value, note.raw_text) == (None, None)
+    assert note.status.value == StatusValue.UNVERIFIED
+
+
 # ---- 못 뽑음 ----
 def test_제출기일과_식별번호가_없으면_그_필드만_확인되지_않음():
     result, _ = _run("notice_missing_fields", _ok("missing_fields"))
