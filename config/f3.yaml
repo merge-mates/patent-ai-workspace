@@ -41,6 +41,7 @@ compare:
   prompt: prompts/f3/compare.md
   # 실행 하나의 합계: 판단 단위 × 청구항마다 1번(신규성은 × 인용문헌) + 검사 실패 때 1번 더.
   # 여러 독립항을 인용하는 종속항은 묶음마다 다시 센다
+  # second_search를 켜면 못 찾은 청구항마다 한 번 더 불러 최대 두 배가 된다
   max_model_calls: 240
   max_retries: 2
 

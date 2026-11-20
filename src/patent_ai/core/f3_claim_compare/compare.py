@@ -434,6 +434,15 @@ def _rows_of(
 
 
 # ---- 한 번 더 찾기 (second_search): 1차에서 근거를 못 고른 구성요소만 ----
+def _second_log_status(result: SearchResult, fresh: bool, scope: str) -> Status:
+    if fresh:
+        return _confirmed("두 번째 검색에서 새 조각을 받음")
+    if result.status == "unverified":
+        # 본문이 없어 못 찾은 것은 "조회 범위 내 없음"으로 덮지 않는다
+        return _log_status(result, scope)
+    return Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
+
+
 def _second_round(
     unit: JudgmentUnit,
     split: SplitClaim,
@@ -482,9 +491,7 @@ def _second_round(
                 citation=cite.label,
                 doc_id=cite.doc_id,
                 round=2,
-                status=_confirmed("두 번째 검색에서 새 조각을 받음")
-                if fresh
-                else Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope),
+                status=_second_log_status(result, bool(fresh), scope),
                 searched_scope=scope,
                 hit_chunk_ids=[h.chunk_id for h in fresh],
             )
@@ -613,6 +620,14 @@ def _inventive_summary(
     )
 
 
+def _differences_only_not_found(rows: list[ComparisonRow]) -> bool:
+    """차이 후보 줄이 하나 이상 있고, 전부 근거 없이 "조회 범위 내 없음"인가 (덮기 전 줄로 본다)."""
+    different = [r for r in rows if r.judgment == Judgment.DIFFERENCE_CANDIDATE]
+    return bool(different) and all(
+        r.status.value == StatusValue.NOT_FOUND_IN_SCOPE for r in different
+    )
+
+
 def _novelty_summary(
     rows: list[ComparisonRow], lost: set[_Key], unit: JudgmentUnit, label: str
 ) -> NoveltySummary:
@@ -641,6 +656,9 @@ def _novelty_summary(
         # 스키마 세 값 중 남는 값이다. 실질적 동일이라고 본 것이 아님을 글로 분명히 한다
         verdict = NoveltyVerdict.SUBSTANTIALLY_SAME_CANDIDATE
         reason += ". 가리기 어려운 구성요소만 있음, 실질적 동일 판단 아님"
+    if verdict == NoveltyVerdict.DIFFERENT and _differences_only_not_found(rows):
+        # 못 찾음 ≠ 없음: 차이 후보가 전부 "조회 범위 내 없음" 줄에서만 나왔다
+        reason += ". 차이 후보는 찾아본 범위에서 못 찾은 것, 없다는 판단 아님"
     lost_here = [key for key in marks if key in lost]
     if lost_here:
         reason += f". 확인 못 한 구성요소 {len(lost_here)}개 (대비하지 않음)"
@@ -732,18 +750,21 @@ def compare_unit(
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )
+        only_not_found = novelty and _differences_only_not_found(rows)
         if not input_ok:
             # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
             bad = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
             rows = [r.model_copy(update={"status": bad}) for r in rows]
         # 직접 검토 필요: 대비 안 한 인용이 있음 / 효과 후보를 안 뽑음(진보성) /
-        # 단위에 표시가 있음(묶음 미확인, 독립항이 대상 밖) / 신규성 표시가 "차이 있음"이 아님
+        # 단위에 표시가 있음(묶음 미확인, 독립항이 대상 밖) / 신규성 표시가 "차이 있음"이 아님 /
+        # "차이 있음"이 못 찾은 줄에서만 나옴 (못 찾음 ≠ 없음)
         review = (
             bool(skipped)
             or not novelty
             or Flag.NEEDS_HUMAN_REVIEW in unit.flags
             or unit.status.value != StatusValue.CONFIRMED
             or summary.verdict != NoveltyVerdict.DIFFERENT
+            or only_not_found
         )
         tables.append(
             ComparisonTable(

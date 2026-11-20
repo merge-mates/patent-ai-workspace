@@ -1,7 +1,8 @@
 """F3 진입 함수: OA 정리 결과 + 사건 자료 + 설정(글자 입력 포함) -> F3Result.
 
-순서: 대비 방식(설정 impl. 지금은 청구항 나누기 -> 판단 단위 -> 진보성·신규성 대비) ->
-명확성 검토 -> 한 결과로 모으기.
+순서: 청구항 나누기(거절이유 대상 청구항 + 그들이 인용하는 앞 청구항) -> 판단 단위 ->
+(청구항 판이 확인되지 않았으면) 단위 낮추기 -> 대비 방식(설정 impl)으로 진보성·신규성 대비 ->
+명확성 검토 -> 한 결과로 모으기. 대비 방식만 갈아 끼우고 나머지는 어느 방식이든 같다.
 단계가 예외로 실패하면 삼키지 않는다 (지휘가 실행 failed로 남긴다).
 """
 
@@ -12,11 +13,13 @@ from patent_ai.core.f3_claim_compare.compare import (
     f3_query_embedder,
     make_searcher,
 )
+from patent_ai.core.f3_claim_compare.elements import SplitClaim, split_elements
 from patent_ai.core.f3_claim_compare.inputs import F3Config
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f3_claim_compare.strategies import get_strategy
+from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.llm.limits import RunContext
-from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.case_materials import CaseMaterials, HeldTask
 from patent_ai.core.schemas.common import (
     Flag,
     Status,
@@ -41,6 +44,39 @@ def make_search_resources(config: F3Config, ctx: RunContext) -> tuple[Searcher, 
     """
     repo = PostgresChunkRepository.from_url()
     return make_searcher(config.settings, repo, f3_query_embedder(ctx)), repo
+
+
+def _split_claims(
+    oa: OAResult, config: F3Config, ctx: RunContext
+) -> tuple[dict[int, SplitClaim], list[HeldTask]]:
+    """거절이유 대상 청구항과, 그들이 인용하는 앞 청구항을 나눈다 (청구항마다 한 번)."""
+    claims = config.inputs.claims_at_oa
+    numbers = sorted(claims)
+    todo: set[int] = set()
+    for rej in oa.rejections:
+        if rej.supported and rej.kind != RejectionKind.OTHER:
+            todo |= set(rej.claims.value or [])
+    splits: dict[int, SplitClaim] = {}
+    held: list[HeldTask] = []
+    seen: set[int] = set()
+    while todo:
+        claim = min(todo)  # 번호 순서대로 (같은 입력 -> 같은 호출 순서)
+        todo.discard(claim)
+        seen.add(claim)
+        if claim not in claims:
+            logger.warning("run_f3 %s: 청구항 %d의 글자가 없어 나누지 못함", oa.oa_id, claim)
+            held.append(
+                HeldTask(
+                    task=f"f3_split:{oa.oa_id}:claim{claim}",
+                    waiting_for=f"OA 당시 청구항 {claim} 글자",
+                )
+            )
+            continue
+        split = split_elements(claim, claims[claim], numbers, ctx=ctx)
+        splits[claim] = split
+        # 인용되는 앞 청구항도 나눠야 독립항 묶음과 함께 읽을 청구항을 알 수 있다
+        todo |= set(split.depends_on or []) - seen
+    return splits, held
 
 
 def run_f3(
@@ -73,7 +109,16 @@ def run_f3(
                 "run_f3 %s: 거절이유 %d는 지원 안 함 (단위를 만들지 않음)", oa_id, rej.no
             )
 
-    # 1) 대비 방식(config/f3.yaml impl): 청구항 나누기 -> 판단 단위 -> 진보성·신규성 대비.
+    # 1) 청구항 나누기 -> 2) 판단 단위 (어느 대비 방식이든 같은 공통 단계)
+    splits, held = _split_claims(oa_result, config, ctx)
+    units, unit_held = build_units(oa_result, splits)
+    held += unit_held
+    if config.inputs.claims_status.value != StatusValue.CONFIRMED:
+        # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified.
+        # 대비 전에 낮춰야 대비표의 직접 검토 필요 표시가 이 상태를 본다
+        units = [_unverified_unit(u) for u in units]
+
+    # 3) 대비 방식(config/f3.yaml impl): 진보성·신규성 대비만 맡는다.
     #    검색기는 방식이 필요할 때만 만든다. 모르는 impl 이름이면 여기서 멈춘다
     strategy = get_strategy(config.settings.impl)
 
@@ -82,15 +127,9 @@ def run_f3(
             return searcher, repo
         return make_search_resources(config, ctx)
 
-    out = strategy(oa_result, config, ctx=ctx, resources=resources)
-    units, compared = out.units, out.compared
-    held = list(out.held_tasks)
-    input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
-    if not input_ok:
-        # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
-        units = [_unverified_unit(u) for u in units]
+    compared = strategy(units, oa_result, splits, config, ctx=ctx, resources=resources)
 
-    # 2) 명확성 검토 (대비 방식과 따로)
+    # 4) 명확성 검토 (대비 방식과 따로)
     clarity = review_clarity_units(units, oa_result, config, ctx=ctx)
 
     tables = compared.tables

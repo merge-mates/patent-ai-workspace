@@ -7,7 +7,6 @@ from patent_ai.core.f3_claim_compare.compare import CompareOutput
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
 from patent_ai.core.f3_claim_compare.run import run_f3
 from patent_ai.core.f3_claim_compare.strategies import (
-    StrategyOutput,
     get_strategy,
     register_strategy,
     split_search,
@@ -41,16 +40,17 @@ def test_같은_이름에_다른_구현을_등록하면_오류():
 
 
 def test_등록한_방식을_설정_이름으로_골라_run_f3가_부른다():
-    called: list[str] = []
+    seen: list[list[str]] = []
 
     @register_strategy("fake_impl")
-    def fake(oa, config, *, ctx, resources):
-        called.append(oa.oa_id)
-        return StrategyOutput(units=[], splits={}, compared=CompareOutput(), held_tasks=[])
+    def fake(units, oa, splits, config, *, ctx, resources):
+        seen.append([u.unit_id for u in units])
+        assert sorted(splits) == [1, 2]  # 나눈 청구항은 공통 단계가 만들어 넘긴다
+        return CompareOutput()
 
     config = scenario.config()
     settings = config.settings.model_copy(update={"impl": "fake_impl"})
-    ctx, transport = scenario.context({})
+    ctx, transport = scenario.context()
     result = run_f3(
         scenario.oa_result(),
         scenario.MATERIALS,
@@ -59,9 +59,14 @@ def test_등록한_방식을_설정_이름으로_골라_run_f3가_부른다():
         searcher=scenario.searcher(),
         repo=scenario.REPO,
     )
-    assert called == ["oa_1"]
-    assert transport.calls == []  # 지금 방식(나누기 → 검색 → 대비)은 돌지 않는다
-    assert result.units == [] and result.comparisons == []
+    # 방식은 판단 단위를 받아 진보성·신규성 대비만 맡는다
+    assert seen == [["oa_1:29-2:c1", "oa_1:42-4-2:c2"]]
+    assert result.comparisons == []
+    # 청구항 나누기·판단 단위·명확성 검토는 방식과 상관없이 그대로 나온다
+    assert [u.unit_id for u in result.units] == ["oa_1:29-2:c1", "oa_1:42-4-2:c2"]
+    assert [r.unit_id for r in result.clarity_reviews] == ["oa_1:42-4-2:c2"]
+    steps = [c["step"] for c in transport.calls]
+    assert steps == ["f3.split_elements", "f3.split_elements", "f3.clarity"]
 
 
 def test_run_f3는_설정의_impl이_없는_이름이면_멈춘다():
