@@ -21,3 +21,11 @@ opinion:
   prompt: prompts/f4/opinion.md
   max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
   max_retries: 2
+
+amendment:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/amendment.md
+  max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
