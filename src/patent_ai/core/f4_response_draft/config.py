@@ -46,9 +46,19 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
             raise ModelConfigError(f"{key}는 1 이상의 정수여야 함: {value!r}")
         return value
 
+    max_units = positive("max_units")
+    # 묶음마다 첫 호출 + 출력 검사 실패 때 한 번. 단계 상한이 이보다 작으면 묶음이 많은 사건이
+    # 중간에 끊긴다. 돌리다 끊기지 않게 설정을 읽을 때 멈춘다
+    for step in ("direction", "opinion", "amendment"):
+        section = data.get(step)
+        limit = section.get("max_model_calls") if isinstance(section, dict) else None
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit < 2 * max_units:
+            raise ModelConfigError(
+                f"f4.{step}의 max_model_calls {limit}가 2 × max_units({max_units})보다 작음"
+            )
     return F4Options(
         final_rejection_limit=switch,
-        max_units=positive("max_units"),
+        max_units=max_units,
         max_candidates=positive("max_candidates"),
         min_basis_chars=positive("min_basis_chars"),
     )

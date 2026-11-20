@@ -114,6 +114,18 @@ def test_설정_값_형이_틀리면_멈춘다(tmp_path, body):
         load_f4_options(_write(tmp_path, body))
 
 
+_STEP = "  model: m\n  effort: medium\n  max_tokens: 1\n  prompt: p.md\n  max_model_calls: {n}\n"
+
+
+@pytest.mark.parametrize("step", ["direction", "opinion", "amendment"])
+def test_단계_호출_상한이_묶음_수의_두_배보다_작으면_멈춘다(tmp_path, step):
+    top = "final_rejection_limit: false\nmax_units: 4\nmax_candidates: 2\nmin_basis_chars: 7\n"
+    ok = _write(tmp_path, top + f"{step}:\n" + _STEP.format(n=8))
+    assert load_f4_options(ok).max_units == 4  # 2 × 4 = 8은 통과
+    with pytest.raises(ModelConfigError, match="max_model_calls"):
+        load_f4_options(_write(tmp_path, top + f"{step}:\n" + _STEP.format(n=7)))
+
+
 def test_설정_파일이_없으면_멈춘다(tmp_path):
     with pytest.raises(ModelConfigError):
         load_f4_options(tmp_path)

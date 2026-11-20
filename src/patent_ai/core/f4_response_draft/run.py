@@ -6,10 +6,18 @@
 
 import logging
 
-from patent_ai.core.f4_response_draft.amendment import assemble_drafts, build_amendments
+from patent_ai.core.f4_response_draft.amendment import (
+    LEGALITY_NOTICE,
+    assemble_drafts,
+    build_amendments,
+)
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.coverage import unchecked_rejections, uncovered
-from patent_ai.core.f4_response_draft.directions import amendment_limit_of, build_directions
+from patent_ai.core.f4_response_draft.directions import (
+    RANK_NOTICE,
+    amendment_limit_of,
+    build_directions,
+)
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import build_opinion
 from patent_ai.core.f4_response_draft.result import F4Output
@@ -100,8 +108,17 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
         flag(Flag.NEEDS_HUMAN_REVIEW)
 
     statuses = [d.status for d in directions] + ([drafts.status] if drafts else [])
+    # 확인됨일 때의 글: 보류·누락이 있으면 "모두 확인됨"이라고 쓰지 않고 사실대로 적는다
+    # (status 값은 원문 확인 여부만 뜻하고, 사람이 봐야 할 것은 flags와 아래 칸들로 드러낸다)
+    checked = ALL_F4_CHECKED
+    if held or missing or unchecked:
+        checked = (
+            f"만든 방향 후보·초안의 입력 확인됨 (보류 {len(held)}묶음, 누락 쌍 {len(missing)}, "
+            f"누락 검사 못 한 거절이유 {len(unchecked)}는 따로)"
+        )
     return F4Output(
         oa_id=oa_id,
+        units=list(inp.units),
         directions=directions,
         drafts=drafts,
         held_units=held,
@@ -109,6 +126,8 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
         uncovered=missing,
         coverage_unchecked=unchecked,
         amendment_limit_applied=bool(limit_note),
-        status=worst_status(statuses, ALL_F4_CHECKED),
+        rank_notice=RANK_NOTICE,
+        legality_notice=LEGALITY_NOTICE,
+        status=worst_status(statuses, checked),
         flags=flags,
     )

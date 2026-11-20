@@ -129,6 +129,15 @@ def test_한_바퀴를_돌면_방향_후보와_초안이_한데_나온다():
     ] * 2
 
 
+def test_결과에_판단_단위와_알림_문구가_실린다():
+    data = _case_data()
+    out, _ = _run(data)
+    assert [u.unit_id for u in out.units] == [UNIT_INVENTIVE, UNIT_CLARITY]
+    assert [u.model_dump(mode="json") for u in out.units] == data["units"]
+    assert out.rank_notice == "순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"
+    assert "적법성" in out.legality_notice and "판단하지 않" in out.legality_notice
+
+
 def test_결과_status는_안쪽에서_가장_나쁜_값():
     out, _ = _run()
     # F2가 아직 없어 방향 후보·초안이 모두 확인되지 않음
@@ -145,8 +154,34 @@ def test_결과는_JSON으로_왕복해도_같다():
 def test_앞_단계가_모두_확인됨이면_결과도_확인됨이고_검토_표시가_없다():
     out, _ = _run(_clean_case())
     assert out.status.value == StatusValue.CONFIRMED
+    assert out.status.checked == "방향 후보와 초안 모두 확인됨"
     assert out.flags == []
     assert out.coverage_unchecked == []
+
+
+def test_앞_단계가_확인됨이어도_보류한_묶음이_있으면_확인_내용에_드러난다():
+    out, _ = _run(
+        _clean_case(),
+        directions=("direction_inventive", "direction_low"),
+        opinions=("opinion_inventive",),
+        amendments=("amendment_inventive",),
+    )
+    # status 값은 원문 확인 여부라 그대로 확인됨. 사람 판단이 남았다는 것은 글·flags·held_units로
+    assert out.status.value == StatusValue.CONFIRMED
+    assert out.status.checked != "방향 후보와 초안 모두 확인됨"
+    assert "보류 1묶음" in out.status.checked
+    assert out.held_units == [UNIT_CLARITY]
+    assert Flag.NEEDS_HUMAN_JUDGMENT in out.flags
+
+
+def test_앞_단계가_확인됨이어도_누락_쌍이_있으면_확인_내용에_드러난다():
+    data = _clean_case()
+    data["units"][0]["claims"] = [1]
+    out, _ = _run(data)
+    assert out.status.value == StatusValue.CONFIRMED
+    assert "누락 쌍 1" in out.status.checked and "모두 확인됨" not in out.status.checked
+    assert out.uncovered == [(1, 2)]
+    assert out.flags == [Flag.NEEDS_HUMAN_REVIEW]
 
 
 # ---- 누락 검사: 모든 거절이유 × 모든 대상 청구항 ----
