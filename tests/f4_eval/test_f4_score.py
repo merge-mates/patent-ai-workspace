@@ -308,6 +308,36 @@ def test_예측이_하나도_없으면_0점으로_성공하지_않는다(env, ca
     assert "예측" in capsys.readouterr().err
 
 
+def test_결과_안에_든_판단_단위로_채점한다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    body = {**f4_output(directions), "units": units}  # run_f4 결과에 units가 실려 있음
+    (env.preds / f"{KEY}.json").write_text(json.dumps(body), encoding="utf-8")
+    assert not (env.preds / f"{KEY}.units.json").exists()  # 따로 둔 파일 없이
+    assert main(env.args) == 0
+    s = env.scores()
+    assert s["metrics"]["direction_top1"] == 1.0 and s["failures"]["uncovered_pairs"] == 0
+
+
+def test_결과_안_판단_단위가_따로_둔_파일보다_먼저다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    env.put_pred(units[:1], directions)  # 따로 둔 파일에는 명확성 묶음이 빠져 있음
+    body = {**f4_output(directions), "units": units}
+    (env.preds / f"{KEY}.json").write_text(json.dumps(body), encoding="utf-8")
+    assert main(env.args) == 0
+    assert env.scores()["failures"]["uncovered_pairs"] == 0  # 결과 안의 것을 썼다
+
+
+def test_결과_안_판단_단위_모양이_틀리면_멈춘다(env, capsys):
+    env.put_gold(gold())
+    units, directions = prediction()
+    body = {**f4_output(directions), "units": [{"unit_id": "x"}]}
+    (env.preds / f"{KEY}.json").write_text(json.dumps(body), encoding="utf-8")
+    assert main(env.args) == 1
+    assert "판단 단위" in capsys.readouterr().err
+
+
 def test_판단_단위_파일이_없으면_멈춘다(env, capsys):
     env.put_gold(gold())
     env.put_pred(*prediction())
