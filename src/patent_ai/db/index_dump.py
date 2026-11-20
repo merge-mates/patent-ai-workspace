@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -27,6 +26,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.index_version import corpus_of, is_index_version, version_number
 from patent_ai.settings import get_settings
 
 _TABLES: dict[str, type[LawChunk] | type[CiteChunk]] = {"law": LawChunk, "cite": CiteChunk}
@@ -54,14 +54,13 @@ def dump_name(corpus: str, versions: list[str]) -> str:
     _check_corpus(corpus)
     if not versions:
         raise IndexDumpError(f"{corpus}_chunks 표에 색인 판이 없다 (빈 표는 덤프하지 않는다)")
-    pattern = re.compile(rf"^{corpus}-idx-v([0-9]+)$")
     numbers = []
     for v in versions:
-        m = pattern.match(v)
-        if m is None:
+        n = version_number(corpus, v)
+        if n is None:
             # 다른 말뭉치 판이 섞였거나 이름 규칙에 안 맞는 판
             raise IndexDumpError(f"{corpus} 표에 맞지 않는 색인 판: {v!r}")
-        numbers.append(int(m.group(1)))
+        numbers.append(n)
     return f"{corpus}-idx-v{max(numbers)}.dump"
 
 
@@ -109,10 +108,10 @@ def sibling_paths(dump: Path) -> tuple[Path, Path]:
 
 
 def _corpus_of_dump(dump: Path) -> str:
-    m = re.match(r"^(law|cite)-idx-v[0-9]+\.dump$", dump.name)
-    if m is None:
+    corpus = corpus_of(dump.name.removesuffix(".dump")) if dump.name.endswith(".dump") else None
+    if corpus is None:
         raise IndexDumpError(f"덤프 이름이 <말뭉치>-idx-v<n>.dump 꼴이 아니다: {dump.name}")
-    return m.group(1)
+    return corpus
 
 
 def read_fingerprint_file(path: Path, corpus: str) -> dict:
@@ -168,7 +167,6 @@ def fixture_rows(corpus: str, text: str) -> list[LawChunk | CiteChunk]:
     """fixture JSONL을 그 말뭉치 표의 행으로 바꾼다 (retrieval.chunk_to_row와 같은 칸 규칙)."""
     _check_corpus(corpus)
     table = _TABLES[corpus]
-    prefix = re.compile(rf"^{corpus}-idx-v[0-9]+$")
     rows: list[LawChunk | CiteChunk] = []
     for no, line in enumerate(text.splitlines(), 1):
         if not line.strip():
@@ -176,7 +174,7 @@ def fixture_rows(corpus: str, text: str) -> list[LawChunk | CiteChunk]:
         d = json.loads(line)
         loc, ed = d["location"], d["edition"]
         # 말뭉치와 색인 판 앞말, 판본 상태가 그 표와 맞는지 (표가 섞이면 막는다)
-        if not prefix.match(d["index_version"]):
+        if not is_index_version(corpus, d["index_version"]):
             raise IndexDumpError(
                 f"{no}번째 줄 색인 판 {d['index_version']!r}이 {corpus}와 안 맞는다"
             )

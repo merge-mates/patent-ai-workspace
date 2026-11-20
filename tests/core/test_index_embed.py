@@ -173,3 +173,56 @@ def test_chunks_명령은_설정_키가_빠지면_traceback_없이_1로_멈춘�
     t = FakeEmbedTransport(vec_of)
     assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 1
     assert t.calls == [] and missing in caplog.text
+
+
+def test_cite_판_설정이면_말뭉치를_판_이름_앞말에서_꺼내_v2를_만든다(cfg, tmp_path):
+    # cite 조각 3개 (같은 글 2개): 임베딩 호출은 한 묶음, 고유 글 2개만
+    rows = [
+        _cite("KRA", 1, "같은 글"),
+        _cite("KRA", 2, "다른 글"),
+        _cite("KRB", 1, "같은 글"),
+    ]
+    src, out, conf = tmp_path / "c1.jsonl", tmp_path / "c2.jsonl", tmp_path / "c.yaml"
+    write_jsonl(rows, src)
+    conf.write_text(
+        f"index_version: cite-idx-v2\nfrom: {src}\nembed_step: {STEP}\nout: {out}\n",
+        encoding="utf-8",
+    )
+    t = FakeEmbedTransport(vec_of)
+    assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 0
+    assert len(t.calls) == 1
+    assert sorted(t.calls[0]["texts"]) == sorted(["다른 글", "같은 글"])
+    new = InMemoryChunkRepository.from_jsonl("cite", out).chunks("cite", "cite-idx-v2", None, None)
+    assert sorted(c.chunk_id for c in new) == [
+        "cite-idx-v2:KRA:pg1",
+        "cite-idx-v2:KRA:pg2",
+        "cite-idx-v2:KRB:pg1",
+    ]
+    assert [(c.text, c.location) for c in new] == [(c.text, c.location) for c in rows]
+    assert all(c.embedding for c in new)
+
+
+def _cite(doc, n, text):
+    return Chunk(
+        chunk_id=f"cite-idx-v1:{doc}:pg{n}",
+        index_version="cite-idx-v1",
+        doc_id=doc,
+        chunk_kind="body",
+        location=Location(kind="page", start=n, end=n, label=f"{n}쪽"),
+        edition=Edition(status="not_applicable"),
+        text=text,
+    )
+
+
+def test_chunks_명령은_깨진_JSONL이면_traceback_없이_1로_멈춘다(cfg, tmp_path, caplog):
+    src, conf = tmp_path / "bad.jsonl", tmp_path / "c.yaml"
+    src.write_text("{깨짐\n", encoding="utf-8")
+    conf.write_text(
+        f"index_version: cite-idx-v2\nfrom: {src}\nembed_step: {STEP}\nout: {tmp_path}/o.jsonl\n",
+        encoding="utf-8",
+    )
+    t = FakeEmbedTransport(vec_of)
+    assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 1
+    assert t.calls == []
+    errs = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert errs and "bad.jsonl" in errs[0].getMessage()

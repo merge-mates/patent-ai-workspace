@@ -8,7 +8,6 @@ import hashlib
 import json
 import logging
 import re
-import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -19,6 +18,7 @@ from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk
+from patent_ai.git_paths import is_git_ignored
 from patent_ai.retrieval.cite_index.chunker import ChunkingConfig, chunk_document
 from patent_ai.retrieval.cite_index.header_footer import HeaderFooterConfig, strip_repeated
 from patent_ai.retrieval.cite_index.pages import PageExtractor, PdfplumberExtractor
@@ -171,12 +171,6 @@ def write_index(session: Session, chunks: list[Chunk]) -> None:
         raise
 
 
-def _git_ignored(path: Path) -> bool:
-    # 저장소 밖이거나 git이 무시하지 않는 경로는 커밋될 수 있어 거절한다
-    r = subprocess.run(["git", "check-ignore", "-q", str(path)], cwd=REPO_ROOT, capture_output=True)
-    return r.returncode == 0
-
-
 def main(argv: list[str] | None = None, extractor: PageExtractor | None = None) -> int:
     ap = argparse.ArgumentParser(prog="cite_index")
     ap.add_argument("--config", required=True)
@@ -186,7 +180,8 @@ def main(argv: list[str] | None = None, extractor: PageExtractor | None = None) 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 
     jsonl = Path(args.jsonl).resolve() if args.jsonl else None
-    if jsonl and not _git_ignored(jsonl):
+    # 저장소 밖이거나 git이 무시하지 않는 경로는 커밋될 수 있어 거절한다
+    if jsonl and not is_git_ignored(jsonl):
         print(f"--jsonl 경로가 git 제외가 아님 (커밋될 수 있음): {jsonl}", file=sys.stderr)
         return 1
 
