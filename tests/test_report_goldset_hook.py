@@ -123,6 +123,9 @@ def test_bash_normal_commands_pass(command: str) -> None:
     ("tool", "tool_input"),
     [
         ("Read", {"file_path": f"/Users/someone/repo/{FAKE}"}),
+        ("Write", {"file_path": FAKE, "content": "x"}),  # 덮어쓰기도 막음
+        ("Edit", {"file_path": f"{REPO}/{FAKE}", "old_string": "a", "new_string": "b"}),
+        ("NotebookEdit", {"notebook_path": "data/goldsets/report/x.ipynb", "new_source": ""}),
         ("Read", {"file_path": f"{REPO}/data/goldsets/tune/../report/x.json"}),
         ("Grep", {"pattern": "거절", "path": "data/goldsets/report"}),
         ("Grep", {"pattern": "거절", "path": "data/goldsets"}),
@@ -142,6 +145,8 @@ def test_file_tools_report_blocked(tool: str, tool_input: dict) -> None:
     ("tool", "tool_input"),
     [
         ("Read", {"file_path": "data/goldsets/tune/f1/case1.json"}),
+        ("Write", {"file_path": "src/x.py", "content": "data/goldsets/report"}),
+        ("Edit", {"file_path": "src/x.py", "old_string": "a", "new_string": "b"}),
         ("Grep", {"pattern": "report", "path": "src"}),
         ("Grep", {"pattern": "goldsets/report"}),  # 검색어 자리는 경로가 아님
         ("Glob", {"pattern": "src/**/*.py"}),

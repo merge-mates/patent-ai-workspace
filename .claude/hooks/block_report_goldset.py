@@ -1,7 +1,7 @@
 """PreToolUse 훅: report 정답 폴더(data/goldsets/report/)를 Claude 도구로 여는 것을 막는다.
 
 settings.json의 Read(...) 금지는 Read 도구만 막는다. 이 훅은 Bash(cat, head, rg, grep,
-python 등)와 Read·Grep·Glob 입력의 경로 글자를 보고 막는다. 채점기는 설정(config)의
+python 등)와 Read·Grep·Glob·Write·Edit 입력의 경로 글자를 보고 막는다. 채점기는 설정(config)의
 `goldset: report`로 폴더를 고르므로 명령 글자에 그 경로가 안 나와 막히지 않는다.
 
 막는 것은 둘이다.
@@ -271,8 +271,10 @@ def check(data: dict) -> None:
 
     if tool == "Bash":
         check_bash(str(inp.get("command", "")), cwd, data_dirs)
-    elif tool == "Read":
-        check_paths([str(inp.get("file_path", ""))], cwd, data_dirs)
+    elif tool in ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit"):
+        # 읽기뿐 아니라 덮어쓰기·고치기도 막는다 (내용 칸은 보지 않고 경로 칸만)
+        path = inp.get("file_path") or inp.get("notebook_path") or ""
+        check_paths([str(path)], cwd, data_dirs)
     elif tool in ("Grep", "Glob"):
         path = str(inp.get("path") or "")
         if tool == "Glob":
