@@ -212,6 +212,17 @@ def test_거절이유_종류에_안_맞는_반박_유형은_출력_검사_실패
     assert results[0].candidates[0].rebuttal.rejection_kind == "inventive_step"
 
 
+def test_OA에_없는_거절이유_번호는_틀린_번호만_오류에_찍힌다():
+    bad = copy.deepcopy(_answer("direction_inventive"))
+    bad["candidates"][0]["per_rejection"].append({"rejection": 9, "response": "없는 번호"})
+    transport = FakeTransport({STEP: [_text(bad), _text(bad)]})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    with pytest.raises(ModelOutputInvalid, match=r"OA에 없는 거절이유 번호: \[9\]"):
+        build_directions(_case(), ctx)
+
+
 def test_묶음_밖_청구항을_보정하겠다는_후보는_출력_검사_실패():
     bad = copy.deepcopy(_answer("direction_clarity"))
     bad["candidates"][0]["amendment_core"] = [{"claim": 9, "kind": "clarify"}]

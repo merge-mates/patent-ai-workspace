@@ -18,6 +18,8 @@ class F4Options:
     final_rejection_limit: bool  # 최후거절이유통지 보정 제한 스위치 (동작은 보정 초안 단계)
     max_units: int  # 한 실행에서 다루는 판단 단위 수 상한
     max_candidates: int  # 묶음 하나의 방향 후보 수 상한
+    # 보정 근거 글자(띄어쓰기 뺀 길이) 하한. 설정 파일에서는 꼭 적는다 (기본값은 코드에서 만들 때만)
+    min_basis_chars: int = 10
 
 
 def load_f4_options(config_dir: Path | None = None) -> F4Options:
@@ -48,4 +50,5 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
         final_rejection_limit=switch,
         max_units=positive("max_units"),
         max_candidates=positive("max_candidates"),
+        min_basis_chars=positive("min_basis_chars"),
     )

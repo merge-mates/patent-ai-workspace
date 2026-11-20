@@ -137,6 +137,10 @@ def _with_basis(name: str, **basis) -> dict:
         {"raw_text": "덮개는 금으로 만든다"},  # 명세서에 없는 글자 (지어낸 근거)
         {"page": 1},  # 글자는 있지만 그 쪽에 없음
         {"page": 9},  # 없는 쪽
+        {"raw_text": "막"},  # 명세서에 있지만 너무 짧아 어디든 맞는 글자
+        {"raw_text": "[0015]"},  # 식별번호만
+        {"raw_text": "둘 수  있 다"},  # 띄어쓰기를 빼면 하한보다 짧음
+        {"raw_text": "  "},  # 빈 글자
     ],
 )
 def test_명세서에_없는_근거는_버리고_확인되지_않음으로_둔다(basis, caplog):
@@ -234,7 +238,69 @@ def test_보정_글자가_비면_출력_검사_실패():
         _run([blank, blank])
 
 
+# ---- 삭제하는 청구항 ----
+def _delete_direction() -> dict:
+    """진보성 묶음에서 청구항 1에 구성을 더하고 청구항 2를 삭제하는 후보 하나."""
+    answer = copy.deepcopy(_answer("direction_inventive"))
+    answer["candidates"] = answer["candidates"][:1]
+    answer["candidates"][0]["amendment_core"].append({"claim": 2, "kind": "delete"})
+    return answer
+
+
+def _delete_amendment(text: str) -> dict:
+    answer = copy.deepcopy(_answer("amendment_inventive"))
+    answer["claims"].append({"claim": 2, "text": text, "spec_basis": []})
+    return answer
+
+
+def _run_delete(amendments: list):
+    return _run(
+        amendments,
+        directions=(_delete_direction(), "direction_low"),
+        opinions=("opinion_inventive",),
+    )
+
+
+def test_삭제하는_청구항은_삭제라고만_쓰면_근거_없이도_확인됨():
+    part, _, _ = _run_delete([_delete_amendment(" (삭제) ")])
+    deleted = part.claims[1]
+    assert (deleted.claim, deleted.spec_basis) == (2, [])
+    assert part.statuses[1].value == StatusValue.CONFIRMED
+    assert "삭제" in part.statuses[1].checked  # 실제로 한 일을 적는다 (원문 대조가 아님)
+
+
+def test_삭제로_표시하고_다른_글을_쓰면_출력_검사_실패_뒤_다시_부른다():
+    bad = _delete_amendment("제1항에 있어서, 금으로 만든 덮개를 더 둔 가상의 센서 장치.")
+    part, transport, _ = _run_delete([bad, _delete_amendment("(삭제)")])
+    assert len(_calls(transport)) == 2
+    assert part.claims[1].ai_text.strip() == "(삭제)"
+    with pytest.raises(ModelOutputInvalid):
+        _run_delete([bad, bad])
+
+
 # ---- 한 청구항이 여러 묶음에 걸침 ----
+def test_앞선_묶음이_보류면_뒤_묶음의_실제_초안도_덮어쓰지_않고_표시한다(caplog):
+    low = copy.deepcopy(_answer("direction_low"))  # 진보성 묶음(청구항 1·2)을 확신 낮음으로
+    for c in low["candidates"]:
+        c["per_rejection"] = [{"rejection": 1, "response": "직접 판단 필요"}]
+        c["amendment_core"] = [{"claim": 1, "kind": "limit"}] if c["rebuttal"] is None else []
+        if c["rebuttal"]:
+            c["rebuttal"]["type"] = "difference"
+    with caplog.at_level(logging.WARNING):
+        part, transport, _ = _run(
+            ["amendment_clarity"],
+            directions=(low, "direction_clarity"),
+            opinions=("opinion_clarity",),
+        )
+    assert len(_calls(transport)) == 1  # 명확성 묶음은 불렀다
+    assert [c.claim for c in part.claims] == [1, 2]
+    second = part.claims[1]
+    # 청구항 2는 앞선(보류) 묶음 것이 남고, 명확성 묶음이 쓴 초안은 버려졌다
+    assert second.unit_id == UNIT_INVENTIVE and second.ai_text is None and second.held_reason
+    assert Flag.NEEDS_HUMAN_REVIEW in part.flags
+    assert UNIT_CLARITY in caplog.text and "덮어쓰지 않음" in caplog.text
+
+
 def test_앞선_묶음이_가진_청구항을_뒤_묶음이_덮어쓰지_않는다(caplog):
     both = copy.deepcopy(_answer("amendment_inventive"))
     extra = copy.deepcopy(_answer("amendment_clarity")["claims"][0])

@@ -41,6 +41,8 @@ HELD_NO_CLAIM_TEXT = (
     "OA 당시 청구항 글자가 입력에 없어 초안을 만들지 못했습니다. 청구항 자료를 확인해 주세요."
 )
 SPEC_BASIS_CHECKED = "명세서 근거 위치를 그 쪽 원문과 대조"
+DELETED_NO_BASIS = "삭제하는 청구항이라 명세서 근거 불필요 (원문 대조 안 함)"
+DELETED_TEXT = "(삭제)"  # 삭제하는 청구항의 보정 글자 (프롬프트와 같은 표기)
 # 보정 초안에 늘 붙여 보일 문구. 결과 스키마(v0)에 칸이 없어 상수로 둔다 (화면·API가 같이 보인다)
 LEGALITY_NOTICE = "검토용 초안이며 보정의 적법성은 판단하지 않았습니다"
 
@@ -79,7 +81,9 @@ class AmendmentPart(BaseModel):
     flags: list[Flag] = Field(default_factory=list)
 
 
-def _check_output(out: AmendmentOut, allowed: set[int], required: set[int]) -> None:
+def _check_output(
+    out: AmendmentOut, allowed: set[int], required: set[int], deleted: set[int]
+) -> None:
     """모델 답이 이 묶음의 것인지 확인한다. 어긋나면 ValueError (출력 검사 실패)."""
     nums = [c.claim for c in out.claims]
     if len(set(nums)) != len(nums):
@@ -93,15 +97,18 @@ def _check_output(out: AmendmentOut, allowed: set[int], required: set[int]) -> N
     for c in out.claims:
         if not c.text.strip():
             raise ValueError(f"청구항 {c.claim}의 text가 비어 있음")
+        # 삭제로 정한 청구항은 근거를 요구하지 않으므로, 정말 삭제 표기만 썼는지 본다
+        if c.claim in deleted and c.text.strip() != DELETED_TEXT:
+            raise ValueError(f"청구항 {c.claim}은 삭제(delete)라 text는 {DELETED_TEXT}여야 함")
 
 
-def _checked_schema(allowed: set[int], required: set[int]) -> type[AmendmentOut]:
+def _checked_schema(allowed: set[int], required: set[int], deleted: set[int]) -> type[AmendmentOut]:
     """이 묶음에 맞춘 출력 검사 스키마. 떨어진 답은 ModelOutputInvalid -> 한 번 다시 부름."""
 
     class CheckedAmendmentOut(AmendmentOut):
         @model_validator(mode="after")
         def _이_묶음의_청구항만(self) -> CheckedAmendmentOut:
-            _check_output(self, allowed, required)
+            _check_output(self, allowed, required, deleted)
             return self
 
     return CheckedAmendmentOut
@@ -109,13 +116,22 @@ def _checked_schema(allowed: set[int], required: set[int]) -> type[AmendmentOut]
 
 # ---- 명세서 근거 대조 ----
 def _verified_basis(
-    given: list[BasisOut], spec: PageText | None, unit_id: str, claim: int
+    given: list[BasisOut], spec: PageText | None, unit_id: str, claim: int, min_chars: int
 ) -> list[Evidence]:
     """모델이 준 근거 중 최초 명세서 그 쪽에 글자가 실제로 있는 것만 Evidence로 남긴다."""
     if spec is None:
         return []
     kept: list[Evidence] = []
     for b in given:
+        # 한두 글자·식별번호만 있는 글자는 어느 쪽에든 맞아 근거가 못 된다. 대조 전에 버린다
+        if len("".join(b.raw_text.split())) < min_chars:
+            logger.warning(
+                "f4.amendment %s 청구항 %d: 근거 글자가 %d자보다 짧아 버림",
+                unit_id,
+                claim,
+                min_chars,
+            )
+            continue
         if raw_text_on_page(spec, b.page, b.raw_text):
             kept.append(
                 Evidence(
@@ -137,7 +153,9 @@ def _verified_basis(
 
 def _basis_status(basis: list[Evidence], spec: PageText | None, needs_basis: bool) -> Status:
     """청구항 하나의 명세서 근거 상태. 못 찾음은 "없음"이 아니라 확인되지 않음이다."""
-    if basis or not needs_basis:
+    if not needs_basis:
+        return Status(value=StatusValue.CONFIRMED, checked=DELETED_NO_BASIS)
+    if basis:
         return Status(value=StatusValue.CONFIRMED, checked=SPEC_BASIS_CHECKED)
     reason = UnverifiedReason.BODY_MISSING if spec is None else UnverifiedReason.EVIDENCE_REJECTED
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
@@ -233,6 +251,7 @@ def build_amendments(
             continue  # 보정 없이 반박하는 방향: 보정 청구항을 만들지 않는다
         kinds = {a.claim: a.kind for a in chosen.amendment_core}
         required = {n for n, kind in kinds.items() if kind != AmendmentKind.UNCHANGED}
+        deleted = {n for n, kind in kinds.items() if kind == AmendmentKind.DELETE}
         if required - texts.keys():
             # OA 당시 글자 없이는 "앞" 글자도 비교도 없다. 모델을 부르지 않고 그 묶음을 보류한다
             logger.warning(
@@ -257,12 +276,14 @@ def build_amendments(
         )
         variables["spec"] = _spec_text(inp.spec)
         variables["limit_note"] = limit_note
-        out = call_with_one_retry(STEP, variables, _checked_schema(allowed, required), ctx)
+        out = call_with_one_retry(STEP, variables, _checked_schema(allowed, required, deleted), ctx)
 
         for c in out.claims:
-            basis = _verified_basis(c.spec_basis, inp.spec, unit.unit_id, c.claim)
+            basis = _verified_basis(
+                c.spec_basis, inp.spec, unit.unit_id, c.claim, options.min_basis_chars
+            )
             # 삭제하는 청구항은 명세서 근거 위치를 요구하지 않는다 (더한 내용이 없음)
-            status = _basis_status(basis, inp.spec, kinds.get(c.claim) != AmendmentKind.DELETE)
+            status = _basis_status(basis, inp.spec, c.claim not in deleted)
             if status.value != StatusValue.CONFIRMED:
                 logger.warning(
                     "f4.amendment %s 청구항 %d: 명세서 근거 위치를 확인하지 못함 (%s)",

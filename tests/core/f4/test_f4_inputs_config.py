@@ -79,6 +79,7 @@ def test_저장소_설정의_방향_후보_단계_값():
     options = load_f4_options()
     assert options.final_rejection_limit is False  # 기본은 끔 (동작은 C7)
     assert options.max_units >= 1 and options.max_candidates >= 1
+    assert options.min_basis_chars >= 1  # 명세서 근거 글자 길이 하한
     # 묶음마다 첫 호출 + 다시 한 번
     assert cfg.max_model_calls == 2 * options.max_units
 
@@ -89,9 +90,12 @@ def _write(tmp_path: Path, body: str) -> Path:
 
 
 def test_설정_파일에서_스위치와_상한을_읽는다(tmp_path):
-    config_dir = _write(tmp_path, "final_rejection_limit: true\nmax_units: 4\nmax_candidates: 2\n")
+    config_dir = _write(
+        tmp_path,
+        "final_rejection_limit: true\nmax_units: 4\nmax_candidates: 2\nmin_basis_chars: 7\n",
+    )
     assert load_f4_options(config_dir) == F4Options(
-        final_rejection_limit=True, max_units=4, max_candidates=2
+        final_rejection_limit=True, max_units=4, max_candidates=2, min_basis_chars=7
     )
 
 
@@ -102,6 +106,7 @@ def test_설정_파일에서_스위치와_상한을_읽는다(tmp_path):
         "final_rejection_limit: false\nmax_units: 0\nmax_candidates: 2\n",  # 1보다 작음
         "final_rejection_limit: false\nmax_units: 4\nmax_candidates: true\n",  # 숫자가 아님
         "final_rejection_limit: false\nmax_units: 4\n",  # 칸이 빠짐
+        "final_rejection_limit: false\nmax_units: 4\nmax_candidates: 2\n",  # 근거 글자 하한이 빠짐
     ],
 )
 def test_설정_값_형이_틀리면_멈춘다(tmp_path, body):
