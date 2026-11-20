@@ -137,55 +137,70 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
     if wrong_claim:
         errors.append(f"claim은 {claim}이어야 함 (받은 값 {answer.claim})")
 
-    # 1) 구성요소: 앞 구성요소 끝 자리부터 차례로 찾는다 (순서가 바뀌거나 겹치면 못 찾음)
-    elements: list[ClaimElement] = []
-    cursor = 0
-    for no, item in enumerate(answer.elements, start=1):
-        found = _find(item.text, squeezed, offsets, cursor)
-        if found is None:
-            errors.append(
-                f"elements[{no - 1}].text가 청구항 원문에 그대로 없거나 앞 구성요소보다 앞에 있음: "
-                f"{item.text!r}"
-            )
-            # 버리지 않고 모델이 준 글자 그대로 "확인되지 않음"으로 남긴다
-            elements.append(
-                ClaimElement(
-                    claim=claim,
-                    no=no,
-                    text=item.text,
-                    element_location=element_location(claim, no),
-                    status=_unverified(UnverifiedReason.NOT_EXTRACTED),
-                )
-            )
-            continue
-        start, end, cursor = found
-        elements.append(
-            ClaimElement(
-                claim=claim,
-                no=no,
-                text=claim_text[start:end],  # 모델 글자가 아니라 원문 글자를 싣는다
-                element_location=element_location(claim, no),
-                start=start,
-                end=end,
-                status=_confirmed("구성요소 글자가 청구항 원문에 순서대로 그대로 있음"),
-            )
-        )
-    if not answer.elements:
-        errors.append("elements가 비어 있음 (구성요소가 0개)")
-
-    # 2) 인용 관계: 인용구가 원문에 있는지, 번호가 이 사건의 앞 청구항인지만 본다
+    # 1) 인용 관계: 인용구가 원문에 있는지, 번호가 이 사건의 앞 청구항인지만 본다
     depends_errors = _check_depends_on(answer, claim, claim_numbers)
     quote = (answer.depends_on_quote or "").strip()
     quote_at = _find(quote, squeezed, offsets, 0) if quote else None
     if quote and quote_at is None:
         depends_errors.append(f"depends_on_quote가 청구항 원문에 그대로 없음: {quote!r}")
+
+    # 2) 구성요소: 앞 구성요소 끝 자리부터 차례로 찾는다 (순서가 바뀌거나 겹치면 못 찾음).
+    #    종속항은 인용구가 끝난 자리부터 찾는다 (인용구 안의 같은 글자를 잡지 않게)
+    cursor = quote_at[2] if quote_at else 0
+    spots: list[tuple[int, int, int, int] | None] = []  # (원문 start, end, 줄인 글 start, end)
+    for item in answer.elements:
+        found = _find(item.text, squeezed, offsets, cursor)
+        if found is None:
+            spots.append(None)
+            continue
+        start, end, cursor = found
+        spots.append((start, end, cursor - len(" ".join(item.text.split())), cursor))
+
+    elements: list[ClaimElement] = []
+    for i, (item, spot) in enumerate(zip(answer.elements, spots, strict=True)):
+        no = i + 1
+        status = _confirmed("구성요소 글자가 청구항 원문에 순서대로 그대로 있음")
+        if spot is None:
+            errors.append(
+                f"elements[{i}].text가 청구항 원문에 그대로 없거나 앞 구성요소보다 앞에 있음: "
+                f"{item.text!r}"
+            )
+            status = _unverified(UnverifiedReason.NOT_EXTRACTED)
+        else:
+            # 같은 글자가 다음 구성요소 자리 앞에 또 있으면 어느 것인지 원문만으로 못 가린다
+            later = [s for s in spots[i + 1 :] if s is not None]
+            bound = later[0][2] if later else len(squeezed)
+            wanted = squeezed[spot[2] : spot[3]]
+            if squeezed.find(wanted, spot[2] + 1, bound) >= 0:
+                errors.append(
+                    f"elements[{i}].text와 같은 글자가 원문에 여러 번 있어 위치를 못 정함 "
+                    f"(앞뒤 글자를 더 넣어 하나로 정해지게): {item.text!r}"
+                )
+                status = _unverified(UnverifiedReason.AMBIGUOUS)
+        located = spot is not None and status.value == StatusValue.CONFIRMED
+        # 버리지 않는다. 위치를 못 정한 것은 모델이 준 글자 그대로 "확인되지 않음"으로 남긴다
+        elements.append(
+            ClaimElement(
+                claim=claim,
+                no=no,
+                text=claim_text[spot[0] : spot[1]] if located else item.text,
+                element_location=element_location(claim, no),
+                start=spot[0] if located else None,
+                end=spot[1] if located else None,
+                status=status,
+            )
+        )
+    if not answer.elements:
+        errors.append("elements가 비어 있음 (구성요소가 0개)")
+
     if depends_errors:
         errors += depends_errors
         bad = _unverified(UnverifiedReason.NOT_EXTRACTED)
         return _Checked(elements, None, None, bad, errors, wrong_claim)
     if not answer.depends_on:
-        # 모델이 인용 없음으로 읽었다. 대조할 인용구가 없어 코드가 더 확인할 것은 없다
-        status = _confirmed("모델이 다른 청구항 인용 없음으로 읽음 (대조할 인용구 없음)")
+        # 독립항 여부는 모델이 읽은 그대로다. 인용구가 없어 코드가 원문과 대조할 것이 없다
+        # (값은 confirmed로 두되 무엇을 확인했는지에 "대조 없음"을 분명히 적는다. 사람 판단 대기)
+        status = _confirmed("독립항 여부는 모델 판단 (인용구 없음, 원문 대조 없음)")
         return _Checked(elements, [], None, status, errors, wrong_claim)
     status = _confirmed("인용구가 청구항 원문에 있고 인용 번호가 이 사건의 앞 청구항임")
     quote_text = claim_text[quote_at[0] : quote_at[1]]
@@ -284,8 +299,10 @@ def split_elements(
     if checked.depends_on_status.value != StatusValue.CONFIRMED:
         logger.warning("split_elements 청구항 %d: 인용 관계를 확인하지 못함", claim)
     if checked.wrong_claim:
-        # 번호는 입력으로 아는 값이라 결과에는 입력 번호를 쓴다. 답이 어긋난 것은 남긴다
+        # 다시 불러도 다른 청구항 번호로 답했다: 다른 청구항을 나눈 답일 수 있어 애매로 낮춘다
+        # (결과의 번호는 입력으로 아는 값을 쓴다)
         logger.warning("split_elements 청구항 %d: 모델이 다른 청구항 번호로 답함", claim)
+        statuses.insert(0, _unverified(UnverifiedReason.AMBIGUOUS))
     return SplitClaim(
         claim=claim,
         elements=checked.elements,

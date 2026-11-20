@@ -245,3 +245,69 @@ def test_청구항_글자가_비면_모델을_부르지_않고_확인되지_않�
     assert result.elements == []
     assert _is_unverified(result.status, UnverifiedReason.INPUT_UNVERIFIED)
     assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+# ---- 같은 문구가 원문에 여러 번 나올 때 (B1 리뷰) ----
+REPEATED = "습도 센서를 구비한 화분에 있어서, 습도 센서; 및 물통을 포함하는 화분."
+
+
+def test_같은_문구가_다음_구성요소_앞에_또_있으면_위치를_정하지_않고_애매로_둔다(caplog):
+    # 전제부의 "습도 센서"와 본문의 "습도 센서" 중 어느 것인지 원문만으로는 가릴 수 없다
+    answer = _answer(1, ["습도 센서", "물통"])
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(1, [answer, answer], claims={1: REPEATED})
+    assert len(transport.calls) == 2  # 검사 오류로 한 번 다시 부른다
+    sensor, tank = result.elements
+    assert _is_unverified(sensor.status, UnverifiedReason.AMBIGUOUS)
+    assert (sensor.start, sensor.end) == (None, None)  # 틀릴 수 있는 위치를 싣지 않는다
+    assert tank.status.value == StatusValue.CONFIRMED
+    assert REPEATED[tank.start : tank.end] == "물통"
+    assert result.status.value == StatusValue.UNVERIFIED
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_앞뒤_글자를_더_넣어_하나로_정해지면_확인됨():
+    vague = _answer(1, ["습도 센서", "물통"])
+    exact = _answer(1, ["습도 센서;", "물통"])
+    result, transport = _split(1, [vague, exact], claims={1: REPEATED})
+    assert len(transport.calls) == 2
+    sensor = result.elements[0]
+    assert sensor.status.value == StatusValue.CONFIRMED
+    assert (sensor.start, REPEATED[sensor.start : sensor.end]) == (20, "습도 센서;")
+
+
+def test_종속항의_구성요소는_인용구가_끝난_자리부터_찾는다():
+    # 인용구 안의 "물통"이 아니라 그 뒤의 "물통"을 잡아야 한다
+    text = "제1항의 물통에 있어서, 물통은 투명한 화분."
+    answer = _answer(2, ["물통"], [1], "제1항의 물통에 있어서")
+    result, transport = _split(2, answer, claims={1: CLAIM_1, 2: text})
+    assert len(transport.calls) == 1
+    (e,) = result.elements
+    assert e.status.value == StatusValue.CONFIRMED
+    assert e.start == text.index("물통은") and text[e.start : e.end] == "물통"
+
+
+def test_인용구_안에만_있는_글자는_구성요소로_확인되지_않는다():
+    text = "제1항의 물통에 있어서, 뚜껑은 투명한 화분."
+    answer = _answer(2, ["제1항의 물통", "뚜껑은 투명한"], [1], "제1항의 물통에 있어서")
+    result, _ = _split(2, [answer, answer], claims={1: CLAIM_1, 2: text})
+    first, second = result.elements
+    assert _is_unverified(first.status, UnverifiedReason.NOT_EXTRACTED)
+    assert second.status.value == StatusValue.CONFIRMED
+
+
+def test_독립항_여부는_모델_판단이고_원문_대조가_없다고_적는다():
+    result, _ = _split(1, GOOD_1)
+    assert result.depends_on == [] and result.depends_on_status.value == StatusValue.CONFIRMED
+    assert "모델 판단" in result.depends_on_status.checked
+    assert "원문 대조 없음" in result.depends_on_status.checked
+
+
+def test_두_번_다_다른_청구항_번호로_답하면_그_청구항은_애매(caplog):
+    wrong_claim = _answer(2, [SENSOR, TANK, CONTROL])
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(1, [wrong_claim, wrong_claim])
+    assert len(transport.calls) == 2
+    assert result.claim == 1
+    assert _is_unverified(result.status, UnverifiedReason.AMBIGUOUS)
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
