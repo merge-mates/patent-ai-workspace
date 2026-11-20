@@ -1,6 +1,6 @@
 import { Card, Descriptions, List, Space, Tag, Typography } from 'antd'
 import { sourceKindLabel } from '../labels'
-import type { LegalEvidenceBundle, LegalSource } from '../types/provisional/analysis'
+import type { LegalEvidenceBundle, LegalSource } from '../types/generated/LegalEvidenceBundle'
 import { StatusTag } from './StatusTag'
 
 // 근거 하나: 자료 종류·식별자·판본·원문 위치 + 전문/요지 + 법원 판단/당사자 주장
@@ -16,12 +16,12 @@ function SourceItem({ s }: { s: LegalSource }) {
       </Space>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {/* 판본은 법령·심사기준에만 있다 (판례·심결은 원문 위치만) */}
-        {s.source_kind === 'statute' || s.source_kind === 'exam_guideline' ? `판본: ${s.edition ?? '모름'} · ` : ''}
-        원문 위치: {s.location}
+        {s.source_kind === 'statute' || s.source_kind === 'exam_guideline' ? `판본: ${s.evidence.edition ?? '모름'} · ` : ''}
+        원문 위치: {s.evidence.location ?? '—'}
       </Typography.Text>
-      {s.excerpt !== '—' && (
+      {s.evidence.raw_text && (
         <Typography.Text style={{ fontSize: 13 }}>
-          “{s.excerpt}”
+          “{s.evidence.raw_text}”
         </Typography.Text>
       )}
     </Space>

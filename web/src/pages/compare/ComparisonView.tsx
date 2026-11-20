@@ -17,7 +17,7 @@ import type {
   InventiveSummary,
   Judgment,
   NoveltySummary,
-} from '../../types/provisional/analysis'
+} from '../../types/generated/ComparisonTable'
 
 // 판단 값 (상태 네 가지와 다른 축). 색만으로 나누지 않게 아이콘도 붙인다
 const judgmentTag: Record<Judgment, { color: string; text: string; icon: ReactNode }> = {
@@ -39,7 +39,11 @@ const columns: ColumnsType<ComparisonRow> = [
     ),
   },
   { title: '인용문헌', dataIndex: 'citation' },
-  { title: '위치', render: (_, r) => r.location ?? '—' },
+  {
+    // 인용문헌 위치(식별번호·도면 번호)는 줄의 근거 evidence[].location
+    title: '위치',
+    render: (_, r) => r.evidence.map((e) => e.location).filter(Boolean).join(', ') || '—',
+  },
   {
     title: '판단',
     render: (_, r) => (
@@ -132,16 +136,12 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
             <Tag key={c.label} color="blue">
               {c.label} {c.number} · 대비함
             </Tag>
-          ) : c.skipped_status === null ? (
-            <HumanCheckTag key={c.label}>
-              {c.label} {c.number} · {c.skipped_reason}
-            </HumanCheckTag>
           ) : (
             <Space key={c.label} size={2}>
               <Tag>
                 {c.label} {c.number}
               </Tag>
-              <StatusTag status={c.skipped_status} />
+              {c.skipped_status && <StatusTag status={c.skipped_status} />}
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {c.skipped_reason}
               </Typography.Text>
@@ -149,6 +149,8 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
           ),
         )}
       </Space>
+      {/* 대비하지 않은 인용문헌이 있으면 직접 검토 (상태가 아니라 flags로 알린다) */}
+      {t.flags.includes('needs_human_review') && <HumanCheckTag>직접 검토 필요</HumanCheckTag>}
       {t.summary.kind === 'inventive_step' ? <InventiveSteps s={t.summary} /> : <NoveltyLine s={t.summary} />}
       <Table<ComparisonRow>
         size="small"

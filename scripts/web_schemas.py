@@ -9,13 +9,25 @@ web/scripts/gen-types.mjs가 불러 json-schema-to-typescript로 TS 타입을 �
 import json
 
 from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.comparison import ClarityReview, ComparisonTable
+from patent_ai.core.schemas.direction import DirectionCandidates
 from patent_ai.core.schemas.document import PageText
+from patent_ai.core.schemas.drafts import Drafts
+from patent_ai.core.schemas.judgment_unit import JudgmentUnit
+from patent_ai.core.schemas.legal_evidence import LegalEvidenceBundle
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.core.schemas.propagation import ReviewItem
 
-# ① OA 정리, ⑥ 사건 자료·보류 목록, 검토할 사항, 원문 쪽 글자
+# ① OA 정리, ② 판단 단위, ③ 대비표·명확성 검토, ④ 법률 근거, ⑤ 대응 방향·초안,
+# ⑥ 사건 자료·보류 목록, 검토할 사항, 원문 쪽 글자
 MODELS = {
     "OAResult": OAResult,
+    "JudgmentUnit": JudgmentUnit,
+    "ComparisonTable": ComparisonTable,
+    "ClarityReview": ClarityReview,
+    "LegalEvidenceBundle": LegalEvidenceBundle,
+    "DirectionCandidates": DirectionCandidates,
+    "Drafts": Drafts,
     "CaseMaterials": CaseMaterials,
     "ReviewItem": ReviewItem,
     "PageText": PageText,

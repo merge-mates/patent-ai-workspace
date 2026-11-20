@@ -1,7 +1,8 @@
 // 서버가 주는 영어 코드 → 화면에 보이는 한국어 (docs/api/README.md 2절: 화면에서 한국어로 보여 준다)
 import type { LookupResult } from './types/generated/CaseMaterials'
 import type { NoticeKind, RejectionKind, UnverifiedReason } from './types/generated/OAResult'
-import type { LegalSourceKind } from './types/provisional/analysis'
+import type { AddedSource, AmendmentKind, AmendmentLimit, RebuttalType } from './types/generated/DirectionCandidates'
+import type { LegalSourceKind } from './types/generated/LegalEvidenceBundle'
 import type { RunState } from './types/provisional/case'
 
 export const unverifiedReasonLabel: Record<UnverifiedReason, string> = {
@@ -72,4 +73,38 @@ export const sourceKindLabel: Record<LegalSourceKind, string> = {
   exam_guideline: '심사기준',
   precedent: '판례',
   trial_decision: '심결례',
+}
+
+// ⑤ 대응 방향: 보정 종류·부가한 구성의 출처·보정 제한·반박 유형
+export const amendmentKindLabel: Record<AmendmentKind, string> = {
+  unchanged: '그대로',
+  limit: '한정',
+  add: '부가',
+  delete: '삭제',
+  correct_error: '오기 정정',
+  clarify: '명확화',
+}
+
+export const addedSourceLabel: Record<AddedSource, string> = {
+  other_dependent: '다른 종속항',
+  spec: '발명의 설명',
+  other: '기타',
+}
+
+export const amendmentLimitLabel: Record<AmendmentLimit, string> = {
+  initial: '최초',
+  final: '최후',
+}
+
+export const rebuttalTypeLabel: Record<RebuttalType, string> = {
+  difference: '차이점',
+  no_motivation: '결합 동기 없음',
+  combination_difficulty: '결합 곤란',
+  remarkable_effect: '현저한 효과',
+  hindsight: '사후적 고찰',
+  not_substantially_same: '실질적 동일 아님',
+  grace_period: '공지예외',
+  obvious_error: '명백한 오기',
+  clear_from_description: '설명으로 명확',
+  other: '그 밖',
 }
