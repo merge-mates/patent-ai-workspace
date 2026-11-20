@@ -44,7 +44,7 @@ export interface OADetail {
   case_id: string
   case_name: string
   document_id: string | null
-  latest_run: LatestRun
+  latest_run: LatestRun | null // 실행 줄이 아직 없으면 null
   dispatch_number?: string | null // 발송번호, 모르면 null (선택 칸: 하위 호환)
 }
 

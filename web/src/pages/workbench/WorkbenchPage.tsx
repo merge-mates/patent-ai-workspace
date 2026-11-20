@@ -20,6 +20,9 @@ export function WorkbenchPage() {
   if (oaResult === null) {
     // 결과가 없으면 빈 표 대신 실행 상태를 보인다. 실패·취소를 "정리 중"으로 보이지 않게 나눈다
     const run = oa.latest_run
+    if (run === null) {
+      return <Result status="info" title="아직 정리하는 중입니다" subTitle="실행 기록이 아직 없습니다" />
+    }
     const step = run.current_step ? ` · ${run.current_step}` : ''
     if (run.state === 'failed') {
       return <Result status="error" title="정리하지 못했습니다" subTitle={`${runStateLabel[run.state]}${step}`} />
