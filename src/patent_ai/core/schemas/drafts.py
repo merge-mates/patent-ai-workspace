@@ -104,6 +104,10 @@ class Drafts(ResultBase):
             raise ValueError("opinion key에 중복이 있음")
         if keys != [k for k in _OPINION_ORDER if k in keys]:
             raise ValueError("opinion은 case_info·points·response·amendment·closing 순서")
+        # 보정서는 청구항마다 초안 하나 (화면·PATCH가 청구항 번호로 고칠 곳을 찾는다)
+        nums = [c.claim for c in self.claims]
+        if len(set(nums)) != len(nums):
+            raise ValueError("claims의 claim 번호에 중복이 있음")
         units = [b.unit_id for b in self.based_on]
         if len(set(units)) != len(units):
             raise ValueError("based_on의 unit_id에 중복이 있음")

@@ -201,3 +201,10 @@ def test_초안_unit_id_꼴이_틀리면_거부():
         BasedOn(unit_id="nonsense", candidate_id="c1")
     with pytest.raises(ValidationError, match="unit_id 꼴"):
         claim(unit_id="nonsense")
+
+
+def test_보정_청구항_번호_중복_거부():
+    # 보정서는 청구항마다 초안 하나. 화면·PATCH가 청구항 번호로 고칠 곳을 찾는다
+    with pytest.raises(ValidationError, match="claim 번호"):
+        drafts(claims=[claim(claim=1), claim(claim=1, unit_id="oa_1:29-1-1:c1")])
+    assert len(drafts(claims=[claim(claim=1), held(claim=7)]).claims) == 2

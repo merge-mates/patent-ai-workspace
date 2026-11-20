@@ -176,7 +176,13 @@ export function DirectionsPage() {
                 )}
                 {/* 보정 제한: 최초/최후. 모르면 값 없이 상태만 (없음으로 읽히지 않게) */}
                 {d.amendment_limit.value ? (
-                  <Tag>보정 제한: {amendmentLimitLabel[d.amendment_limit.value]}</Tag>
+                  <Space size={2}>
+                    <Tag>보정 제한: {amendmentLimitLabel[d.amendment_limit.value]}</Tag>
+                    {/* 값이 있어도 확인되지 않았으면(애매 등) 상태를 같이 보인다 */}
+                    {d.amendment_limit.status.value !== 'confirmed' && (
+                      <StatusTag status={d.amendment_limit.status} />
+                    )}
+                  </Space>
                 ) : (
                   <Space size={2}>
                     <Tag>보정 제한</Tag>
