@@ -679,7 +679,13 @@
       {
         "document_id": "d_2",
         "kind": "oa",
-        "source": "uploaded"
+        "source": "uploaded",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "출원번호 대조",
+          "searched_scope": null
+        }
       }
     ],
     "missing": [

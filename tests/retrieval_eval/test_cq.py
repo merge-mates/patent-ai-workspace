@@ -1,7 +1,9 @@
 """CQ 후보 파일 쓰기와 모으기 (requirements 기준 5, design.md 7-1 CQ 파일, 7-5).
 
 기대값은 design.md의 CQ 파일 칸·모으기 규칙에서 가져온다.
-gold_cq_miss.jsonl: 줄 하나는 맞고(Hit), 줄 하나는 말뭉치에 없는 [0090-0091]을 가리킨다 (CQ 후보).
+gold_cq_miss.jsonl: 줄 하나는 맞고(Hit), 줄 하나는 범위 안에 있지만 질의와 겹치는 낱말이 없는
+[0027]-[0028]을 가리킨다 (검색이 놓친 줄 = CQ 후보). 정답 조각이 범위에 아예 없는 줄은
+CQ가 아니라 excluded_gold_not_in_scope로 빠진다 (#129).
 """
 
 import json
@@ -88,7 +90,7 @@ def test_못_맞힌_줄만_쓰고_why는_빈칸(tmp_path, goldsets_root):
     assert line["index_version"] == "cite-idx-v1"
     assert line["goldset_version"] == 1 and len(line["gold_sha256"]) == 64
     assert line["gold_sha256"] == report.scores["gold_sha256"]
-    assert line["items"][0]["label"] == "[0090-0091]"
+    assert line["items"][0]["label"] == "[0027]-[0028]"
     assert line["query"] == "시료를 냉각하는 단계를 포함하는 처리 방법"
     # 검색에 걸린 조각 (k 안)
     assert 0 < len(line["found"]) <= 10

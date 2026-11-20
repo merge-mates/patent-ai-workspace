@@ -367,7 +367,14 @@ def missing(**extra):
 def test_사건_자료_빠진_자료와_보류():
     m = CaseMaterials(
         case_id="c_1",
-        documents=[{"document_id": "d_1", "kind": "oa", "source": "uploaded"}],
+        documents=[
+            {
+                "document_id": "d_1",
+                "kind": "oa",
+                "source": "uploaded",
+                "status": {"value": "confirmed", "checked": "출원번호·문서번호 확인"},
+            }
+        ],
         missing=[missing()],
         held_tasks=[{"task": "F3", "waiting_for": "인용문헌 본문"}],
         review_items_count=2,

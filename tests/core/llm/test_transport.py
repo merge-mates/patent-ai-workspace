@@ -27,19 +27,20 @@ def _transport_with_fake_client() -> tuple[AnthropicTransport, _RecordingMessage
     return tr, messages
 
 
-def test_SDK에_temperature를_넘기지_않는다():
+def test_SDK에_temperature_top_p_top_k를_넘기지_않는다():
     tr, messages = _transport_with_fake_client()
-    tr.complete(step="t.s", model="m", prompt="p", temperature=0.0, max_tokens=5)
+    tr.complete(step="t.s", model="m", prompt="p", effort="medium", max_tokens=5)
     assert messages.kwargs is not None
-    assert "temperature" not in messages.kwargs
+    assert not {"temperature", "top_p", "top_k"} & messages.kwargs.keys()
 
 
 def test_SDK에_모델_최대_토큰_프롬프트는_넘긴다():
     tr, messages = _transport_with_fake_client()
-    resp = tr.complete(step="t.s", model="m", prompt="p", temperature=0.7, max_tokens=5)
+    resp = tr.complete(step="t.s", model="m", prompt="p", effort="high", max_tokens=5)
     assert messages.kwargs == {
         "model": "m",
         "max_tokens": 5,
+        "output_config": {"effort": "high"},
         "messages": [{"role": "user", "content": "p"}],
     }
     assert resp.text == "ok"

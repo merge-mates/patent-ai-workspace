@@ -2,7 +2,6 @@
 name: plan-feature
 description: 승인된 requirements.md와 design.md로 이번 이터레이션의 tasks.md 이슈 계획을 만든다 (계획 하나 = PR 하나, 이슈 하나에 계획 여러 개 가능). 이터레이션을 시작할 때 쓴다. requirements나 design이 승인 전이면 쓰지 않는다(/interview, /doc-review 먼저).
 argument-hint: "<기능> <이터레이션 예: m1-i3>"
-disable-model-invocation: true
 ---
 
 # 이번 이슈 계획: 기능 $0, $1

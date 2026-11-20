@@ -4,6 +4,17 @@ export type CaseId = string
 export type DocumentId = string
 export type Kind = string
 export type Source = string
+/**
+ * 상태 네 값. 이 밖의 값은 저장 전에 거부한다.
+ */
+export type StatusValue = 'confirmed' | 'unverified' | 'not_found_in_scope' | 'conflict'
+/**
+ * `unverified`일 때 왜 확인되지 않았나.
+ */
+export type UnverifiedReason =
+  'lookup_failed' | 'body_missing' | 'edition_unknown' | 'not_extracted' | 'ambiguous' | 'input_unverified'
+export type Checked = string | null
+export type SearchedScope = string | null
 export type Documents = CaseDocument[]
 export type What = string
 export type DependsOnTasks = string[]
@@ -29,6 +40,16 @@ export interface CaseDocument {
   document_id: DocumentId
   kind: Kind
   source: Source
+  status: Status
+}
+/**
+ * 상태 객체. 직렬화하면 늘 네 키(없는 키는 null).
+ */
+export interface Status {
+  value: StatusValue
+  reason: UnverifiedReason | null
+  checked: Checked
+  searched_scope: SearchedScope
 }
 export interface MissingMaterial {
   what: What

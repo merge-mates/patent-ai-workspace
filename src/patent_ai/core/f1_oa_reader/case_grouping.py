@@ -10,7 +10,7 @@ import re
 from collections import defaultdict
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from patent_ai.core.f1_oa_reader.rules import (
     _APP_BODY,
@@ -203,7 +203,16 @@ def group_materials(
 
 # --- 심사 대상 판 고르기 (T3) ---------------------------------------------------
 
-V0 = "v0"  # [가정] 출원 때 판 이름 (보정서 없음). 판 이름 규칙은 저장 PR(#55 뒤)에서 맞춘다
+# 출원 때 판(앞에 보정서 없음)을 가리키는 고정 글자. "값 없음"은 늘 "못 읽음"이라 출원 때 판을
+# 값 없음으로 두지 않는다. DB claim_versions.source_kind의 'application'(출원서 판)과는 다른
+# 칸이라 글자도 다르게 둔다 (11/19 은진 결정, #137 재아 리뷰로 "as_filed").
+# 보정서 판이면 그 접수번호(숫자 15자리)다.
+AS_FILED_VERSION = "as_filed"
+
+# 이력 사건 종류. DB case_events.kind CHECK 값과 같다 (#120, tests/test_db_models.py가 비교)
+HistoryKind = Literal[
+    "oa", "amendment", "opinion", "registration_decision", "rejection_decision", "other"
+]
 
 
 class HistoryEvent(BaseModel):
@@ -211,8 +220,17 @@ class HistoryEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["oa", "amendment", "opinion", "other"]
+    kind: HistoryKind
     doc_number_text: str | None = None  # OA는 발송번호, 보정서·의견서는 접수번호 (원문 글자)
+    # 보정각하된 보정서면 True. 각하된 보정은 없던 것이라 판을 만들지 않는다 (특허법 제51조).
+    # case_events.kind에 각하 종류가 없어서 보정서 줄에 표시로 받는다 (#54 조회가 채움).
+    dismissed: bool = False
+
+    @model_validator(mode="after")
+    def _각하_표시는_보정서에만(self) -> HistoryEvent:
+        if self.dismissed and self.kind != "amendment":
+            raise ValueError("dismissed는 보정서(amendment)에만 쓴다")
+        return self
 
 
 def select_examined_version(
@@ -220,8 +238,10 @@ def select_examined_version(
 ) -> ExtractedValue[str]:
     """대상 OA(발송번호)가 심사한 청구항 판을 고른다 (design.md 4절).
 
-    - 이력 순서에서 대상 OA **앞**의 마지막 보정서 접수번호가 그 판. 보정서가 없으면 "v0".
-    - 의견서는 판을 만들지 않으니 건너뛴다. 날짜는 보지 않는다.
+    - 이력 순서에서 대상 OA **앞**의 마지막 보정서 접수번호가 그 판.
+      보정서가 없으면 출원 때 판(AS_FILED_VERSION, confirmed).
+    - 의견서·결정서·기타는 판을 만들지 않으니 건너뛴다. 보정각하된 보정서도 건너뛴다.
+      날짜는 보지 않는다.
     - 이력이 없거나 비었거나 대상 OA가 이력에 없으면 unverified(lookup_failed).
       단 번호를 못 읽은 OA가 이력에 있으면 unverified(not_extracted).
     - 대상 OA가 이력에 두 번 나오면 unverified(ambiguous).
@@ -254,11 +274,11 @@ def select_examined_version(
     if len(positions) > 1:
         return _unverified(UnverifiedReason.AMBIGUOUS)
 
-    # 대상 OA 앞에서 가장 늦은 보정서 = 심사 대상 판을 만든 보정서
-    before = [e for e in history[: positions[0]] if e.kind == "amendment"]
+    # 대상 OA 앞에서 가장 늦은 (각하되지 않은) 보정서 = 심사 대상 판을 만든 보정서
+    before = [e for e in history[: positions[0]] if e.kind == "amendment" and not e.dismissed]
     if not before:
         return ExtractedValue[str](
-            value=V0,
+            value=AS_FILED_VERSION,
             status=Status(
                 value=StatusValue.CONFIRMED, checked="대상 OA 앞 보정서 없음: 출원 때 판"
             ),
@@ -349,7 +369,7 @@ def build_case_materials(
     materials = CaseMaterials(
         case_id=case_id,
         documents=[
-            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source)
+            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source, status=g.status)
             for g in _one_per_key(grouped)
         ],
         missing=missing,
