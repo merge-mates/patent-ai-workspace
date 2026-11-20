@@ -9,6 +9,7 @@
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +22,8 @@ from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 logger = logging.getLogger(__name__)
 
 UNITS_SUFFIX = ".units.json"
+# 예측 파일 이름(확장자 뺀 것)은 정답과 같은 OA 키 꼴: <출원번호>_<발송번호>
+_OA_KEY = re.compile(r"\d+_\d+")
 _DIRECTIONS = TypeAdapter(list[DirectionCandidates])
 _UNITS = TypeAdapter(list[JudgmentUnit])
 
@@ -42,7 +45,14 @@ def load_predictions(folder: Path) -> dict[str, F4Pred]:
     """예측 폴더를 읽는다. 키는 파일 이름(확장자 뺀 것) = OA 키. 틀린 파일은 순번만 말한다."""
     if not folder.is_dir():
         raise EvalError("F4 예측 폴더가 없다")
-    files = sorted(f for f in folder.glob("*.json") if not f.name.endswith(UNITS_SUFFIX))
+    candidates = sorted(f for f in folder.glob("*.json") if not f.name.endswith(UNITS_SUFFIX))
+    files = [f for f in candidates if _OA_KEY.fullmatch(f.stem)]
+    if len(files) != len(candidates):
+        # 실행 스크립트가 같이 남기는 요약(summary.json) 같은 파일. 조용히 넘기지 않고 수를 남긴다
+        logger.warning(
+            "예측 폴더에서 OA 키 꼴이 아닌 파일 %d개를 건너뜀 (예측으로 읽지 않음)",
+            len(candidates) - len(files),
+        )
     preds: dict[str, F4Pred] = {}
     for i, f in enumerate(files, start=1):
         where = f"예측 파일 {i}번째"  # 파일 이름(출원번호)과 원문 글자는 메시지에 넣지 않는다

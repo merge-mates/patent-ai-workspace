@@ -326,6 +326,24 @@ def test_예측_모양이_틀리면_멈춘다(env, capsys):
     assert "예측 파일 1번째" in err and "1020990000001" not in err
 
 
+def test_예측_폴더의_summary_json은_건너뛰고_경고한다(env, caplog):
+    env.put_gold(gold())
+    env.put_pred(*prediction())
+    (env.preds / "summary.json").write_text('[{"case": "case1", "ok": true}]', encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        assert main(env.args) == 0
+    assert env.scores()["n"] == 1
+    assert "OA 키 꼴이 아닌 파일 1개" in caplog.text
+
+
+def test_키_꼴인데_깨진_예측_파일은_건너뛰지_않고_실패한다(env, capsys):
+    env.put_gold(gold())
+    env.put_pred(*prediction())
+    (env.preds / f"{KEY2}.json").write_text('[{"case": "case1"}]', encoding="utf-8")
+    assert main(env.args) == 1
+    assert "모양이 아니다" in capsys.readouterr().err
+
+
 # ---- 정답 없음 ----
 def test_정답_폴더가_없으면_정답_없음으로_끝나고_점수_파일을_쓰지_않는다(env, capsys, caplog):
     env.put_pred(*prediction())
