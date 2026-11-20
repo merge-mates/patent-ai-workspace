@@ -1,7 +1,7 @@
 """검색 방식 비교 표 (design.md 7-5, requirements 10).
 
 명령: uv run python -m eval.retrieval.compare --rows bm25=<p> vector=<p> --k 10 [--out <md>]
-입력은 `score --rows-out`이 쓴 줄별 JSONL (row_id, doc_ids, first_hit_rank).
+입력은 `score --rows-out`이 쓴 줄별 JSONL (row_id, doc_ids, first_hit_rank, k_max).
 방식마다 Hit@1·3·5·10을 전체 / 한국 공보 / 논문으로 나누고, CQ 수와 "이 방식만 찾은 줄" 수를 센다.
 """
 
