@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from eval.retrieval.claim_history import claims_at_oa
-from scripts.split_cases_at_oa import audit, main, plan_case, write_plan
+from scripts.split_cases_at_oa import audit, main, parse_pub_date, plan_case, write_plan
 
 SEP = "¶"
 APP = "1020990000001"
@@ -63,7 +63,9 @@ def _write(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _make_case(root: Path, *, two_oas: bool = False, ghost_claim: bool = False) -> Path:
+def _make_case(
+    root: Path, *, two_oas: bool = False, ghost_claim: bool = False, application_file: bool = True
+) -> Path:
     """지어낸 받은 묶음 하나. two_oas면 OA1 → 보정 → OA2 → 보정 → 등록결정."""
     d = root / APP
     d.mkdir(parents=True)
@@ -91,6 +93,8 @@ def _make_case(root: Path, *, two_oas: bool = False, ghost_claim: bool = False) 
         f"{APP}_결정_{GRANT}.pdf",
         f"{APP}_결정본문.txt",
     ]
+    if not application_file:  # 출원서 파일이 없는 사건 (PCT 국내단계처럼)
+        files.remove(f"{APP}_출원서_{APPLY}.pdf")
     if two_oas:
         admin += [
             _admin_row(OA2, "20990401", "의견제출통지서"),
@@ -274,3 +278,70 @@ def test_audit_counts_missing_claim_history(tmp_path):
     d = write_plan(plan, tmp_path / "out")
     (d / f"{APP}_청구항이력.txt").unlink()
     assert audit(tmp_path / "out") == [f"{APP}/{OA1}: 청구항이력 없음"]
+
+
+# --- 출원서 없는 사건의 공개공보 (#150 3번, 11/20 은진) ---
+# PRD 163줄대로 OA 전 공개공보를 최초 명세서로 넣는다
+PUB = f"{APP}_공개공보.pdf"
+
+
+def _pub_date(date: str | None):
+    """공개일 읽기 대신 쓰는 가짜 (공개공보 파일만 읽는지도 본다)."""
+
+    def read(path: Path) -> str | None:
+        assert path.name == PUB
+        return date
+
+    return read
+
+
+def test_parse_pub_date_reads_43_field():
+    text = (
+        "(19) 대한민국특허청(KR)\n"
+        "(12) 공개특허공보(A) (43) 공개일자 2099년01월15일\n"
+        "국제공개일자 2098년04월05일"
+    )
+    assert parse_pub_date(text) == "20990115"
+    assert parse_pub_date("공개일자 없음") is None
+
+
+def test_no_application_file_takes_publication_before_oa(tmp_path):
+    case = _make_case(tmp_path / "src", application_file=False)
+    (plan,) = plan_case(case, pub_date=_pub_date("20990115"))  # OA1 발송 20990201 전
+    assert PUB in plan.copy_files
+    d = write_plan(plan, tmp_path / "out")
+    assert (d / PUB).exists()
+    assert audit(tmp_path / "out", pub_date=_pub_date("20990115")) == []
+
+
+def test_no_application_file_drops_publication_after_oa(tmp_path):
+    case = _make_case(tmp_path / "src", application_file=False)
+    (plan,) = plan_case(case, pub_date=_pub_date("20990201"))  # OA 발송일과 같은 날도 뺀다
+    assert dict(plan.dropped_files)[PUB] == "OA 뒤 공개"
+
+
+def test_no_application_file_drops_publication_with_unreadable_date(tmp_path):
+    case = _make_case(tmp_path / "src", application_file=False)
+    (plan,) = plan_case(case, pub_date=_pub_date(None))
+    assert dict(plan.dropped_files)[PUB] == "공개일 모름"
+
+
+def test_publication_stays_out_when_application_file_is_input(tmp_path):
+    def never(path: Path) -> str | None:
+        raise AssertionError("출원서가 있으면 공개공보를 열지 않는다")
+
+    (plan,) = plan_case(_make_case(tmp_path / "src"), pub_date=never)
+    assert dict(plan.dropped_files)[PUB] == "시점 모름"
+
+
+def test_audit_flags_publication_next_to_application_or_after_oa(tmp_path):
+    (plan,) = plan_case(_make_case(tmp_path / "src"))
+    d = write_plan(plan, tmp_path / "out")
+    (d / PUB).write_bytes(b"x")  # 출원서가 있는데 공개공보도 들어감
+    assert audit(tmp_path / "out", pub_date=_pub_date("20990115")) == [
+        f"{APP}/{OA1}: 출원서가 있는데 공개공보도 있음"
+    ]
+    (d / f"{APP}_출원서_{APPLY}.pdf").unlink()
+    assert audit(tmp_path / "out", pub_date=_pub_date("20990301")) == [
+        f"{APP}/{OA1}: OA 뒤(또는 공개일 모름) 공개공보 {PUB}"
+    ]

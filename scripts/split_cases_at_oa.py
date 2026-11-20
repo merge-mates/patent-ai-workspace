@@ -6,6 +6,9 @@
 - 청구항이력: OA 앞 행정이력에 나온 접수번호의 줄만 남긴다. 행정이력에 없는 접수의 줄은 빼고 센다.
 - 파일: 이름 끝 번호가 OA 앞 행정이력에 나왔거나 그 OA 발송번호인 것만 복사한다.
   번호가 없는 파일(공개공보·등록공보·결정본문)은 시점을 모르므로 뺀다 (F1 합격 기준 8).
+- 예외: 출원서가 입력에 없는 사건(PCT 국내단계 등)은 공개공보 첫 쪽 "(43) 공개일자"가
+  OA 발송일보다 앞설 때만 공개공보를 최초 명세서로 넣는다 (PRD 163줄, #150 3번 11/20 은진).
+  이력에 공개 줄이 없어 이 한 경우만 날짜로 본다. 공개일을 못 읽으면 뺀다.
 
 실행 (기본은 마른 실행, 아무것도 안 씀):
   uv run python scripts/split_cases_at_oa.py --src <받은 묶음 폴더> --out data/processed/cases
@@ -20,6 +23,7 @@ import argparse
 import re
 import shutil
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,6 +33,35 @@ ADMIN = "행정이력.txt"
 CLAIMS = "청구항이력.txt"
 # 파일 이름 끝의 접수·발송번호: <출원번호>_<종류>_<번호>.<확장자>
 NUMBER_RE = re.compile(r"_(\d{10,})\.[^.]+$")
+PUB_SUFFIX = "_공개공보.pdf"
+APPLICATION_MARK = "_출원서_"
+# 공개공보 첫 쪽 서지의 (43) 공개일자. "국제공개일자"는 앞에 (43)이 없어 걸리지 않는다
+PUB_DATE_RE = re.compile(r"\(43\)\s*공개일자\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일")
+
+PubDateReader = Callable[[Path], str | None]
+
+
+def parse_pub_date(text: str) -> str | None:
+    """공개공보 첫 쪽 글자에서 (43) 공개일자를 YYYYMMDD로. 없으면 None."""
+    m = PUB_DATE_RE.search(text)
+    if not m:
+        return None
+    y, mo, d = m.groups()
+    return f"{y}{int(mo):02d}{int(d):02d}"
+
+
+def read_pub_date(path: Path) -> str | None:
+    """공개공보 PDF 첫 쪽에서 공개일을 읽는다. 못 읽으면 None (원문 글자는 내보내지 않음)."""
+    import pdfplumber
+
+    try:
+        with pdfplumber.open(path) as pdf:
+            if not pdf.pages:
+                return None
+            text = pdf.pages[0].extract_text() or ""
+    except Exception:  # 깨진 PDF 등: 공개일 모름으로 빼고 경고로 남긴다
+        return None
+    return parse_pub_date(text)
 
 
 @dataclass
@@ -62,7 +95,7 @@ def _file_number(name: str) -> str | None:
     return m.group(1) if m else None
 
 
-def plan_case(case_dir: Path) -> list[OaPlan]:
+def plan_case(case_dir: Path, pub_date: PubDateReader = read_pub_date) -> list[OaPlan]:
     """받은 사건 폴더 하나 → OA마다 자를 계획. OA가 없으면 빈 목록."""
     app_no = case_dir.name
     admin_path = case_dir / f"{app_no}_{ADMIN}"
@@ -89,6 +122,7 @@ def plan_case(case_dir: Path) -> list[OaPlan]:
         if _cell(row, a_head, "접수발송서류명") != OA_DOC_NAME:
             continue
         oa_no = _cell(row, a_head, "접수발송번호")
+        oa_date = _cell(row, a_head, "접수발송일자")
         # OA 앞(그 OA 줄 포함)에 나온 번호만 입력이 된다
         before = {_cell(r, a_head, "접수발송번호") for r in a_rows[: idx + 1]}
         plan = OaPlan(
@@ -116,8 +150,27 @@ def plan_case(case_dir: Path) -> list[OaPlan]:
                 plan.dropped_files.append((name, "OA 뒤"))
             else:
                 plan.dropped_files.append((name, "이력에 없음"))
+        _maybe_take_publication(plan, oa_date, pub_date)
         plans.append(plan)
     return plans
+
+
+def _maybe_take_publication(plan: OaPlan, oa_date: str, pub_date: PubDateReader) -> None:
+    """출원서가 입력에 없으면 OA 전 공개공보를 최초 명세서로 넣는다 (있으면 그대로 뺀다)."""
+    if any(APPLICATION_MARK in n for n in plan.copy_files):
+        return
+    for i, (name, _why) in enumerate(plan.dropped_files):
+        if not name.endswith(PUB_SUFFIX):
+            continue
+        date = pub_date(plan.src_dir / name)
+        if date is None:
+            plan.dropped_files[i] = (name, "공개일 모름")
+        elif date < oa_date:  # YYYYMMDD 글자 비교. 같은 날은 앞뒤를 모르니 뺀다
+            del plan.dropped_files[i]
+            plan.copy_files.append(name)
+        else:
+            plan.dropped_files[i] = (name, "OA 뒤 공개")
+        return
 
 
 def write_plan(plan: OaPlan, out_root: Path) -> Path:
@@ -138,7 +191,7 @@ def write_plan(plan: OaPlan, out_root: Path) -> Path:
     return target
 
 
-def audit(out_root: Path) -> list[str]:
+def audit(out_root: Path, pub_date: PubDateReader = read_pub_date) -> list[str]:
     """입력 폴더에서 OA 뒤 줄·시점 모를 파일을 찾는다. 문제 한 줄씩 (원문 글자 없음)."""
     problems = []
     for oa_dir in sorted(p for p in out_root.glob("*/*") if p.is_dir()):
@@ -153,6 +206,8 @@ def audit(out_root: Path) -> list[str]:
         if not rows or _cell(rows[-1], head, "접수발송번호") != oa_no:
             problems.append(f"{app_no}/{oa_no}: 행정이력 마지막 줄이 대상 OA가 아님")
         nos = {_cell(r, head, "접수발송번호") for r in rows}
+        oa_date = _cell(rows[-1], head, "접수발송일자") if rows else ""
+        has_application = any(APPLICATION_MARK in p.name for p in oa_dir.iterdir())
         claim_path = oa_dir / f"{app_no}_{CLAIMS}"
         if not claim_path.exists():
             problems.append(f"{app_no}/{oa_no}: 청구항이력 없음")
@@ -168,7 +223,16 @@ def audit(out_root: Path) -> list[str]:
             if p.name in {admin_path.name, claim_path.name}:
                 continue
             no = _file_number(p.name)
-            if no is None:
+            if p.name.endswith(PUB_SUFFIX):
+                if has_application:
+                    problems.append(f"{app_no}/{oa_no}: 출원서가 있는데 공개공보도 있음")
+                else:
+                    date = pub_date(p)
+                    if date is None or not date < oa_date:
+                        problems.append(
+                            f"{app_no}/{oa_no}: OA 뒤(또는 공개일 모름) 공개공보 {p.name}"
+                        )
+            elif no is None:
                 problems.append(f"{app_no}/{oa_no}: 시점 모를 파일 {p.name}")
             elif no not in nos:
                 problems.append(f"{app_no}/{oa_no}: 잘린 행정이력에 없는 번호의 파일 {p.name}")
@@ -233,6 +297,8 @@ def main(argv: list[str]) -> int:
         f"뺀 청구항 줄 {sum(p.dropped_claim_rows for p in plans)}개, "
         f"행정이력에 없는 접수의 청구항 줄 {sum(p.unmatched_claim_rows for p in plans)}개"
     )
+    if reasons.get("공개일 모름"):
+        print("경고: 출원서 없는 사건의 공개공보 공개일을 못 읽어 입력에서 뺐다", file=sys.stderr)
     if any(p.unmatched_claim_rows for p in plans):
         print("경고: 행정이력에 없는 접수의 청구항 줄은 입력에서 뺐다", file=sys.stderr)
 
