@@ -28,7 +28,7 @@ export interface CaseSummary {
   run_state: RunState
   status: StatusValue
   review_items_count: number | null // 모르면 null (0건과 다름)
-  last_opened_at: string
+  updated_at: string // 가장 최근 OA를 올린 시각
 }
 
 // GET /cases/{id}

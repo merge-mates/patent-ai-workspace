@@ -165,8 +165,11 @@ class RunStore(Protocol):
 
 
 class CaseAppStore(Protocol):
-    def create_case(self, file: NewDocument) -> CaseCreated:
-        """임시 사건 + 첫 OA + 문서 + queued 실행. 중복 검사는 부르는 쪽이 find로 먼저."""
+    def create_case(self, file: NewDocument, case_id: str | None = None) -> CaseCreated:
+        """임시 사건 + 첫 OA + 문서 + queued 실행. 중복 검사는 부르는 쪽이 find로 먼저.
+
+        case_id를 주면 그 ID로 만든다 (파일 경로에 사건 ID가 들어가서 만들기 전에 정해야 한다).
+        """
         ...
 
     def add_oa(self, case_id: str, file: NewDocument) -> OACreated:
@@ -264,8 +267,8 @@ class InMemoryCaseAppStore:
         run = self._runs.create_queued(oa.id)
         return OACreated(oa.id, doc.id, run.id)
 
-    def create_case(self, file: NewDocument) -> CaseCreated:
-        case = _Case(new_id("c"), None, [])
+    def create_case(self, file: NewDocument, case_id: str | None = None) -> CaseCreated:
+        case = _Case(case_id or new_id("c"), None, [])
         self._cases[case.id] = case
         created = self._add_oa(case, file)
         return CaseCreated(case.id, created.oa_id, created.document_id, created.run_id)
