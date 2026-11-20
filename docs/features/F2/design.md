@@ -130,6 +130,7 @@ flowchart LR
 
 ## 5. 저장
 - 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: `legal_evidence_bundles`, `legal_chats` (새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
+- 가져오는 길은 둘이다 (11/20 은진): **아는 문헌은 ID 조회, 모르는 근거는 검색.** OA에 명시된 인용문헌은 번호로 DB에서 정확히 가져온다 (F1·F3). 명시되지 않은 근거(조문·심사기준·판례·심결)와, 인용문헌 안에서 관련 문단을 고르는 일은 검색(BM25·벡터)으로 한다. F2 안에서도 같다: 조문 번호·사건번호·심판번호를 알면 `get_article`·`get_precedent`로 ID 조회, 모르면 `search_*`로 검색. 검색 계약의 `mode: hybrid`(BM25 + 벡터 섞기)와는 다른 말이라, 문서에서는 "ID 조회 + 검색"으로 부른다.
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
 - 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판 Open API(월 1,000회 무료, 유료는 BULK 상품)는 실행 중에 부르지 않고 심결을 미리 받을 때만 쓴다 (지금은 웹에서 받은 12건, requirements 열린 질문 3·9). 먼저 `api_cache`에 저장하고 쓴다.
 - 외부 모델로 보내는 자료: 법령·심사기준·판례 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
