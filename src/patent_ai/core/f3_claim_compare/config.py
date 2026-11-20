@@ -14,7 +14,13 @@ from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
 
 # F3Settings가 읽는 맨 위 칸. 그 밖의 맨 위 칸은 단계 설정(core/llm 몫)이라 여기서 보지 않는다
-_SETTING_KEYS = ("impl", "second_search", "use_examiner_paragraphs", "search")
+_SETTING_KEYS = (
+    "impl",
+    "second_search",
+    "use_examiner_paragraphs",
+    "search",
+    "clarity_search",
+)
 
 
 def load_f3_settings(config_dir: Path | None = None) -> F3Settings:

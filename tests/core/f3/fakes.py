@@ -70,13 +70,16 @@ def rejection(no: int, article: str, claims: list[int] | None, citations=(), rea
     }
 
 
-def claim_row(claim: int, rejection_no: int, citations=(), locations=None, same_as=()) -> ClaimRow:
+def claim_row(
+    claim: int, rejection_no: int, citations=(), locations=None, same_as=(), clarity_terms=()
+) -> ClaimRow:
     return ClaimRow(
         claim=claim,
         rejection=rejection_no,
         citations=list(citations),
         locations=locations or {},
         same_as=list(same_as),
+        clarity_terms=list(clarity_terms),
         raw_text="이 줄 판단 원문",
         page=2,
         status=OK,

@@ -37,6 +37,15 @@ class SearchSettings(BaseModel):
         return self.model_dump(exclude={"impl", "k"})
 
 
+class ClaritySearchSettings(BaseModel):
+    """명확성: 그 사건 출원서 안에서 용어 정의를 찾는 값 (config/f3.yaml clarity_search 칸)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    k: int = Field(ge=1)  # 문구마다 모델에 보여 줄 명세서 조각 수 (BM25 상위)
+    min_quote_chars: int = Field(ge=1)  # 정의 근거 글자 길이 하한 (짧은 글자 헛통과 막기)
+
+
 class F3Settings(BaseModel):
     """config/f3.yaml에서 읽는 값. 단계별 모델 설정(model·effort 등)은 core/llm이 따로 읽는다."""
 
@@ -46,6 +55,7 @@ class F3Settings(BaseModel):
     second_search: bool  # 못 찾은 구성요소를 한 번 더 찾을지 (B7)
     use_examiner_paragraphs: bool  # 심사관 지정 위치를 쓸지 (false = 평가 누출 막기)
     search: SearchSettings
+    clarity_search: ClaritySearchSettings
 
 
 class F3Inputs(BaseModel):

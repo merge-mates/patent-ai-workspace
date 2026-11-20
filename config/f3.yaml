@@ -46,3 +46,17 @@ embed:
   price_per_mtok_input: 0.02      # 달러 / 입력 토큰 100만 [가정]
   max_model_calls: 400            # 구성요소 하나에 1번 (같은 글은 실행 안에서 한 번만)
   max_retries: 3
+
+# 단계: 명확성 문구 검토 (청구항 하나의 짚은 문구들 × 명세서 후보 조각)
+clarity:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f3/clarity.md
+  max_model_calls: 80   # 실행 하나의 합계: 명확성 청구항마다 1번 + 검사 실패 때 1번 더
+  max_retries: 2
+
+# 명확성 용어 정의 찾기: 그 사건 출원서만, 메모리 BM25 (DB·임베딩 없음. 토크나이저·bm25 값은 search 칸과 같이 씀)
+clarity_search:
+  k: 5                  # 문구마다 모델에 보여 줄 명세서 조각 수
+  min_quote_chars: 8    # 정의 근거 글자(공백 줄인 뒤) 길이 하한. 이보다 짧으면 버림
