@@ -328,10 +328,16 @@ def test_질문_as_of와_as_of_source는_함께_있거나_함께_없음():
         assert question(as_of=date(2026, 1, 1), as_of_source=src).as_of_source == src
 
 
-def test_질문_rejection은_1부터_article_refs_기본_빈_목록():
-    assert question(source_kinds=["trial"], article_refs=[]).article_refs == []
+def test_질문_article_refs는_안_주면_빈_목록():
+    data = question().model_dump(mode="json")
+    del data["article_refs"]
+    assert LegalQuestion.model_validate(data).article_refs == []
+
+
+def test_질문_안에_oa_id를_두면_거부():
+    # oa_id·rejection은 질문 안이 아니라 묶음 맨 위 칸 (DB 거르기 컬럼)
     with pytest.raises(ValidationError):
-        question(oa_id="oa_1")  # oa_id·rejection은 질문 안이 아니라 묶음 맨 위 칸
+        question(oa_id="oa_1")
 
 
 # ---------- oa_id·rejection·unit_id (묶음 맨 위) ----------

@@ -3,7 +3,8 @@
 기준은 이 코드, 설명은 docs/data-model.md 4절 ④ 줄. 결과 status는 안쪽 가장 나쁜 값과 같아야 한다.
 법령·심사기준은 판본(시행일·개정일)을 모르면 confirmed가 될 수 없다.
 "이 사건에 적용된다"는 칸은 두지 않는다 (사건 적용일로 자동 확정하지 않는다, 사람이 판단).
-질문(question)·검토(review)·더 볼 조각(further_review)·검색 기록(search_log)은 F2 design 3-2절.
+질문·검토·더 볼 조각·검색 기록 칸은 F2 design 3-2절 제안에서 왔다.
+칸 이름·모양은 이 코드가 기준이다 (F2 design 3-2절은 #29에서 이 코드에 맞춘다).
 근거 위치는 공통 Evidence를 쓴다 (edition=판본, location=원문 위치, raw_text=발췌).
 """
 
