@@ -20,6 +20,8 @@ class F4Output(BaseModel):
     held_units: list[str]  # 초안을 보류한 묶음 (사람이 방향을 고르거나 자료를 채우면 다시 만든다)
     unsupported_rejections: list[int]  # AI가 다루지 않은 거절이유 번호 (직접 대응 필요)
     uncovered: list[tuple[int, int]]  # 판단 단위가 덮지 않은 (거절이유 번호, 청구항 번호)
+    # 대상 청구항을 못 읽어 누락 검사를 못 한 거절이유 번호 (uncovered가 비어도 누락 없음이 아님)
+    coverage_unchecked: list[int] = Field(default_factory=list)
     # 최후거절이유통지 보정 제한을 보정 프롬프트에 넣었나 (스위치 켬 + 통지 종류 final일 때만 true).
     # 제한을 지켰다는 판정이 아니다: 넣었다는 사실만 적는다
     amendment_limit_applied: bool = False

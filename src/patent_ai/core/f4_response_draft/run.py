@@ -8,7 +8,7 @@ import logging
 
 from patent_ai.core.f4_response_draft.amendment import assemble_drafts, build_amendments
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
-from patent_ai.core.f4_response_draft.coverage import uncovered
+from patent_ai.core.f4_response_draft.coverage import unchecked_rejections, uncovered
 from patent_ai.core.f4_response_draft.directions import amendment_limit_of, build_directions
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import build_opinion
@@ -94,6 +94,11 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
         logger.warning("f4 %s: 대응 누락 (거절이유, 청구항) %s", oa_id, missing)
         flag(Flag.NEEDS_HUMAN_REVIEW)
 
+    # 대상 청구항을 못 읽은 거절이유는 누락을 셀 수 없다. 검사 못 했다는 사실을 결과에 남긴다
+    unchecked = unchecked_rejections(inp.oa)
+    if unchecked:
+        flag(Flag.NEEDS_HUMAN_REVIEW)
+
     statuses = [d.status for d in directions] + ([drafts.status] if drafts else [])
     return F4Output(
         oa_id=oa_id,
@@ -102,6 +107,7 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
         held_units=held,
         unsupported_rejections=unsupported,
         uncovered=missing,
+        coverage_unchecked=unchecked,
         amendment_limit_applied=bool(limit_note),
         status=worst_status(statuses, ALL_F4_CHECKED),
         flags=flags,

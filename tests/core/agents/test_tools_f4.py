@@ -65,6 +65,19 @@ def test_입력_객체로_돌려도_같다():
     assert out.result.oa_id == "oa_1"
 
 
+def test_명세서와_날짜가_든_입력_객체도_도구_입력_검사를_왕복한다():
+    reg = ToolRegistry()
+    register_f4_tools(reg)
+    data = _json("case_basic.json")
+    data["spec"] = _json("spec_basic.pages.json")
+    inp = F4Input.model_validate(data)
+    assert inp.spec is not None and inp.checked_on.year == 2099
+    out = reg.get("run_f4").run(inp, _ctx())  # 객체 -> dict -> 다시 검사
+    # 명세서가 실려 가서 보정 근거 위치가 그 문서에서 확인된다
+    basis = [e for c in out.result.drafts.claims for e in c.spec_basis]
+    assert basis and all(e.document_id == "spec_1" for e in basis)
+
+
 def test_실행_맥락_없이_부르면_멈춘다():
     reg = ToolRegistry()
     register_f4_tools(reg)

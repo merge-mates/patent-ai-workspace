@@ -23,9 +23,18 @@ def uncovered(oa: OAResult, units: list[JudgmentUnit]) -> list[tuple[int, int]]:
         if not rej.supported:
             continue
         if rej.claims.value is None:
-            # 대상 청구항을 못 읽었으면 누락을 셀 수 없다. "누락 없음"으로 읽히지 않게 경고한다
-            logger.warning("누락 검사: 거절이유 %d의 대상 청구항을 몰라 검사하지 못함", rej.no)
-            continue
+            continue  # 대상 청구항을 못 읽어 셀 수 없다. unchecked_rejections가 따로 알린다
         covered = {c for u in units if u.rejection == rej.no for c in u.claims}
         missing += [(rej.no, c) for c in sorted(set(rej.claims.value) - covered)]
     return missing
+
+
+def unchecked_rejections(oa: OAResult) -> list[int]:
+    """대상 청구항을 못 읽어 누락 검사를 하지 못한 (지원하는) 거절이유 번호.
+
+    이 거절이유는 uncovered에 아무것도 안 나온다. "누락 없음"으로 읽히지 않게 따로 낸다.
+    """
+    unchecked = [r.no for r in oa.rejections if r.supported and r.claims.value is None]
+    if unchecked:
+        logger.warning("누락 검사: 거절이유 %s의 대상 청구항을 몰라 검사하지 못함", unchecked)
+    return unchecked
