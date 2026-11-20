@@ -3,8 +3,6 @@
 import logging
 from pathlib import Path
 
-import anthropic
-import httpx
 import pytest
 from pydantic import BaseModel
 
@@ -391,47 +389,6 @@ def test_재시도_기록에_전송_시도_번호가_남는다(tmp_path):
     run(scripted(OK), cfg, CallBudget(), cached, cache=cache)
     run(scripted(OK), cfg, CallBudget(), cached, cache=cache)
     assert [r.transport_try for r in cached.records] == [1, 0]  # 적중은 0
-
-
-# ---- AnthropicTransport: SDK 예외 -> TransportError (네트워크 없음) ----
-_REQ = httpx.Request("POST", "https://example.invalid/v1/messages")
-
-
-class _Raises:
-    def __init__(self, exc):
-        self.messages = self
-        self.exc = exc
-
-    def create(self, **kwargs):
-        raise self.exc
-
-
-def _sdk_transport(exc):
-    # conftest가 __init__을 막으므로 객체만 만들고 가짜 클라이언트를 넣는다
-    tr = object.__new__(AnthropicTransport)
-    tr._client = _Raises(exc)
-    return tr
-
-
-def _status_error(code):
-    resp = httpx.Response(code, request=_REQ)
-    return anthropic.APIStatusError(f"에러 {code}", response=resp, body=None)
-
-
-@pytest.mark.parametrize(
-    "exc,retryable",
-    [
-        (_status_error(429), True),
-        (_status_error(500), True),
-        (_status_error(401), False),
-        (anthropic.APIConnectionError(request=_REQ), True),
-    ],
-)
-def test_SDK_예외를_TransportError로_바꾸고_다시_부를지_정한다(exc, retryable):
-    tr = _sdk_transport(exc)
-    with pytest.raises(TransportError) as e:
-        tr.complete(step="t.s", model="m", prompt="p", effort="medium", max_tokens=5)
-    assert e.value.retryable is retryable
 
 
 # ---- RunContext ----

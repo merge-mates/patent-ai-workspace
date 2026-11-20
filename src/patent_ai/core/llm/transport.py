@@ -56,22 +56,45 @@ class AnthropicTransport:
         self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
     ) -> TransportResponse:
         import anthropic
+        import httpx2  # anthropic SDK가 쓰는 HTTP 라이브러리 (스트림 중 연결 오류가 이 예외로 온다)
 
+        # 스트리밍으로 부른다 (#172): 출력이 길면(max_tokens 64000) 답이 몇 분 걸려 한 번에 받는
+        # 호출은 중간에 끊기기 쉽다. 글자를 조금씩 받아 SDK가 모은 최종 Message만 쓰므로
+        # 돌려주는 모양(text·토큰 수·stop_reason)은 스트리밍 아닐 때와 같다.
         # effort는 output_config로 넘긴다. temperature는 API에서 빠져 넘기지 않는다 (#134).
-        # SDK 예외를 TransportError로 바꿔 던진다 (429·5xx·연결 오류만 다시 부를 만함)
+        # SDK 예외를 TransportError로 바꿔 던진다. 요청은 with에 들어갈 때 나가고 답은
+        # get_final_message에서 받으므로 둘 다 try 안에 둔다.
         try:
-            message = self._client.messages.create(
+            with self._client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
                 output_config={"effort": effort},
                 messages=[{"role": "user", "content": prompt}],
-            )
+            ) as stream:
+                message = stream.get_final_message()
         except anthropic.APIStatusError as e:
-            retryable = e.status_code == 429 or e.status_code >= 500
-            raise TransportError(f"{e.status_code} {e.message}", retryable) from e
+            raise TransportError(f"{e.status_code} {e.message}", _retryable_status(e)) from e
         except anthropic.APIConnectionError as e:
             raise TransportError(f"연결 오류: {e}", True) from e
+        except httpx2.TransportError as e:
+            # 답을 받는 중에 연결이 끊기거나 시간이 넘으면 SDK가 감싸지 않고 그대로 올린다
+            raise TransportError(f"스트림 중 연결 오류: {type(e).__name__}: {e}", True) from e
         return parse_anthropic_message(message)
+
+
+# 스트림 중 오류 이벤트의 종류 가운데 다시 불러 볼 만한 것 (서버 쪽 사정)
+_RETRYABLE_ERROR_TYPES = ("overloaded_error", "api_error", "rate_limit_error", "timeout_error")
+
+
+def _retryable_status(e) -> bool:
+    """SDK 상태 오류를 다시 부를 만한가: 429·5xx.
+
+    스트림 중에 온 오류 이벤트는 HTTP 상태가 이미 200이라 상태 코드로는 못 가른다.
+    그때는 오류 종류(error.type)가 서버 쪽 사정(과부하 등)일 때만 다시 부른다.
+    """
+    if e.status_code == 429 or e.status_code >= 500:
+        return True
+    return e.status_code == 200 and e.type in _RETRYABLE_ERROR_TYPES
 
 
 @dataclass
