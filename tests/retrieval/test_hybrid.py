@@ -65,7 +65,8 @@ def test_두_쪽에_다_걸린_조각이_위():
     res = _search(_searcher())
     assert res.mode == "hybrid"
     assert res.scope.k == 3
-    assert res.hits[0].location.start == 2
+    # 전체 순서까지 본다 (벡터만 쓰면 [2, 3, 1], 섞으면 [2, 1, 3])
+    assert [h.location.start for h in res.hits] == [2, 1, 3]
     assert [h.rank for h in res.hits] == [1, 2, 3]
     keys = [(-h.score, h.chunk_id) for h in res.hits]
     assert keys == sorted(keys)
@@ -123,6 +124,8 @@ def test_hybrid_칸이_없으면_멈춘다():
         {"rrf_k": -5, "weights": {"bm25": 0.5, "vector": 0.5}},
         {"weights": {"bm25": 0.5, "vector": 0.5}},  # rrf_k 없음
         {"rrf_k": 60},  # weights 없음
+        {"rrf_k": 60, "weights": {"bm25": float("nan"), "vector": 1.0}},  # NaN
+        {"rrf_k": 60, "weights": {"bm25": float("inf"), "vector": 1.0}},  # 무한대
     ],
 )
 def test_잘못된_hybrid_설정은_멈춘다(bad):

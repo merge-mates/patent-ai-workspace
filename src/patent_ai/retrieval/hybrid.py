@@ -5,6 +5,7 @@ BM25와 벡터 두 검색기의 순위를 RRF(Reciprocal Rank Fusion)로 섞는�
 core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나 녹화 파일).
 """
 
+import math
 from datetime import date
 
 from patent_ai.retrieval.contract import Embed, get_searcher, register_impl
@@ -40,9 +41,10 @@ def _read_hybrid_settings(settings: dict) -> tuple[int, dict[str, float]]:
     if not isinstance(weights, dict) or set(weights) != _METHODS:
         raise ValueError(f"hybrid.weights 키는 bm25, vector여야 한다: {weights!r}")
     if any(
-        isinstance(w, bool) or not isinstance(w, int | float) or w < 0 for w in weights.values()
+        isinstance(w, bool) or not isinstance(w, int | float) or not math.isfinite(w) or w < 0
+        for w in weights.values()
     ):
-        raise ValueError(f"hybrid.weights는 0 이상의 숫자여야 한다: {weights!r}")
+        raise ValueError(f"hybrid.weights는 0 이상의 유한한 숫자여야 한다: {weights!r}")
     if sum(weights.values()) == 0:
         raise ValueError("hybrid.weights가 둘 다 0이다")
     return rrf_k, {m: float(w) for m, w in weights.items()}
