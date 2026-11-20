@@ -52,6 +52,8 @@ STEP = "f4.direction"
 
 # 결과 스키마(v0)에 이 문구를 담을 칸이 없어 상수로 둔다. 화면·API는 direction_payload로 같이 꺼낸다
 RANK_NOTICE = "순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"
+# 보정 제한 스위치가 켜져 있는데 통지 종류를 모를 때 후보마다 붙이는 확인 사항
+NOTICE_KIND_CHECK = "통지 종류 확인 필요 (최후거절이유통지이면 보정할 수 있는 범위가 제한됨)"
 
 
 # ---- 모델 출력 모양 (결과 스키마와 따로 둔다: status·근거·origin·ID는 코드가 채운다) ----
@@ -159,6 +161,7 @@ def _build(
     limit: ExtractedValue[AmendmentLimit],
     max_candidates: int,
     extra_flags: list[Flag] | None = None,
+    extra_checks: list[str] | None = None,
 ) -> DirectionCandidates:
     """모델 답 하나를 DirectionCandidates로 만든다. 규칙을 어기면 ValueError(스키마 검사 포함)."""
     if len(out.candidates) > max_candidates:
@@ -194,7 +197,7 @@ def _build(
                 name=c.name,
                 confidence=c.confidence,
                 reason=c.reason,
-                checks=list(c.checks),
+                checks=[*c.checks, *(extra_checks or [])],
                 per_rejection=list(c.per_rejection),
                 amendment_core=list(c.amendment_core),
                 # 반박의 거절이유 종류는 판단 단위에서 가져온다 (유형이 안 맞으면 거부됨)
@@ -338,6 +341,11 @@ def build_directions(
         raise ModelCallLimitExceeded("max_units", len(inp.units), options.max_units)
 
     limit = amendment_limit_of(inp.oa)
+    # 보정 제한 스위치가 켜져 있는데 통지 종류를 모르면: 제한을 짐작하지 않고 확인을 요청한다
+    ask_kind = options.final_rejection_limit and limit.value is None
+    if ask_kind:
+        logger.warning("f4.direction %s: 통지 종류를 몰라 보정 제한 확인 필요", inp.oa.oa_id)
+    checks = [NOTICE_KIND_CHECK] if ask_kind else []
     results: list[DirectionCandidates] = []
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         f3 = f3_results(inp, unit)
@@ -347,10 +355,12 @@ def build_directions(
         missing = missing_claim_texts(inp, unit)
         if missing:
             logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
-        flags = [Flag.NEEDS_HUMAN_REVIEW] if missing else []
+        flags = [Flag.NEEDS_HUMAN_REVIEW] if missing or ask_kind else []
 
         def build(out: DirectionsOut, unit=unit, status=status, evidence=evidence, flags=flags):
-            return _build(out, unit, inp.oa, status, evidence, limit, options.max_candidates, flags)
+            return _build(
+                out, unit, inp.oa, status, evidence, limit, options.max_candidates, flags, checks
+            )
 
         variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)
         out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)

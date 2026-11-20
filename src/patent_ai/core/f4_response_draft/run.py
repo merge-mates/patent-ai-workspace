@@ -9,16 +9,41 @@ import logging
 from patent_ai.core.f4_response_draft.amendment import assemble_drafts, build_amendments
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.coverage import uncovered
-from patent_ai.core.f4_response_draft.directions import build_directions
+from patent_ai.core.f4_response_draft.directions import amendment_limit_of, build_directions
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import build_opinion
 from patent_ai.core.f4_response_draft.result import F4Output
+from patent_ai.core.llm.config import REPO_ROOT
+from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Flag, worst_status
+from patent_ai.core.schemas.direction import AmendmentLimit
+from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
 
 ALL_F4_CHECKED = "방향 후보와 초안 모두 확인됨"
+# 최후거절이유통지일 때 보정 프롬프트에 끼우는 제한 문구 (프롬프트라 파일로 둔다)
+FINAL_LIMIT_PROMPT = "prompts/f4/amendment_limit_final.md"
+
+
+def final_limit_note(oa: OAResult, options: F4Options) -> str:
+    """보정 프롬프트에 끼울 제한 문구. 스위치가 켜져 있고 통지 종류가 최후일 때만 낸다.
+
+    통지 종류를 모르면 넣지 않는다 (짐작으로 제한을 적용하지 않고, 방향 후보에서 확인을 요청한다).
+    보정이 제한 안인지 밖인지는 코드가 판정하지 않는다.
+    """
+    if not options.final_rejection_limit:
+        return ""
+    if amendment_limit_of(oa).value != AmendmentLimit.FINAL:
+        return ""
+    path = REPO_ROOT / FINAL_LIMIT_PROMPT
+    if not path.is_file():
+        raise ModelConfigError(f"보정 제한 문구 파일이 없음: {path}")
+    note = path.read_text(encoding="utf-8").strip()
+    if not note:
+        raise ModelConfigError(f"보정 제한 문구 파일이 비어 있음: {path}")
+    return f"\n{note}\n"
 
 
 def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -> F4Output:
@@ -28,7 +53,10 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
 
     directions = build_directions(inp, ctx, options=options)
     opinion = build_opinion(inp, directions, ctx, options=options)
-    amendment = build_amendments(inp, directions, opinion, ctx, options=options)
+    limit_note = final_limit_note(inp.oa, options)
+    amendment = build_amendments(
+        inp, directions, opinion, ctx, options=options, limit_note=limit_note
+    )
     drafts = assemble_drafts(oa_id, opinion, amendment)
 
     # 보류한 묶음: 의견서 보류(확신 낮음) + 보정 보류(청구항 글자 없음 등), 묶음 순서 그대로
@@ -74,6 +102,7 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
         held_units=held,
         unsupported_rejections=unsupported,
         uncovered=missing,
+        amendment_limit_applied=bool(limit_note),
         status=worst_status(statuses, ALL_F4_CHECKED),
         flags=flags,
     )
