@@ -13,3 +13,11 @@ direction:
   prompt: prompts/f4/direction.md
   max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
   max_retries: 2       # 전송 오류(429·연결)를 다시 부르는 횟수
+
+opinion:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/opinion.md
+  max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
