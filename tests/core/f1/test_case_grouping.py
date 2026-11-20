@@ -4,8 +4,10 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from patent_ai.core.f1_oa_reader.case_grouping import (
+    AS_FILED_VERSION,
     HistoryEvent,
     MaterialInput,
     build_case_materials,
@@ -286,9 +288,10 @@ def _h(kind, number):
 TWO_OAS = [_h("oa", OA1), _h("amendment", AMD1), _h("oa", OA2)]
 
 
-def test_version_첫_OA는_출원_때_판_v0():
+def test_version_첫_OA는_출원_때_판():
+    # 출원 때 판은 "값 없음"이 아니라 고정 글자 (값 없음 = 못 읽음과 헷갈리지 않게)
     v = select_examined_version(TWO_OAS, OA1)
-    assert v.value == "v0"
+    assert v.value == AS_FILED_VERSION == "as_filed"
     assert v.status.value == StatusValue.CONFIRMED
 
 
@@ -306,12 +309,50 @@ def test_version_보정서가_여럿이면_대상_OA_바로_앞_마지막():
 
 def test_version_대상_OA_뒤_보정서는_보지_않음():
     hist = [_h("oa", OA1), _h("amendment", AMD1)]
-    assert select_examined_version(hist, OA1).value == "v0"
+    assert select_examined_version(hist, OA1).value == AS_FILED_VERSION
 
 
-def test_version_의견서만_있으면_판은_그대로_v0():
+def test_version_의견서만_있으면_판은_그대로_출원_때_판():
     hist = [_h("oa", OA1), _h("opinion", AMD1), _h("oa", OA2)]
-    assert select_examined_version(hist, OA2).value == "v0"
+    assert select_examined_version(hist, OA2).value == AS_FILED_VERSION
+
+
+@pytest.mark.parametrize("kind", ["registration_decision", "rejection_decision", "other"])
+def test_version_결정서·기타는_판을_만들지_않음(kind):
+    hist = [_h("oa", OA1), _h(kind, None), _h("oa", OA2)]
+    assert select_examined_version(hist, OA2).value == AS_FILED_VERSION
+
+
+def test_version_모르는_종류는_거부():
+    with pytest.raises(ValidationError):
+        HistoryEvent(kind="decision", doc_number_text=None)
+
+
+def test_version_보정각하된_보정서는_건너뜀():
+    # 특허법 제51조: 각하된 보정은 없던 것 → 그 앞 판으로 심사
+    hist = [
+        _h("oa", OA1),
+        _h("amendment", AMD1),
+        HistoryEvent(kind="amendment", doc_number_text=AMD2, dismissed=True),
+        _h("oa", OA2),
+    ]
+    assert select_examined_version(hist, OA2).value == "112099000000112"
+
+
+def test_version_보정각하된_보정서만_있으면_출원_때_판():
+    hist = [
+        _h("oa", OA1),
+        HistoryEvent(kind="amendment", doc_number_text=AMD1, dismissed=True),
+        _h("oa", OA2),
+    ]
+    v = select_examined_version(hist, OA2)
+    assert v.value == AS_FILED_VERSION
+    assert v.status.value == StatusValue.CONFIRMED
+
+
+def test_version_각하_표시는_보정서에만():
+    with pytest.raises(ValidationError):
+        HistoryEvent(kind="oa", doc_number_text=OA1, dismissed=True)
 
 
 def test_version_대상_발송번호는_하이픈_없어도_됨():

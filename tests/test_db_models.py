@@ -230,3 +230,24 @@ def test_api_cache_key_is_primary_and_value_jsonb():
     t = _table("api_cache")
     assert [c.name for c in t.primary_key.columns] == ["key"]
     assert isinstance(t.c.value.type, JSONB)
+
+
+def test_core_이력_종류는_case_events_kind_CHECK와_같음():
+    # 사건 묶기(core)의 이력 종류가 DB CHECK와 어긋나면 저장할 때 깨진다 (#16 T5)
+    from patent_ai.core.f1_oa_reader.case_grouping import HistoryKind
+
+    assert set(get_args(HistoryKind)) == _check_values("case_events", "ck_case_events_kind")
+
+
+def test_core_청구항_판_종류는_source_kind_CHECK와_같음():
+    from patent_ai.core.f1_oa_reader.case_repository import SourceKind
+
+    assert set(get_args(SourceKind)) == _check_values(
+        "claim_versions", "ck_claim_versions_source_kind"
+    )
+
+
+def test_보정서_판은_이력_줄이_꼭_있음():
+    # #120 리뷰 (가): 보정서 판인데 case_event_id가 비면 DB가 막는다 (#16 T6)
+    sql = _check_sql("claim_versions", "ck_claim_versions_amendment_event")
+    assert "case_event_id IS NOT NULL" in sql
