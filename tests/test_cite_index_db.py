@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk
 from patent_ai.retrieval.cite_index.__main__ import write_index
+from patent_ai.retrieval.law_index_db import replace_index
 from patent_ai.retrieval.repository import PostgresChunkRepository
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 from patent_ai.settings import get_settings
@@ -68,3 +69,35 @@ def test_쓴_줄을_저장소가_읽는다(session):
     assert repo.has_index_version("cite", IV)
     got = repo.chunks("cite", IV, doc_ids=["KRTEST1A"])
     assert [c.chunk_id for c in got] == [f"{IV}:KRTEST1A:pg1"]
+
+
+def test_v2를_두_번_넣어도_줄_수가_같고_벡터가_저장된다(session):
+    v2 = "cite-idx-v2"
+    chunks = [
+        c.model_copy(
+            update={
+                "index_version": v2,
+                "chunk_id": c.chunk_id.replace(IV, v2),
+                "embedding": [0.1] * 1536,
+            }
+        )
+        for c in (_chunk("pg1"), _chunk("pg2"))
+    ]
+    # replace_index의 begin()을 savepoint로 바꿔 fixture 트랜잭션 안에서 돈다
+    assert replace_index(_Nested(session), chunks, "cite", v2) == 2
+    assert replace_index(_Nested(session), chunks, "cite", v2) == 2
+    got = PostgresChunkRepository(session).chunks("cite", v2, doc_ids=["KRTEST1A"])
+    assert len(got) == 2 and all(len(c.embedding) == 1536 for c in got)
+
+
+class _Nested:
+    """begin()을 savepoint(begin_nested)로 바꿔 주는 얇은 껍데기. 나머지는 세션 그대로."""
+
+    def __init__(self, session):
+        self._s = session
+
+    def begin(self):
+        return self._s.begin_nested()
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)

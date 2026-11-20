@@ -148,7 +148,11 @@ def main(
                 f"이미 있는 파일이라 덮어쓰지 않는다 (새 설정이면 새 판): {out_path}"
             )
         ctx = ctx or new_context(f"index-embed-{cfg['index_version']}")
-        chunks = read_chunks_jsonl(cfg["from"])
+        # 말뭉치는 새 판 이름 앞말에서 꺼낸다 (cite-idx-v2 → cite). 새 설정 키는 두지 않는다
+        corpus = str(cfg["index_version"]).split("-")[0]
+        if corpus not in ("law", "cite"):
+            raise IndexEmbedError(f"색인 판 이름이 아니다: {cfg['index_version']!r}")
+        chunks = read_chunks_jsonl(cfg["from"], corpus)
         out = embed_chunks(chunks, cfg["index_version"], cfg["embed_step"], ctx, config_dir)
         write_jsonl(out, out_path)
     except RUN_ERRORS as e:
