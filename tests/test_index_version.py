@@ -49,17 +49,19 @@ def test_version_number(corpus, v, n):
     assert version_number(corpus, v) == n
 
 
-def test_db는_retrieval을_부르지_않는다():
-    # 판 이름 규칙은 db/에서도 쓰므로 retrieval을 import하면 안 된다 (ADR 0003 부르는 방향)
+@pytest.mark.parametrize("module", ["patent_ai.index_version", "patent_ai.git_paths"])
+def test_최상위_공통_모듈은_다른_패키지를_부르지_않는다(module):
+    # db/·eval/도 쓰므로 retrieval·core·db·eval을 import하면 안 된다 (ADR 0003 부르는 방향)
     import ast
+    import importlib
     from pathlib import Path
 
-    import patent_ai.index_version as m
-
+    m = importlib.import_module(module)
     tree = ast.parse(Path(m.__file__).read_text(encoding="utf-8"))
     names = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
     names += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
-    assert not [x for x in names if x and x.startswith(("patent_ai.retrieval", "patent_ai.core"))]
+    banned = ("patent_ai.retrieval", "patent_ai.core", "patent_ai.db", "eval")
+    assert not [x for x in names if x and x.startswith(banned)]
 
 
 def test_말뭉치_목록이_검색_스키마와_같다():

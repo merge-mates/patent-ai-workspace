@@ -60,7 +60,7 @@ def embed_chunks(
     (from_version,) = versions
     if from_version == to_version:
         raise IndexEmbedError(f"같은 판({to_version})에 덮어쓰지 않는다. 새 판 이름을 준다")
-    if from_version.split("-")[0] != to_version.split("-")[0]:
+    if corpus_of(from_version) != corpus_of(to_version):
         raise IndexEmbedError(f"말뭉치가 다르다: {from_version} → {to_version}")
     prefix = from_version + ":"
     bad = [c.chunk_id for c in chunks if not c.chunk_id.startswith(prefix)]

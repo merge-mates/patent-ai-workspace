@@ -25,7 +25,7 @@ from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
 from eval.retrieval.metrics import random_hit, random_recall, row_hit, row_recall
 from patent_ai.db.index_dump import index_fingerprint
-from patent_ai.git_paths import is_git_ignored  # 저장소 밖도 거절 (cite_index와 같은 검사)
+from patent_ai.git_paths import is_git_ignored as git_ignored_strict  # 저장소 밖도 거절
 from patent_ai.retrieval import get_searcher
 from patent_ai.retrieval.repository import (
     ChunkRepository,
@@ -299,7 +299,8 @@ def write_rows(report: ScoreReport, path: Path) -> None:
 def main(
     argv: list[str] | None = None,
     commit: str | None = None,
-    ignored: Callable[[Path], bool] = is_git_ignored,
+    # eval.common.paths.is_git_ignored(저장소 밖 통과)와 반대라 이름을 다르게 받았다
+    ignored: Callable[[Path], bool] = git_ignored_strict,
 ) -> int:
     ap = argparse.ArgumentParser(prog="eval.retrieval.score")
     ap.add_argument("--config", required=True)
