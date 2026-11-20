@@ -33,7 +33,7 @@
 | 기능 | 담당 | 마일스톤 | 상태 | requirements | design | tasks |
 |---|---|---|---|---|---|---|
 | F1 OA 읽기·거절이유별 정리 | 재아 | M1 | 문서 초안, 구현 계획 승인 | [requirements](features/F1/requirements.md) | [design](features/F1/design.md) | [tasks](features/F1/tasks.md) · [tasks-2](features/F1/tasks-2.md) |
-| F2 법률 근거 조사 | | M2 | PRD | | | |
+| F2 법률 근거 조사 | 은진 | M2 | 문서 초안 | [requirements](features/F2/requirements.md) | [design](features/F2/design.md) | |
 | F3 청구항–인용문헌 대비 | | M2 | PRD | | | |
 | F4 대응 방향 후보와 초안 | | M3 | PRD | | | |
 | F5 근거·상태 표시와 진행·보류 | | M1 | PRD | | | |
