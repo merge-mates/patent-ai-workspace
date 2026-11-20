@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { HumanCheckTag } from '../../components/Marks'
 import { StatusTag } from '../../components/StatusTag'
 import { lookupResultLabel, materialKindLabel, sourceLabel } from '../../labels'
-import type { CaseMaterials, LookupResult } from '../../types/generated/CaseMaterials'
+import type { CaseMaterials, LookupResult, Status } from '../../types/generated/CaseMaterials'
 import type { OAResult } from '../../types/generated/OAResult'
 
 // 사건 자료 표의 한 줄: 받은 자료와 빠진 자료를 한 표에
@@ -14,6 +14,7 @@ interface Row {
   edition: string
   how: string
   lookup: LookupResult | null // 빠진 자료면 조회 결과, 받은 자료면 null
+  docStatus: Status | null // 받은 자료의 묶기 상태 (다른 출원번호 = 충돌, 번호 못 읽음 = 확인되지 않음), 빠진 자료면 null
   askUpload: boolean
 }
 
@@ -25,6 +26,7 @@ function rowsOf(m: CaseMaterials, r: OAResult): Row[] {
     edition: d.kind === 'oa' ? `발송번호 ${r.dispatch_number.raw_text ?? r.dispatch_number.value ?? '모름'}` : '—',
     how: sourceLabel[d.source] ?? d.source,
     lookup: null,
+    docStatus: d.status,
     askUpload: false,
   }))
   const missing: Row[] = m.missing.map((x, i) => ({
@@ -33,6 +35,7 @@ function rowsOf(m: CaseMaterials, r: OAResult): Row[] {
     edition: '판 모름', // 공개공보·등록공보는 다른 판이라 데이터에 없으면 짐작하지 않는다
     how: '자동 조회',
     lookup: x.lookup_result,
+    docStatus: null,
     askUpload: x.ask_upload,
   }))
   return [...got, ...missing]
@@ -49,7 +52,8 @@ export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
     {
       title: '상태',
       render: (_, row) => {
-        if (row.lookup === null) return <Typography.Text>받음</Typography.Text>
+        // 받은 자료: 늘 "받음"이 아니라 묶기 상태를 그대로 보인다 (다른 출원번호 문서가 묻히지 않게)
+        if (row.docStatus !== null) return <StatusTag status={row.docStatus} />
         // 지원 안 하는 나라는 "올려 주세요"가 아니라 "직접 확인"
         if (row.lookup === 'unsupported_country') return <HumanCheckTag>지원 안 하는 나라 · 직접 확인</HumanCheckTag>
         return (
