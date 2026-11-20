@@ -1,6 +1,6 @@
 {
   "experiment": "m2-i2-law-bm25-char-bigram",
-  "commit": "49b23ba4e22aea87523954249f80231382bb2830",
+  "commit": "dc893109e633f471e4082826bff5d52848eaee04",
   "goldset": "tune",
   "goldset_version": 2,
   "gold_sha256": "969d6f8e4ad97125b40c08e6a054119b43277fbd7b53e6f7b51665beab56e862",
@@ -43,6 +43,8 @@
     "excluded_body_missing": 0,
     "excluded_edition_unverified": 0,
     "excluded_no_edition_in_scope": 0,
+    "excluded_gold_not_in_scope": 0,
+    "excluded_gold_items_not_in_scope": 0,
     "cq_candidates": 0,
     "recall_ratio_undefined": 0
   },
@@ -51,6 +53,6 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "external_calls": 0,
-    "seconds": 11.929
+    "seconds": 12.318
   }
 }
