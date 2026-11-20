@@ -220,7 +220,8 @@ def test_명령은_깨진_JSONL이면_traceback_없이_1로_끝난다(tmp_path, 
     bad.write_text("{깨짐\n", encoding="utf-8")
     argv = ["--corpus", "cite", "--jsonl", str(bad), "--index-version", CV]
     assert main(argv) == 1
-    assert caplog.text  # 이유 한 줄
+    errs = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert errs and "bad.jsonl" in errs[0].getMessage()  # 파일 경로가 든 이유 한 줄
 
 
 def test_명령은_말뭉치와_안_맞는_파일이면_1로_끝난다(tmp_path):

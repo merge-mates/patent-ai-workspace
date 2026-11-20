@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import logging
 import re
+import struct
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -74,9 +75,20 @@ def _check(chunks: Sequence[Chunk], corpus: Corpus, index_version: str) -> None:
         )
 
 
+def _as_float32(chunk: Chunk) -> Chunk:
+    """벡터를 float32로 맞춘다. pgvector는 float32로 저장해 읽을 때 값이 바뀌기 때문이다."""
+    if chunk.embedding is None:
+        return chunk
+    f32 = [struct.unpack("<f", struct.pack("<f", x))[0] for x in chunk.embedding]
+    return chunk.model_copy(update={"embedding": f32})
+
+
 def content_sha256(chunks: Sequence[Chunk]) -> str:
-    """조각 내용 전체(글·위치·판본 포함)의 해시. 순서와 상관없다."""
-    lines = sorted(c.model_dump_json() for c in chunks)
+    """조각 내용 전체(글·위치·판본·벡터 포함)의 해시. 순서와 상관없다.
+
+    JSONL(float64)과 DB에서 다시 읽은 값(float32)이 같은 해시가 되도록 벡터를 먼저 float32로 맞춘다.
+    """
+    lines = sorted(_as_float32(c).model_dump_json() for c in chunks)
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 

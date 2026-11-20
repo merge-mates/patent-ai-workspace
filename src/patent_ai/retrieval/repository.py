@@ -84,7 +84,12 @@ class InMemoryChunkRepository:
             for no, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip():
                     continue
-                chunk = Chunk.model_validate_json(line)
+                try:
+                    chunk = Chunk.model_validate_json(line)
+                except ValueError as e:
+                    # 어느 파일 몇 번째 줄이 왜 깨졌는지 한 줄로 알린다
+                    first = e.errors()[0]["msg"] if hasattr(e, "errors") else str(e)
+                    raise ValueError(f"{path}:{no} 조각 JSON을 못 읽는다: {first}") from e
                 # 말뭉치와 색인 판 앞말이 다르면 (law 표에 cite-idx-v1) 막는다
                 if not prefix.match(chunk.index_version):
                     raise ValueError(

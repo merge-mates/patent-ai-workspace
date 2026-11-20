@@ -223,4 +223,6 @@ def test_chunks_명령은_깨진_JSONL이면_traceback_없이_1로_멈춘다(cfg
     )
     t = FakeEmbedTransport(vec_of)
     assert main(["chunks", "--config", str(conf)], ctx=ctx_of(t), config_dir=cfg) == 1
-    assert t.calls == [] and caplog.text
+    assert t.calls == []
+    errs = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert errs and "bad.jsonl" in errs[0].getMessage()

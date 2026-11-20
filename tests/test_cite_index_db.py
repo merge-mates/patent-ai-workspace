@@ -78,26 +78,14 @@ def test_v2를_두_번_넣어도_줄_수가_같고_벡터가_저장된다(sessio
             update={
                 "index_version": v2,
                 "chunk_id": c.chunk_id.replace(IV, v2),
-                "embedding": [0.1] * 1536,
+                "embedding": [0.0123456789123] * 1536,  # float32로 저장하면 값이 바뀐다,
             }
         )
         for c in (_chunk("pg1"), _chunk("pg2"))
     ]
-    # replace_index의 begin()을 savepoint로 바꿔 fixture 트랜잭션 안에서 돈다
-    assert replace_index(_Nested(session), chunks, "cite", v2) == 2
-    assert replace_index(_Nested(session), chunks, "cite", v2) == 2
+    assert replace_index(session, chunks, "cite", v2) == 2
+    # DB에서 다시 읽은 값(float32)과 JSONL 값(float64)으로 같은 판을 다시 넣어도 멈추지 않는다
+    session.expire_all()
+    assert replace_index(session, chunks, "cite", v2) == 2
     got = PostgresChunkRepository(session).chunks("cite", v2, doc_ids=["KRTEST1A"])
     assert len(got) == 2 and all(len(c.embedding) == 1536 for c in got)
-
-
-class _Nested:
-    """begin()을 savepoint(begin_nested)로 바꿔 주는 얇은 껍데기. 나머지는 세션 그대로."""
-
-    def __init__(self, session):
-        self._s = session
-
-    def begin(self):
-        return self._s.begin_nested()
-
-    def __getattr__(self, name):
-        return getattr(self._s, name)
