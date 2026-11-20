@@ -28,9 +28,9 @@ export async function caseLoader({ params }: LoaderFunctionArgs) {
 
 export interface OALoaderData {
   oa: OADetail
-  // 실행이 아직 안 끝났으면 null (404 result_not_ready)
+  // 실행이 아직 안 끝났거나(404 result_not_ready) 서버에 엔드포인트가 아직 없으면 null
   oaResult: OAResultResponse | null
-  // 사건 자료 목록이 아직 없으면 null
+  // 사건 자료 목록이 아직 없거나 서버에 엔드포인트가 아직 없으면 null
   materials: CaseMaterials | null
   // API v0에 목록이 없거나 아직 없으면 null (개수만, 또는 모름)
   reviewItems: ReviewItem[] | null
@@ -54,16 +54,16 @@ export async function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoader
   return { oa, oaResult, materials, reviewItems, document }
 }
 
-// "아직 없음"만 null로 받고, 다른 오류는 그대로 올린다 (조용히 삼키지 않는다).
-// 아직 없음 = 404 result_not_ready, 또는 서버에 그 엔드포인트가 아직 없어서 나는 404 (not_found)
 // 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다 (대비·초안 화면용)
 function notReadyAsNull(e: unknown): null {
   if (isNotReady(e)) return null
   throw e
 }
 
+// "아직 없음"만 null로 받고, 다른 오류는 그대로 올린다 (조용히 삼키지 않는다).
+// 아직 없음 = 404 result_not_ready, 또는 서버에 그 엔드포인트가 아직 없어서 나는 404 (code not_found)
 function missingAsNull(e: unknown): null {
-  if (isNotReady(e) || (e instanceof ApiError && e.httpStatus === 404)) return null
+  if (isNotReady(e) || (e instanceof ApiError && e.code === 'not_found')) return null
   throw e
 }
 

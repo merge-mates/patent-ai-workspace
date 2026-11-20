@@ -98,7 +98,13 @@ def create_case(
     except DuplicateDocumentError:
         # 새 사건이라 DB 제약에는 안 걸린다. 저장소가 중복이라 알려 온 경우만 409로 바꾼다
         # (같은 파일을 동시에 올리면 사건이 둘 생기는 것은 알려진 한계)
-        raise AppError(409, "document_already_exists", "이미 올린 파일입니다") from None
+        # 기존 ID를 모르는 경우라 README 2절 칸 모양만 맞춰 null로 둔다
+        raise AppError(
+            409,
+            "document_already_exists",
+            "이미 올린 파일입니다",
+            extra={"case_id": None, "oa_id": None},
+        ) from None
     except upload.UploadFailedError:
         raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None
     return CreatedCase(case_id=created.case_id, oa_id=created.oa_id, run_id=created.run_id)
