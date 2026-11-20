@@ -10,6 +10,8 @@ scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건�
 
 명령: uv run python eval/run_eval.py --config <설정> --predictions <폴더>
 정답 폴더가 없으면 점수를 쓰지 않고 "정답 없음"으로 끝낸다 (종료 코드 EXIT_NO_GOLD).
+direction_top1은 보류(직접 판단 필요) 줄을 뺀 값이다. 보류가 늘면 오를 수 있으므로
+needs_human_judgment_rate·direction_top1_strict와 같이 본다.
 """
 
 import argparse
@@ -33,7 +35,7 @@ from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 logger = logging.getLogger(__name__)
 
 METRIC_NAME = "거친 방향 1등 일치율"
-EXIT_NO_GOLD = 2  # 정답 없음: 성공(0)도 채점 실패(1)도 아니다
+EXIT_NO_GOLD = 3  # 정답 없음: 성공(0)도 채점 실패(1)도 argparse 사용법 오류(2)도 아니다
 FAILURE_KEYS = (
     "missing_prediction",  # 예측이 없는 OA (0점으로 셈)
     "uncovered_pairs",  # AI의 어느 묶음에도 없는 (거절이유, 청구항) 쌍
@@ -54,6 +56,8 @@ def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> 
 
     종속항 글자가 그대로(또는 오기 정정뿐)이고 묶음의 독립항이 보정됐으면 독립항 값을 물려받는다.
     그 밖에는 그대로면 반박만, 보정이면 후보에 반박이 있으면 보정+반박, 없으면 보정만.
+    삭제한 청구항은 후보에 반박이 있어도 보정만으로 센다 (정답 문서 2절 예시·3절 4번:
+    후보의 반박은 묶음 것이고, 삭제한 항을 따로 반박하는지는 후보에 칸이 없다).
     """
     kinds = {a.claim: a.kind for a in top.amendment_core}
     rep = unit.representative_claim
@@ -63,6 +67,8 @@ def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> 
         own = rep_kind  # 물려받기 (3절 1·14번)
     if own == AmendmentKind.UNCHANGED:
         return "argue_only"
+    if own == AmendmentKind.DELETE:
+        return "amend_only"
     return "amend_and_argue" if top.rebuttal is not None else "amend_only"
 
 
@@ -96,6 +102,7 @@ class OAScore:
     direction: list[bool] = field(default_factory=list)  # ② 주 점수 (물려받은 줄 제외)
     direction_all: list[bool] = field(default_factory=list)  # ② 물려받은 줄 포함
     direction_strict: list[bool] = field(default_factory=list)  # ② 주 점수 + 보류를 틀림으로
+    abstained: list[bool] = field(default_factory=list)  # ② 대상 줄(정답이 다룸)마다: 보류였나
     failures: dict[str, int] = field(default_factory=lambda: dict.fromkeys(FAILURE_KEYS, 0))
 
 
@@ -111,6 +118,7 @@ def score_oa(g: F4Gold, pred: F4Pred | None) -> OAScore:
         if not row.handled:
             s.failures["excluded_not_handled"] += 1
             continue
+        s.abstained.append(value == _ABSTAIN)
         if value == "conflict":
             s.failures["excluded_branch_conflict"] += 1
             continue
@@ -177,12 +185,17 @@ def score_f4(
         ("direction_top1", "direction"),
         ("direction_top1_with_inherited", "direction_all"),
         ("direction_top1_strict", "direction_strict"),
+        ("needs_human_judgment_rate", "abstained"),  # ② 대상 줄 가운데 보류로 빠진 비율
     ):
         value = _set_mean(per_oa, name)
         if value is None:
             logger.warning("F4 %s: 채점한 줄이 0개 (지표를 뺌)", metric)  # 0으로 쓰지 않는다
         else:
             metrics[metric] = value
+
+    if "handled_accuracy" not in metrics:
+        # 정답 줄이 하나도 없으면 잰 것이 없다. 빈 점수로 성공하지 않는다
+        raise EvalError("F4 정답 청구항 줄이 0개라 채점한 것이 없다")
 
     return {
         "experiment": cfg.experiment,

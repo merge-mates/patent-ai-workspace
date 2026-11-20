@@ -109,15 +109,19 @@ DELETE = {"claim": 2, "kind": "delete"}
 CLARIFY = {"claim": 2, "kind": "clarify"}
 
 
-def prediction(*, inventive_claims=(1, 2, 3), clarity_low=False):
-    """진보성 묶음: 1등이 청구항 1 부가 + 청구항 2 삭제 + 반박. 명확성 묶음: 1등이 명확화만."""
+def prediction(*, inventive_claims=(1, 2, 3), clarity_low=False, argue_first=False):
+    """진보성 묶음: 1등이 청구항 1 부가 + 청구항 2 삭제 + 반박. 명확성 묶음: 1등이 명확화만.
+
+    argue_first면 진보성 묶음의 1등을 보정 없이 반박으로 바꾼다 (2등은 채점에 쓰지 않는다).
+    """
     u1 = unit(1, "29-2", list(inventive_claims))
     u2 = unit(2, "42-4-2", [2], order=2)
+    amend, argue = (2, 1) if argue_first else (1, 2)
     g1 = group(
         u1,
         [
-            cand(u1, 1, 1, "amend_and_argue", [ADD, DELETE]),
-            cand(u1, 2, 2, "argue_only", []),  # 2등은 채점에 쓰지 않는다
+            cand(u1, 1, amend, "amend_and_argue", [ADD, DELETE]),
+            cand(u1, 2, argue, "argue_only", []),
         ],
     )
     if clarity_low:
@@ -197,14 +201,26 @@ def test_1등_후보에서_청구항별_방향을_계산해_정답과_맞춘다(
     s = env.scores()
     m = s["metrics"]
     assert m["handled_accuracy"] == 1.0  # ①: 네 줄 모두 다룸
-    # ② 주 점수(물려받은 줄 제외): 청구항 1 맞음, 삭제한 청구항 2는 보정+반박으로 계산돼 틀림,
-    # 명확성 청구항 2 맞음 -> 2/3
-    assert m["direction_top1"] == pytest.approx(2 / 3)
-    # 물려받은 청구항 3(글자 그대로, 독립항이 보정됨)은 독립항 값을 물려받아 맞음 -> 3/4
-    assert m["direction_top1_with_inherited"] == pytest.approx(3 / 4)
+    # ② 주 점수(물려받은 줄 제외): 청구항 1 보정+반박 맞음, 삭제한 청구항 2는 후보에 반박이
+    # 있어도 보정만(정답 문서 2절 예시)이라 맞음, 명확성 청구항 2 맞음 -> 3/3
+    assert m["direction_top1"] == 1.0
+    # 물려받은 청구항 3(글자 그대로, 독립항이 보정됨)은 독립항 값을 물려받아 맞음 -> 4/4
+    assert m["direction_top1_with_inherited"] == 1.0
+    assert m["needs_human_judgment_rate"] == 0.0
     assert s["failures"]["uncovered_pairs"] == 0
     assert s["failures"]["missing_prediction"] == 0
     assert s["n"] == 1
+
+
+def test_1등_방향이_정답과_다르면_틀림으로_센다(env):
+    env.put_gold(gold())
+    env.put_pred(*prediction(argue_first=True))  # 진보성 묶음 1등이 보정 없이 반박
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    # 진보성 줄(청구항 1·2)은 반박만으로 계산돼 틀리고, 명확성 줄만 맞음
+    assert m["direction_top1"] == pytest.approx(1 / 3)
+    assert m["direction_top1_with_inherited"] == pytest.approx(1 / 4)
+    assert m["handled_accuracy"] == 1.0  # 방향이 틀려도 다룬 것은 맞음
 
 
 def test_scores_json은_공통_스키마를_통과하고_번호를_담지_않는다(env):
@@ -222,9 +238,9 @@ def test_scores_json은_공통_스키마를_통과하고_번호를_담지_않는
 
 def test_예측이_DirectionCandidates_목록이어도_읽는다(env):
     env.put_gold(gold())
-    env.put_pred(*prediction(), as_list=True)
+    env.put_pred(*prediction(argue_first=True), as_list=True)
     assert main(env.args) == 0
-    assert env.scores()["metrics"]["direction_top1"] == pytest.approx(2 / 3)
+    assert env.scores()["metrics"]["direction_top1"] == pytest.approx(1 / 3)
 
 
 def test_안_다룸_줄은_방향_채점에서_빼고_건수를_남긴다(env):
@@ -233,7 +249,7 @@ def test_안_다룸_줄은_방향_채점에서_빼고_건수를_남긴다(env):
     env.put_pred(*prediction())
     assert main(env.args) == 0
     s = env.scores()
-    assert s["metrics"]["direction_top1"] == pytest.approx(2 / 3)  # 그대로
+    assert s["metrics"]["direction_top1"] == 1.0  # 그대로
     assert s["failures"]["excluded_not_handled"] == 1
     # ①: 정답은 안 다룸, AI는 그 (거절이유, 청구항)을 어느 묶음에도 두지 않음 -> 일치
     assert s["metrics"]["handled_accuracy"] == 1.0
@@ -249,9 +265,9 @@ def test_어느_묶음에도_없는_거절이유_청구항_쌍을_누락으로_�
     s = env.scores()
     assert s["failures"]["uncovered_pairs"] == 1
     assert s["metrics"]["handled_accuracy"] == pytest.approx(3 / 4)
-    # 빠진 줄은 방향도 틀림: 주 점수는 그대로(물려받은 줄이라 제외), 포함 점수는 2/4
-    assert s["metrics"]["direction_top1"] == pytest.approx(2 / 3)
-    assert s["metrics"]["direction_top1_with_inherited"] == pytest.approx(2 / 4)
+    # 빠진 줄은 방향도 틀림: 주 점수는 그대로(물려받은 줄이라 제외), 포함 점수는 3/4
+    assert s["metrics"]["direction_top1"] == 1.0
+    assert s["metrics"]["direction_top1_with_inherited"] == pytest.approx(3 / 4)
     assert "누락" in caplog.text
 
 
@@ -262,9 +278,10 @@ def test_확신_낮은_묶음은_방향_채점에서_빼고_건수를_남긴다(
     assert main(env.args) == 0
     s = env.scores()
     assert s["failures"]["excluded_needs_human_judgment"] == 1
-    assert s["metrics"]["direction_top1"] == pytest.approx(1 / 2)  # 청구항 1 맞음, 2 틀림
-    # 보류를 틀림으로 센 점수도 같이 낸다 (보류를 늘려 점수를 올리지 못하게)
-    assert s["metrics"]["direction_top1_strict"] == pytest.approx(1 / 3)
+    assert s["metrics"]["direction_top1"] == 1.0  # 보류 줄을 뺀 두 줄이 모두 맞음
+    # 보류를 늘려 주 점수를 올리지 못하게: 보류를 틀림으로 센 점수와 보류 비율을 같이 낸다
+    assert s["metrics"]["direction_top1_strict"] == pytest.approx(2 / 3)
+    assert s["metrics"]["needs_human_judgment_rate"] == pytest.approx(1 / 4)  # ② 대상 4줄 중 1줄
     assert s["metrics"]["handled_accuracy"] == 1.0  # 직접 판단 필요도 다룬 것
     assert s["failures"]["uncovered_pairs"] == 0
 
@@ -280,7 +297,7 @@ def test_예측이_없는_OA는_0점이고_실패_유형에_남는다(env, caplo
     assert s["n"] == 2 and s["failures"]["missing_prediction"] == 1
     # OA 한 통이 한 표: (점수 + 0) / 2
     assert s["metrics"]["handled_accuracy"] == pytest.approx(0.5)
-    assert s["metrics"]["direction_top1"] == pytest.approx((2 / 3) / 2)
+    assert s["metrics"]["direction_top1"] == pytest.approx(0.5)
     assert "예측이 없는" in caplog.text
 
 
@@ -314,7 +331,8 @@ def test_정답_폴더가_없으면_정답_없음으로_끝나고_점수_파일�
     env.put_pred(*prediction())
     with caplog.at_level(logging.WARNING):
         code = main(env.args)
-    assert code == EXIT_NO_GOLD and code not in (0, 1)  # 성공도, 보통 실패도 아님
+    # 성공(0)도 채점 실패(1)도 argparse 사용법 오류(2)도 아님
+    assert code == EXIT_NO_GOLD == 3
     assert not (env.out / "scores.json").exists()
     assert "정답 없음" in capsys.readouterr().err
     assert "정답 없음" in caplog.text
@@ -324,6 +342,24 @@ def test_정답_폴더가_비어_있어도_정답_없음(env, capsys):
     env.gold_dir.mkdir(parents=True)
     assert main(env.args) == EXIT_NO_GOLD
     assert not (env.out / "scores.json").exists()
+
+
+def test_정답_줄이_하나도_없으면_빈_점수로_성공하지_않는다(env, capsys):
+    env.put_gold(gold(rows=[]))
+    env.put_pred(*prediction())
+    assert main(env.args) == 1
+    assert "0개" in capsys.readouterr().err
+    assert not (env.out / "scores.json").exists()
+
+
+def test_판단_단위에_없는_묶음의_방향_결과는_버리고_경고한다(env, caplog):
+    env.put_gold(gold())
+    units, directions = prediction()
+    env.put_pred(units[:1], directions)  # 명확성 묶음의 판단 단위가 빠짐
+    with caplog.at_level(logging.WARNING):
+        assert main(env.args) == 0
+    assert "판단 단위 파일에 없는" in caplog.text
+    assert env.scores()["failures"]["uncovered_pairs"] == 1  # 그 묶음의 줄은 누락으로 셈
 
 
 # ---- 정답 모양 ----

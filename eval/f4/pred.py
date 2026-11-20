@@ -8,6 +8,7 @@
 """
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from pydantic import TypeAdapter, ValidationError
 from eval.common.errors import EvalError
 from patent_ai.core.schemas.direction import DirectionCandidates
 from patent_ai.core.schemas.judgment_unit import JudgmentUnit
+
+logger = logging.getLogger(__name__)
 
 UNITS_SUFFIX = ".units.json"
 _DIRECTIONS = TypeAdapter(list[DirectionCandidates])
@@ -59,5 +62,16 @@ def load_predictions(folder: Path) -> dict[str, F4Pred]:
             units = _UNITS.validate_python(_read_json(units_file, where + " 판단 단위"))
         except ValidationError:
             raise EvalError(f"{where}: 판단 단위 파일이 JudgmentUnit 목록 모양이 아니다") from None
-        preds[f.stem] = F4Pred(units=units, directions={d.unit_id: d for d in directions})
+        known = {u.unit_id for u in units}
+        dropped = [d for d in directions if d.unit_id not in known]
+        if dropped:
+            # 거절이유·청구항에 이을 수 없어 채점에 못 쓴다 (그 줄은 누락으로 세어진다)
+            logger.warning(
+                "%s: 판단 단위 파일에 없는 묶음의 방향 결과 %d건 (채점에 쓰지 않음)",
+                where,
+                len(dropped),
+            )
+        preds[f.stem] = F4Pred(
+            units=units, directions={d.unit_id: d for d in directions if d.unit_id in known}
+        )
     return preds

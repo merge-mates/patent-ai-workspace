@@ -41,7 +41,7 @@ data/goldsets/
 | F2 법령 검색 | `<세트>/retrieval/law_gold.jsonl` | OA 거절이유 하나 | [retrieval design](../docs/features/retrieval/design.md) 7-1 | `eval/retrieval/gold.py` |
 | F4 대응 방향 | `<세트>/f4/<출원번호>_<발송번호>.json` | OA 한 통 (안에 청구항 줄) | [f4-direction-gold.md](../docs/evaluation/f4-direction-gold.md) 4절 (초안) | `eval/f4/gold.py` (①②층 채점은 `eval/f4/score.py`) |
 
-- F4 채점의 예측 폴더(git 밖)는 정답과 같은 이름 `<출원번호>_<발송번호>.json`(`run_f4` 결과 또는 `DirectionCandidates` 목록)과 `<출원번호>_<발송번호>.units.json`(그 실행에 넣은 판단 단위 목록)을 둔다. 정답 폴더가 없으면 채점기는 점수를 쓰지 않고 "정답 없음"(종료 코드 2)으로 끝난다.
+- F4 채점의 예측 폴더(git 밖)는 정답과 같은 이름 `<출원번호>_<발송번호>.json`(`run_f4` 결과 또는 `DirectionCandidates` 목록)과 `<출원번호>_<발송번호>.units.json`(그 실행에 넣은 판단 단위 목록)을 둔다. 정답 폴더가 없으면 채점기는 점수를 쓰지 않고 "정답 없음"(종료 코드 3)으로 끝난다. `direction_top1`은 보류(직접 판단 필요) 줄을 뺀 값이라 `needs_human_judgment_rate`·`direction_top1_strict`와 같이 본다.
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
 - 검색 정답에서 채점 범위 밖 줄을 빼는 규칙(`exclude`)은 retrieval design 7-1을 따른다. 정답 항목에 맞는 조각이 검색 범위에 하나도 없으면 그 항목을 빼고(모두 없으면 줄째, `excluded_gold_not_in_scope`·`excluded_gold_items_not_in_scope`, #138) 건수를 `failures`에 남긴다. 정답 파일은 고치지 않는다 (채점기가 셈).
