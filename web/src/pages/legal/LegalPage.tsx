@@ -33,7 +33,7 @@ export function LegalPage() {
   // 질문을 보내고 답을 받는다 (버튼·엔터를 눌렀을 때만 부른다)
   const ask = async () => {
     const q = text.trim()
-    if (!q) return
+    if (!q || needDate) return
     setBusy(true)
     setError(null)
     try {
@@ -47,9 +47,13 @@ export function LegalPage() {
     }
   }
 
+  // "날짜 고르기"인데 날짜가 비면 현행으로 잘못 보내지 않게 묻기를 막는다
+  const needDate = when === 'pick' && !asOf
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 57px)' }}>
       <section
+        className="legal-section"
         style={{
           width: '100%',
           maxWidth: 920,
@@ -106,6 +110,7 @@ export function LegalPage() {
         }}
       >
         <div
+          className="legal-section"
           style={{
             maxWidth: 920,
             margin: '0 auto',
@@ -122,7 +127,7 @@ export function LegalPage() {
             onChange={(e) => setText(e.target.value)}
             onSearch={ask}
             loading={busy}
-            enterButton="묻기"
+            enterButton={<Button type="primary" disabled={needDate}>묻기</Button>}
             placeholder="이어서 물어보세요. 질문, 쟁점, 키워드, 사건번호 다 돼요"
           />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -144,6 +149,7 @@ export function LegalPage() {
                 onChange={(_, s) => setAsOf(typeof s === 'string' && s ? s : null)}
               />
             )}
+            {needDate && <span className="label2" style={{ color: 'var(--fg-cautionary-text)' }}>날짜를 골라 주세요</span>}
             <span className="label2 t3" style={{ marginLeft: 8 }}>
               찾을 곳
             </span>

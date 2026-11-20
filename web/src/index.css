@@ -23,12 +23,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1,
-h2,
-h3,
-h4,
-p {
+/* 새 글자 클래스를 단 태그만 바깥 여백을 없앤다 (다른 화면의 맨 태그는 그대로) */
+.heading1,
+.heading2,
+.headline1,
+.headline2 {
   margin: 0;
+}
+
+/* 머리 막대: 좁은 화면에서는 좌우 여백·간격을 줄인다 (높이는 min 56, 줄이 넘치면 늘어난다) */
+.app-header {
+  gap: 32px;
+}
+@media (max-width: 600px) {
+  .app-header {
+    padding-inline: 16px !important;
+    gap: 12px;
+  }
+  .legal-section {
+    padding-inline: 16px !important;
+  }
 }
 
 /* 글자 크기 클래스 */

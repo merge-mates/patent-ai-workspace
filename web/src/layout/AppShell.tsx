@@ -17,12 +17,12 @@ export function AppShell() {
   return (
     <div style={{ minHeight: '100vh', background: '#fff' }}>
       <header
+        className="app-header"
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 32,
-          height: 56,
-          padding: '0 32px',
+          minHeight: 56,
+          padding: '8px 32px',
           borderBottom: '1px solid var(--line-neutral-tertiary)',
           flexWrap: 'wrap',
         }}

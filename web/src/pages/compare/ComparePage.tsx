@@ -125,7 +125,7 @@ export function ComparePage() {
         width={560}
       >
         {bundle ? (
-          <LegalBundleView b={bundle} />
+          <LegalBundleView b={bundle} showQuestion showAiMark={false} />
         ) : (
           <Typography.Text type="secondary">이 판단 단위의 법률 근거가 아직 없습니다.</Typography.Text>
         )}

@@ -35,6 +35,8 @@ function SourceRow({ s }: { s: LegalSource }) {
         <span className="body1" style={{ flex: '1 1 280px', fontWeight: 600 }}>
           {sourceKindLabel[s.source_kind]} · {s.identifier}
           {s.text_kind && ` · ${s.text_kind === 'full' ? '전문' : '요지'}`}
+          {/* 판본은 법령·심사기준에만 있다. 제목 줄에 바로 보인다 */}
+          {(s.source_kind === 'statute' || s.source_kind === 'guideline') && ` · ${s.evidence.edition ?? '판본 모름'}`}
         </span>
         {s.status.value !== 'confirmed' && <StatusText status={s.status} />}
         <Button type="text" size="small" onClick={() => setOpen(!open)}>
@@ -46,10 +48,6 @@ function SourceRow({ s }: { s: LegalSource }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 2 }}>
           {s.evidence.raw_text && <span className="body2r t2">“{s.evidence.raw_text}”</span>}
           <span className="label1 t3">
-            {/* 판본은 법령·심사기준에만 있다 (판례·심결은 원문 위치만) */}
-            {s.source_kind === 'statute' || s.source_kind === 'guideline'
-              ? `판본: ${s.evidence.edition ?? '모름'} · `
-              : ''}
             원문 위치: {s.evidence.location ?? '—'}
             {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
             {s.speaker && ` · ${speakerLabel[s.speaker]}`}
@@ -62,15 +60,28 @@ function SourceRow({ s }: { s: LegalSource }) {
 }
 
 // 법률 근거 묶음: 주장마다 제목 + 근거 줄. "적용된다"는 판단은 하지 않는다 (근거와 상태만)
-export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
+// showQuestion: 질문 글을 보일지 (질문 화면은 말풍선이 따로 있어 끔, 서랍은 켬)
+// showAiMark: 머리의 "AI 답" 꼬리표 (서랍처럼 바깥 머리에 "AI 결과"가 있으면 끔)
+export function LegalBundleView({
+  b,
+  showQuestion = false,
+  showAiMark = true,
+}: {
+  b: LegalEvidenceBundle
+  showQuestion?: boolean
+  showAiMark?: boolean
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {showQuestion && <span className="body1" style={{ fontWeight: 600 }}>질문: {b.question.text}</span>}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* 법률 질문 답은 AI 결과임을 머리에 한 번 보인다 */}
-          <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>
-            AI 답
-          </Tag>
+          {showAiMark && (
+            <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>
+              AI 답
+            </Tag>
+          )}
           <span className="label2 t3">
             {b.question.as_of ?? '현행'} · 확인 기준일 {b.checked_on}
           </span>
@@ -83,7 +94,7 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
             {c.text}
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {c.status.value !== 'confirmed' && <StatusText status={c.status} />}
+            <StatusText status={c.status} />
             {c.flags.includes('needs_human_review') && <HumanCheckTag>직접 검토 필요</HumanCheckTag>}
           </div>
           {c.review && (

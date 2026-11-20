@@ -50,7 +50,7 @@ export function StatusTag({ status, detail = true, compact = false }: Props) {
     return (
       <Tag
         icon={<QuestionCircleOutlined />}
-        style={{ background: '#fff', borderStyle: 'dashed', color: 'rgba(0,0,0,0.75)' }}
+        style={{ background: '#fff', borderStyle: 'dashed', color: 'rgba(0,0,0,0.75)', whiteSpace: 'normal', maxWidth: '100%' }}
       >
         확인되지 않음{detail && reason ? ` · ${reason}` : ''}
       </Tag>
@@ -58,7 +58,7 @@ export function StatusTag({ status, detail = true, compact = false }: Props) {
   }
   if (s.value === 'not_found_in_scope') {
     return (
-      <Tag icon={<SearchOutlined />} style={{ background: '#f0f0f0', color: 'rgba(0,0,0,0.65)' }}>
+      <Tag icon={<SearchOutlined />} style={{ background: '#f0f0f0', color: 'rgba(0,0,0,0.65)', whiteSpace: 'normal', maxWidth: '100%' }}>
         조회 범위 내 없음{detail && s.searched_scope ? ` · ${s.searched_scope}` : ''}
       </Tag>
     )
