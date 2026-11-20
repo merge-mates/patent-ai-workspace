@@ -29,7 +29,6 @@ export interface DirectionCandidates extends ResultCommon {
   unit_id: string
   candidates: DirectionCandidate[]
   selection: DirectionSelection | null
-  amendment_limit: 'initial' | 'final' | 'unverified' // 보정 제한: 최초 / 최후 / 확인되지 않음
 }
 
 // 사건 전체 검사

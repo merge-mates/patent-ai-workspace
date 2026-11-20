@@ -1,7 +1,6 @@
 import { Alert, Space } from 'antd'
 import { articleLabel } from '../labels'
-import type { Rejection } from '../types/generated/OAResult'
-import type { DirectionCandidates } from '../types/provisional/direction'
+import type { NoticeKind, Rejection } from '../types/generated/OAResult'
 import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
 
@@ -26,9 +25,10 @@ export function UnsupportedAlert({ numbers, rejections }: { numbers: number[]; r
   )
 }
 
-// 보정 제한: 최후면 제한 안내, 모르면(확인되지 않음) "없음"으로 읽히지 않게 따로 알린다
-export function AmendmentLimitAlert({ directions }: { directions: DirectionCandidates[] }) {
-  if (directions.some((d) => d.amendment_limit === 'unverified')) {
+// 보정 제한: OA 하나에 하나라 ① OAResult.notice_kind에서 정한다 (묶음마다 두지 않음).
+// 최후면 제한 안내, 모르면(unknown·값 없음·정리 결과 없음) "없음"으로 읽히지 않게 "확인되지 않음"으로 알린다
+export function AmendmentLimitAlert({ noticeKind }: { noticeKind: NoticeKind | null }) {
+  if (noticeKind === null || noticeKind === 'unknown') {
     return (
       <Alert
         type="warning"
@@ -44,7 +44,7 @@ export function AmendmentLimitAlert({ directions }: { directions: DirectionCandi
       />
     )
   }
-  if (directions.some((d) => d.amendment_limit === 'final')) {
+  if (noticeKind === 'final') {
     return (
       <Alert
         type="info"

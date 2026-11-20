@@ -143,7 +143,7 @@ export function DirectionsPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <AmendmentLimitAlert directions={directions} />
+      <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {caseCheck && (
         <UnsupportedAlert numbers={caseCheck.unsupported_rejections} rejections={oaResult?.result.rejections ?? []} />
       )}

@@ -14,7 +14,7 @@ const common = (status: Status): ResultCommon => ({
 export const exampleDirections: Record<string, DirectionCandidates[]> = {
   oa_1: [
     {
-      unit_id: 'oa_1:29-1-1:c1', amendment_limit: 'initial', ...common(unv('ambiguous')),
+      unit_id: 'oa_1:29-1-1:c1', ...common(unv('ambiguous')),
       selection: { candidate_id: 'd1a', origin: 'ai_default' },
       candidates: [
         {
@@ -38,7 +38,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
       ],
     },
     {
-      unit_id: 'oa_1:29-2:c1', amendment_limit: 'initial', ...common(unv('body_missing')),
+      unit_id: 'oa_1:29-2:c1', ...common(unv('body_missing')),
       selection: { candidate_id: 'd2a', origin: 'ai_default' },
       candidates: [
         {
@@ -62,7 +62,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
       ],
     },
     {
-      unit_id: 'oa_1:42-4-2:c6', amendment_limit: 'initial', ...common(ok('명세서 정의 대조')),
+      unit_id: 'oa_1:42-4-2:c6', ...common(ok('명세서 정의 대조')),
       selection: { candidate_id: 'd3a', origin: 'ai_default' },
       candidates: [
         {
@@ -70,7 +70,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
           reason: "'프리뷰 이미지'는 청구항 1에 있어 인용항만 바꾸면 명확해짐",
           evidence: [{ text: '프리뷰 이미지란 촬영 전에 화면에 보이는 축소 영상', location: '최초 명세서 [0031]' }],
           checks: ['권리범위 변화 거의 없음 (인용 관계만 바뀜)'],
-          per_rejection: [{ rejection: 3, response: '명확성: 인용항 정정으로 해소' }],
+          per_rejection: [{ rejection: 3, response: '명확성: 인용항 정정으로 대응' }],
           amendment_core: [{ claim: 6, kind: '명확화 (인용항 정정)', source: null }],
           rebuttal: null,
         },
@@ -78,7 +78,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
     },
     {
       // 확신 낮은 묶음: 순위 없이, 미리 고르지 않는다
-      unit_id: 'oa_1:42-4-2:c7', amendment_limit: 'initial', ...common(unv('ambiguous')),
+      unit_id: 'oa_1:42-4-2:c7', ...common(unv('ambiguous')),
       selection: null,
       candidates: [
         {
@@ -86,7 +86,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
           reason: '명세서에 모듈 정의가 없어 무엇으로 특정할지 정해야 함',
           evidence: [{ text: '모듈 정의 없음', location: '최초 명세서 전체 (조회 범위 내 없음)' }],
           checks: ['어느 구성으로 특정하느냐에 따라 범위가 달라짐'],
-          per_rejection: [{ rejection: 3, response: '명확성: 특정해 해소' }],
+          per_rejection: [{ rejection: 3, response: '명확성: 특정해 대응' }],
           amendment_core: [{ claim: 7, kind: '명확화', source: '청구항 1' }],
           rebuttal: null,
         },
@@ -95,7 +95,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
           reason: '종속항이라 빼도 청구항 1 범위는 그대로',
           evidence: [],
           checks: ['청구항 7의 보호를 잃음'],
-          per_rejection: [{ rejection: 3, response: '명확성: 삭제로 해소' }],
+          per_rejection: [{ rejection: 3, response: '명확성: 삭제로 대응' }],
           amendment_core: [{ claim: 7, kind: '삭제', source: null }],
           rebuttal: null,
         },
@@ -104,7 +104,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
   ],
   oa_2: [
     {
-      unit_id: 'oa_2:29-2:c1', amendment_limit: 'initial', ...common(ok('인용 위치 대조')),
+      unit_id: 'oa_2:29-2:c1', ...common(ok('인용 위치 대조')),
       selection: { candidate_id: 'e1a', origin: 'ai_default' },
       candidates: [
         {
@@ -121,7 +121,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
   ],
   oa_3: [
     {
-      unit_id: 'oa_3:29-2:c1', amendment_limit: 'final', ...common(unv('body_missing')),
+      unit_id: 'oa_3:29-2:c1', ...common(unv('body_missing')),
       selection: null,
       candidates: [
         {
@@ -136,14 +136,14 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
       ],
     },
     {
-      unit_id: 'oa_3:42-4-2:c1', amendment_limit: 'final', ...common(ok('명세서 정의 대조')),
+      unit_id: 'oa_3:42-4-2:c1', ...common(ok('명세서 정의 대조')),
       selection: { candidate_id: 'f2a', origin: 'ai_default' },
       candidates: [
         {
           candidate_id: 'f2a', rank: 1, coarse: 'amend_only', name: "'약'을 명세서의 ±5% 범위로 바꿈", confidence: 'high',
           reason: '명세서 [0019]가 범위를 정함',
           evidence: [{ text: '설정값의 ±5% 안', location: '최초 명세서 [0019]' }],
-          checks: ['불명확한 기재를 명확히 하는 보정이라 최후 통지에서도 가능한 종류 (적법성은 직접 판단)'],
+          checks: ['특허법 제47조제3항 각 호 중 무엇에 해당하는지 직접 확인'],
           per_rejection: [{ rejection: 2, response: '명확성: 수치 범위로 명확화' }],
           amendment_core: [{ claim: 1, kind: '명확화', source: '명세서 [0019]' }],
           rebuttal: null,
@@ -193,11 +193,11 @@ export const exampleDrafts: Record<string, Drafts> = {
       { key: 'points', title: '지적 요지', ai_text: '심사관은 청구항 1이 인용발명 1과 같고(신규성), 청구항 1~13이 인용발명 1·2의 결합으로 쉽게 발명할 수 있으며(진보성), 청구항 6·7의 표현이 불명확하다고 하였습니다.', human_text: null },
       {
         key: 'response', title: '대응과 근거',
-        ai_text: '보정한 청구항 1은 나눈 영역마다 노출을 따로 정하는 구성을 포함합니다. 인용발명 1은 프리뷰 전체에 노출 하나를 적용하므로 이 구성이 없습니다. 따라서 보정한 청구항 1은 신규성이 있습니다.',
+        ai_text: '보정한 청구항 1은 나눈 영역마다 노출을 따로 정하는 구성을 포함합니다. 인용발명 1은 프리뷰 전체에 노출 하나를 적용하므로 이 구성이 없습니다. 따라서 보정한 청구항 1은 인용발명 1과 다르다고 주장합니다.',
         human_text: '보정한 청구항 1은 분할된 각 영역마다 노출을 독립적으로 정하는 구성을 포함합니다. 인용발명 1은 프리뷰 전체에 단일 노출을 적용하므로 이 구성이 없습니다. 따라서 보정한 청구항 1은 신규성이 있습니다.',
       },
       { key: 'amendment', title: '보정 설명', ai_text: '청구항 1에 종속항 4의 구성을 더하였고(최초 명세서 [0052]), 청구항 6의 인용항을 청구항 1로 고쳤습니다.', human_text: null },
-      { key: 'closing', title: '마무리', ai_text: '이상과 같이 거절이유가 해소되었으므로 특허 결정을 바랍니다.', human_text: '이상과 같이 거절이유가 모두 해소되었다고 사료되므로 특허 결정을 하여 주시기 바랍니다.' },
+      { key: 'closing', title: '마무리', ai_text: '이상과 같이 보정하고 의견을 제출하오니 검토해 주시기 바랍니다.', human_text: '이상과 같이 거절이유가 모두 해소되었다고 사료되므로 특허 결정을 하여 주시기 바랍니다.' },
     ],
     claims: [
       {
