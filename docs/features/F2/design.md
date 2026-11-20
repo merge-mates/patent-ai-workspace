@@ -41,7 +41,7 @@ flowchart LR
    - OA 흐름: 지휘 에이전트가 거절이유 하나마다 `LegalQuestion`을 만든다. 글 = 심사관 논리 글(조문 표기는 가리지 않음, 앱에서는 정답 누출이 없음), 조문 = F1 조문, 시점 = OA 발송일(검색 기준일), 자료 유형 = 전부. 청구항 글은 넣지 않는다 [가정: 조문·심사기준·판례 찾기에 청구항 글은 잡음. 7-3 실험에서 확인].
 2. **조사 계획:** 시점이 걸리지 않는 조회(판례 검색)는 바로 하고, 시점이 걸린 조회(조문·심사기준)는 `clarifications`가 비었을 때만 한다. 계획은 서브에이전트가 정하지만 고를 수 있는 도구는 7-1 목록뿐이다.
 3. **검색:** 도구마다 검색 계약 `SearchResult`를 받는다. 0개면 질의를 바꿔(결론 문장만, 핵심어만) 한 번 더 찾는다 (설정 `f2.max_research_retries`). 그래도 0개면 그 유형은 `not_found_in_scope` + 찾아본 범위. 단 0개이고 `skipped_unverified_edition` > 0(판본 모름 조각이 기준일 거르기에서 빠짐)이면 `unverified(edition_unknown)`로 바꾼다. 판본을 몰라 못 본 것을 "찾았지만 없음"으로 내지 않는다.
-   - 그 유형 문헌 목록(`doc_ids`)이 0개면(색인 전, 예 `law-idx-v3` 전의 심사기준·판례) `search`를 부르지 않고 `unverified(body_missing)`. 빈 목록을 넘기면 `CheckedSearcher`가 `ValueError`를 낸다 (`retrieval/contract.py`).
+   - 그 유형 조각이 0개면(색인 전, 예 `law-idx-v3` 전의 심사기준·판례. 저장소에서 셈) `search`를 부르지 않고 `unverified(body_missing)`.
    - 기준일이 그 유형의 가장 이른 판 시행일보다 앞서면(특허법은 2017.9.22판, 심사기준은 2018.1.1판부터 있음) 결과 0개를 `not_found_in_scope`로 내지 않는다. 조문은 법령 API로 그 판을 한 번 조회하고(4절) 실패하면 `unverified(lookup_failed)`, 심사기준은 받을 API가 없어 `unverified(edition_unknown)`. 검색 계약 채점기의 `excluded_no_edition_in_scope`와 같은 경우다. 가장 이른 시행일은 저장소에서 센다 (5-1 저장소 메서드).
 4. **출처 확인 (무조건 도는 코드 단계, [ADR 0003](../../decisions/0003-tech-stack.md)):** 근거마다 `chunk_id`가 색인에 있는지, 근거의 원문 인용 글이 그 조각 글에 그대로(공백만 무시) 있는지, 판본이 계획한 기준일 범위인지 본다. 안 맞는 근거는 빼고, 근거가 0개가 된 주장은 `unverified`로 남긴다. 이유 코드는 [제안] data-model 3절에 `evidence_rejected`(근거가 출처 확인에서 빠짐)를 더한다 (`not_extracted`는 F1의 "원문에서 못 뽑음"이라 섞지 않음. ④ 스키마 구현 PR #29에서 공통 칸 PR로). 모델이 쓴 조문 번호·사건번호가 조각에 없으면 여기서 걸린다 (없는 출처 0건).
 5. **근거 검토 (LLM):** 남은 근거가 주장을 뒷받침하는지 판정(뒷받침 / 일부 / 아님 / 판단 못 함) + 이유. "아님"이면 답 쓰기로 돌아가 근거를 바꾸고 출처 확인부터 다시 지나 한 번 고치고(설정 `f2.max_review_fixes`), 그래도 아니면 주장에 "확인 필요"(`flags: needs_human_review`). 검토 입력은 주장 글 + 근거 조각 글뿐이다 (답 쓰기의 추론 과정은 주지 않음).
@@ -131,7 +131,7 @@ flowchart LR
 ## 5. 저장
 - 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: `legal_evidence_bundles`, `legal_chats` (새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
-- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판 API는 유료라 부르지 않는다 (심결은 웹에서 미리 받은 12건만, 열린 질문 3). 먼저 `api_cache`에 저장하고 쓴다.
+- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판 Open API(월 1,000회 무료, 유료는 BULK 상품)는 실행 중에 부르지 않고 심결을 미리 받을 때만 쓴다 (지금은 웹에서 받은 12건, requirements 열린 질문 3·9). 먼저 `api_cache`에 저장하고 쓴다.
 - 외부 모델로 보내는 자료: 법령·심사기준·판례 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
 
 ### 5-1. 색인 `law-idx-v3` (#24가 만듦, 여기서는 모양만)
@@ -148,7 +148,7 @@ flowchart LR
 - #24 PR에서 검색 계약을 고치는 것은 둘이다 (그 밖은 그대로).
   1. `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
   2. 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 기준일 거르기는 지금도 `not_applicable`을 통과시키므로 검색 동작은 바뀌지 않는다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
-- 자료 유형 거르기: 검색 계약에 유형 인자가 없다. F2 도구가 `doc_ids`에 그 유형의 문헌 목록을 넘긴다. `search()` 인자는 바꾸지 않는다. 대신 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`)에 메서드 둘이 필요하다: `doc_id` 앞머리(`특허법_`·`심사기준_`·`판례_`·`심결_`)로 문헌 목록 뽑기, 그 유형의 가장 이른 판 시행일 세기. #24 범위에 넣는다.
+- 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 조각 메타데이터로 거른다. `search()`에 `chunk_kinds`(조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`) 거르기를 더하고, 판례와 심결은 메타데이터 `source_kind`(`precedent` / `trial`)로 가른다. 더 붙일 메타데이터 후보: 법원·선고일, 거절이유 유형, 심결 결과. 검색 계약을 고치는 PR이 따르고 #24 범위에 넣는다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`)에는 메서드 둘이 필요하다: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기.
 - 심사기준 HWP→PDF 변환본 2판(제108·116호)은 쪽 번호가 원본과 다를 수 있다 (데이터 카드 3절). 그 판 조각의 `loc_label`에 "(변환본 쪽)"을 붙인다.
 
 ## 6. 화면 (시연용)
@@ -163,10 +163,10 @@ flowchart LR
   | 도구 | 입력 → 출력 | 실패 시 |
   |---|---|---|
   | `get_article` | 법령 이름 + 조·항 + 기준일 → 그 판 조각 + 시행 기간 | 판본 모름 조각만 있음 `unverified(edition_unknown)` / 그날 판이 색인에 없음 → 법령 API 조회, 실패 `unverified(lookup_failed)` (4절) |
-  | `search_article` | 질의 + 기준일 → `SearchResult` (조문만, `doc_ids` = 법령 문헌). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)` |
-  | `search_guideline` | 질의 + 기준일 → `SearchResult` (심사기준만) | 위와 같음, 문헌 목록 0개 `unverified(body_missing)` (`search`를 부르지 않음), 기준일이 가장 이른 판보다 앞섬 `unverified(edition_unknown)` |
-  | `search_precedent` | 질의 + 종류(`precedent` 판례 / `trial` 심결 / 둘 다, 기본 둘 다) → `SearchResult` (`doc_ids` = `판례_`·`심결_` 문헌, 기준일 없음). OA 흐름에서 사건번호를 모를 때도 심결 12건이 검색에 걸린다 | 0개 `not_found_in_scope`, 문헌 목록 0개 `unverified(body_missing)` (`search`를 부르지 않음) |
-  | `get_precedent` | 사건번호·심판번호 → 그 판례·심결 조각들 | 색인 전 `unverified(body_missing)` / 받은 판례 74건 밖의 사건번호 → 법령 API로 사건번호 조회([architecture.md](../../architecture.md) 6절 "그 밖은 필요할 때"), 실패 `unverified(lookup_failed)`, API에도 없음 `not_found_in_scope` (+ 찾아본 범위) / 받은 심결 12건 밖의 심판번호 → `not_found_in_scope` (+ 찾아본 범위: 심결 12건, 심판 API는 유료라 안 부름) |
+  | `search_article` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [article]`). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)` |
+  | `search_guideline` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [guideline]`) | 위와 같음, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음), 기준일이 가장 이른 판보다 앞섬 `unverified(edition_unknown)` |
+  | `search_precedent` | 질의 + 종류(`precedent` 판례 / `trial` 심결 / 둘 다, 기본 둘 다) → `SearchResult` (`chunk_kinds = [judgment, judgment_summary]` + `source_kind`, 기준일 없음). OA 흐름에서 사건번호를 모를 때도 심결 12건이 검색에 걸린다 | 0개 `not_found_in_scope`, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음) |
+  | `get_precedent` | 사건번호·심판번호 → 그 판례·심결 조각들 | 색인 전 `unverified(body_missing)` / 받은 판례 74건 밖의 사건번호 → 법령 API로 사건번호 조회([architecture.md](../../architecture.md) 6절 "그 밖은 필요할 때"), 실패 `unverified(lookup_failed)`, API에도 없음 `not_found_in_scope` (+ 찾아본 범위) / 받은 심결 12건 밖의 심판번호 → `not_found_in_scope` (+ 찾아본 범위: 받은 심결 12건, 실행 중에는 심판 API를 부르지 않음) |
   | `normalize_refs` | 글 → 조문·사건번호·날짜 꼴 맞춘 목록 (코드) | 못 읽음은 빈 목록 + 경고 |
 - **평가 세트·지표:**
   - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 조문 주 지표는 Recall@5, 같이 보는 지표는 Hit@1이다. BM25 Hit@5가 이미 1.000(19줄)이라 Hit@5로는 7-3 실험 1(질의 모양)의 차이가 안 보이기 때문이다. 심사기준·판례는 기준선을 잰 뒤 정한다. MRR은 채점기에 없어 지금은 쓰지 않는다 (검색 계약 "안 할 것"). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
@@ -197,7 +197,7 @@ flowchart LR
 | 심사기준·판례도 `law_chunks` 한 표 (`law-idx-v3`) | 말뭉치 새로 (`guideline`, `prec`) | 검색 계약이 법령·판례를 법령 표에 넣기로 함. 계약·채점기를 안 고침 | 설계 | 검색 계약 requirements 2 |
 | 판례·심결 판본 = `not_applicable` (#24에서 법령 표 허용) | 선고일을 `effective_from`으로 둔 `confirmed` | 판례는 시행 기간이 있는 판본이 아니다. `confirmed`로 넣으면 화면·출처 확인이 "판본 확인됨"으로 읽고, 기준일 거르기에서 선고일 뒤 질문만 걸리는 엉뚱한 거르기가 생김 | 리뷰 (#147 재아) | 5-1 |
 | 74건 밖 판례 = 법령 API 사건번호 조회 | 바로 `not_found_in_scope` | architecture 6절 "그 밖은 필요할 때"와 맞춤. 못 찾음 ≠ 없음 | 리뷰 (#147 재아) | |
-| 자료 유형 거르기 = 도구가 `doc_ids`로 | `search()`에 유형 인자 | 계약을 안 바꿈. 판례 74건·심결 12건·심사기준 8판이라 목록이 짧음 | 설계 | |
+| 자료 유형 거르기 = 조각 메타데이터(`chunk_kinds`·`source_kind`) | 도구가 `doc_ids` 앞머리 목록으로 | 색인 전 빈 목록 오류가 없고, "진보성 관련만" 같은 거르기로 넓힐 수 있음. 검색 계약 PR이 따름 (#24) | 리뷰 (#147 재아 11/20) | |
 | 판례 요지 = 새 `chunk_kind: judgment_summary` | `judgment` 하나 + 다른 칸 | 요지/전문 구분(기준 5)을 조각에서 바로 앎 | 설계 | |
 | 판단/당사자 주장 = [제안] 색인 때 제목 규칙("원고의 주장", "판단" 등)으로 표시, 못 정하면 `unknown` → 사람 확인 | 답할 때 모델이 정함 | 규칙이면 테스트로 잴 수 있음. 모델이 정하면 "판단처럼 쓰기" 오류가 근거 검토에만 걸림 | 설계 | 열린 질문 6 |
 | OA 흐름 질의 = 심사관 논리 글 (청구항 글 없음) | 청구항 + 논리 | 조문·법리 찾기에 청구항 글은 잡음 [가정] | 설계 | 7-3 실험 1 |
@@ -214,7 +214,7 @@ flowchart LR
   - `unverified(edition_unknown)`: 판본 모름 조각만 있는 조문 + 기준일. 검색 도구 결과가 0개 + `skipped_unverified_edition` > 0이어도 `not_found_in_scope`가 아니라 이 값.
   - 시점 없음: 같은 조문 두 판 → 현행판 조각만 나온다 (`as_of = checked_on`).
   - 출원일판 ≠ 발송일판: 근거는 발송일판, 출원일판은 `further_review`의 `other_edition`.
-  - `unverified(body_missing)`: 심사기준·심결 색인 없음. 문헌 목록이 0개면 `search`를 부르지 않는다 (가짜 검색기 호출 0번).
+  - `unverified(body_missing)`: 심사기준·심결 색인 없음. 그 유형 조각이 0개면 `search`를 부르지 않는다 (가짜 검색기 호출 0번).
   - 기준일이 색인의 가장 이른 판보다 앞섬: 조문 → 법령 API 녹화 응답으로 그 판, 녹화 없으면 `lookup_failed` / 심사기준 → `edition_unknown` (`not_found_in_scope`가 아님).
   - 74건 밖 사건번호: 법령 API 녹화 응답에 있음 → 근거, 없음 → `not_found_in_scope`.
   - 심결 내용 검색: 사건번호 없는 진보성 질문 → `search_precedent`가 심결 조각도 낸다.
