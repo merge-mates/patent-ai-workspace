@@ -13,7 +13,7 @@ from sqlalchemy import and_, create_engine, func, or_, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
-from patent_ai.retrieval.index_version import is_index_version
+from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.schemas import Chunk, Corpus, Edition, Location
 from patent_ai.settings import get_settings
 

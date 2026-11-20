@@ -28,8 +28,8 @@ from sqlalchemy import Delete, create_engine, delete, func, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.errors import RetrievalError
-from patent_ai.retrieval.index_version import is_index_version
 from patent_ai.retrieval.repository import InMemoryChunkRepository, chunk_to_row, row_to_chunk
 from patent_ai.retrieval.schemas import Chunk, Corpus
 from patent_ai.settings import get_settings

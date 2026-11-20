@@ -21,7 +21,7 @@ import yaml
 from patent_ai.core.llm.embed import embed
 from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelConfigError
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
-from patent_ai.retrieval.index_version import corpus_of
+from patent_ai.index_version import corpus_of
 from patent_ai.retrieval.law_index import write_jsonl
 from patent_ai.retrieval.law_index_db import read_chunks_jsonl
 from patent_ai.retrieval.schemas import Chunk

@@ -21,8 +21,8 @@ from pathlib import Path
 
 import yaml
 
+from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.errors import RetrievalError
-from patent_ai.retrieval.index_version import is_index_version
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 
 logger = logging.getLogger(__name__)
