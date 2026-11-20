@@ -1,4 +1,4 @@
-"""색인 쓰기: 두 번 써도 줄 수가 같고 PostgresChunkRepository가 읽는다 (make db 뒤 make test-db)."""
+"""색인 쓰기: 두 번 써도 줄 수가 같고 PostgresChunkRepository가 읽는다 (make test-db)."""
 
 import pytest
 from sqlalchemy import create_engine, func, select

@@ -7,6 +7,7 @@ CQ 후보 파일은 main이 write_cq로 쓴다 (cq.py).
 
 import argparse
 import hashlib
+import logging
 import sys
 import time
 from dataclasses import dataclass, field
@@ -29,6 +30,8 @@ from patent_ai.retrieval.repository import (
     PostgresChunkRepository,
 )
 
+logger = logging.getLogger(__name__)
+
 METRIC_NAME = "심사관 지정 위치 회수율"
 # scores.json failures에 쓰는 이름 (정해진 것만)
 FAILURE_KEYS = [
@@ -38,6 +41,8 @@ FAILURE_KEYS = [
     "excluded_body_missing",
     "excluded_edition_unverified",
     "excluded_no_edition_in_scope",
+    "excluded_gold_not_in_scope",
+    "excluded_gold_items_not_in_scope",
     "cq_candidates",
     "recall_ratio_undefined",
 ]
@@ -161,6 +166,38 @@ def score(
             # 이 줄만 빼고 센다 (design 2절 4번)
             failures["excluded_no_edition_in_scope"] += 1
             continue
+        match_sizes = [sum(1 for c in scope if matcher.matches(c, item, row)) for item in row.items]
+        # 범위 조각은 있는데 맞는 조각이 0개인 정답 항목은 검색기가 어떻게 해도 못 맞힌다 (#129).
+        # 법령은 정답 판이 그날 범위에 없음(빠진 판·개정), 인용문헌은 정답 문단이 조각에 없음
+        # (청킹·정답 문제). 검색 실력이 아니라 데이터 문제라 Hit·Recall·CQ에 넣지 않는다.
+        # 공보 조각이 아예 없으면 위 body_missing, 범위가 0개면 위 no_edition_in_scope가 먼저 센다
+        if all(m == 0 for m in match_sizes):
+            # 항목이 모두 범위 밖: 줄째 뺀다. 건수만 남으면 matcher가 망가져도 소리 없이 빠지므로
+            # row_id와 뺀 항목 수를 경고로 남긴다 (질의 원문은 쓰지 않음, design 2절 메시지 규칙)
+            failures["excluded_gold_not_in_scope"] += 1
+            logger.warning(
+                "범위 안 정답 조각이 없어 줄째 뺀다: %s (항목 %d/%d)",
+                row.row_id,
+                len(match_sizes),
+                len(match_sizes),
+            )
+            continue
+        if 0 in match_sizes:
+            # 일부만 범위 밖: 그 항목만 빼고 남은 항목으로 채점한다. 다른 항목으로 맞힌 줄까지
+            # 빼면 범위 밖 정답을 막으려다 Hit가 내려간다 (11/19 인용문헌 기준선에서 9줄 중 8줄)
+            failures["excluded_gold_items_not_in_scope"] += match_sizes.count(0)
+            logger.warning(
+                "범위 안 정답 조각이 없는 항목을 뺀다: %s (항목 %d/%d)",
+                row.row_id,
+                match_sizes.count(0),
+                len(match_sizes),
+            )
+            row = row.model_copy(
+                update={
+                    "items": [it for it, m in zip(row.items, match_sizes, strict=True) if m > 0]
+                }
+            )
+            match_sizes = [m for m in match_sizes if m > 0]
         results.append(
             RowResult(
                 row=row,
@@ -170,9 +207,7 @@ def score(
                 ],
                 hits=list(result.hits),
                 n_scope=len(scope),
-                match_sizes=[
-                    sum(1 for c in scope if matcher.matches(c, item, row)) for item in row.items
-                ],
+                match_sizes=match_sizes,
                 union_size=sum(
                     1 for c in scope if any(matcher.matches(c, item, row) for item in row.items)
                 ),

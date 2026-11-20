@@ -1,10 +1,20 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { App as AntApp, ConfigProvider } from 'antd'
+import koKR from 'antd/locale/ko_KR'
+// 글꼴은 npm 패키지에서 로컬로 넣는다 (CDN 안 씀)
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
 import './index.css'
 import App from './App.tsx'
+import { appTheme } from './theme.ts'
 
+// 한국어 문구와 테마는 앱 맨 바깥에서 한 번만 준다
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ConfigProvider locale={koKR} theme={appTheme}>
+      <AntApp>
+        <App />
+      </AntApp>
+    </ConfigProvider>
   </StrictMode>,
 )

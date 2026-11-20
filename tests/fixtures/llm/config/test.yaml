@@ -1,18 +1,18 @@
 # 테스트용 설정: step "test.summarize" -> 이 파일의 summarize 칸
 summarize:
   model: fake-model-1
-  temperature: 0.0
+  effort: medium
   max_tokens: 256
   prompt: prompts/summarize.txt
   price_per_mtok_input: 3.0
   price_per_mtok_output: 15.0
 nocost:
   model: fake-model-1
-  temperature: 0.2
+  effort: medium
   max_tokens: 100
   prompt: prompts/summarize.txt
 missingprompt:
   model: fake-model-1
-  temperature: 0.0
+  effort: medium
   max_tokens: 100
   prompt: prompts/does_not_exist.txt

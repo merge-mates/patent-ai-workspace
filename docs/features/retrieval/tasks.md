@@ -242,7 +242,7 @@ graph LR
 - 만들 함수·인터페이스 모양: design.md 7-1 채점기 (옵션 `--goldsets-root`·`--chunks`·`--scores-dir`·`--cq-dir`, 종료 코드, `scores.json` 칸)
 - 테스트할 경우:
   - 평소: `gold_ok.jsonl` + `chunks_check.jsonl` → Hit@5 = 1, Recall@5 = 0.5, 무작위 Recall@5 ≈ 0.738, 배수 ≈ 0.68, `--chunks`라 출력이 `work/retrieval/<실험>/`에 감
-  - 빈 입력: `gold_excluded.jsonl` → 빼는 이유별 건수, `gold_all_excluded.jsonl` → `main` 1 반환, 무작위 분모 0 → `recall_ratio@k` 키 없음 + `failures.recall_ratio_undefined`
+  - 빈 입력: `gold_excluded.jsonl` → 빼는 이유별 건수, `gold_all_excluded.jsonl` → `main` 1 반환, 무작위 분모 0 → `recall_ratio@k` 키 없음 + `failures.recall_ratio_undefined` (#129 뒤로 사실상 0: 맞는 조각 0개 항목은 먼저 빠져 분모가 0이 되지 않음)
   - 실패: 줄 검색 예외(녹화 없는 질의) → `main` 1 반환, `--chunks` + `--scores-dir experiments/x` → 1 반환·파일 안 생김, `scores.json`에 `row_id`·질의 글자 없음, `commit`은 `main(..., commit="abc")`로 넣은 값
   - 무작위 분모 0 줄(정답 항목에 맞는 조각이 범위에 하나도 없는 줄)은 `gold_excluded.jsonl`에 둔다
 - `--chunks` 없는 경로: `PostgresChunkRepository.from_url()`(`DATABASE_URL`)로 잇는다. 머지 순서가 m2-i1 → m2-i2 → m2-i3으로 정해져 m2-i3이 m2-i2 위에 쌓였다 (11/19).

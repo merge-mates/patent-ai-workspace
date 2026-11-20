@@ -1,0 +1,21 @@
+# F1 read_oa effort 낮추기 (이슈 #142). 설정 비교: effort 하나만
+experiment: m1-i3-f1-effort-low
+feature: f1
+baseline: m1-i3-f1-effort-medium
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: main                # main 8ed3d67(#136) 뒤
+settings:                 # config/f1.yaml read_oa에서 effort만 바꿔 실행 (저장소 설정은 medium 그대로)
+  model: claude-haiku-5-5
+  effort: low             # changed (기준 medium)
+  max_tokens: 16000
+  prompt: prompts/f1/read_oa.md
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 2                   # scores.json은 1회차. 2회차는 work/f1_effort/low2/scores.json, 둘 다 card에
+runner: work/f1_baseline/run.py <src> work/f1_effort/low<N> low   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.25
+  max_external_calls: 40
