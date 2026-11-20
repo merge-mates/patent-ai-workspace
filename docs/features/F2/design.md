@@ -42,7 +42,7 @@ flowchart LR
 2. **조사 계획:** 시점이 걸리지 않는 조회(사건번호·심판번호 ID 조회, 시점 없는 질문의 판례 검색)는 바로 하고, 시점이 걸린 조회(조문·심사기준)는 `clarifications`가 비었을 때만 한다. 판례·심결 검색은 4절 날짜 규칙대로 한다 (부딪힘이면 이른 날로 먼저). 계획은 서브에이전트가 정하지만 고를 수 있는 도구는 7-1 목록뿐이다.
 3. **검색:** 도구마다 검색 계약 `SearchResult`를 받는다. 0개면 질의를 바꿔(결론 문장만, 핵심어만) 한 번 더 찾는다 (설정 `f2.max_research_retries`). 그래도 0개면 그 유형은 `not_found_in_scope` + 찾아본 범위. 단 0개이고 `skipped_unverified_edition` > 0(판본 모름 조각이 기준일 거르기에서 빠짐)이면 `unverified(edition_unknown)`로 바꾼다. 판본을 몰라 못 본 것을 "찾았지만 없음"으로 내지 않는다.
    - 그 유형 조각이 0개면(색인 전, 예 `law-idx-v3` 전의 심사기준·판례. 저장소에서 셈) `search`를 부르지 않고 `unverified(body_missing)`.
-   - 기준일이 그 유형의 가장 이른 판 시행일보다 앞서면(특허법은 2017.9.22판, 심사기준은 2018.1.1판부터 있음) 결과 0개를 `not_found_in_scope`로 내지 않는다. 조문은 법령 API로 그 판을 한 번 조회하고(4절) 실패하면 `unverified(lookup_failed)`, 심사기준은 받을 API가 없어 `unverified(edition_unknown)`. 검색 계약 채점기의 `excluded_no_edition_in_scope`와 같은 경우다. 가장 이른 시행일은 저장소에서 센다 (5-1 저장소 메서드).
+   - 기준일이 그 유형의 가장 이른 판 시행일보다 앞서면(특허법은 2017.9.22판, 심사기준은 2018.1.1판부터 있음) 결과 0개를 `not_found_in_scope`로 내지 않는다. 두 경우로 나눈다. ① 조문 번호를 아는 `get_article`: 법령 API로 그 판을 한 번 조회하고(4절) 실패하면 `unverified(lookup_failed)`. ② 번호 없이 찾는 `search_article`과 심사기준 검색: 조회할 번호가 없거나(조문) 받을 API가 없어서(심사기준) `unverified(edition_unknown)`. 검색 계약 채점기의 `excluded_no_edition_in_scope`와 같은 경우다. 가장 이른 시행일은 저장소에서 센다 (5-1 저장소 메서드).
 4. **출처 확인 (무조건 도는 코드 단계, [ADR 0003](../../decisions/0003-tech-stack.md)):** 근거마다 `chunk_id`가 색인에 있는지, 근거의 원문 인용 글이 그 조각 글에 그대로(공백만 무시) 있는지, 판본이 계획한 기준일 범위인지 본다. 안 맞는 근거는 빼고, 근거가 0개가 된 주장은 `unverified`로 남긴다. 이유 코드는 [제안] data-model 3절에 `evidence_rejected`(근거가 출처 확인에서 빠짐)를 더한다 (`not_extracted`는 F1의 "원문에서 못 뽑음"이라 섞지 않음. ④ 스키마 구현 PR #29에서 공통 칸 PR로). 모델이 쓴 조문 번호·사건번호가 조각에 없으면 여기서 걸린다 (없는 출처 0건).
 5. **근거 검토 (LLM):** 남은 근거가 주장을 뒷받침하는지 판정(뒷받침 / 일부 / 아님 / 판단 못 함) + 이유. "아님"이면 답 쓰기로 돌아가 근거를 바꾸고 출처 확인부터 다시 지나 한 번 고치고(설정 `f2.max_review_fixes`), 그래도 아니면 주장에 "확인 필요"(`flags: needs_human_review`). 검토 입력은 주장 글 + 근거 조각 글뿐이다 (답 쓰기의 추론 과정은 주지 않음).
 6. **저장:** ④를 `legal_evidence_bundles`에 저장 (OA 흐름은 `oa_id`·거절이유 순번, 법률 질문은 `chat_id`·질문 순번).
@@ -155,7 +155,7 @@ flowchart LR
 | 판례 전문 | `판례_<사건번호>` | 판례내용 "이유" 아래 번호 문단 | `judgment` | `paragraph`, `이유 2. 가.` | `not_applicable` |
 | 심결 (12건, PDF) | `심결_<심판번호>` | "이유" 아래 번호 문단 (요지 칸이 없어 전문만) | `judgment` | `paragraph`, `이유 3. 나.` | `not_applicable` |
 
-- #24에서 바뀌는 것 (공유 자원: 검색 계약·마이그레이션·채점기라 PR로, 상대 리뷰). 아래가 전부다.
+- #24에서 바뀌는 것 (공유 자원: 검색 계약·마이그레이션·채점기라 PR로, 상대 리뷰). 큰 것은 아래 여섯이고, 칸이 늘면 따라 고칠 곳(`chunk_to_row`·`row_to_chunk` 변환, `index_dump` fixture 줄, 채점기가 쓰는 `ChunkRepository.chunks()` 거르기)도 같이 바뀐다.
   1. 조각 종류 값: `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
   2. 판본 값: 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
   3. 조각 메타데이터 칸: `Chunk`(`retrieval/schemas.py`, 지금 `extra="forbid"`)와 `law_chunks` 열에 `source_kind`(`statute` / `guideline` / `precedent` / `trial`), `decided_on`(판례·심결 필수, 못 뽑으면 null + 건수), 판례 문단 역할(`court` / `party` / `unknown`), `rejection_ground`(거절이유 근거 조문 표시, 7-3), 후보 칸(법원, 거절이유 유형, 심결 결과, IPC 분야). **Alembic 마이그레이션**이 필요하다 (5절 #29 표와 따로).
@@ -247,7 +247,7 @@ flowchart LR
   - 시점 없음: 같은 조문 두 판 → 현행판 조각만 나온다 (`as_of = checked_on`).
   - 출원일판 ≠ 발송일판: 근거는 발송일판, 출원일판은 `further_review`의 `other_edition`.
   - `unverified(body_missing)`: 심사기준·심결 색인 없음. 그 유형 조각이 0개면 `search`를 부르지 않는다 (가짜 검색기 호출 0번).
-  - 기준일이 색인의 가장 이른 판보다 앞섬: 조문 → 법령 API 녹화 응답으로 그 판, 녹화 없으면 `lookup_failed` / 심사기준 → `edition_unknown` (`not_found_in_scope`가 아님).
+  - 기준일이 색인의 가장 이른 판보다 앞섬: `get_article`(조문 번호 앎) → 법령 API 녹화 응답으로 그 판, 녹화 없으면 `lookup_failed` / `search_article`(번호 모름) → `edition_unknown`, 법령 API 호출 0번 / 심사기준 → `edition_unknown` (셋 다 `not_found_in_scope`가 아님).
   - 74건 밖 사건번호: 법령 API 녹화 응답에 있음 → 근거, 없음 → `not_found_in_scope`.
   - 심결 내용 검색: 사건번호 없는 진보성 질문 → `search_precedent`가 심결 조각도 낸다.
   - 상한: `max_model_calls`를 1로 두고 거절이유 3개 → ④ 3개 저장, 못 다룬 2개는 `unverified`.
