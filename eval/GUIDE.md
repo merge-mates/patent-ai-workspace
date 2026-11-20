@@ -43,7 +43,7 @@ data/goldsets/
 
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
-- 검색 정답에서 채점 범위 밖 줄을 빼는 규칙(`exclude`)은 retrieval design 7-1을 따른다. [사람 판단] #129가 더하는 "정답 판본이 그날 검색 범위에 없으면 뺌" 규칙은 #129 머지 뒤 이 표에 한 줄로 맞춘다.
+- 검색 정답에서 채점 범위 밖 줄을 빼는 규칙(`exclude`)은 retrieval design 7-1을 따른다. 정답 항목에 맞는 조각이 검색 범위에 하나도 없으면 그 항목을 빼고(모두 없으면 줄째, `excluded_gold_not_in_scope`·`excluded_gold_items_not_in_scope`, #138) 건수를 `failures`에 남긴다. 정답 파일은 고치지 않는다 (채점기가 셈).
 
 ## 5. 드라이브 사본
 - `data/goldsets/`는 각자 컴퓨터에 있다. 둘이 같은 판을 쓰도록 드라이브에 판마다 사본을 둔다 (`goldsets_v<VERSION>.zip` 꼴) (목록과 같은 `04_KIPRIS_대량원본/` 아래).
