@@ -65,6 +65,7 @@ function RejectionItem({ rej, rows }: { rej: Rejection; rows: ClaimRow[] }) {
     <Card
       type="inner"
       size="small"
+      id={`rejection-${rej.no}`}
       title={
         <Space size={6} wrap>
           <span>

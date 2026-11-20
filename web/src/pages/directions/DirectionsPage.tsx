@@ -1,7 +1,7 @@
 import { CheckCircleTwoTone, CloseCircleTwoTone, ExclamationCircleTwoTone } from '@ant-design/icons'
 import { App, Card, Descriptions, Empty, List, Popover, Radio, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
-import { Link, useLoaderData, useRouteLoaderData } from 'react-router'
+import { Link, useLoaderData, useRevalidator, useRouteLoaderData } from 'react-router'
 import { api } from '../../api'
 import { AmendmentLimitAlert, UnsupportedAlert } from '../../components/CaseAlerts'
 import { ConfidenceTag, OriginTag } from '../../components/DirectionTags'
@@ -129,6 +129,7 @@ export function DirectionsPage() {
   const { units, directions, caseCheck } = useLoaderData() as DirectionsLoaderData
   const { oaResult } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
+  const revalidator = useRevalidator()
   // 묶음마다 지금 선택 (처음엔 서버가 준 값: AI 기본값 또는 비어 있음)
   const [chosen, setChosen] = useState<Record<string, DirectionSelection | null>>(() =>
     Object.fromEntries(directions.map((d) => [d.unit_id, d.selection])),
@@ -143,6 +144,8 @@ export function DirectionsPage() {
       const saved = await api.selectDirection(d.unit_id, candidateId)
       // 응답이 늦게 와도 다른 묶음의 선택을 덮지 않게 그때의 최신 값에 더한다
       setChosen((prev) => ({ ...prev, [d.unit_id]: saved.selection }))
+      // 사건 틀의 "직접 할 일" 개수도 고른 묶음을 빼고 다시 센다
+      revalidator.revalidate()
     } catch (e) {
       message.error(`저장하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
