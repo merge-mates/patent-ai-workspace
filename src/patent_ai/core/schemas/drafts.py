@@ -71,6 +71,8 @@ class AmendedClaim(BaseModel):
             raise ValueError("held_reason이 비어 있음")
         if self.ai_text is not None and not self.ai_text.strip():
             raise ValueError("ai_text가 비어 있음")
+        if held and self.spec_basis:
+            raise ValueError("보류된 청구항은 spec_basis가 빈 목록이어야 함")
         if held and self.human_text is not None:
             raise ValueError("보류된 청구항은 고칠 AI 원문이 없어 human_text를 못 둠")
         _check_human_edit(self.human_text, self.origin)
@@ -94,6 +96,8 @@ class Drafts(ResultBase):
 
     @model_validator(mode="after")
     def _검사(self) -> Drafts:
+        if not self.opinion:
+            raise ValueError("opinion이 비어 있음 (의견서 칸이 하나도 없는 초안)")
         keys = [s.key for s in self.opinion]
         if len(set(keys)) != len(keys):
             raise ValueError("opinion key에 중복이 있음")

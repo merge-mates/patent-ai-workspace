@@ -179,3 +179,18 @@ def test_왕복():
     )
     again = Drafts.model_validate(d.model_dump(mode="json"))
     assert again == d
+
+
+def test_opinion이_비면_거부():
+    with pytest.raises(ValidationError, match="opinion"):
+        drafts(opinion=[])
+
+
+def test_claims_based_on은_비어도_통과():
+    d = drafts(claims=[], based_on=[])
+    assert d.claims == [] and d.based_on == []
+
+
+def test_보류_청구항은_spec_basis가_비어야_함():
+    with pytest.raises(ValidationError, match="spec_basis"):
+        held(spec_basis=[Evidence(document_id="d_spec", location="[0016]")])

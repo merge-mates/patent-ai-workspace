@@ -4,6 +4,7 @@ AI는 방향을 확정하지 않는다. 순위·이유·확신도까지만 내�
 "직접 판단 필요"로 둔다. 고르는 것은 사람이다 (selection.origin으로 AI 기본값과 사람 선택을 구분).
 """
 
+import logging
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -15,9 +16,12 @@ from patent_ai.core.schemas.common import (
     ResultBase,
     Status,
     StatusValue,
+    UnverifiedReason,
     worst_status,
 )
 from patent_ai.core.schemas.oa_result import RejectionKind
+
+logger = logging.getLogger(__name__)
 
 ALL_DIRECTIONS_CHECKED = "모든 후보·보정 제한 확인"  # 모두 confirmed일 때 결과 status의 checked
 
@@ -197,6 +201,10 @@ def summarize_direction_status(
     candidates: list[DirectionCandidate], amendment_limit: ExtractedValue[AmendmentLimit]
 ) -> Status:
     """후보들과 보정 제한의 status 중 가장 나쁜 것을 결과 status로 모은다 (만드는 쪽이 쓴다)."""
+    if not candidates:
+        # 후보가 하나도 없으면 보정 제한 상태와 상관없이 확인되지 않음
+        logger.warning("summarize_direction_status: 후보가 없음 -> unverified(not_extracted)")
+        return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
     statuses = [c.status for c in candidates] + [amendment_limit.status]
     return worst_status(statuses, ALL_DIRECTIONS_CHECKED)
 
@@ -209,6 +217,8 @@ class DirectionCandidates(ResultBase):
 
     @model_validator(mode="after")
     def _검사(self) -> DirectionCandidates:
+        if not self.candidates and self.status.value != StatusValue.UNVERIFIED:
+            raise ValueError("후보가 0개면 status는 unverified여야 함")
         ids = [c.candidate_id for c in self.candidates]
         if len(set(ids)) != len(ids):
             raise ValueError("candidate_id에 중복이 있음")
@@ -226,8 +236,7 @@ class DirectionCandidates(ResultBase):
                 raise ValueError("ai_default 선택은 rank 1 후보를 가리켜야 함")
         if not ranks:
             # 순위 있는 후보가 없는 묶음 = 확신 낮은 묶음: 미리 고르지 않고 직접 판단
-            if sel is not None and sel.origin != Origin.HUMAN_SELECTED:
-                raise ValueError("순위 있는 후보가 없으면 selection은 null이거나 human_selected만")
+            # (ai_default는 위에서 rank 1이 아니라며 이미 거부됨)
             if Flag.NEEDS_HUMAN_JUDGMENT not in self.flags:
                 raise ValueError("순위 있는 후보가 없으면 flags에 needs_human_judgment가 필요")
         # 보정 제한을 모르면 확인됨일 수 없다

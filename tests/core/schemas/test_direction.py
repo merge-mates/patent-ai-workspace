@@ -1,5 +1,7 @@
 """DirectionCandidates(⑤) 테스트. 기대값은 이슈 #164 설계, ADR 0001, docs/data-model.md 4절."""
 
+import logging
+
 import pytest
 from pydantic import ValidationError
 
@@ -91,7 +93,7 @@ def test_low인데_직접판단_flag_없으면_거부():
 
 
 def test_모두_low_묶음에_ai_default_거부():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="rank 1"):
         low_group(selection={"candidate_id": "c1", "origin": "ai_default"})
 
 
@@ -291,3 +293,39 @@ def test_왕복():
     g = group(cands, selection={"candidate_id": "c1", "origin": "ai_default"})
     again = DirectionCandidates.model_validate(g.model_dump(mode="json"))
     assert again == g
+
+
+# ---------- 후보 0개 ----------
+
+NOT_EXTRACTED = Status(value="unverified", reason="not_extracted")
+
+
+def test_후보_0개_confirmed_거부():
+    with pytest.raises(ValidationError, match="후보"):
+        DirectionCandidates(
+            status=OK,
+            unit_id="oa_1:29-2:c1",
+            candidates=[],
+            selection=None,
+            amendment_limit=LIMIT,
+            flags=[Flag.NEEDS_HUMAN_JUDGMENT],
+        )
+
+
+def test_후보_0개_unverified_통과():
+    g = DirectionCandidates(
+        status=NOT_EXTRACTED,
+        unit_id="oa_1:29-2:c1",
+        candidates=[],
+        selection=None,
+        amendment_limit=LIMIT,
+        flags=[Flag.NEEDS_HUMAN_JUDGMENT],
+    )
+    assert g.status.reason == "not_extracted"
+
+
+def test_후보_0개면_도우미가_경고하고_not_extracted(caplog):
+    with caplog.at_level(logging.WARNING):
+        s = summarize_direction_status([], LIMIT)
+    assert s.value == StatusValue.UNVERIFIED and s.reason == "not_extracted"
+    assert caplog.records
