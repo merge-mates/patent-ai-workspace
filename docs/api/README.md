@@ -17,7 +17,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 - 응답 바깥 `status`는 `result.status.value`를 복사한다(기준은 result). `result.status`는 객체 `{value, reason, checked, searched_scope}`다.
 - `status`·`origin` 값은 [데이터 모델](../data-model.md) 3절의 영어 코드(`confirmed`·`ai_generated` 등)를 쓴다. 화면에서 한국어로 보여 준다.
 - 결과가 아직 없으면(실행 전·실행 중) 404 `{code: "result_not_ready"}`다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다.
-- 오류 본문은 한 형식이다: `{code, message}`.
+- 오류 본문은 한 형식이다: `{code, message}`. 오류에 따라 칸을 더 담을 수 있다 (예: 409 `document_already_exists`는 `case_id`·`oa_id`).
 - 오래 걸리는 AI 실행은 만들기 → 상태 보기(폴링) → 결과 받기 순서다.
 - 평가(평가 세트 채점)는 API를 거치지 않고 스크립트가 `core/`를 직접 부른다.
 
@@ -103,4 +103,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 오류:
 ```json
 {"code": "oa_not_found", "message": "OA를 찾을 수 없습니다"}
+```
+
+같은 파일을 다시 올렸을 때 (`POST /cases`, 409):
+```json
+{"code": "document_already_exists", "message": "이미 올린 파일입니다", "case_id": "c_1", "oa_id": "oa_1"}
 ```

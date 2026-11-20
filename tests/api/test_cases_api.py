@@ -119,3 +119,11 @@ def test_DB_저장이_실패하면_500_upload_failed이고_파일이_안_남는�
     res = _post(client)
     assert res.status_code == 500 and res.json()["code"] == "upload_failed"
     assert not [p for p in root.rglob("*") if p.is_file()]
+
+
+def test_라우터가_db_모듈을_직접_부르지_않는다():
+    import pathlib
+
+    api_dir = pathlib.Path(__file__).parents[2] / "src/patent_ai/api"
+    bad = [p.name for p in api_dir.glob("*.py") if "patent_ai.db" in p.read_text()]
+    assert bad == []

@@ -13,8 +13,12 @@ from pydantic import BaseModel
 from patent_ai.api.deps import CaseUnit, get_case_unit, get_upload_dir
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases import upload
-from patent_ai.core.cases.store import DuplicateDocumentError, NewDocument, now_utc
-from patent_ai.db.ids import new_id
+from patent_ai.core.cases.store import (
+    DuplicateDocumentError,
+    NewDocument,
+    new_case_id,
+    now_utc,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,12 +54,12 @@ class CaseDetail(BaseModel):
 
 
 @router.post("/cases", response_model=CreatedCase, status_code=200)
-async def create_case(
+def create_case(
     file: UploadFile,
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     upload_dir: Annotated[Path, Depends(get_upload_dir)],
 ) -> CreatedCase:
-    data = await file.read()
+    data = file.file.read()
     try:
         sha256 = upload.check_pdf(data)
     except upload.EmptyFileError:
@@ -73,17 +77,19 @@ async def create_case(
             extra={"case_id": existing.case_id, "oa_id": existing.oa_id},
         )
 
-    case_id = new_id("c")
+    case_id = new_case_id()
     target = upload.final_path(upload_dir, case_id, sha256)
     tmp: Path | None = None
     try:
         tmp = upload.write_temp(upload_dir, data)  # 1) 임시 파일
+        target.parent.mkdir(parents=True, exist_ok=True)  # 폴더는 커밋 전에 (커밋 뒤 실패 줄이기)
         created = unit.store.create_case(  # 2) DB 커밋
             NewDocument(path=str(target), sha256=sha256, received_at=now_utc()), case_id=case_id
         )
         unit.commit()
     except DuplicateDocumentError:
-        # 위 검사와 커밋 사이에 같은 파일이 들어온 드문 경우
+        # 새 사건이라 DB 제약에는 안 걸린다. 저장소가 중복이라 알려 온 경우만 409로 바꾼다
+        # (같은 파일을 동시에 올리면 사건이 둘 생기는 것은 알려진 한계)
         _cleanup(unit, tmp)
         raise AppError(409, "document_already_exists", "이미 올린 파일입니다") from None
     except Exception:

@@ -42,6 +42,7 @@ __all__ = [
     "OARef",
     "RunRow",
     "RunStore",
+    "new_case_id",
     "now_utc",
 ]
 
@@ -145,6 +146,11 @@ class OADetailRow:
     document_id: str | None
     dispatch_number: str | None
     latest_run: RunRow | None
+
+
+def new_case_id() -> str:
+    """사건 ID 만들기 (라우터가 db를 직접 부르지 않게 core에서 준다)."""
+    return new_id("c")
 
 
 def case_name_of(application_number: str | None) -> str:
