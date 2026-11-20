@@ -13,6 +13,7 @@ export type Checked = string | null
 export type SearchedScope = string | null
 export type DocumentId = string
 export type Page = number | null
+export type Location = string | null
 export type RawText = string | null
 export type Edition = string | null
 export type CheckedOn = string | null
@@ -119,6 +120,7 @@ export interface Status {
 export interface Evidence1 {
   document_id: DocumentId
   page: Page
+  location: Location
   raw_text: RawText
   edition: Edition
   checked_on: CheckedOn

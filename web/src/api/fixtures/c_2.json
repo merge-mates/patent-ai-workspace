@@ -15,6 +15,7 @@
       {
         "document_id": "d_2",
         "page": 1,
+        "location": null,
         "raw_text": "10-2099-0000001",
         "edition": null,
         "checked_on": null
@@ -22,6 +23,7 @@
       {
         "document_id": "d_2",
         "page": 1,
+        "location": null,
         "raw_text": "9-5-2099-000000001",
         "edition": null,
         "checked_on": null
@@ -29,6 +31,7 @@
       {
         "document_id": "d_2",
         "page": 1,
+        "location": null,
         "raw_text": "2099.01.26.",
         "edition": null,
         "checked_on": null
@@ -36,6 +39,7 @@
       {
         "document_id": "d_2",
         "page": 1,
+        "location": null,
         "raw_text": "2099.03.26.",
         "edition": null,
         "checked_on": null
@@ -43,6 +47,7 @@
       {
         "document_id": "d_2",
         "page": 1,
+        "location": null,
         "raw_text": "제1항 내지 제7항",
         "edition": null,
         "checked_on": null
@@ -50,6 +55,7 @@
       {
         "document_id": "d_2",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 5, 7",
         "edition": null,
         "checked_on": null
@@ -57,6 +63,7 @@
       {
         "document_id": "d_2",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 5의 종속 관계를 정리하세요.",
         "edition": null,
         "checked_on": null
@@ -64,6 +71,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "특허법 제29조제2항",
         "edition": null,
         "checked_on": null
@@ -71,6 +79,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "제1항 내지 제4항",
         "edition": null,
         "checked_on": null
@@ -78,6 +87,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
         "edition": null,
         "checked_on": null
@@ -85,6 +95,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000001호",
         "edition": null,
         "checked_on": null
@@ -92,6 +103,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000001호",
         "edition": null,
         "checked_on": null
@@ -99,6 +111,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "식별번호 [0023], [0031]",
         "edition": null,
         "checked_on": null
@@ -106,6 +119,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "JP2099-000001 A",
         "edition": null,
         "checked_on": null
@@ -113,6 +127,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "JP2099-000001 A",
         "edition": null,
         "checked_on": null
@@ -120,6 +135,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "식별번호 [0045]",
         "edition": null,
         "checked_on": null
@@ -127,6 +143,7 @@
       {
         "document_id": "d_2",
         "page": 3,
+        "location": null,
         "raw_text": "특허법 제42조제3항",
         "edition": null,
         "checked_on": null
@@ -134,6 +151,7 @@
       {
         "document_id": "d_2",
         "page": 3,
+        "location": null,
         "raw_text": "제1항",
         "edition": null,
         "checked_on": null
@@ -141,6 +159,7 @@
       {
         "document_id": "d_2",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
         "edition": null,
         "checked_on": null
@@ -148,6 +167,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
         "edition": null,
         "checked_on": null
@@ -155,6 +175,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
         "edition": null,
         "checked_on": null
@@ -162,6 +183,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
         "edition": null,
         "checked_on": null
@@ -169,6 +191,7 @@
       {
         "document_id": "d_2",
         "page": 2,
+        "location": null,
         "raw_text": "이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
         "edition": null,
         "checked_on": null
@@ -301,6 +324,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "특허법 제29조제2항",
             "edition": null,
             "checked_on": null
@@ -308,6 +332,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "제1항 내지 제4항",
             "edition": null,
             "checked_on": null
@@ -315,6 +340,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
             "edition": null,
             "checked_on": null
@@ -322,6 +348,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000001호",
             "edition": null,
             "checked_on": null
@@ -329,6 +356,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000001호",
             "edition": null,
             "checked_on": null
@@ -336,6 +364,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "식별번호 [0023], [0031]",
             "edition": null,
             "checked_on": null
@@ -343,6 +372,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "JP2099-000001 A",
             "edition": null,
             "checked_on": null
@@ -350,6 +380,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "JP2099-000001 A",
             "edition": null,
             "checked_on": null
@@ -357,6 +388,7 @@
           {
             "document_id": "d_2",
             "page": 2,
+            "location": null,
             "raw_text": "식별번호 [0045]",
             "edition": null,
             "checked_on": null
@@ -513,6 +545,7 @@
           {
             "document_id": "d_2",
             "page": 3,
+            "location": null,
             "raw_text": "특허법 제42조제3항",
             "edition": null,
             "checked_on": null
@@ -520,6 +553,7 @@
           {
             "document_id": "d_2",
             "page": 3,
+            "location": null,
             "raw_text": "제1항",
             "edition": null,
             "checked_on": null
@@ -527,6 +561,7 @@
           {
             "document_id": "d_2",
             "page": 3,
+            "location": null,
             "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
             "edition": null,
             "checked_on": null

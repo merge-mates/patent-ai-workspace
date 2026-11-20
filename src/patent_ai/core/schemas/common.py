@@ -84,6 +84,7 @@ class Evidence(BaseModel):
 
     document_id: str
     page: int | None = None
+    location: str | None = None  # 사람이 읽는 위치 (식별번호 `[0016]`, `도 4`)
     raw_text: str | None = None
     edition: str | None = None  # 법령·심사기준 판본
     checked_on: date | None = None

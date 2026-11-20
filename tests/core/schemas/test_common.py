@@ -77,6 +77,12 @@ def test_evidence_칸():
     assert ev.model_dump(mode="json")["checked_on"] == "2026-11-18"
 
 
+def test_evidence_location은_사람이_읽는_위치_기본_null():
+    assert Evidence(document_id="d_1").location is None
+    ev = Evidence(document_id="d_2", location="[0016]")
+    assert ev.model_dump(mode="json")["location"] == "[0016]"
+
+
 # ---------- ExtractedValue ----------
 
 
