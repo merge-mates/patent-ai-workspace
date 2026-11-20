@@ -208,11 +208,11 @@ graph LR
 - `make` 색인 target
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
+- [x] task-1 (hybrid impl·래퍼, 계약 design 세 곳)
+- [x] task-2 (파일 이름 `law_index_db.py`는 그대로: 명령·문서 링크가 이 이름. 색인 내용 지문은 벡터를 float32로 맞춰 해시, pgvector 재읽기와 같게)
+- [x] task-3 (rows 줄에 `k_max`, compare는 `--k`가 k_max보다 크면 종료 1)
 - [ ] task-4
-- 다음:
+- 다음: task-4 (v2 색인 만들기 → BM25 v2 확인 → 벡터·하이브리드)
 - 막힌 것: 없음
 
 ### 끝난 뒤 (이슈가 끝난 날)
