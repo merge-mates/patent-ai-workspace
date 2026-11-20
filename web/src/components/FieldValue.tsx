@@ -15,16 +15,17 @@ type Extracted = ExtractedValueStr | ExtractedValueNoticeKind | ExtractedValueLi
 // 후보 출처 글자. 뽑은 타입의 값이 늘면 Record 타입 검사가 잡는다
 const sourceName: Record<ExtractedValueStr['candidates'][number]['source'], string> = { rule: '규칙', model: '모델' }
 
-// 값 + (확인됨이 아니면) 상태 꼬리표 + 원문 쪽 링크.
-// 확인됨은 판 머리 상태로 충분해서 칸마다 붙이지 않는다 (화면이 꼬리표로 덮이지 않게)
+// 값 + 칸 상태 꼬리표 + 원문 쪽 링크.
+// - 확인됨은 작은 체크 아이콘만 (StatusTag compact). 꼬리표가 없는 칸이 생기지 않게 칸마다 상태를 붙인다
+// - 원문 링크는 원문에서 확인된 값에만 단다 (F5). 확인되지 않음·충돌은 "후보 위치"로 글을 바꾼다
 export function FieldValue({ v, children }: { v: Extracted; children: ReactNode }) {
   const status = v.status.value
   return (
     <Space direction="vertical" size={2}>
       <Space size={6} wrap>
         <span>{children}</span>
-        {status !== 'confirmed' && <StatusTag status={v.status} />}
-        <SourceLink page={v.page} rawText={v.raw_text} />
+        <StatusTag status={v.status} compact />
+        <SourceLink page={v.page} rawText={v.raw_text} candidate={status !== 'confirmed'} />
       </Space>
       {/* 충돌이면 두 후보를 나란히 보인다 (AI가 하나를 고르지 않음) */}
       {v.candidates.length > 0 && (
