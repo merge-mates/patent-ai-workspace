@@ -243,3 +243,65 @@ def test_clarity_단계_설정():
     assert cfg.prompt == "prompts/f3/clarity.md" and cfg.max_model_calls is not None
     settings = load_f3_settings()
     assert settings.clarity_search.k >= 1 and settings.min_quote_chars >= 1
+
+
+# ---- B3 리뷰 고침 ----
+def test_청구범위와_요약서_글은_명세서_조각에_넣지_않는다():
+    # 청구항 글이 앞 문단 조각에 붙으면 청구항이 자기 정의 근거가 되고 위치도 틀리게 붙는다
+    text = (
+        "【0050】 끝 문단.\n【청구범위】\n【청구항 1】\n상기 제어 모듈을 포함하는 화분.\n"
+        "【요약서】\n【요약】\n제어 모듈을 가진 화분에 관한 것이다.\n【도면】\n【도 1】"
+    )
+    spec = PageText(document_id="d", status=OK, pages=[Page(page=1, status=OK, text=text)])
+    chunks = split_spec(spec, load_f3_settings().clarity_search.skip_headings)
+    assert [(c.chunk.location.label, c.chunk.text) for c in chunks] == [
+        ("[0050]", "【0050】 끝 문단.")
+    ]
+
+
+def test_뺀_구간_뒤에_식별번호가_다시_나오면_다시_조각으로_만든다():
+    text = "【청구범위】\n【청구항 1】\n화분.\n【발명의 설명】\n【0001】 화분에 관한 것이다."
+    spec = PageText(document_id="d", status=OK, pages=[Page(page=1, status=OK, text=text)])
+    chunks = split_spec(spec, load_f3_settings().clarity_search.skip_headings)
+    assert [c.chunk.location.label for c in chunks] == ["[0001]"]
+
+
+def test_청구범위_구간은_다음_쪽으로_이어져도_뺀다():
+    pages = [
+        Page(page=1, status=OK, text="【0050】 끝 문단.\n【청구범위】\n【청구항 1】\n화분."),
+        Page(page=2, status=OK, text="【청구항 2】\n상기 제어 모듈을 더 포함하는 화분."),
+    ]
+    spec = PageText(document_id="d", status=OK, pages=pages)
+    chunks = split_spec(spec, load_f3_settings().clarity_search.skip_headings)
+    assert [(c.chunk.location.label, c.page) for c in chunks] == [("[0050]", 1)]
+
+
+def test_청구항_글은_정의_근거_후보로_모델에_가지_않는다():
+    claim_like = "상기 제어 모듈은 대략 원형인 화분."
+    page = Page(
+        page=1,
+        status=OK,
+        text=(
+            "【0016】 제어 모듈은 밸브를 여닫는 회로 기판을 말한다.\n"
+            f"【청구범위】\n【청구항 3】\n{claim_like}"
+        ),
+    )
+    spec = PageText(document_id="d_spec2", status=OK, pages=[page])
+    _, calls = _run(_oa([TERM]), _answer([_term(TERM)]), _config(spec=spec))
+    shown = calls[0]["prompt"].split("짚은 문구와 명세서 후보 조각")[1]
+    assert "회로 기판" in shown and claim_like not in shown
+
+
+def test_같은_문구가_청구항에_여러_번_나오면_몇_곳인지_적는다():
+    claims = {
+        **CLAIMS,
+        3: "제2항에 있어서, 상기 제어 모듈은 원형이고, 상기 제어 모듈은 방수인 화분.",
+    }
+    config = _config()
+    config = config.model_copy(
+        update={"inputs": config.inputs.model_copy(update={"claims_at_oa": claims})}
+    )
+    out, _ = _run(_oa([TERM]), _answer([_term(TERM)]), config)
+    start = claims[3].index(TERM)
+    expected = f"청구항 3 [글자 {start}-{start + len(TERM)}] (2곳 중 첫 자리)"
+    assert out.reviews[0].claim_location == expected

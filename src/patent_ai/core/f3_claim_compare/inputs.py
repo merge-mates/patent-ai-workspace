@@ -43,6 +43,8 @@ class ClaritySearchSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     k: int = Field(ge=1)  # 문구마다 모델에 보여 줄 명세서 조각 수 (BM25 상위)
+    # 정의 찾기 색인에서 뺄 구간의 머리 줄 꼴 (청구범위·요약서·도면). 공백·괄호를 뺀 글자에 맞춘다
+    skip_headings: list[str]
 
 
 class F3Settings(BaseModel):

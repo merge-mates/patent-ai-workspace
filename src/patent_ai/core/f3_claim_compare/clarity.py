@@ -10,6 +10,7 @@
 import json
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -17,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from patent_ai.core.f3_claim_compare.examiner import find_claim_row
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
-from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
+from patent_ai.core.f3_claim_compare.textmatch import find_all_spans, find_span, is_too_short
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
@@ -96,8 +97,16 @@ class SpecChunk:
     page: int
 
 
-def split_spec(spec: PageText) -> list[SpecChunk]:
+def _heading_key(line: str) -> str:
+    """머리 줄 비교용: 공백과 괄호(【】[])를 뺀 글자."""
+    return re.sub(r"[【】\[\]\s]", "", line)
+
+
+def split_spec(spec: PageText, skip_headings: Sequence[str] = ()) -> list[SpecChunk]:
     """명세서 쪽 글자를 조각으로 쪼갠다 (답이 정해진 코드 도구).
+
+    skip_headings: 이 꼴의 머리 줄(청구범위·요약서·도면)부터 다음 식별번호가 나올 때까지는
+    조각으로 만들지 않는다. 청구항 글이 앞 문단에 붙어 자기 정의 근거로 뽑히는 것을 막는다.
 
     쪽 안에서 줄 맨 앞 식별번호(`【0016】`)마다 자른다. 조각은 쪽을 넘지 않는다:
     다음 쪽으로 넘어간 문단의 뒷부분은 같은 식별번호의 새 조각(그 쪽)으로 둔다.
@@ -105,6 +114,8 @@ def split_spec(spec: PageText) -> list[SpecChunk]:
     """
     out: list[SpecChunk] = []
     current: int | None = None  # 지금 이어지는 식별번호
+    skips = [re.compile(p) for p in skip_headings]
+    skipping = False  # 뺄 구간 안인가 (쪽을 넘어가도 이어진다)
 
     def add(page: int, number: int | None, lines: list[str]) -> None:
         text = "\n".join(lines).strip()
@@ -134,8 +145,13 @@ def split_spec(spec: PageText) -> list[SpecChunk]:
             m = _PARAGRAPH_HEAD.match(line)
             if m:
                 add(page.page, current, lines)
-                current, lines = int(m.group(1)), []
-            lines.append(line)
+                current, lines, skipping = int(m.group(1)), [], False
+            elif any(p.match(_heading_key(line)) for p in skips):
+                # 청구범위·요약서·도면 머리: 앞 조각을 여기서 끊고, 이 구간 글은 버린다
+                add(page.page, current, lines)
+                current, lines, skipping = None, [], True
+            if not skipping:
+                lines.append(line)
         add(page.page, current, lines)
     return out
 
@@ -163,7 +179,8 @@ class SpecIndex:
 
 def build_spec_index(spec: PageText | None, settings: F3Settings) -> SpecIndex:
     """출원서를 쪼개 메모리 검색기를 만든다. 사건마다 한 번만 만들어 단위들이 같이 쓴다."""
-    chunks = split_spec(spec) if spec is not None else []
+    skip = settings.clarity_search.skip_headings
+    chunks = split_spec(spec, skip) if spec is not None else []
     if spec is not None and not chunks:
         logger.warning("clarity: 명세서 %s의 조각이 0개 (글자가 없음)", spec.document_id)
     return SpecIndex(chunks, _spec_searcher(chunks, settings) if chunks else None)
@@ -199,10 +216,13 @@ class _Judged:
 
 def _locate(term: str, claim: int, claim_text: str) -> str | None:
     """문구가 청구항 원문에 그대로 있으면 위치 글, 없으면 None (공백 줄이기만 허용)."""
-    span = find_span(term, claim_text)
-    if span is None:
+    spans = find_all_spans(term, claim_text)
+    if not spans:
         return None
-    return f"청구항 {claim} [글자 {span[0]}-{span[1]}]"
+    start, end = spans[0]
+    where = f"청구항 {claim} [글자 {start}-{end}]"
+    # 여러 번 나오면 OA가 어느 자리를 짚었는지 원문만으로는 모른다: 첫 자리와 몇 곳인지를 적는다
+    return where if len(spans) == 1 else f"{where} ({len(spans)}곳 중 첫 자리)"
 
 
 # ---- 모델 답 대조 ----
