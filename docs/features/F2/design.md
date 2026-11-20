@@ -148,7 +148,7 @@ flowchart LR
 - #24 PR에서 검색 계약을 고치는 것은 둘이다 (그 밖은 그대로).
   1. `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
   2. 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 기준일 거르기는 지금도 `not_applicable`을 통과시키므로 검색 동작은 바뀌지 않는다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
-- 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 조각 메타데이터로 거른다. `search()`에 `chunk_kinds`(조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`) 거르기를 더하고, 판례와 심결은 메타데이터 `source_kind`(`precedent` / `trial`)로 가른다. 더 붙일 메타데이터 후보: 법원·선고일, 거절이유 유형, 심결 결과. 검색 계약을 고치는 PR이 따르고 #24 범위에 넣는다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`)에는 메서드 둘이 필요하다: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기.
+- 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 조각 메타데이터로 거른다. `search()`에 `chunk_kinds`(조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`) 거르기를 더하고, 판례와 심결은 메타데이터 `source_kind`(`precedent` / `trial`)로 가른다. 더 붙일 메타데이터 후보: 법원·선고일, 거절이유 유형, 심결 결과, IPC 분야(심결·판례를 분야 없이 받되 비전 사건 먼저 보이기용, requirements 열린 질문 9). 검색 계약을 고치는 PR이 따르고 #24 범위에 넣는다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`)에는 메서드 둘이 필요하다: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기.
 - 심사기준 HWP→PDF 변환본 2판(제108·116호)은 쪽 번호가 원본과 다를 수 있다 (데이터 카드 3절). 그 판 조각의 `loc_label`에 "(변환본 쪽)"을 붙인다.
 
 ## 6. 화면 (시연용)
