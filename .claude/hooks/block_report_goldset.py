@@ -8,9 +8,12 @@ python 등)와 Read·Grep·Glob·Write·Edit 입력의 경로 글자를 보고 �
 1. 경로가 report 폴더(또는 그 위 goldsets 폴더 자체)를 가리킨다. `..`은 정리하고,
    와일드카드는 그 폴더에 맞을 수 있으면 막는다. 대소문자는 가리지 않는다 (macOS 디스크).
 2. 폴더째 읽는 명령(grep -r, rg, find -exec, tar, cp -r 등)이 data 폴더나 그 위를 대상으로 한다.
-검색어(grep·rg의 패턴)·커밋 메시지·echo 글자는 경로가 아니라서 보지 않는다.
+검색어(grep·rg의 패턴)·커밋 메시지는 경로가 아니라서 보지 않는다. echo·printf는 와일드카드만 본다.
+`>`·`<` 리다이렉트 대상은 어떤 명령이든 본다.
 
-한계: 글자로만 본다. 변수로 만든 경로, 폴더를 도는 스크립트 파일은 못 잡는다.
+한계: 글자로만 본다. 변수로 만든 경로, 폴더를 도는 스크립트 파일, `cat $(echo <경로>)` 같은
+명령 치환, `cat <<'EOF' | python3`처럼 파이프로 인터프리터에 넘기는 heredoc은 못 잡는다.
+`gh pr comment --body "…report 경로…"`처럼 글자 안에 경로가 있으면 막힌다 (`--body-file`을 쓴다).
 실수로 여는 것을 막는 안전띠이지 샌드박스가 아니다.
 
 입력: stdin JSON (tool_name, tool_input, cwd). exit 2 = 막고 이유를 Claude에게 돌려줌.
@@ -135,39 +138,83 @@ def segments(command: str) -> list[list[str]]:
     return [s for s in segs if s]
 
 
-# 값을 하나 받는 옵션 중 그 값이 경로가 아닌 것 (검색어·메시지·필터)
-NON_PATH_VALUE_OPTS = {
-    "-e", "--regexp", "-m", "--message", "--grep", "-S", "-G", "--author",
-    "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not", "--include", "--exclude",
-    "-A", "-B", "-C", "--max-count", "-M", "-j", "--threads", "-n",
+# 명령별로, 값을 하나 받는 옵션 중 그 값이 경로가 아닌 것 (검색어·메시지·개수·필터).
+# 명령마다 따로 둔다: 같은 글자라도 rg의 -S(값 없음)와 git의 -S(값 있음)처럼 다르다.
+# 표에 없는 명령은 `-`로 시작하지 않는 글자를 모두 경로로 본다.
+VALUE_OPTS = {
+    "grep": {
+        "-e", "--regexp", "-m", "--max-count", "-A", "--after-context", "-B",
+        "--before-context", "-C", "--context", "-d", "--directories", "-D", "--devices",
+        "--include", "--exclude", "--exclude-dir", "--label",  # --color는 =일 때만 값
+    },
+    "rg": {
+        "-e", "--regexp", "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not",
+        "--type-add", "--type-clear", "-m", "--max-count", "-A", "--after-context", "-B",
+        "--before-context", "-C", "--context", "-M", "--max-columns", "-j", "--threads",
+        "-E", "--encoding", "-r", "--replace", "--sort", "--sortr", "-d", "--max-depth",
+        "--max-filesize", "--color", "--colors", "--path-separator",
+    },
+    "git": {
+        "-m", "--message", "--grep", "-S", "-G", "--author", "--committer", "-e", "-n",
+        "--max-count", "--format", "--pretty", "--since", "--until", "--date",
+    },
+}  # fmt: skip
+VALUE_OPTS["egrep"] = VALUE_OPTS["fgrep"] = VALUE_OPTS["grep"]
+# ag는 -r(재귀)·-t(모든 파일)가 값이 없어 rg와 따로 둔다
+VALUE_OPTS["ag"] = {
+    "-m", "--max-count", "-A", "--after", "-B", "--before", "-C", "--context",
+    "-G", "--file-search-regex", "--ignore", "--ignore-dir", "--depth", "-p", "--path-to-ignore",
 }  # fmt: skip
 SEARCHERS = {"grep", "egrep", "fgrep", "rg", "ag"}
+REDIRECTS = {">", ">>", "<", ">|", "&>", "&>>"}
+
+
+def split_redirects(argv: list[str]) -> tuple[list[str], list[str]]:
+    """리다이렉트(> 파일, >> 파일, < 파일)를 떼어 낸다. (남은 글자, 리다이렉트 대상)."""
+    rest, targets, i = [], [], 0
+    while i < len(argv):
+        if argv[i] in REDIRECTS:
+            if i + 1 < len(argv):
+                targets.append(argv[i + 1])
+            i += 2
+            continue
+        rest.append(argv[i])
+        i += 1
+    return rest, targets
 
 
 def path_args(argv: list[str]) -> list[str]:
-    """명령 글자 중 경로 자리만 고른다. 검색어·메시지·echo 글자는 뺀다."""
+    """명령 글자 중 경로 자리만 고른다. 검색어·메시지 글자는 뺀다 (리다이렉트는 떼어 낸 뒤)."""
     if not argv:
         return []
     name = argv[0].rsplit("/", 1)[-1]
-    if name in ("echo", "printf"):
-        return []
     args = argv[1:]
+    if name in ("echo", "printf"):
+        # 글자를 찍기만 한다. 셸이 펼치는 와일드카드만 경로로 본다 (파일 이름이 나옴)
+        return [a for a in args if GLOB_CHARS.search(a)]
     is_git = name == "git"
+    if is_git and args[:1] in (["commit"], ["tag"]):
+        return []  # 커밋·태그 메시지
+    # git grep은 grep 표를 쓴다 (git log의 -n은 개수, git grep의 -n은 줄 번호)
+    value_opts = (
+        VALUE_OPTS["grep"] if is_git and args[:1] == ["grep"] else VALUE_OPTS.get(name, set())
+    )
     searcher = name in SEARCHERS or (is_git and args[:1] == ["grep"])
-    if is_git and args[:1] == ["commit"]:
-        return []  # 커밋 메시지
-    has_pattern_opt = any(a in ("-e", "--regexp", "-f", "--file") for a in args)
+    # 검색어가 없는 모드: -e·-f로 검색어를 준 경우, rg --files(파일 목록)
+    has_pattern_opt = any(
+        a in ("-e", "--regexp", "-f", "--file", "--files", "--type-list") for a in args
+    )
     out, skip_next, pattern_taken = [], False, has_pattern_opt
     for a in args:
         if skip_next:
             skip_next = False
             continue
-        if a.startswith("-"):
+        if a.startswith("-") and a != "-":
             if "=" in a:
                 opt, val = a.split("=", 1)
-                if opt not in NON_PATH_VALUE_OPTS:
+                if opt not in value_opts:
                     out.append(val)
-            elif a in NON_PATH_VALUE_OPTS and not (a == "-n" and not is_git):
+            elif a in value_opts:
                 skip_next = True
             continue
         if searcher and not pattern_taken and not (is_git and a == "grep"):
@@ -193,7 +240,15 @@ def check_recursive(argv: list[str], targets: list[str], base, data_dirs) -> Non
 
     msg = "data 폴더(또는 그 위 폴더) 전체를 읽는 명령은 report 정답까지 읽는다"
     if name in ("grep", "egrep", "fgrep"):
-        if "r" in flags or "R" in flags or longs & {"--recursive", "--dereference-recursive"}:
+        d_recurse = "--directories=recurse" in argv or any(
+            a == "-d" and b == "recurse" for a, b in zip(argv, argv[1:], strict=False)
+        )
+        if (
+            "r" in flags
+            or "R" in flags
+            or d_recurse
+            or longs & {"--recursive", "--dereference-recursive"}
+        ):
             if kinds(True) & {DATA, ABOVE}:
                 raise Blocked(msg + " (grep은 .gitignore를 모른다)")
     elif name in ("rg", "ag"):
@@ -215,9 +270,6 @@ def check_recursive(argv: list[str], targets: list[str], base, data_dirs) -> Non
     elif name in ("ls", "tree"):
         if (name != "ls" or "R" in flags or "--recursive" in longs) and kinds(True) & {DATA}:
             raise Blocked("data 폴더 안 파일 목록에는 report 정답 이름이 나온다")
-    elif name == "xargs":
-        # find ... | xargs cat 처럼 앞 명령의 목록을 읽는 경우는 check_bash가 본다
-        pass
 
 
 def check_paths(texts: list[str], base: str, data_dirs: list[str]) -> None:
@@ -242,6 +294,8 @@ def check_bash(command: str, cwd: str, data_dirs: list[str]) -> None:
             argv = argv[1:]
         if argv[:2] == ["uv", "run"]:
             argv = argv[2:]
+        argv, redirect_targets = split_redirects(argv)
+        check_paths(redirect_targets, base, data_dirs)  # 어떤 명령이든 > 파일은 검사
         if not argv:
             continue
         targets = path_args(argv)

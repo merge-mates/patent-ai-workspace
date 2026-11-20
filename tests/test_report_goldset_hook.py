@@ -79,6 +79,29 @@ BLOCKED_BASH = [
     "cp -r . /tmp/x",
     "zip -r x.zip .",
     "ls -R data",
+    # 값 없는 옵션 바로 뒤의 경로 (리뷰 #143 2차)
+    "cat -A data/goldsets/report/x.json",
+    "less -S data/goldsets/report/x.json",
+    "rg -S 거절 data",
+    "rg -S 거절 data/goldsets/report/",
+    "grep -G 거절 data/goldsets/report/x.json",
+    "ls -A data/goldsets/report",
+    "ls -t data/goldsets/report",
+    "tree -C data/goldsets",
+    # echo·printf의 리다이렉트·와일드카드 (리뷰 #143 2차)
+    "echo x > data/goldsets/report/x.json",
+    "printf 'x' >> data/goldsets/report/x.json",
+    "echo data/goldsets/report/*",
+    "git log > data/goldsets/report/x.txt",
+    # 표가 있는 명령의 값 없는 옵션 뒤 경로 (/check 리뷰)
+    "grep --color 거절 data/goldsets/report/x.json",
+    "grep --colour 거절 data/goldsets/report/x.json",
+    "rg --files data/goldsets/report",
+    "rg --files data",
+    "ag -r 거절 data/goldsets/report/",
+    "ag -t 거절 data/goldsets/report/",
+    "git grep --no-index -n 거절 data/goldsets/report",
+    "grep -d recurse 거절 data",
 ]
 
 
@@ -111,6 +134,14 @@ ALLOWED_BASH = [
     'git commit -m "docs: data/goldsets/ 설명 고치기"',
     "git commit -q -F - <<'EOF'\ndocs: data/goldsets/report 설명\nEOF",
     "echo data/goldsets/report",
+    "echo done > /tmp/x.txt",
+    "git log -n 5 --oneline",
+    "grep -A 3 거절 src/x.py",
+    "rg -g '*.py' -t py goldsets src/",
+    # tune 정답(case_full)을 읽는 스크립트 (#155)
+    "cat data/goldsets/tune/case_full/case1.json",
+    "uv run python scripts/split_cases.py --gold data/goldsets/tune/case_full",
+    "ls -la data/goldsets/tune/case_full",
 ]
 
 
