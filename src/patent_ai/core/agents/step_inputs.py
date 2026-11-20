@@ -1,0 +1,71 @@
+"""단계 사이 입력 잇기: 앞 단계 결과 + 실행 입력(글자)에서 다음 단계 도구 입력을 만든다.
+
+답이 정해진 코드다 (모델을 부르지 않는다). 입력을 못 만들면 값을 지어내지 않고
+InputMissing으로 무엇이 없는지 돌려준다. 지휘는 그 단계를 "확인되지 않음"으로 넘긴다.
+"""
+
+from dataclasses import dataclass
+from datetime import date
+from typing import Any
+
+from patent_ai.core.f3_claim_compare.config import load_f3_settings
+from patent_ai.core.f3_claim_compare.inputs import F3Inputs
+from patent_ai.core.f3_claim_compare.result import F3Result
+from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.oa_result import OAResult
+
+
+@dataclass(frozen=True)
+class InputMissing:
+    """단계 입력을 만들지 못한 이유 (그 단계는 돌리지 않는다)."""
+
+    why: str
+
+
+def _missing(what: str) -> InputMissing:
+    return InputMissing(f"input_unverified: {what}")
+
+
+def f3_input(results: dict[str, Any], case_id: str, texts: F3Inputs | None) -> dict | InputMissing:
+    """run_f3 입력: read_oa 결과(OAResult) + 실행 입력 글자 + config/f3.yaml 설정."""
+    oa = results.get("read_oa")
+    if not isinstance(oa, OAResult):
+        return _missing("앞 단계 결과가 없음 (read_oa)")
+    if texts is None:
+        return _missing("OA 당시 청구항·명세서 글자가 실행 입력에 없음 (CaseInput.texts)")
+    return {
+        "oa_result": oa,
+        # 사건 자료 목록은 자르기(#54)가 아직 CaseMaterials를 만들지 않아 빈 목록으로 넘긴다
+        "case_materials": CaseMaterials(case_id=case_id),
+        "config": {"settings": load_f3_settings(), "inputs": texts},
+    }
+
+
+def f4_input(
+    results: dict[str, Any], texts: F3Inputs | None, checked_on: date | None
+) -> dict | InputMissing:
+    """run_f4 입력: OAResult + F3 결과(판단 단위·대비표·명확성 검토) + 글자 + 확인 기준일."""
+    oa, f3 = results.get("read_oa"), results.get("run_f3")
+    if not isinstance(oa, OAResult):
+        return _missing("앞 단계 결과가 없음 (read_oa)")
+    if not isinstance(f3, F3Result):
+        return _missing("앞 단계 결과가 없음 (run_f3)")
+    if texts is None:
+        return _missing("OA 당시 청구항·명세서 글자가 실행 입력에 없음 (CaseInput.texts)")
+    if checked_on is None:
+        # 오늘 날짜를 코드가 몰래 읽지 않는다 (F4Input.checked_on과 같은 이유)
+        return _missing("확인 기준일이 실행 입력에 없음 (CaseInput.checked_on)")
+    return {
+        "oa": oa,
+        "units": f3.units,
+        "tables": f3.comparisons,
+        "clarity": f3.clarity_reviews,
+        # F2 결과는 아직 없다. 비워 두면 F4가 묶음마다 "확인되지 않음" 빈 묶음을 쓴다
+        "legal": [],
+        "claims_text": [
+            {"claim": no, "text": text, "document_id": texts.claims_document_id}
+            for no, text in sorted(texts.claims_at_oa.items())
+        ],
+        "spec": texts.spec,
+        "checked_on": checked_on,
+    }
