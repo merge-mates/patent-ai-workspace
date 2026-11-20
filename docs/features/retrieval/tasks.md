@@ -326,6 +326,6 @@ graph LR
 ### 진행
 - [x] task-1
 - [x] task-2
-- [x] task-3 (index.md만 남음)
-- 다음: PR
+- [x] task-3 (11/20 #129 채점기로 다시 채점, index.md 다시 만듦)
+- 다음: PR (#163 머지 뒤, design 결정 표 한 줄은 나중 머지 쪽이 맞춤)
 - 막힌 것: 없음
