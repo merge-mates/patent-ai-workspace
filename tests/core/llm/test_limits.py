@@ -40,7 +40,7 @@ def make_config(tmp_path, **limits):
     """설정 파일을 임시 폴더에 만든다 (limits 칸을 단계 설정에 붙임)."""
     extra = "".join(f"  {k}: {v}\n" for k, v in limits.items())
     (tmp_path / "t.yaml").write_text(
-        "s:\n  model: fake-model-1\n  temperature: 0.0\n  max_tokens: 256\n"
+        "s:\n  model: fake-model-1\n  effort: medium\n  max_tokens: 256\n"
         "  prompt: prompts/summarize.txt\n"
         "  price_per_mtok_input: 3.0\n  price_per_mtok_output: 15.0\n" + extra,
         encoding="utf-8",
@@ -208,7 +208,7 @@ def test_기록_전송층은_상한이_없어도_경고만_남기고_부른다(t
         step="t.s",
         model="fake-model-1",
         prompt=prompt,
-        temperature=0.0,
+        effort="medium",
         max_tokens=256,
     )
     with caplog.at_level(logging.WARNING):
@@ -385,7 +385,7 @@ def _status_error(code):
 def test_SDK_예외를_TransportError로_바꾸고_다시_부를지_정한다(exc, retryable):
     tr = _sdk_transport(exc)
     with pytest.raises(TransportError) as e:
-        tr.complete(step="t.s", model="m", prompt="p", temperature=0.0, max_tokens=5)
+        tr.complete(step="t.s", model="m", prompt="p", effort="medium", max_tokens=5)
     assert e.value.retryable is retryable
 
 
@@ -445,7 +445,7 @@ def test_가짜_전송층이면_캐시_기본은_안_쓰고_진짜_전송층이�
 # ---- FakeTransport 답 목록 ----
 def test_FakeTransport는_목록이면_시도마다_차례로_답한다():
     t = FakeTransport({"s": [TransportResponse("a", 1, 1), TransportError("x", True)]})
-    kw = dict(step="s", model="m", prompt="p", temperature=0.0, max_tokens=1)
+    kw = dict(step="s", model="m", prompt="p", effort="medium", max_tokens=1)
     assert t.complete(**kw).text == "a"
     with pytest.raises(TransportError):
         t.complete(**kw)

@@ -1,7 +1,7 @@
 # 에이전트 단계별 모델 설정 (core/llm이 읽는다)
 orchestrator:
   model: claude-haiku-5-5
-  temperature: 0
+  effort: medium        # output_config.effort. claude-haiku-5-5 기본과 같게 적어 둠 (#134)
   max_tokens: 500
   prompt: prompts/agents/orchestrator.md
   max_model_calls: 12   # [가정] max_steps보다 조금 크게

@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         step=args.step,
         model=cfg.model,
         prompt=prompt,
-        temperature=cfg.temperature,
+        effort=cfg.effort,
         max_tokens=cfg.max_tokens,
     )
     if (args.out / f"{key}.json").exists():
@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         step=args.step,
         model=cfg.model,
         prompt=prompt,
-        temperature=cfg.temperature,
+        effort=cfg.effort,
         max_tokens=cfg.max_tokens,
     )
     path = save_recording(
@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         step=args.step,
         model=cfg.model,
         prompt=prompt,
-        temperature=cfg.temperature,
+        effort=cfg.effort,
         max_tokens=cfg.max_tokens,
     )
     print(f"저장: {path}")

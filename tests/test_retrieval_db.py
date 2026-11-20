@@ -1,4 +1,4 @@
-"""PostgresChunkRepository: 메모리 저장소와 같은 거르기를 하는지 (make db 뒤 make test-db)."""
+"""PostgresChunkRepository: 메모리 저장소와 같은 거르기를 하는지 (make test-db)."""
 
 from datetime import date
 from pathlib import Path

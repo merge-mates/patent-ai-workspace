@@ -1,6 +1,6 @@
 {
   "experiment": "m2-i1-cite-search-bm25-baseline",
-  "commit": "5782d6c57755e94350229cde4a8b7cfc3f72d1b5",
+  "commit": "fa635fecf33549d84dd248e8c01486e1fe1e2726",
   "goldset": "tune",
   "goldset_version": 2,
   "gold_sha256": "90637221adc8a1be2c1e961c3d3e76a849d19fc7c1f60d0fdc0706bc1d0a8f43",
@@ -13,28 +13,28 @@
   "mode": "bm25",
   "impl": "bm25",
   "metric_name": "심사관 지정 위치 회수율",
-  "n": 69,
+  "n": 68,
   "metrics": {
-    "hit@1": 0.11594202898550725,
-    "recall@1": 0.048309178743961345,
-    "random_hit@1": 0.074195351048228,
-    "random_recall@1": 0.029264947856924312,
-    "recall_ratio@1": 1.6507522576204086,
-    "hit@3": 0.3188405797101449,
-    "recall@3": 0.16295721187025533,
-    "random_hit@3": 0.1774405667844258,
-    "random_recall@3": 0.0800021984494093,
-    "recall_ratio@3": 2.0369091728560935,
-    "hit@5": 0.4927536231884058,
-    "recall@5": 0.29365079365079366,
-    "random_hit@5": 0.2512260713464532,
-    "random_recall@5": 0.12447043105309846,
-    "recall_ratio@5": 2.359201226880332,
-    "hit@10": 0.6086956521739131,
-    "recall@10": 0.41468253968253965,
-    "random_hit@10": 0.3783540239572856,
-    "random_recall@10": 0.21641777512841867,
-    "recall_ratio@10": 1.9161205193818946
+    "hit@1": 0.11764705882352941,
+    "recall@1": 0.056372549019607844,
+    "random_hit@1": 0.0752864591518784,
+    "random_recall@1": 0.036707841970288674,
+    "recall_ratio@1": 1.5357086113979619,
+    "hit@3": 0.3235294117647059,
+    "recall@3": 0.1874124649859944,
+    "random_hit@3": 0.18004998688419677,
+    "random_recall@3": 0.09957375546785437,
+    "recall_ratio@3": 1.8821471993842516,
+    "hit@5": 0.5,
+    "recall@5": 0.32983193277310924,
+    "random_hit@5": 0.2549205723956658,
+    "random_recall@5": 0.1541243027614947,
+    "recall_ratio@5": 2.140038442110715,
+    "hit@10": 0.6176470588235294,
+    "recall@10": 0.4648984593837535,
+    "random_hit@10": 0.38391805372136334,
+    "random_recall@10": 0.2642697568103284,
+    "recall_ratio@10": 1.7591814704602022
   },
   "failures": {
     "excluded_no_location": 3,
@@ -43,7 +43,9 @@
     "excluded_body_missing": 0,
     "excluded_edition_unverified": 0,
     "excluded_no_edition_in_scope": 0,
-    "cq_candidates": 27,
+    "excluded_gold_not_in_scope": 1,
+    "excluded_gold_items_not_in_scope": 10,
+    "cq_candidates": 26,
     "recall_ratio_undefined": 0
   },
   "cost": {
@@ -51,6 +53,6 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "external_calls": 0,
-    "seconds": 4.112
+    "seconds": 3.614
   }
 }

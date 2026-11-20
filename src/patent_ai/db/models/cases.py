@@ -120,6 +120,12 @@ class ClaimVersion(Base):
             "source_kind <> 'amendment' OR source_doc_number IS NOT NULL",
             name="ck_claim_versions_amendment_doc_number",
         ),
+        # 보정서 판은 그 보정서 이력 줄에 꼭 이어진다. 접수번호는 저장 코드가 그 줄에서 채운다
+        # (#120 리뷰 (가), #16). 두 번호가 같은지는 DB가 아니라 저장 코드 테스트가 본다
+        CheckConstraint(
+            "source_kind <> 'amendment' OR case_event_id IS NOT NULL",
+            name="ck_claim_versions_amendment_event",
+        ),
         UniqueConstraint("case_id", "version", name="uq_claim_versions_case_version"),
     )
 
