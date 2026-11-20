@@ -12,7 +12,7 @@
 - 사람이 읽는 문서는 전부 `docs/`. 무엇을 어디에 둘지는 [`docs/README.md`](docs/README.md) 표를 따른다. 새 문서를 만들기 전에 그 표를 본다.
 - `experiments/<실험>/` 비교 실험 하나: `card.md`, `config.yaml`, `scores.json`. `experiments/index.md`는 스크립트가 만든다. 손으로 고치지 않는다.
 - `eval/` 채점기. 평가 세트(정답)는 git 밖 `data/goldsets/`에 둔다. 앱 코드는 `data/goldsets/`를 불러오지 않는다 (채점기만 읽는다. 예외: `scripts/split_cases_at_oa.py`가 AI 입력을 만들려고 `tune/case_full/`을 읽는다).
-- `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 Claude가 읽지 않는다 (채점기만 읽는다). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
+- `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 개발하는 세션(사람·Claude)이 읽지 않는다 (채점기만 읽는다). report 정답은 저장소·프로젝트 기록과 떨어진 세션이 만들고 사람이 일부 검수한다 (`eval/GUIDE.md`). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 - DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
 - 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
@@ -48,7 +48,7 @@
 - `main`에 직접 푸시하지 않는다. Claude는 `git add -f`로 gitignore된 파일을 넣지 않는다 (settings로 막힘). 브랜치: `<type>/<이슈번호>-<짧은설명>` (예: `feat/12-<기능>-baseline`). 둘이 같은 기능을 각자 구현할 때만 뒤에 사람: `feat/12-<기능>-<사람>`.
 - 커밋 제목: `<type>(<영역>): <한국어 한 줄>`. type은 `feat` `fix` `test` `refactor` `docs` `chore`, 영역은 `backend` `frontend` `ai` `eval` `docs` `infra`. 자세한 건 `.claude/rules/git.md`.
 - PR 하나 = 계획 하나 (이슈 하나에 PR 여러 개 가능). 제목은 커밋 제목 모양 (merge commit 제목이 된다). 본문은 `.github/pull_request_template.md` 칸을 채우고, 그 이슈의 마지막 PR이면 `Closes #N`, 아니면 `Refs #N`.
-- 이슈 일은 `/start <이슈번호>`로 시작한다. 진행 보드(Projects 탭) 카드는 스킬이 옮긴다: `/start`는 In Progress, `/pr-draft`는 `Closes` PR을 만든 뒤 In Review(`Refs` PR은 그대로), 마지막 PR이 머지되면 Done(보드 규칙). 훅은 쓰지 않는다. 보드 번호·id는 적지 않는다 (`.claude/scripts/board-status.sh`가 찾음).
+- 이슈 일은 `/start <이슈번호>`로 시작한다. 진행 보드(Projects 탭) 카드는 스킬이 옮긴다: `/start`는 In Progress, `/pr-draft`는 `Closes` PR을 만든 뒤 In Review(`Refs` PR은 그대로), 마지막 PR이 머지되면 Done(보드 규칙). 보드 카드에는 훅을 쓰지 않는다 (report 정답 막기 훅 `.claude/hooks/block_report_goldset.py`는 다른 일이다). 보드 번호·id는 적지 않는다 (`.claude/scripts/board-status.sh`가 찾음).
 - 남의 브랜치를 merge·rebase하지 않는다. 커밋은 Claude가 해도 된다. push와 PR 생성은 매번 사람이 승인한다 (확인 창). 사람이 `/pr-draft` 초안을 보고 OK하면 Claude가 한다. `main`에 직접 push하지 않는다. 머지는 사람이 한다.
 
 ## 코드 규칙 (공통)
