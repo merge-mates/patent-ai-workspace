@@ -25,7 +25,6 @@
       "Bash(gh repo delete *)",
       "Read(**/.env)",
       "Read(**/.env.*)",
-      "Read(/data/goldsets/report/**)",
       "Read(**/goldsets/report/**)",
       "Edit(/data/raw/**)"
     ]
