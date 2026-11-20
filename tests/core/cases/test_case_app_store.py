@@ -130,3 +130,13 @@ def test_목록은_가장_최근_OA를_올린_사건이_앞():
     assert rows[0].case_id == old.case_id
     assert rows[0].updated_at == datetime(2099, 1, 3, tzinfo=UTC)
     assert rows[0].latest_oa.oa_id == second.oa_id
+
+
+def test_find_document_by_sha256은_case_id를_주면_그_사건_안에서만_찾는다():
+    store = InMemoryCaseAppStore()
+    x = store.create_case(NewDocument("p/x.pdf", "same", T0))
+    y = store.create_case(NewDocument("p/y.pdf", "other", T0))
+    y2 = store.add_oa(y.case_id, NewDocument("p/y2.pdf", "same", T0))
+    assert store.find_document_by_sha256("same", case_id=y.case_id).oa_id == y2.oa_id
+    assert store.find_document_by_sha256("same", case_id=x.case_id).oa_id == x.oa_id
+    assert store.find_document_by_sha256("other", case_id=x.case_id) is None

@@ -191,8 +191,11 @@ class CaseAppStore(Protocol):
 
     def get_oa(self, oa_id: str) -> OADetailRow | None: ...
 
-    def find_document_by_sha256(self, sha256: str) -> ExistingDocument | None:
-        """기본 사용자의 모든 사건에서 같은 파일을 찾는다 (DB 제약은 같은 사건 안만 걸려서)."""
+    def find_document_by_sha256(
+        self, sha256: str, case_id: str | None = None
+    ) -> ExistingDocument | None:
+        """기본 사용자의 모든 사건에서 같은 파일을 찾는다 (DB 제약은 같은 사건 안만 걸려서).
+        case_id를 주면 그 사건 안에서만 찾는다."""
         ...
 
 
@@ -327,9 +330,11 @@ class InMemoryCaseAppStore:
             latest_run=self._runs.latest_for_oa(oa.id),
         )
 
-    def find_document_by_sha256(self, sha256: str) -> ExistingDocument | None:
+    def find_document_by_sha256(
+        self, sha256: str, case_id: str | None = None
+    ) -> ExistingDocument | None:
         for d in self._docs:
-            if d.sha256 == sha256:
+            if d.sha256 == sha256 and (case_id is None or d.case_id == case_id):
                 oa = next((o for o in self._oas.values() if o.document_id == d.id), None)
                 return ExistingDocument(d.case_id, oa.id if oa else None, d.id)
         return None

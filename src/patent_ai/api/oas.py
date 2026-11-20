@@ -69,14 +69,13 @@ def add_oa(
         raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다") from None
     except DuplicateDocumentError:
         # 같은 사건 안 중복만 막는다 (다른 사건에 있는 파일은 다음 OA로 올릴 수 있다).
-        # 기존 OA ID는 같은 사건에서 찾은 경우에만 담는다
-        found = unit.store.find_document_by_sha256(sha256)
-        same_case = found is not None and found.case_id == case_id
+        # 기존 OA ID는 이 사건 안에서 찾아 담는다
+        found = unit.store.find_document_by_sha256(sha256, case_id=case_id)
         raise AppError(
             409,
             "document_already_exists",
             "이미 올린 파일입니다",
-            extra={"case_id": case_id, "oa_id": found.oa_id if same_case and found else None},
+            extra={"case_id": case_id, "oa_id": found.oa_id if found else None},
         ) from None
     except upload.UploadFailedError:
         raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None

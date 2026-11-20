@@ -114,3 +114,4 @@ OA 보기 (`GET /oas/{oa_id}`):
 ```json
 {"code": "document_already_exists", "message": "이미 올린 파일입니다", "case_id": "c_1", "oa_id": "oa_1"}
 ```
+`POST /cases/{id}/oas`도 같은 사건 안에서 같은 파일이면 409이고, `case_id`는 요청한 사건, `oa_id`는 그 사건의 기존 OA다 (다른 사건에 있는 파일은 다음 OA로 올릴 수 있다).

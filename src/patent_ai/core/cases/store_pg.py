@@ -194,7 +194,9 @@ class PostgresCaseAppStore:
             latest_run=self._runs.latest_for_oa(oa.id),
         )
 
-    def find_document_by_sha256(self, sha256: str) -> ExistingDocument | None:
+    def find_document_by_sha256(
+        self, sha256: str, case_id: str | None = None
+    ) -> ExistingDocument | None:
         q = (
             select(Document, OA.id)
             .join(Case, Document.case_id == Case.id)
@@ -203,6 +205,8 @@ class PostgresCaseAppStore:
             .order_by(Document.created_at, Document.id)
             .limit(1)
         )
+        if case_id is not None:  # 그 사건 안에서만
+            q = q.where(Document.case_id == case_id)
         found = self._s.execute(q).first()
         if found is None:
             return None
