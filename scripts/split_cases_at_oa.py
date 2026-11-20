@@ -78,6 +78,16 @@ class OaPlan:
     dropped_claim_rows: int = 0  # OA 뒤 접수의 청구항 줄
     unmatched_claim_rows: int = 0  # 행정이력에 없는 접수의 청구항 줄
 
+    @property
+    def missing_oa_file(self) -> bool:
+        """받은 묶음에 대상 OA 원문(`_<발송번호>.` 파일)이 없다."""
+        return not any(_file_number(n) == self.oa_no for n in self.copy_files)
+
+    @property
+    def no_first_spec(self) -> bool:
+        """최초 명세서(출원서·OA 전 공개공보)가 입력에 하나도 없다."""
+        return not any(APPLICATION_MARK in n or n.endswith(PUB_SUFFIX) for n in self.copy_files)
+
 
 def _lines(path: Path) -> list[str]:
     """줄 끝을 살린 채 읽는다 (자른 파일이 원래 줄과 글자가 같도록). BOM은 뗀다."""
@@ -159,18 +169,19 @@ def _maybe_take_publication(plan: OaPlan, oa_date: str, pub_date: PubDateReader)
     """출원서가 입력에 없으면 OA 전 공개공보를 최초 명세서로 넣는다 (있으면 그대로 뺀다)."""
     if any(APPLICATION_MARK in n for n in plan.copy_files):
         return
-    for i, (name, _why) in enumerate(plan.dropped_files):
+    kept: list[tuple[str, str]] = []
+    for name, why in plan.dropped_files:
         if not name.endswith(PUB_SUFFIX):
+            kept.append((name, why))
             continue
         date = pub_date(plan.src_dir / name)
         if date is None:
-            plan.dropped_files[i] = (name, "공개일 모름")
+            kept.append((name, "공개일 모름"))
         elif date < oa_date:  # YYYYMMDD 글자 비교. 같은 날은 앞뒤를 모르니 뺀다
-            del plan.dropped_files[i]
             plan.copy_files.append(name)
         else:
-            plan.dropped_files[i] = (name, "OA 뒤 공개")
-        return
+            kept.append((name, "OA 뒤 공개"))
+    plan.dropped_files = kept
 
 
 def write_plan(plan: OaPlan, out_root: Path) -> Path:
@@ -206,6 +217,8 @@ def audit(out_root: Path, pub_date: PubDateReader = read_pub_date) -> list[str]:
         if not rows or _cell(rows[-1], head, "접수발송번호") != oa_no:
             problems.append(f"{app_no}/{oa_no}: 행정이력 마지막 줄이 대상 OA가 아님")
         nos = {_cell(r, head, "접수발송번호") for r in rows}
+        if not any(_file_number(p.name) == oa_no for p in oa_dir.iterdir()):
+            problems.append(f"{app_no}/{oa_no}: 대상 OA 원문 없음")
         oa_date = _cell(rows[-1], head, "접수발송일자") if rows else ""
         has_application = any(APPLICATION_MARK in p.name for p in oa_dir.iterdir())
         claim_path = oa_dir / f"{app_no}_{CLAIMS}"
@@ -248,6 +261,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--audit", type=Path, help="이 입력 폴더를 검사만 한다")
     args = ap.parse_args(argv)
 
+    # report는 봉인: 경로에 report가 들어 있으면 열기 전에 멈춘다
+    for path in (args.src, args.out, args.audit):
+        if path and any(part == "report" or part.startswith("_report") for part in path.parts):
+            print(f"봉인된 report 경로라 열지 않음: {path}", file=sys.stderr)
+            return 1
+
     if args.audit:
         problems = audit(args.audit)
         n = len([p for p in args.audit.glob("*/*") if p.is_dir()])
@@ -274,7 +293,7 @@ def main(argv: list[str]) -> int:
     plans: list[OaPlan] = []
     no_oa = 0
     for case in cases:
-        found = plan_case(case)
+        found = plan_case(case, pub_date=read_pub_date)
         if not found:
             no_oa += 1
             print(
@@ -301,6 +320,14 @@ def main(argv: list[str]) -> int:
         print("경고: 출원서 없는 사건의 공개공보 공개일을 못 읽어 입력에서 뺐다", file=sys.stderr)
     if any(p.unmatched_claim_rows for p in plans):
         print("경고: 행정이력에 없는 접수의 청구항 줄은 입력에서 뺐다", file=sys.stderr)
+    for p in plans:
+        if p.no_first_spec:
+            print(f"경고: 최초 명세서가 없는 입력: {p.app_no}/{p.oa_no}", file=sys.stderr)
+    missing = [f"{p.app_no}/{p.oa_no}" for p in plans if p.missing_oa_file]
+    if missing:
+        # OA 원문 없는 입력 폴더가 "성공"으로 남지 않게 아무것도 안 쓰고 실패로 끝낸다
+        print(f"대상 OA 원문 없음 {len(missing)}통, 아무것도 안 씀: {missing}", file=sys.stderr)
+        return 1
 
     if args.write:
         # 쓰기 전에 대상을 한꺼번에 본다 (일부만 쓰고 멈추면 다음 실행이 꼬인다)

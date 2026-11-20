@@ -345,3 +345,64 @@ def test_audit_flags_publication_next_to_application_or_after_oa(tmp_path):
     assert audit(tmp_path / "out", pub_date=_pub_date("20990301")) == [
         f"{APP}/{OA1}: OA 뒤(또는 공개일 모름) 공개공보 {PUB}"
     ]
+
+
+# --- PR #155 리뷰 반영 ---
+
+
+def test_missing_target_oa_file_warns_fails_and_writes_nothing(tmp_path, capsys):
+    case = _make_case(tmp_path / "src")
+    (case / f"{APP}_OA_{OA1}.pdf").unlink()
+    (plan,) = plan_case(case)
+    assert plan.missing_oa_file
+    out = tmp_path / "out"
+    assert main(["--src", str(tmp_path / "src"), "--out", str(out)]) == 1
+    assert main(["--src", str(tmp_path / "src"), "--out", str(out), "--write"]) == 1
+    assert not out.exists()
+    assert "대상 OA 원문 없음" in capsys.readouterr().err
+
+
+def test_audit_flags_missing_target_oa_file(tmp_path):
+    (plan,) = plan_case(_make_case(tmp_path / "src"))
+    d = write_plan(plan, tmp_path / "out")
+    (d / f"{APP}_OA_{OA1}.pdf").unlink()
+    assert audit(tmp_path / "out") == [f"{APP}/{OA1}: 대상 OA 원문 없음"]
+
+
+def test_file_number_not_in_history_is_dropped_with_reason(tmp_path):
+    case = _make_case(tmp_path / "src")
+    (case / f"{APP}_보정서_{GHOST}.pdf").write_bytes(b"x")
+    (plan,) = plan_case(case)
+    assert dict(plan.dropped_files)[f"{APP}_보정서_{GHOST}.pdf"] == "이력에 없음"
+
+
+def test_main_audit_returns_1_on_problems_or_no_folders(tmp_path, capsys):
+    (plan,) = plan_case(_make_case(tmp_path / "src"))
+    d = write_plan(plan, tmp_path / "out")
+    assert main(["--audit", str(tmp_path / "out")]) == 0
+    (d / f"{APP}_등록공보.pdf").write_bytes(b"x")
+    assert main(["--audit", str(tmp_path / "out")]) == 1
+    (tmp_path / "empty").mkdir()
+    assert main(["--audit", str(tmp_path / "empty")]) == 1
+    assert "검사할 OA 폴더가 없음" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("sealed", ["report", "_report"])
+def test_report_paths_are_refused_before_reading(tmp_path, sealed, capsys):
+    src = tmp_path / "goldsets" / sealed / "case_full"
+    _make_case(src)  # 멀쩡한 사건이 있어도 열지 않는다
+    out = tmp_path / "out"
+    assert main(["--src", str(src), "--out", str(out), "--write"]) == 1
+    assert not out.exists()
+    assert main(["--src", str(tmp_path / "src_ok"), "--out", str(tmp_path / sealed)]) == 1
+    assert main(["--audit", str(src)]) == 1
+    assert "봉인" in capsys.readouterr().err
+
+
+def test_publication_after_oa_without_application_warns(tmp_path, monkeypatch, capsys):
+    import scripts.split_cases_at_oa as mod
+
+    _make_case(tmp_path / "src", application_file=False)
+    monkeypatch.setattr(mod, "read_pub_date", lambda path: "20990301")
+    assert main(["--src", str(tmp_path / "src"), "--out", str(tmp_path / "out")]) == 0
+    assert "최초 명세서가 없는" in capsys.readouterr().err
