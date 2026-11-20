@@ -46,7 +46,16 @@ def make_config(tmp_path, gold_name="gold_ok.jsonl", base="config_ok.yaml", extr
     return path
 
 
-def run_main(tmp_path, root, *, gold_name="gold_ok.jsonl", chunks=CHECK_CHUNKS, extra=(), cfg=None):
+def run_main(
+    tmp_path,
+    root,
+    *,
+    gold_name="gold_ok.jsonl",
+    chunks=CHECK_CHUNKS,
+    extra=(),
+    cfg=None,
+    ignored=None,
+):
     cfg = cfg or make_config(tmp_path, gold_name)
     argv = [
         "--config",
@@ -61,7 +70,9 @@ def run_main(tmp_path, root, *, gold_name="gold_ok.jsonl", chunks=CHECK_CHUNKS, 
     ]
     if chunks is not None:
         argv += ["--chunks", str(chunks)]
-    return main(argv, commit="abc")
+    if ignored is None:  # 안 주면 진짜 git 검사
+        return main(argv, commit="abc")
+    return main(argv, commit="abc", ignored=ignored)
 
 
 def read_scores(tmp_path):
@@ -417,3 +428,40 @@ def test_not_in_scope_뺀_줄과_항목은_row_id와_수를_경고로_남긴다(
     # 범위 안에 정답이 있는 202는 경고하지 않는다
     assert not any("10-2020-0000202:r1" in m for m in msgs)
     assert "가짜 질의" not in caplog.text
+
+
+# ---- --rows-out (task-3, requirements 10) ---------------------------------
+
+
+def test_rows_out은_점수_줄_수와_같고_순위가_맞다(tmp_path, goldsets_root):
+    out = tmp_path / "rows.jsonl"
+    assert (
+        run_main(tmp_path, goldsets_root, extra=("--rows-out", str(out)), ignored=lambda p: True)
+        == 0
+    )
+    lines = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
+    assert len(lines) == read_scores(tmp_path)["n"]
+    assert set(lines[0]) == {"row_id", "doc_ids", "first_hit_rank"}
+    # 점검 예는 상위 5 안에 맞힘(hit@5 = 1)이라 순위가 1~5 사이 정수
+    assert 1 <= lines[0]["first_hit_rank"] <= 5
+    assert "query" not in lines[0]
+
+
+def test_rows_out_없으면_파일을_안_만든다(tmp_path, goldsets_root):
+    assert run_main(tmp_path, goldsets_root) == 0
+    assert not (tmp_path / "rows.jsonl").exists()
+
+
+def test_rows_out이_git_안_추적_경로면_1과_파일_없음(tmp_path, goldsets_root):
+    # 진짜 검사: 저장소 안의 추적되는 파일 경로
+    target = REPO_ROOT / "README.md"
+    before = target.read_bytes()
+    assert run_main(tmp_path, goldsets_root, extra=("--rows-out", str(target))) == 1
+    assert target.read_bytes() == before
+    assert not (tmp_path / "out" / "scores.json").exists()
+
+
+def test_rows_out_git_저장소_밖_128이면_1(tmp_path, goldsets_root):
+    out = tmp_path / "rows.jsonl"  # tmp_path는 저장소 밖: git이 128을 돌려줌
+    assert run_main(tmp_path, goldsets_root, extra=("--rows-out", str(out))) == 1
+    assert not out.exists()
