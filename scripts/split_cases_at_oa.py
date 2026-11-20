@@ -261,9 +261,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--audit", type=Path, help="이 입력 폴더를 검사만 한다")
     args = ap.parse_args(argv)
 
-    # report는 봉인: 경로에 report가 들어 있으면 열기 전에 멈춘다
-    for path in (args.src, args.out, args.audit):
-        if path and any(part == "report" or part.startswith("_report") for part in path.parts):
+    # report는 봉인: 경로(링크를 따라간 실제 경로 포함)에 report가 있으면 열기 전에 멈춘다
+    for path in (args.src, args.out, args.audit, args.log):
+        if path and any(
+            part == "report" or part.startswith("_report")
+            for part in (*path.parts, *path.resolve().parts)
+        ):
             print(f"봉인된 report 경로라 열지 않음: {path}", file=sys.stderr)
             return 1
 

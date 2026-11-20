@@ -406,3 +406,31 @@ def test_publication_after_oa_without_application_warns(tmp_path, monkeypatch, c
     monkeypatch.setattr(mod, "read_pub_date", lambda path: "20990301")
     assert main(["--src", str(tmp_path / "src"), "--out", str(tmp_path / "out")]) == 0
     assert "최초 명세서가 없는" in capsys.readouterr().err
+
+
+# --- PR #155 승인 때 참고 반영 ---
+
+
+def test_report_guard_follows_symlinks_and_checks_log(tmp_path, capsys):
+    sealed = tmp_path / "goldsets" / "report" / "case_full"
+    _make_case(sealed)
+    link = tmp_path / "looks_fine"
+    link.symlink_to(sealed)  # 이름은 멀쩡하지만 report를 가리킨다
+    out = tmp_path / "out"
+    assert main(["--src", str(link), "--out", str(out), "--write"]) == 1
+    assert not out.exists()
+    _make_case(tmp_path / "src")
+    log = tmp_path / "goldsets" / "report" / "x.log"
+    assert main(["--src", str(tmp_path / "src"), "--out", str(out), "--log", str(log)]) == 1
+    assert not log.exists()
+    assert "봉인" in capsys.readouterr().err
+
+
+def test_several_publications_each_judged_by_date(tmp_path):
+    case = _make_case(tmp_path / "src", application_file=False)
+    early, late = f"{APP}_공개공보.pdf", f"{APP}_정정_공개공보.pdf"
+    (case / late).write_bytes(b"x")
+    dates = {early: "20990115", late: "20990301"}  # OA1 발송 20990201 앞·뒤
+    (plan,) = plan_case(case, pub_date=lambda p: dates[p.name])
+    assert early in plan.copy_files
+    assert dict(plan.dropped_files)[late] == "OA 뒤 공개"
