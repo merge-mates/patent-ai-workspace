@@ -16,9 +16,8 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# 임시: 원문 대조 도우미를 elements.py에서 빌려 쓴다 (B1 리뷰가 끝나면 공용 이름으로 옮긴다)
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation, resolve_citations
-from patent_ai.core.f3_claim_compare.elements import ClaimElement, SplitClaim, _find, _squeeze
+from patent_ai.core.f3_claim_compare.elements import ClaimElement, SplitClaim
 from patent_ai.core.f3_claim_compare.examiner import (
     examiner_locations,
     find_claim_row,
@@ -26,6 +25,7 @@ from patent_ai.core.f3_claim_compare.examiner import (
 )
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
 from patent_ai.core.f3_claim_compare.result import ExaminerLocationRow, SearchLogRow
+from patent_ai.core.f3_claim_compare.textmatch import find_span
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.embed import query_embedder
 from patent_ai.core.llm.errors import ModelOutputInvalid
@@ -260,8 +260,7 @@ def _check(
                 one.dropped += 1
                 continue
             # 근거 글자가 그 조각 글에 그대로 있는지 (공백 줄이기만 허용)
-            squeezed, offsets = _squeeze(found.chunk.text)
-            span = _find(pick.quote, squeezed, offsets, 0)
+            span = find_span(pick.quote, found.chunk.text)
             if span is None:
                 errors.append(
                     f"rows[{i}]: quote가 {pick.chunk_id} 글에 그대로 없음: {pick.quote!r}"

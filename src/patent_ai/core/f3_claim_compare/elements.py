@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.f3_claim_compare.textmatch import find_from, squeeze
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
@@ -69,42 +70,6 @@ class SplitClaim(BaseModel):
     status: Status  # 구성요소·인용 관계 status 중 가장 나쁜 값
 
 
-# ---- 원문 대조 (공백 줄이기만 허용) ----
-def _squeeze(text: str) -> tuple[str, list[int]]:
-    """이어진 공백(줄바꿈 포함)을 한 칸으로 줄인 글자와, 그 글자마다 원문 오프셋을 돌려준다."""
-    chars: list[str] = []
-    offsets: list[int] = []
-    for i, ch in enumerate(text):
-        if ch.isspace():
-            if chars and chars[-1] != " ":
-                chars.append(" ")
-                offsets.append(i)
-        else:
-            chars.append(ch)
-            offsets.append(i)
-    if chars and chars[-1] == " ":  # 끝 공백은 뺀다
-        chars.pop()
-        offsets.pop()
-    return "".join(chars), offsets
-
-
-def _find(
-    needle: str, squeezed: str, offsets: list[int], cursor: int
-) -> tuple[int, int, int] | None:
-    """needle을 줄인 원문의 cursor 자리부터 찾는다.
-
-    돌려주는 값: (원문 start, 원문 end, 다음 cursor). 못 찾으면 None.
-    """
-    wanted = " ".join(needle.split())
-    if not wanted:
-        return None
-    pos = squeezed.find(wanted, cursor)
-    if pos < 0:
-        return None
-    last = pos + len(wanted) - 1
-    return offsets[pos], offsets[last] + 1, last + 1
-
-
 def _confirmed(checked: str) -> Status:
     return Status(value=StatusValue.CONFIRMED, checked=checked)
 
@@ -131,7 +96,7 @@ class _Checked:
 
 
 def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: set[int]) -> _Checked:
-    squeezed, offsets = _squeeze(claim_text)
+    squeezed, offsets = squeeze(claim_text)
     errors: list[str] = []
     wrong_claim = answer.claim != claim
     if wrong_claim:
@@ -140,7 +105,7 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
     # 1) 인용 관계: 인용구가 원문에 있는지, 번호가 이 사건의 앞 청구항인지만 본다
     depends_errors = _check_depends_on(answer, claim, claim_numbers)
     quote = (answer.depends_on_quote or "").strip()
-    quote_at = _find(quote, squeezed, offsets, 0) if quote else None
+    quote_at = find_from(quote, squeezed, offsets, 0) if quote else None
     if quote and quote_at is None:
         depends_errors.append(f"depends_on_quote가 청구항 원문에 그대로 없음: {quote!r}")
 
@@ -149,7 +114,7 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
     cursor = quote_at[2] if quote_at else 0
     spots: list[tuple[int, int, int, int] | None] = []  # (원문 start, end, 줄인 글 start, end)
     for item in answer.elements:
-        found = _find(item.text, squeezed, offsets, cursor)
+        found = find_from(item.text, squeezed, offsets, cursor)
         if found is None:
             spots.append(None)
             continue
