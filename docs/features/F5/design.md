@@ -38,19 +38,19 @@ flowchart LR
 ```
 1. 입력: 사건의 최신 결과들(API가 고르는 규칙 그대로, data-model 5절: OA마다·단위마다 가장 최근 성공 실행)과 사건 자료.
 2. 처리:
-   - 빠진 자료·보류 작업: `build_case_materials` (#16, `core/f1_oa_reader/case_grouping.py`). F1 일: 문서 목록(문서마다 묶기 `status`와 글자 추출 `text_status`), `missing`, `held_tasks`. 지금 코드 안의 `collect_review_items` 호출과 개수 계산은 빼고, 대신 마지막에 `finalize_case_materials([oa], materials)`를 불러 돌려준다 (M1 저장 경로가 마무리를 거치지 않은 ⑥을 저장하지 않게. F2~F4 결과가 생기면 지휘가 모든 결과로 다시 부른다). 기대는 작업 이름은 3-2절 이름 규칙.
+   - 빠진 자료·보류 작업: `build_case_materials` (#16, `core/f1_oa_reader/case_grouping.py`). F1 일: 문서 목록(문서마다 묶기 `status`와 글자 추출 `text_status`), `missing`, `held_tasks`. 지금 코드 안의 `collect_review_items` 호출과 개수 계산은 빼고, 대신 마지막에 `finalize_case_materials(oas, materials)`를 불러 돌려준다 (M1 저장 경로가 마무리를 거치지 않은 ⑥을 저장하지 않게. F2~F4 결과가 생기면 지휘가 모든 결과로 다시 부른다). ⑥은 사건마다 한 줄이라, `build_case_materials`는 OA 하나가 아니라 **사건의 OA 전부**(`oas: list[OAResult]`, 올라온 순서)를 받아 OA마다 빠진 자료·보류를 만들고 전부를 마무리에 넘긴다 (두 번째 OA를 올려도 첫 OA의 줄이 사라지지 않게). 기대는 작업 이름은 3-2절 이름 규칙.
    - F5 마무리: `finalize_case_materials(results: list[ResultBase], materials: CaseMaterials) -> CaseMaterials` (`core/schemas/propagation.py`, 새로). 순서: `collect_review_items(results, materials)`(있음) + 문서 줄(아래) → **묶기**(아래) → `review_items`·`review_items_count`를 채운 새 ⑥. 결과 ①~⑤를 다 받으므로 F2~F4가 생겨도 이 함수만 쓴다.
-   - 문서 줄: **원인마다 한 줄**. 문서 하나에 칸이 둘이다 (3-2절). ⓐ 묶기 상태 `CaseDocument.status`(#137, 다른 출원번호 `conflict`·번호 못 읽음 `unverified`)가 `confirmed`가 아니면 한 줄, ⓑ 글자 추출 상태 `CaseDocument.text_status`(새 칸, `PageText.status`, 스캔본 `unverified(body_missing)`)가 `confirmed`가 아니면 또 한 줄. 줄 모양: `kind = "unverified"`(묶기 `conflict`면 `"conflict"`), `target = "materials.documents[i]"`, `label = "<kind> <document_id>"`, `reason = <그 칸의 reason, conflict면 "값이 서로 충돌">`. 두 칸을 합치지 않는다: 합치면 같은 등급에서 앞 것이 이겨 `body_missing`이 지워지고, 묶기 상태로 입력을 자르는 `cut_to_oa`(#54)가 정상인 스캔본 OA를 빼 버린다 (스캔본은 빼지 않고 `input_unverified`로 흘려 원인 줄을 보인다). 이렇게 하면 지금 개수에만 더하던 "확인되지 않은 자료"(unsettled)도 줄이 되고, 스캔본의 **원인 줄**이 생긴다.
+   - 문서 줄: **원인마다 한 줄**. 문서 하나에 칸이 둘이다 (3-2절). ⓐ 묶기 상태 `CaseDocument.status`(#137, 다른 출원번호 `conflict`·번호 못 읽음 `unverified`)가 `confirmed`가 아니면 한 줄, ⓑ 글자 추출 상태 `CaseDocument.text_status`(새 칸, `PageText.status`, 스캔본 `unverified(body_missing)`)가 `confirmed`가 아니면 또 한 줄. 줄 모양: `kind = "unverified"`(묶기 `conflict`면 `"conflict"`), `target = "materials.documents[i]"`, `label = "<kind> <document_id>"`, `reason = <그 칸의 reason, conflict면 "값이 서로 충돌">`. 두 칸을 합치지 않는다: 합치면 같은 등급에서 앞 것이 이겨 `body_missing`이 지워진다. 단 글자가 없어 생긴 묶기 `unverified(not_extracted)`는 원인이 아니라 결과라 줄을 따로 내지 않는다: `text_status`가 `unverified(body_missing)`이면 그 문서의 묶기 `not_extracted` 줄은 빼고 `body_missing` 한 줄만 낸다 (requirements 합격 기준 3 "원인 줄 1"). 묶기 `conflict`(다른 출원번호)는 글자와 상관없는 원인이라 그대로 따로 낸다. 어느 자료를 실행 입력에서 뺄지(`cut_to_oa`)는 #54가 묶기 `status`로 정하고, F5는 뺀 것도 남긴 것도 줄로 보이기만 한다. 이렇게 하면 지금 개수에만 더하던 "확인되지 않은 자료"(unsettled)도 줄이 되고, 스캔본의 **원인 줄**이 생긴다.
    - `review_items_count = len(review_items)` (검사로 강제). `review_items`가 `None`이면 "마무리 안 함"이고 저장소가 저장을 거부한다 (3-2절).
 3. 결과 저장: 지휘 에이전트가 실행이 끝날 때, 그리고 자료가 더해질 때(`POST /cases/{id}/documents`) ⑥을 다시 써서 `case_materials`에 저장한다 (data-model 5절, 사건마다 최신 한 줄). 화면은 저장본만 읽는다 (읽을 때 다시 계산하지 않음 → 사건을 다시 열어도 같은 목록). 둘이 겹치면 마지막에 쓴 쪽이 남는다 (덮어쓰기, 같은 입력이면 같은 ⑥이라 문제 없음). 이 저장 연결은 지휘·자료 올리기 쪽 이슈(#104·#16)가 하고, F5는 `finalize_case_materials`를 준다.
 
 **묶기 규칙** (검토할 사항이 전파 줄로 넘치지 않게):
-- 이유가 `input_unverified`인 필드 줄은 결과 하나에 한 줄로 묶는다: `kind = "unverified"`, `target = <결과 경로>`, `label = <결과 이름>`, `reason = "앞 입력이 확인되지 않음: <칸 N개>"`. 원인 줄(처음 확인되지 않은 값, 이유가 `input_unverified`가 아닌 것)은 그대로 둔다. 예: 스캔본 OA (묶기는 번호를 못 읽어 `unverified(not_extracted)`, 글자는 `unverified(body_missing)`) → 원인 줄 둘 `{kind: "unverified", target: "materials.documents[0]", label: "oa doc_oa_1", reason: "body_missing"}`·`{… 같은 target·label, reason: "not_extracted"}` + 묶은 줄 `{kind: "unverified", target: "oa_result[0]", label: "oa_1", reason: "앞 입력이 확인되지 않음: 칸 N개"}` 세 줄.
+- 이유가 `input_unverified`인 필드 줄은 결과 하나에 한 줄로 묶는다: `kind = "unverified"`, `target = <결과 경로>`, `label = <결과 이름>`, `reason = "앞 입력이 확인되지 않음: <칸 N개>"`. 원인 줄(처음 확인되지 않은 값, 이유가 `input_unverified`가 아닌 것)은 그대로 둔다. 예: 스캔본 OA (묶기는 번호를 못 읽어 `unverified(not_extracted)`, 글자는 `unverified(body_missing)`) → 원인 줄 하나 `{kind: "unverified", target: "materials.documents[0]", label: "oa doc_oa_1", reason: "body_missing"}` (묶기 `not_extracted`는 위 규칙으로 뺌) + 묶은 줄 `{kind: "unverified", target: "oa_result[oa_1]", label: "oa_1", reason: "앞 입력이 확인되지 않음: 칸 N개"}` 두 줄.
 - 같은 `(target, kind, reason)`이 두 번 나오면 하나만 둔다. `reason`이 다르면 원인이 다르니 둘 다 둔다 (위 스캔본 예). 같은 열쇠가 생기는 경우: 뒤 기능이 같은 경로·같은 이유를 다시 낼 때를 막는 안전 장치.
 - 순서: 빠진 자료 → 충돌 → 확인되지 않음 → 직접 판단 필요 → 직접 검토 필요 → 다시 확인 필요. 같은 종류 안에서는 결과 순서 그대로. 사람이 먼저 손대야 풀리는 것(자료 올리기)을 위에 둔다.
 - 사람 선택 기다림(F4 확신 "낮음" 묶음)은 `held_tasks`에 넣지 않는다. 그 묶음 결과의 `needs_human_judgment` 플래그가 `kind = "needs_human_judgment"` 줄로 이미 나온다. 화면은 그 줄에 "고르기" 버튼을 단다 (M3, #43). 보류의 두 종류(자료 기다림 / 사람 선택 기다림)는 검토할 사항 한곳에서 보이고, 데이터는 각자 있던 자리에 둔다.
 - 실패하면: `finalize_case_materials`는 예외를 그대로 올린다 (빈 목록으로 삼키지 않음). 받은 지휘가 ⑥을 저장하지 않고 실행을 `failed` + 이유로 끝낸다 (지휘 쪽 일, 테스트도 지휘 쪽). 이전 ⑥은 남는다. 화면은 "검토할 사항을 불러오지 못함"과 실패 이유 (개수 0으로 그리지 않음).
-- 비면: 결과 0개 → 경고 로그(있음) + 빠진 자료 줄만. 검토할 사항 0개는 정상("검토할 사항 없음"으로 보임).
+- 비면: 결과 0개 → 경고 로그(있음) + 빠진 자료 줄만. 검토할 사항 0개는 정상("검토할 사항 없음"으로 보임). `review_items`가 `None`인 ⑥(예전 저장본, 마무리 안 함)은 "없음"이 아니라 "검토할 사항을 아직 모으지 않음"으로 보인다 (6절).
 - 느리면: 해당 없음 (코드, 결과 수가 작음).
 
 ### 2-1. 흐름 방식
@@ -75,13 +75,13 @@ flowchart LR
   "held_tasks": [{"task": "f3_compare:oa_1:D2", "waiting_for": "D2 US20990000001A1 본문"}],
   "review_items": [
     {"kind": "missing_material", "target": "materials.missing[0]", "label": "D2 US20990000001A1 본문", "reason": "body_missing"},
-    {"kind": "needs_human_review", "target": "oa_result[0].rejections[2]", "label": "42-3", "reason": "지원 안 하는 거절이유 42-3"}
+    {"kind": "needs_human_review", "target": "oa_result[oa_1].rejections[2]", "label": "42-3", "reason": "지원 안 하는 거절이유 42-3"}
   ],
   "review_items_count": 2
 }
 ```
 - `review_items: list[ReviewItem] | None = None` (모양은 `propagation.py`의 `ReviewItem{kind, target, label, reason}` 그대로). `None` = 마무리(`finalize_case_materials`)를 안 거친 ⑥이고, 저장소(`case_repository`, #137)의 저장 함수가 거부한다 (0건이 조용히 "검토할 사항 없음"으로 저장되지 않게). 목록이 있으면 `review_items_count == len(review_items)`를 검사로 강제한다. `model_copy(update=…)`는 검사를 건너뛰므로 저장 전에 `model_validate`로 다시 검사한다.
-- `target` 경로 규칙: `oa_result[i]…`는 사건의 i번째 OA(올라온 순서)의 `OAResult` 안 경로, `materials.missing[i]`는 ⑥ 안. 화면은 이 경로로 그 값의 카드로 이동한다. 뒤 결과(②~⑤)가 생기면 `units[i]`·`comparisons[i]`… 같은 꼴로 더한다 (그 기능 설계에서).
+- `target` 경로 규칙: `oa_result[<oa_id>]…`는 그 OA(`OAResult.oa_id`)의 `OAResult` 안 경로다 (목록 위치가 아니라 ID라, 넘긴 목록 순서나 OA 수가 바뀌어도 같은 값을 가리킨다. 지금 `collect_review_items`의 `oa_result[{i}]`(enumerate)를 바꾼다), `materials.missing[i]`는 ⑥ 안. 화면은 이 경로로 그 값의 카드로 이동한다. 뒤 결과(②~⑤)가 생기면 `units[i]`·`comparisons[i]`… 같은 꼴로 더한다 (그 기능 설계에서).
 - **보류 작업 이름 규칙** (`held_tasks.task`, `missing.depends_on_tasks`): `<작업>:<oa_id>:<대상>`. `oa_id`는 `OAResult.oa_id`. 작업은 `f3_compare`(인용문헌 하나의 대비) / `f3_all`(그 OA의 F3 전체) / `f4_all`(그 OA의 F4 전체) / `f4_amend_basis`(보정 근거 위치). F1 requirements 합격 기준 4의 네 갈래가 이 넷이다. 대상은 `f3_compare`면 인용문헌 라벨 `Citation.label`(`D1`·`D2`, OA마다 늘 있고 겹치지 않음. 번호를 못 읽은 문헌도 라벨은 있다), 나머지는 `*`. 예: `f3_compare:oa_1:D2`. 화면 글은 이 이름이 아니라 `waiting_for`(사람 글, 지금 코드 `_citation_name` 꼴 그대로 "D2 US20990000001A1 본문")와 작업 종류 한국어("F3 대비")로 만든다. `what`·`waiting_for` 꼴은 바꾸지 않는다.
 - 이름을 바꾸면 같이 고칠 곳: `core/f1_oa_reader/case_grouping.py`, `tests/core/f1/test_case_grouping.py`, `tests/fixtures/case_missing_citation/case_materials.json`, `tests/core/schemas/test_fixtures.py`. 문서(F1 requirements·architecture·product·cite-search)의 "F3 대비" 글은 사람 말이라 그대로 둔다.
 - `CaseDocument.status: Status`는 PR #137(#16)이 묶기 상태로 더한 칸이고 뜻을 바꾸지 않는다. F5는 `CaseDocument.text_status: Status | None = None`(글자 추출 상태, `PageText.status`. 글자를 뽑지 않는 자료는 `None`)을 따로 더한다 (2절 문서 줄).
@@ -141,6 +141,7 @@ flowchart LR
 │ ③ 직접 검토 필요  거절이유 ③ 42조 3항 (지원 안 하는 거절이유) │
 └──────────────────────────────────────────────────────────┘
 ```
+- `review_items`가 `None`이면 "검토할 사항을 아직 모으지 않음" (0건으로 그리지 않음).
 - 줄을 누르면 `target`의 카드로 이동한다. N은 `review_items` 줄 수. 패널 줄에는 원문 링크를 달지 않는다 (링크는 카드의 값 옆에만, 원문에서 확인된 값만: requirements 1).
 - 실행이 `failed`이면 사건 머리에 실패 이유와 "이전 결과 (<실행 시각>)"를 보이고 이전 결과는 그대로 보인다 (API가 가장 최근 성공 실행 결과를 줌, data-model 5절).
 
@@ -155,7 +156,7 @@ flowchart LR
 | `input_unverified` 줄은 결과마다 한 줄로 묶음 | 칸마다 한 줄 | 스캔본 하나로 수십 줄이 생겨 원인이 묻힘 | 설계 | requirements 근거 절 |
 | 사람 선택 기다림은 `held_tasks`가 아니라 플래그 줄 | `held_tasks`에 같이 | 데이터 자리를 하나로 두면 F4 선택 API와 두 군데를 맞춰야 함. 화면에서는 한곳 | 설계 | api/README.md 실행 상태 |
 | 보류 작업 이름을 코드 규칙으로 | 사람 글 | 자료가 오면 어느 작업을 풀지 코드가 찾아야 함 | 설계 | F1 requirements 4 |
-| 글자 추출 상태는 `CaseDocument.text_status`로 따로 | 묶기 `status`에 `worst_status`로 합침 | 합치면 원인 하나가 지워지고(`body_missing`), 묶기 상태로 자르는 `cut_to_oa`가 스캔본 OA를 뺌 | PR #141 리뷰 (재아) | #137 `case_materials.py` 주석 |
+| 글자 추출 상태는 `CaseDocument.text_status`로 따로 | 묶기 `status`에 `worst_status`로 합침 | 합치면 같은 등급에서 원인 하나가 지워짐(`body_missing`). 글자 없어 생긴 묶기 `not_extracted`는 결과라 줄을 안 냄 | PR #141 리뷰 (재아) | #137 `case_materials.py` 주석 |
 | 마무리 안 한 ⑥(`review_items = None`)은 저장 거부, `build_case_materials`가 끝에서 마무리 | 지휘 연결(#104)이 생길 때까지 빈 목록 저장 | 0건이 "검토할 사항 없음"으로 조용히 저장됨 | PR #141 리뷰 (재아) | CLAUDE.md 조용한 실패 |
 | 상태 표시는 글자 + 모양 | 색만 | 색으로만 구분하면 흑백 인쇄·색약에서 안 보임 | 설계 | requirements 1 |
 
@@ -168,7 +169,8 @@ flowchart LR
 |---|---|---|---|
 | `tests/fixtures/case_missing_citation/` (있음) | 인용문헌 2건 중 1건 본문 없음 | `missing` 1, `held_tasks`에 `f3_compare:oa_1:<그 문헌>`만, `review_items`에 빠진 자료 줄 | 3 |
 | `tests/fixtures/f5/case_all_statuses/` (새로) | 칸마다 네 값이 하나씩 + `needs_human_review` 1 + 날짜 칸 | `review_items`에 충돌·확인되지 않음·직접 검토 필요 줄, 조회 범위 내 없음은 줄 없음. 화면 스크린샷 기준 | 1, 2, 3 |
-| `tests/fixtures/f5/case_scanned/` (새로) | 글자 없는 OA (묶기 `not_extracted`, 글자 `body_missing`) | 원인 줄 `materials.documents[0]` 2 (이유 둘) + 묶은 `oa_result[0]` 줄 1 (칸마다 줄 아님) | 근거 절 |
+| `tests/fixtures/f5/case_scanned/` (새로) | 글자 없는 OA (묶기 `not_extracted`, 글자 `body_missing`) | 원인 줄 `materials.documents[0]` 1 (`body_missing`) + 묶은 `oa_result[oa_1]` 줄 1 (칸마다 줄 아님) | 근거 절 |
+| 단위 테스트 | OA 둘인 사건(`oa_1`·`oa_2`, 각각 빠진 인용문헌 1) | ⑥에 두 OA의 빠진 자료·보류가 다 있고, 줄 `target`이 `oa_result[oa_1]…`·`oa_result[oa_2]…`로 갈림 | 3 |
 | 단위 테스트 | 다른 출원번호 자료 1이 섞인 사건 | 그 문서 줄 1, 개수 = 줄 수 | 3 |
 | 단위 테스트 | 종류가 섞인 줄 | 빠진 자료 → 충돌 → 확인되지 않음 → 직접 판단 → 직접 검토 → 다시 확인 순 | 3 |
 | 단위 테스트 | `case_missing_citation`에 빠진 문헌을 받은 뒤(`received_citations`에 더함) 다시 `build_case_materials` + `finalize_case_materials` | 빠진 자료 줄·보류 0 | 3 |
