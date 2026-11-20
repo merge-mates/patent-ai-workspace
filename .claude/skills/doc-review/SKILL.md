@@ -2,7 +2,6 @@
 name: doc-review
 description: 기획안·requirements·design·architecture 문서를 critic 에이전트와 체크리스트로 검증한다. 문서를 "다 썼다"고 하기 전, 상대에게 승인을 부탁하기 전에 쓴다. 코드 리뷰에는 쓰지 않는다(/pr-review).
 argument-hint: "<문서 경로> [plan|requirements|design]"
-disable-model-invocation: true
 ---
 
 # 문서 검토: $ARGUMENTS

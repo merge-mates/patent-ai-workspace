@@ -172,6 +172,29 @@ def test_판본_모르는_항목이_있으면_줄은_남기고_채점기가_뺀�
     assert rows[0].edition_confirmed() and not rows[2].edition_confirmed()
 
 
+def test_정답_판본이_발송일_뒤면_unverified와_경고(tmp_path, caplog):
+    """#129 ①: 사람이 고른 판이 발송일에는 아직 시행 전이면 검색 범위에 없다."""
+    late = {"특허법": "특허법_212229_20200311 (+시행령_200001_20210101)"}
+    rows, skipped = convert([_case(applied=late)], _oa_dir(tmp_path))
+    assert skipped == 0
+    # 특허법 판(2020-03-11)은 발송일(2020-04-16) 전이라 그대로
+    assert rows[0].edition_confirmed()
+    # 시행령 판(2021-01-01)은 발송일 뒤: 그 항목만 unverified, 줄은 채점기가 뺀다
+    law_item, decree_item = rows[2].items
+    assert law_item.gold_edition.status == "confirmed"
+    assert decree_item.gold_edition.status == "unverified"
+    assert decree_item.gold_edition.effective_from is None
+    assert not rows[2].edition_confirmed()
+    assert "9520:r3" in caplog.text and "발송일" in caplog.text
+    assert "1020" not in caplog.text  # 출원번호는 로그에 남기지 않는다
+
+
+def test_정답_판본_시작일이_발송일과_같으면_그대로(tmp_path):
+    same_day = {"특허법": "특허법_212229_20200416 (+시행령_193953_20170603)"}
+    rows, _ = convert([_case(applied=same_day)], _oa_dir(tmp_path))
+    assert all(r.edition_confirmed() for r in rows)
+
+
 def test_자르기가_정답_순번과_안_맞으면_그_사건은_빼고_센다(tmp_path, caplog):
     two = OA.replace("3. 이 출원은", "이 출원은")  # 순번이 2까지만
     rows, skipped = convert([_case()], _oa_dir(tmp_path, text=two))

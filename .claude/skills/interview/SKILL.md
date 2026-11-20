@@ -2,7 +2,6 @@
 name: interview
 description: 기획안·requirements·design을 쓰기 전에 모호한 곳을 질문으로 찾아 메우고, 정한 것을 문서에 바로 쓴다. 새 기능을 시작할 때, 문서에 "적당히", "나중에" 같은 말이 남아 있을 때 쓴다. 이미 합격 기준이 숫자로 정해진 일에는 쓰지 않는다.
 argument-hint: "[기능 이름 또는 문서 경로]"
-disable-model-invocation: true
 ---
 
 # 인터뷰: $ARGUMENTS

@@ -4,12 +4,24 @@
     {
       "document_id": "doc_oa_1",
       "kind": "oa",
-      "source": "uploaded"
+      "source": "uploaded",
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "출원번호·문서번호 확인",
+        "searched_scope": null
+      }
     },
     {
       "document_id": "doc_cit_kr_1",
       "kind": "citation",
-      "source": "api"
+      "source": "api",
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "인용문헌: 출원번호로 묶지 않음",
+        "searched_scope": null
+      }
     }
   ],
   "missing": [
