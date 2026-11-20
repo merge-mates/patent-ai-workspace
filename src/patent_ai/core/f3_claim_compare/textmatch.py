@@ -4,6 +4,13 @@
 이어진 공백·줄바꿈을 한 칸으로 줄여 비교하고, 찾은 자리는 원문 오프셋으로 돌려준다.
 """
 
+import hashlib
+
+
+def text_hash(text: str) -> str:
+    """글자의 sha256 앞 12자. 기록(검색 로그)에 원문 대신 싣는다."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
 
 def squeeze(text: str) -> tuple[str, list[int]]:
     """이어진 공백(줄바꿈 포함)을 한 칸으로 줄인 글자와, 그 글자마다 원문 오프셋을 돌려준다."""
