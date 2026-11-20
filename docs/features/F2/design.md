@@ -177,8 +177,8 @@ flowchart LR
 - **결과에 남길 것:** 모델 이름, 프롬프트 판, 설정 파일 판, 색인 판·지문 (`runs`·`agent_steps`, 실험은 `scores.json`).
 
 ### 7-2. 각자 칸
-[제안 — 재아 님 확인 필요] 한 사람(은진)이 구현하고 설정만 바꿔 비교한다 (requirements "비교 실험").
-- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → `experiments/m2-i3-f2-review-split/`
+한 사람(은진)이 구현하고 설정만 바꿔 비교한다. 기본 `impl`은 `split`이고, `single` 비교는 M3에 시간 나면 한다 (requirements "비교 실험", 11/20 정함).
+- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → (M3에 돌리면) `experiments/m3-f2-review-split/`
 - 모델 호출: 거절이유마다 답 쓰기 1~3번 + 근거 검토 1~2번 [가정]. OA 한 통(거절이유 2~3개)에 10번 안팎.
 - 프롬프트 파일: `prompts/f2/research.md` (F2), `prompts/agents/evidence_review.md` (공통 근거 검토).
 - 실험 설정: `config/f2.yaml`의 `impl`, `query_style`, `search_mode`.
@@ -187,7 +187,7 @@ flowchart LR
 1. 법령 질의 모양: 거절이유 본문 전체(지금) / 결론 문장만 / 모델이 다시 쓴 질의. 벡터가 BM25보다 낮은 이유가 긴 질의 잡음인지 본다 (벡터 기준선 카드 "다음"). 말뭉치 `law`, 색인 `law-idx-v2`.
 2. 심사기준·판례 BM25 / 벡터 기준선 (`law-idx-v3`, #24 뒤).
 3. hybrid: 1·2 뒤 BM25·벡터가 서로 다른 줄을 찾을 때만 (검색 계약에 자리만 있음).
-4. 근거 검토 역할 분리 `single` / `split` (PRD 비교 축, #29 뒤).
+4. (M3, 시간 나면) 근거 검토 역할 분리 `single` / `split` (PRD 비교 축). M2는 `split`만 만든다.
 - 임베딩 모델 비교(3-large, 한국어 모델)는 1에서 벡터가 여전히 크게 낮을 때만 한다 [제안].
 - 각 실험의 CQ 후보는 검색 계약대로 `work/retrieval/<실험>/`에 쌓는다.
 
