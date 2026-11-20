@@ -17,6 +17,7 @@ from patent_ai.core.llm.errors import ModelConfigError
 _SETTING_KEYS = (
     "impl",
     "second_search",
+    "second_search_depth",
     "use_examiner_paragraphs",
     "min_quote_chars",
     "search",

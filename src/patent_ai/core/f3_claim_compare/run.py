@@ -34,7 +34,7 @@ from patent_ai.retrieval.repository import ChunkRepository, PostgresChunkReposit
 
 logger = logging.getLogger(__name__)
 
-_ALL_CHECKED = "판단 단위·대비표·명확성 검토의 status가 모두 확인됨"
+_ALL_CHECKED = "판단 단위·대비표·명확성 검토가 모두 확인됨이고 보류한 작업이 없음"
 
 
 def make_search_resources(config: F3Config, ctx: RunContext) -> tuple[Searcher, ChunkRepository]:
@@ -139,6 +139,15 @@ def run_f3(
     statuses = (
         [u.status for u in units] + [t.status for t in tables] + [r.status for r in clarity.reviews]
     )
+    # 보류한 작업이 있으면 그만큼 결과를 못 만든 것이다. 확인됨으로 모으지 않는다
+    statuses += [_held_status(h, oa_id) for h in held]
+    # 대비표·명확성 검토가 하나도 안 나온 단위도 마찬가지 (보류로 안 잡힌 경우까지)
+    done = {t.unit_id for t in tables} | {r.unit_id for r in clarity.reviews}
+    empty = [u.unit_id for u in units if u.unit_id not in done]
+    if empty:
+        logger.warning("run_f3 %s: 결과가 없는 판단 단위 %d개", oa_id, len(empty))
+        missing = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+        statuses += [missing] * len(empty)
     if not statuses:
         logger.warning("run_f3 %s: 판단 단위·대비표·명확성 검토가 모두 0개", oa_id)
     return F3Result(
@@ -151,6 +160,18 @@ def run_f3(
         examiner_locations=compared.examiner_locations,
         status=worst_status(statuses, _ALL_CHECKED),
     )
+
+
+def _held_status(held: HeldTask, oa_id: str) -> Status:
+    """보류한 작업 하나가 결과 전체 status에 주는 값.
+
+    인용문헌 본문을 기다리는 보류(`f3_compare:<oa_id>:D2`)는 본문 미확보,
+    그 밖(청구항 글자·대상 청구항·짚은 문구·대비할 구성요소가 없음)은 못 뽑음.
+    """
+    parts = held.task.split(":")
+    waits_for_body = parts[:2] == ["f3_compare", oa_id] and len(parts) == 3
+    reason = UnverifiedReason.BODY_MISSING if waits_for_body else UnverifiedReason.NOT_EXTRACTED
+    return Status(value=StatusValue.UNVERIFIED, reason=reason)
 
 
 def _unverified_unit(unit: JudgmentUnit) -> JudgmentUnit:

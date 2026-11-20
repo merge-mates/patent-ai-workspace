@@ -153,7 +153,33 @@ def _novelty_run(claims_status):
 def test_청구항_판이_확인되지_않으면_신규성_대비표에_직접_검토_필요가_붙는다():
     confirmed = _novelty_run(OK)
     assert confirmed.comparisons[0].summary.verdict == "different"
-    assert confirmed.comparisons[0].flags == []
+    # 신규성 대비표에는 표시 값과 상관없이 늘 직접 검토 필요가 붙는다 (AI 정리일 뿐 판정이 아님)
+    assert Flag.NEEDS_HUMAN_REVIEW in confirmed.comparisons[0].flags
+    assert confirmed.status.value == StatusValue.CONFIRMED
     lowered = _novelty_run(bad(UnverifiedReason.EDITION_UNKNOWN))
     assert lowered.comparisons[0].summary.verdict == "different"  # 요약은 그대로
     assert Flag.NEEDS_HUMAN_REVIEW in lowered.comparisons[0].flags
+
+
+# ---- PR 전체 리뷰 고침: 보류가 있으면 결과가 확인됨으로 나오지 않는다 ----
+def test_신규성_단일_인용이_본문_미확보면_결과가_확인됨이_아니다():
+    # 색인에 조각이 없는 문헌 하나만 인용: 대비표를 못 만든다
+    result = oa([rejection(1, "29-1-1", [1], [citation("D1", "KR20990000099A")])])
+    answers = scenario.responses()
+    answers["f3.split_elements"] = answers["f3.split_elements"][:1]
+    answers["f3.compare"], answers["f3.clarity"] = [], []
+    out, _ = _run(result, answers=answers)
+    assert out.comparisons == [] and out.held_tasks
+    assert out.status.value == StatusValue.UNVERIFIED
+    assert out.status.reason == UnverifiedReason.BODY_MISSING
+
+
+def test_짚은_문구가_없는_명확성_줄만_있으면_결과가_확인됨이_아니다():
+    result = oa([rejection(1, "42-4-2", [1])])  # 청구항 줄에 clarity_terms가 없다
+    answers = scenario.responses()
+    answers["f3.split_elements"] = answers["f3.split_elements"][:1]
+    answers["f3.compare"], answers["f3.clarity"] = [], []
+    out, _ = _run(result, answers=answers)
+    assert out.clarity_reviews == [] and [h.task for h in out.held_tasks]
+    assert out.status.value == StatusValue.UNVERIFIED
+    assert out.status.reason == UnverifiedReason.NOT_EXTRACTED

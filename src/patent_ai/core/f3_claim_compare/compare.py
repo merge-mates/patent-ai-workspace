@@ -28,7 +28,7 @@ from patent_ai.core.f3_claim_compare.result import ExaminerLocationRow, SearchLo
 from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.embed import query_embedder
-from patent_ai.core.llm.errors import ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.case_materials import HeldTask
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
@@ -116,6 +116,15 @@ def make_searcher(settings: F3Settings, repo: ChunkRepository, embed: Embed | No
 
 
 # ---- 작은 도우미 ----
+def _mode(impl: str) -> str:
+    """검색 구현 이름 -> 검색 방식. 모르는 이름을 조용히 hybrid로 바꾸지 않는다."""
+    if impl not in _MODES:
+        raise ModelConfigError(
+            f"config/f3.yaml search.impl {impl!r}은 대비 단계가 모르는 검색 방식 (가능: {_MODES})"
+        )
+    return impl
+
+
 def _confirmed(checked: str) -> Status:
     return Status(value=StatusValue.CONFIRMED, checked=checked)
 
@@ -185,7 +194,7 @@ def _gather(
 ) -> dict[str, _Candidate]:
     settings = config.settings
     search = settings.search
-    mode = search.impl if search.impl in _MODES else "hybrid"
+    mode = _mode(search.impl)
     candidates: dict[str, _Candidate] = {}
     for e in elements:
         for cite in cites:
@@ -374,7 +383,8 @@ def _scope_text_twice(cite: ResolvedCitation, settings: F3Settings, figures: int
     s = settings.search
     return (
         f"{cite.label} 조각 {cite.chunk_count}개 중 {s.impl} 상위 {s.k}, "
-        f"이어서 상위 {2 * s.k}까지와 도면 설명 조각 {figures}개 ({s.index_version}) · 두 번 찾음"
+        f"이어서 상위 {settings.second_search_depth}까지와 도면 설명 조각 {figures}개 "
+        f"({s.index_version}) · 두 번 찾음"
     )
 
 
@@ -457,13 +467,13 @@ def _second_round(
 ) -> dict[tuple[int, str], _Judged]:
     """다른 문단·도면으로 한 번 더 찾는다.
 
-    다른 문단 = 같은 질의로 상위 2k까지 받아 1차에 보여 준 조각을 뺀 것 (검색 계약 그대로, 더 깊이).
+    다른 문단 = 같은 질의로 더 깊이(설정 second_search_depth까지) 받아 1차에 보여 준 조각을 뺀 것.
     도면 = 그 인용문헌의 도면 설명 조각 가운데 1차에 안 보여 준 것.
     그래도 근거를 못 고르면 판정은 그대로 두고 두 번 찾아본 범위를 남긴다.
     """
     settings = config.settings
     search = settings.search
-    mode = search.impl if search.impl in _MODES else "hybrid"
+    mode = _mode(search.impl)
     claim = split.claim
     candidates: dict[str, _Candidate] = {}
     scopes: dict[str, str] = {}
@@ -479,7 +489,8 @@ def _second_round(
         scopes[cite.label] = _scope_text_twice(cite, settings, len(figures))
     for e, cite in missing:
         # 질의는 1차와 같다 (구성요소 원문뿐). 더 깊이 받아 이미 본 조각을 뺀다
-        result = searcher.search(e.text, "cite", mode, 2 * search.k, doc_ids=[cite.doc_id])
+        depth = settings.second_search_depth
+        result = searcher.search(e.text, "cite", mode, depth, doc_ids=[cite.doc_id])
         fresh = [h for h in result.hits if h.chunk_id not in shown]
         scope = scopes[cite.label]
         seen.search_log.append(
@@ -750,22 +761,13 @@ def compare_unit(
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )
-        only_not_found = novelty and _differences_only_not_found(rows)
         if not input_ok:
             # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
             bad = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
             rows = [r.model_copy(update={"status": bad}) for r in rows]
-        # 직접 검토 필요: 대비 안 한 인용이 있음 / 효과 후보를 안 뽑음(진보성) /
-        # 단위에 표시가 있음(묶음 미확인, 독립항이 대상 밖) / 신규성 표시가 "차이 있음"이 아님 /
-        # "차이 있음"이 못 찾은 줄에서만 나옴 (못 찾음 ≠ 없음)
-        review = (
-            bool(skipped)
-            or not novelty
-            or Flag.NEEDS_HUMAN_REVIEW in unit.flags
-            or unit.status.value != StatusValue.CONFIRMED
-            or summary.verdict != NoveltyVerdict.DIFFERENT
-            or only_not_found
-        )
+        # 대비표에는 늘 직접 검토 필요를 붙인다: 진보성은 효과 후보를 아직 뽑지 않았고,
+        # 신규성 요약 표시는 AI 정리일 뿐이라 "차이 있음"도 결론처럼 읽히면 안 된다.
+        # (대비 안 한 인용, 확인 안 된 단위도 이 표시로 사람에게 간다)
         tables.append(
             ComparisonTable(
                 unit_id=unit.unit_id,
@@ -774,7 +776,7 @@ def compare_unit(
                 rows=rows,
                 summary=summary,
                 status=summarize_table_status(rows),
-                flags=[Flag.NEEDS_HUMAN_REVIEW] if review else [],
+                flags=[Flag.NEEDS_HUMAN_REVIEW],
             )
         )
     return CompareOutput(
