@@ -22,7 +22,10 @@
 | 파일 이름 | 문자열 | 공보 번호 = `doc_id` (f1-oa-gold.md 2.3 키 꼴) | `KR2011XXXXXXXA`, `KR10XXXXXXXB1` |
 | 본문 | PDF 글자층 | 공보 전문 (서지, 요약, 청구범위, 발명의 설명 식별번호, 도면) | |
 
-- 새 저장소 `data/raw/cited_v2/`에는 **tune 사건 8건만** 있다 (11/20 셈). report·spare 사건의 인용문헌은 옮기지 않았고 옛 폴더(`~/dev/Patent_AI_Workspace/data/raw/cited_v2/`)에만 있다. report 채점 때 그 옛 폴더를 읽기로 했다 (#24 댓글, 11/20). 받기 스크립트·기록(`fetch_cited.py`, `log_*.json`)도 옛 폴더 `_meta/`에만 있다.
+- 새 저장소 `data/raw/cited_v2/`에는 **tune 사건 8건만** 있다 (11/20 셈). report·spare 사건의 인용문헌은 옮기지 않았다.
+  - 팀 공유 사본: tune은 드라이브 `02_인용문헌/tune_1118/cited_v2/`, report·spare를 포함한 전체는 `01_OA_사건자료_v2/인용문헌_원문_v2_전체_1118/cited_v2/` (봉인, report 채점 전에는 열지 않음).
+  - 은진 로컬 옛 폴더(`~/dev/Patent_AI_Workspace/data/raw/cited_v2/`, 은진 맥에만 있음)에도 같은 전체가 있고, 받기 스크립트·기록(`fetch_cited.py`, `log_*.json`)은 그 `_meta/`에만 있다.
+  - report 채점 때 이 자료를 어디서 읽을지는 아직 설정·코드에 없다 (`config/cite_search.yaml`은 `data/raw/cited_v2`만 읽음). report 채점 전에 따로 정한다.
 - 크기 (11/19 셈): 사건 8건, PDF 17개, 51MB. 한국 공보 15개(공개 A 9, 등록 B1 6), 논문 1건 2판. 미국·그 밖 나라 없음.
 - 쪽 수: 한국 공보 9~37쪽, 논문 학회판 9쪽, 다른 판 12쪽.
 - 검색 정답(`data/goldsets/tune/search_v0/`)은 tune 10건을 다루지만, 2건은 거절이유가 42조뿐이라 인용문헌이 없어 폴더도 없다.
