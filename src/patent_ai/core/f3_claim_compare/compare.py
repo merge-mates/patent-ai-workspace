@@ -147,6 +147,11 @@ class _Judged:
     judgment: Judgment
     picks: list[tuple[_Candidate, str]] = field(default_factory=list)  # (후보, 조각 원문 글자)
     dropped: int = 0  # 대조에 떨어져 버린 근거 수
+    scope: str | None = None  # 한 번 더 찾았을 때의 찾아본 범위 글 (두 번 찾음)
+
+    def not_found(self) -> bool:
+        """근거를 못 고른 것 (버린 근거도 없고 개시됨이라고 하지도 않음)."""
+        return not self.picks and not self.dropped and self.judgment != Judgment.DISCLOSED
 
 
 @dataclass
@@ -236,11 +241,13 @@ def _gather(
 def _check(
     answer: CompareAnswer,
     claim: int,
-    element_nos: list[int],
-    labels: list[str],
+    pairs: list[tuple[int, str]],
     candidates: Mapping[str, _Candidate],
     min_chars: int,
 ) -> tuple[dict[tuple[int, str], _Judged], list[str]]:
+    """pairs: 판정을 받아야 하는 (구성요소 번호, 인용문헌). 그 밖의 줄은 받지 않는다."""
+    element_nos = {n for n, _ in pairs}
+    labels = {label for _, label in pairs}
     errors: list[str] = []
     if answer.claim != claim:
         errors.append(f"claim은 {claim}이어야 함 (받은 값 {answer.claim})")
@@ -250,6 +257,8 @@ def _check(
         if row.element_no not in element_nos or row.citation not in labels:
             errors.append(f"rows[{i}]: 없는 구성요소 번호나 인용문헌 {key}")
             continue
+        if key not in pairs:
+            continue  # 묻지 않은 짝 (한 번 더 찾기에서 이미 찾은 것): 조용히 넘긴다
         if key in judged:
             errors.append(f"rows[{i}]: {key} 줄이 둘 이상")
             continue
@@ -277,7 +286,7 @@ def _check(
         if row.judgment == Judgment.DISCLOSED and not row.evidence:
             errors.append(f"rows[{i}]: disclosed인데 evidence가 없음")
         judged[key] = one
-    missing = [(n, label) for n in element_nos for label in labels if (n, label) not in judged]
+    missing = [pair for pair in pairs if pair not in judged]
     if missing:
         errors.append(f"rows에 빠진 (구성요소 번호, 인용문헌): {missing}")
     return judged, errors
@@ -294,7 +303,7 @@ def _ask(
     claim: int,
     claim_text: str,
     elements: list[ClaimElement],
-    labels: list[str],
+    pairs: list[tuple[int, str]],
     candidates: Mapping[str, _Candidate],
     min_chars: int,
     ctx: RunContext,
@@ -306,7 +315,7 @@ def _ask(
     shown = sorted(candidates.values(), key=lambda c: (c.label, c.chunk.chunk_id))
     variables = {
         "claim": str(claim),
-        "citations": ", ".join(labels),
+        "citations": ", ".join(dict.fromkeys(label for _, label in pairs)),
         "claim_text": claim_text,
         "elements": "\n".join(f"{e.no}: {' '.join(e.text.split())}" for e in elements),
         # 후보에는 심사관 지정 여부도 검색 순위도 싣지 않는다
@@ -320,10 +329,9 @@ def _ask(
         ),
         "retry_note": "",
     }
-    element_nos = [e.no for e in elements]
     try:
         first = call_model(STEP, variables, CompareAnswer, ctx=ctx, attempt=1)
-        judged, errors = _check(first.parsed, claim, element_nos, labels, candidates, min_chars)
+        judged, errors = _check(first.parsed, claim, pairs, candidates, min_chars)
         if not errors:
             return judged
         error = "\n".join(errors)
@@ -332,7 +340,7 @@ def _ask(
     logger.warning("compare 청구항 %d: 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름", claim)
     variables["retry_note"] = _RETRY_NOTE.format(error=error[:_MAX_ERROR_CHARS])
     second = call_model(STEP, variables, CompareAnswer, ctx=ctx, attempt=2)
-    judged, errors = _check(second.parsed, claim, element_nos, labels, candidates, min_chars)
+    judged, errors = _check(second.parsed, claim, pairs, candidates, min_chars)
     if errors:
         logger.warning(
             "compare 청구항 %d: 다시 불러도 검사 오류 %d건 (틀린 근거는 버리고 상태를 낮춤)",
@@ -361,6 +369,15 @@ def _why(element_no: int, picks: list[tuple[_Candidate, str]], scope: str) -> st
     return f"구성요소 글자를 질의로 검색 ({scope}): {told}"
 
 
+def _scope_text_twice(cite: ResolvedCitation, settings: F3Settings, figures: int) -> str:
+    """두 번 찾아본 범위: 1차 상위 k, 이어서 상위 2k까지와 도면 설명 조각."""
+    s = settings.search
+    return (
+        f"{cite.label} 조각 {cite.chunk_count}개 중 {s.impl} 상위 {s.k}, "
+        f"이어서 상위 {2 * s.k}까지와 도면 설명 조각 {figures}개 ({s.index_version}) · 두 번 찾음"
+    )
+
+
 def _rows_of(
     e: ClaimElement,
     cite: ResolvedCitation,
@@ -368,7 +385,8 @@ def _rows_of(
     settings: F3Settings,
 ) -> list[ComparisonRow]:
     """구성요소 × 인용문헌 하나의 줄. 근거 출처가 섞이면 심사관 지정 / AI 찾음 두 줄로 나눈다."""
-    scope = _scope_text(cite, settings)
+    scope = (one.scope if one else None) or _scope_text(cite, settings)
+    twice = one is not None and one.scope is not None
 
     def row(judgment: Judgment, status: Status, picks=(), examiner=False, why=None):
         return ComparisonRow(
@@ -410,8 +428,85 @@ def _rows_of(
     if by_examiner:
         rows.append(row(one.judgment, status, by_examiner, examiner=True))
     if by_ai:
-        rows.append(row(one.judgment, status, by_ai, why=_why(e.no, by_ai, scope)))
+        why = _why(e.no, by_ai, scope)
+        rows.append(row(one.judgment, status, by_ai, why="두 번째 검색. " + why if twice else why))
     return rows
+
+
+# ---- 한 번 더 찾기 (second_search): 1차에서 근거를 못 고른 구성요소만 ----
+def _second_round(
+    unit: JudgmentUnit,
+    split: SplitClaim,
+    missing: list[tuple[ClaimElement, ResolvedCitation]],
+    first: Mapping[tuple[int, str], Judgment],
+    shown: Mapping[str, _Candidate],
+    config: F3Config,
+    ctx: RunContext,
+    searcher: Searcher,
+    repo: ChunkRepository,
+    seen: _Collected,
+) -> dict[tuple[int, str], _Judged]:
+    """다른 문단·도면으로 한 번 더 찾는다.
+
+    다른 문단 = 같은 질의로 상위 2k까지 받아 1차에 보여 준 조각을 뺀 것 (검색 계약 그대로, 더 깊이).
+    도면 = 그 인용문헌의 도면 설명 조각 가운데 1차에 안 보여 준 것.
+    그래도 근거를 못 고르면 판정은 그대로 두고 두 번 찾아본 범위를 남긴다.
+    """
+    settings = config.settings
+    search = settings.search
+    mode = search.impl if search.impl in _MODES else "hybrid"
+    claim = split.claim
+    candidates: dict[str, _Candidate] = {}
+    scopes: dict[str, str] = {}
+    # 도면 설명 조각 (인용문헌마다 한 번만 읽는다)
+    for cite in {c.label: c for _, c in missing}.values():
+        figures = [
+            c
+            for c in repo.chunks("cite", search.index_version, [cite.doc_id])
+            if c.chunk_kind == "figure_desc" and c.chunk_id not in shown
+        ]
+        for c in sorted(figures, key=lambda c: c.chunk_id):
+            candidates[c.chunk_id] = _Candidate(c, cite.label)
+        scopes[cite.label] = _scope_text_twice(cite, settings, len(figures))
+    for e, cite in missing:
+        # 질의는 1차와 같다 (구성요소 원문뿐). 더 깊이 받아 이미 본 조각을 뺀다
+        result = searcher.search(e.text, "cite", mode, 2 * search.k, doc_ids=[cite.doc_id])
+        fresh = [h for h in result.hits if h.chunk_id not in shown]
+        scope = scopes[cite.label]
+        seen.search_log.append(
+            SearchLogRow(
+                unit_id=unit.unit_id,
+                claim=claim,
+                element_no=e.no,
+                element_hash=hashlib.sha256(e.text.encode("utf-8")).hexdigest()[:12],
+                citation=cite.label,
+                doc_id=cite.doc_id,
+                round=2,
+                status=_confirmed("두 번째 검색에서 새 조각을 받음")
+                if fresh
+                else Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope),
+                searched_scope=scope,
+                hit_chunk_ids=[h.chunk_id for h in fresh],
+            )
+        )
+        for hit in fresh:
+            found = candidates.setdefault(hit.chunk_id, _Candidate(hit, cite.label))
+            found.ranks[e.no] = hit.rank
+    pairs = [(e.no, cite.label) for e, cite in missing]
+    again: dict[tuple[int, str], _Judged] = {}
+    if candidates:
+        elements = list({e.no: e for e, _ in missing}.values())
+        claim_text = config.inputs.claims_at_oa.get(claim, "")
+        again = _ask(claim, claim_text, elements, pairs, candidates, settings.min_quote_chars, ctx)
+    else:
+        logger.warning("compare 청구항 %d: 두 번째 검색에서 새 조각이 0개", claim)
+    out: dict[tuple[int, str], _Judged] = {}
+    for e, cite in missing:
+        # 모델이 답을 안 준 짝은 1차 판정(못 찾음)을 그대로 두고 범위만 두 번으로 적는다
+        one = again.get((e.no, cite.label)) or _Judged(first[(e.no, cite.label)])
+        one.scope = scopes[cite.label]
+        out[(e.no, cite.label)] = one
+    return out
 
 
 def _compare_claim(
@@ -434,7 +529,8 @@ def _compare_claim(
     if usable and candidates:
         claim_text = config.inputs.claims_at_oa.get(claim, "")
         min_chars = config.settings.min_quote_chars
-        judged = _ask(claim, claim_text, usable, labels, candidates, min_chars, ctx)
+        pairs = [(e.no, label) for e in usable for label in labels]
+        judged = _ask(claim, claim_text, usable, pairs, candidates, min_chars, ctx)
     elif usable:
         # 후보가 하나도 없으면 모델을 부르지 않는다: 모두 "조회 범위 내 없음"
         logger.warning("compare 청구항 %d: 후보 조각이 0개라 모델을 부르지 않음", claim)
@@ -443,6 +539,20 @@ def _compare_claim(
             for e in usable
             for label in labels
         }
+    if config.settings.second_search:
+        missing = [
+            (e, cite)
+            for e in usable
+            for cite in cites
+            if (one := judged.get((e.no, cite.label))) is not None and one.not_found()
+        ]
+        if missing:
+            first = {key: judged[key].judgment for key in [(e.no, c.label) for e, c in missing]}
+            judged.update(
+                _second_round(
+                    unit, split, missing, first, candidates, config, ctx, searcher, repo, seen
+                )
+            )
     rows: list[ComparisonRow] = []
     for e in split.elements:
         for cite in cites:
