@@ -7,6 +7,7 @@
 | m1-i3-f1-model-input-tables | F1 | `settings.model_input`: raw → tables_md | tables_md.confirmed 94.000 | 기준선 | $0.03 | [card](m1-i3-f1-model-input-tables/card.md) |
 | m1-i3-f1-pdf-tool | F1 | PDF 도구 4개 비교 (pdfplumber 유지 결정의 기준선) | pdfplumber.task2_with_cells 1.000 | 기준선 | - | [card](m1-i3-f1-pdf-tool/card.md) |
 | m1-i3-f1-read-oa-baseline | F1 | 기준선 (처음 정답 대비 채점, 바꾼 것 없음) | field_accuracy 0.605 | 기준선 | $0.00 | [card](m1-i3-f1-read-oa-baseline/card.md) |
+| m1-i3-f1-read-oa-prompt-hint | F1 | `prompts/f1/read_oa.md` 14·33·59번 줄 (힌트 칸이 없으면 null, raw_text는 칸 제목 빼고 본문만) | field_accuracy 0.441 | -0.196 | $0.00 | [card](m1-i3-f1-read-oa-prompt-hint/card.md) |
 | m2-i1-cite-search-bm25-baseline | cite-search | 기준선 (처음 측정, 바꾼 것 없음) | hit@5 0.500 | - | $0.00 | [card](m2-i1-cite-search-bm25-baseline/card.md) |
 | m2-i1-law-bm25-baseline | 검색 (법령, 이슈 #66) | 기준선 (처음 측정, 바꾼 것 없음) | hit@5 1.000 | - | $0.00 | [card](m2-i1-law-bm25-baseline/card.md) |
 | m2-i2-law-bm25-v2 | 검색 (법령, 이슈 #66) | `index_version`: law-idx-v1 → law-idx-v2 (조각 같음, embedding만 더함) | hit@5 1.000 | +0.000 | $0.00 | [card](m2-i2-law-bm25-v2/card.md) |
