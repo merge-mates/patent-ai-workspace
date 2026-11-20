@@ -160,7 +160,7 @@ def test_심사관_힌트_칸이_없으면_없음이고_확인됨():
 
 
 # 모델이 칸이 없을 때 null 대신 값·원문이 빈 객체를 주는 경우
-# (tune 녹화 응답에서 자주 나옴, 이슈 #154)
+# (tune 기록된 모델 응답에서 자주 나옴, 이슈 #154)
 _EMPTY = {"value": None, "raw_text": None, "page": None, "ambiguous": False}
 _EMPTY_WITH_PAGE = {"value": None, "raw_text": None, "page": 3, "ambiguous": False}
 
