@@ -1,0 +1,21 @@
+# F1 read_oa 전송층 스트리밍 + max_tokens 64000 (이슈 #172 T2·T3). 예측 없음(출력 잘림)을 줄이는지 본다
+experiment: m1-i3-f1-stream-64k
+feature: f1
+baseline: m1-i3-f1-read-oa-prompt-hint
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: fix/172 75e12af     # 프롬프트는 기준선(54ab36d)과 같음. 전송층 스트리밍(messages.stream)
+settings:                 # config/f1.yaml read_oa
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000       # changed (기준선 16000, 스트리밍 아님)
+  prompt: prompts/f1/read_oa.md   # sha256 앞 12자 f86da6d01b6b
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 2                   # scores.json은 1회차. 2회차는 git 밖 work/overnight_1120/f1/a3_run2_scores.json, 둘 다 card에
+runner: work/overnight_1120/f1_run.py work/overnight_1120/f1/a3_run<N>   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.30
+  max_external_calls: 40
