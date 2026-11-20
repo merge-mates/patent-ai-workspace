@@ -145,6 +145,14 @@ def test_주장_0개_묶음은_not_extracted일_때만_통과():
         bundle(claims=[], status=OK)
 
 
+def test_근거_0개_주장은_not_extracted일_때만_통과():
+    # 근거를 못 찾은 주장은 F2에서 평소에 나온다. 근거 없이 확인됨일 수는 없다
+    c = claim(sources=[], status=NOT_EXTRACTED)
+    assert c.status.reason == "not_extracted"
+    with pytest.raises(ValidationError):
+        claim(sources=[], status=OK)
+
+
 def test_no_중복_거부():
     with pytest.raises(ValidationError):
         bundle(claims=[claim(1), claim(1)])
