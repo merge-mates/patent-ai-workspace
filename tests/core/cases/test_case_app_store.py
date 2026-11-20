@@ -115,3 +115,18 @@ def test_latest_for_oa는_시각이_같으면_id_큰_쪽():
     for _ in range(3):
         runs.create_queued("oa_1")
     assert runs.latest_for_oa("oa_1").id == "r_3"
+
+
+def test_목록은_가장_최근_OA를_올린_사건이_앞():
+    now = [datetime(2099, 1, 1, tzinfo=UTC)]
+    store = InMemoryCaseAppStore(runs=InMemoryRunStore(clock=lambda: T0), clock=lambda: now[0])
+    old = store.create_case(_file("aa"))  # 1일
+    now[0] = datetime(2099, 1, 2, tzinfo=UTC)
+    store.create_case(_file("bb"))  # 2일
+    now[0] = datetime(2099, 1, 3, tzinfo=UTC)
+    second = store.add_oa(old.case_id, _file("cc"))  # 3일: 먼저 만든 사건에 둘째 OA
+
+    rows = store.list_cases()
+    assert rows[0].case_id == old.case_id
+    assert rows[0].updated_at == datetime(2099, 1, 3, tzinfo=UTC)
+    assert rows[0].latest_oa.oa_id == second.oa_id

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from patent_ai.core.cases.store import NO_APPLICATION_NUMBER_NAME, NewDocument
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore, PostgresRunStore
 from patent_ai.core.f1_oa_reader.case_repository import DuplicateDocumentError
-from patent_ai.db.models import OA, Case, CaseEvent
+from patent_ai.db.models import OA, Case, CaseEvent, OAResultRow, Run
 from patent_ai.settings import get_settings
 
 pytestmark = pytest.mark.db
@@ -85,3 +85,27 @@ def test_latest_for_oa는_시각이_같으면_id_큰_쪽(session):
     created = store.create_case(_file("db_run_" + "d" * 20))
     ids = [created.run_id] + [runs.create_queued(created.oa_id).id for _ in range(2)]
     assert runs.latest_for_oa(created.oa_id).id == max(ids)
+
+
+def _result(session, oa_id, run_id, status, kinds):
+    body = {"rejections": [{"kind": k} for k in kinds]}
+    session.add(
+        OAResultRow(oa_id=oa_id, run_id=run_id, body=body, status=status, origin="ai_generated")
+    )
+    session.flush()
+
+
+def test_succeeded_정리만_거절이유와_status로_나온다(session):
+    store = PostgresCaseAppStore(session)
+    created = store.create_case(_file("db_result_" + "e" * 20))
+    # 같은 OA에 succeeded 실행 하나를 더하고, queued 실행(첫 줄)에도 결과 줄을 넣는다
+    done = Run(oa_id=created.oa_id, state="succeeded", created_at=T0)
+    session.add(done)
+    session.flush()
+    _result(session, created.oa_id, created.run_id, "confirmed", ["clarity"])  # queued 쪽: 무시
+    # succeeded 쪽: 같은 kind가 두 번 나와도 한 번만
+    _result(session, created.oa_id, done.id, "conflict", ["novelty", "inventive_step", "novelty"])
+
+    row = next(r for r in store.list_cases() if r.case_id == created.case_id)
+    assert row.rejection_kinds == ["novelty", "inventive_step"]
+    assert row.status == "conflict"

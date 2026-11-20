@@ -7,7 +7,8 @@
   + OA 이력(doc_number 비움).
   F1이 읽은 뒤 채우는 것은 지휘 연결 이슈의 일이다.
 - #16 `case_repository`와는 `DEFAULT_USER_ID`, `DuplicateDocumentError`만 같이 쓴다.
-- 부르는 방향은 core → db. 이 파일은 DB를 모르고, Postgres 구현은 `store_pg.py`.
+- 부르는 방향은 core → db. 이 파일은 DB 연결·표를 쓰지 않고 ID 만들기(`db.ids`)만 가져온다.
+  Postgres 구현은 `store_pg.py`.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ __all__ = [
     "OARef",
     "RunRow",
     "RunStore",
+    "now_utc",
 ]
 
 # 출원번호를 읽기 전 사건의 이름 (응답 case_name)
@@ -185,7 +187,7 @@ class CaseAppStore(Protocol):
         ...
 
 
-def _now() -> datetime:
+def now_utc() -> datetime:
     return datetime.now(UTC)
 
 
@@ -197,7 +199,7 @@ class InMemoryRunStore:
 
     def __init__(
         self,
-        clock: Callable[[], datetime] = _now,
+        clock: Callable[[], datetime] = now_utc,
         id_maker: Callable[[], str] = lambda: new_id("r"),
     ) -> None:
         self._clock = clock
@@ -242,7 +244,7 @@ class InMemoryCaseAppStore:
     def __init__(
         self,
         runs: RunStore | None = None,
-        clock: Callable[[], datetime] = _now,
+        clock: Callable[[], datetime] = now_utc,
     ) -> None:
         self._runs: RunStore = runs or InMemoryRunStore(clock=clock)
         self._clock = clock

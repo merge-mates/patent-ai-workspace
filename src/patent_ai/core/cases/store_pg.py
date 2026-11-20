@@ -10,6 +10,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from patent_ai.core.cases.store import (
@@ -26,8 +27,8 @@ from patent_ai.core.cases.store import (
     OARef,
     RunRow,
     RunStore,
-    _now,
     case_name_of,
+    now_utc,
 )
 from patent_ai.core.f1_oa_reader.case_repository import DEFAULT_USER_ID
 from patent_ai.db.models import OA, Case, CaseEvent, Document, OAResultRow, Run
@@ -38,7 +39,7 @@ def _run_row(r: Run) -> RunRow:
 
 
 class PostgresRunStore:
-    def __init__(self, session: Session, clock: Callable[[], datetime] = _now) -> None:
+    def __init__(self, session: Session, clock: Callable[[], datetime] = now_utc) -> None:
         self._s = session
         self._clock = clock
 
@@ -65,7 +66,7 @@ class PostgresCaseAppStore:
         self,
         session: Session,
         runs: RunStore | None = None,
-        clock: Callable[[], datetime] = _now,
+        clock: Callable[[], datetime] = now_utc,
     ) -> None:
         self._s = session
         self._clock = clock
@@ -78,28 +79,36 @@ class PostgresCaseAppStore:
         ).first()
         if dup is not None:
             raise DuplicateDocumentError("같은 사건에 같은 파일이 이미 있음")
-        event = CaseEvent(case_id=case_id, kind="oa", doc_number=None)
-        self._s.add(event)
-        self._s.flush()
-        doc = Document(
-            case_id=case_id,
-            case_event_id=event.id,
-            kind="oa",
-            path=file.path,
-            sha256=file.sha256,
-            source="uploaded",
-            received_at=file.received_at,
-        )
-        self._s.add(doc)
-        self._s.flush()
-        oa = OA(
-            case_id=case_id,
-            case_event_id=event.id,
-            document_id=doc.id,
-            created_at=self._clock(),
-        )
-        self._s.add(oa)
-        self._s.flush()
+        # 동시에 같은 파일이 올라오면 위 검사를 둘 다 통과할 수 있어 DB 제약이 마지막으로 막는다
+        try:
+            with self._s.begin_nested():  # 실패하면 이 OA 줄만 되돌린다
+                event = CaseEvent(case_id=case_id, kind="oa", doc_number=None)
+                self._s.add(event)
+                self._s.flush()
+                doc = Document(
+                    case_id=case_id,
+                    case_event_id=event.id,
+                    kind="oa",
+                    path=file.path,
+                    sha256=file.sha256,
+                    source="uploaded",
+                    received_at=file.received_at,
+                )
+                self._s.add(doc)
+                self._s.flush()
+                oa = OA(
+                    case_id=case_id,
+                    case_event_id=event.id,
+                    document_id=doc.id,
+                    created_at=self._clock(),
+                )
+                self._s.add(oa)
+                self._s.flush()
+        except IntegrityError as e:
+            name = getattr(getattr(e.orig, "diag", None), "constraint_name", None)
+            if name == "uq_documents_case_sha256":
+                raise DuplicateDocumentError("같은 사건에 같은 파일이 이미 있음") from e
+            raise
         run = self._runs.create_queued(oa.id)
         return OACreated(oa.id, doc.id, run.id)
 
