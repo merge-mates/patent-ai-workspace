@@ -56,7 +56,7 @@ flowchart LR
 |---|---|---|
 | Anthropic API | 에이전트·서브에이전트 LLM | 정함 |
 | OpenAI API | LLM 저지 채점 (평가 때만) | 정함 |
-| KIPRIS Plus | 사건 이력·청구항 판·공보·인용문헌 (자동 조회), 심판사항(심결) | 이력·공보는 정함, 심결 범위는 F2 설계 |
+| KIPRIS Plus | 사건 이력·청구항 판·공보·인용문헌 (자동 조회), 심판사항(심결). Open API 무료 옵션(월 1,000건)으로 신청해 행정처리 이력·청구항 변동 이력·인용문헌·공보·심판사항·해외특허 6개 실호출 확인 (11/20, 키 `KIPRIS_PLUS_API_KEY`, 주소·결과는 [#54 댓글](https://github.com/merge-mates/patent-ai-workspace/issues/54#issuecomment-7029188711)) | 이력·공보는 정함, 심결 범위는 F2 설계 |
 | 법령 API (법제처) | 법령 판본, 미리 받지 않은 판례를 사건번호로 | 정함, 키워드 판례 검색은 시간 나면 |
 | 심사기준 | 특허청 공개 파일 내려받기 (판마다 한 번) | 정함 |
 | 임베딩 API (OpenAI) | 벡터 검색용. 법령 기준선은 `text-embedding-3-small` (#66, `config/law_search.yaml`) | 기준선 정함 (11/19). 다른 모델은 비교 실험 뒤 |
