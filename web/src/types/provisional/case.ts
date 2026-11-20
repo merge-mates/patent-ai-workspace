@@ -45,6 +45,7 @@ export interface OADetail {
   case_name: string
   document_id: string | null
   latest_run: LatestRun
+  dispatch_number?: string | null // 발송번호, 모르면 null (선택 칸: 하위 호환)
 }
 
 // GET /oas/{oa_id}/oa-result (결과 응답 스키마: 결과를 result에 그대로 담는다)

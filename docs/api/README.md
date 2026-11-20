@@ -100,6 +100,11 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 {"oa_id": "oa_1", "run_id": "r_1", "status": "unverified", "result": {"...": "OAResult (데이터 모델 4절 ①)"}}
 ```
 
+OA 보기 (`GET /oas/{oa_id}`):
+```json
+{"oa_id": "oa_1", "case_id": "c_1", "case_name": "출원번호 확인 전", "document_id": "doc_1", "latest_run": {"run_id": "r_1", "state": "queued", "current_step": null}, "dispatch_number": null}
+```
+
 오류:
 ```json
 {"code": "oa_not_found", "message": "OA를 찾을 수 없습니다"}

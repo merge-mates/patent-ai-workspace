@@ -53,19 +53,24 @@ class CaseDetail(BaseModel):
     oas: list[OARefOut]
 
 
+def read_pdf(file: UploadFile) -> tuple[bytes, str]:
+    """올린 파일을 읽고 PDF인지 본다 (두 업로드 엔드포인트 공용). 실패는 422."""
+    data = file.file.read()
+    try:
+        return data, upload.check_pdf(data)
+    except upload.EmptyFileError:
+        raise AppError(422, "empty_file", "빈 파일입니다") from None
+    except upload.NotPdfError:
+        raise AppError(422, "not_pdf", "PDF 파일이 아닙니다") from None
+
+
 @router.post("/cases", response_model=CreatedCase, status_code=200)
 def create_case(
     file: UploadFile,
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     upload_dir: Annotated[Path, Depends(get_upload_dir)],
 ) -> CreatedCase:
-    data = file.file.read()
-    try:
-        sha256 = upload.check_pdf(data)
-    except upload.EmptyFileError:
-        raise AppError(422, "empty_file", "빈 파일입니다") from None
-    except upload.NotPdfError:
-        raise AppError(422, "not_pdf", "PDF 파일이 아닙니다") from None
+    data, sha256 = read_pdf(file)
 
     # 같은 파일이 어느 사건에든 있으면 새로 만들지 않고 기존 ID를 알려 준다
     existing = unit.store.find_document_by_sha256(sha256)
@@ -78,39 +83,25 @@ def create_case(
         )
 
     case_id = new_case_id()
-    target = upload.final_path(upload_dir, case_id, sha256)
-    tmp: Path | None = None
     try:
-        tmp = upload.write_temp(upload_dir, data)  # 1) 임시 파일
-        target.parent.mkdir(parents=True, exist_ok=True)  # 폴더는 커밋 전에 (커밋 뒤 실패 줄이기)
-        created = unit.store.create_case(  # 2) DB 커밋
-            NewDocument(path=str(target), sha256=sha256, received_at=now_utc()), case_id=case_id
+        created = upload.save_with_commit(
+            upload_dir,
+            case_id,
+            sha256,
+            data,
+            lambda path: unit.store.create_case(
+                NewDocument(path=path, sha256=sha256, received_at=now_utc()), case_id=case_id
+            ),
+            unit.commit,
+            unit.rollback,
         )
-        unit.commit()
     except DuplicateDocumentError:
         # 새 사건이라 DB 제약에는 안 걸린다. 저장소가 중복이라 알려 온 경우만 409로 바꾼다
         # (같은 파일을 동시에 올리면 사건이 둘 생기는 것은 알려진 한계)
-        _cleanup(unit, tmp)
         raise AppError(409, "document_already_exists", "이미 올린 파일입니다") from None
-    except Exception:
-        # DB(또는 파일 쓰기)가 실패하면 임시 파일을 지우고 500
-        logger.exception("사건 올리기 실패")
-        _cleanup(unit, tmp)
-        raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None
-    try:
-        upload.finalize(tmp, target)  # 3) 이름 바꾸기
-    except OSError:
-        # DB에는 이미 들어갔다. 파일이 없는 줄이 남으므로 로그로 알린다
-        logger.exception("DB 커밋 뒤 파일 이름 바꾸기 실패: %s", target)
-        _cleanup(unit, tmp)
+    except upload.UploadFailedError:
         raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None
     return CreatedCase(case_id=created.case_id, oa_id=created.oa_id, run_id=created.run_id)
-
-
-def _cleanup(unit: CaseUnit, tmp: Path | None) -> None:
-    unit.rollback()
-    if tmp is not None:
-        upload.discard(tmp)
 
 
 @router.get("/cases", response_model=list[CaseSummary])
