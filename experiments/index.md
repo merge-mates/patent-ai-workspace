@@ -3,6 +3,7 @@
 | 실험 | 기능 | 바꾼 것 | 주 지표 | 기준선 대비 | 비용 | 카드 |
 |---|---|---|---|---|---|---|
 | m1-i3-f1-effort-low | F1 | `settings.effort`: medium → low | field_accuracy 0.568 | -0.069 | $0.00 | [card](m1-i3-f1-effort-low/card.md) |
+| m1-i3-f1-effort-low-stream64k | F1 | `settings.effort`: medium → low (스트리밍·max_tokens 64000 판에서) | field_accuracy 0.653 | +0.053 | $0.00 | [card](m1-i3-f1-effort-low-stream64k/card.md) |
 | m1-i3-f1-effort-medium | F1 | `settings.effort`: (없음, 모델 기본 medium) → medium (#136 뒤 명시. 보내는 요청은 기준선과 같음) | field_accuracy 0.637 | +0.031 | $0.00 | [card](m1-i3-f1-effort-medium/card.md) |
 | m1-i3-f1-model-input-tables | F1 | `settings.model_input`: raw → tables_md | tables_md.confirmed 94.000 | 기준선 | $0.03 | [card](m1-i3-f1-model-input-tables/card.md) |
 | m1-i3-f1-pdf-tool | F1 | PDF 도구 4개 비교 (pdfplumber 유지 결정의 기준선) | pdfplumber.task2_with_cells 1.000 | 기준선 | - | [card](m1-i3-f1-pdf-tool/card.md) |
