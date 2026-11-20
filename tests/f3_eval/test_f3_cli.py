@@ -27,18 +27,30 @@ from eval.f3.score import EXIT_NO_GOLD, main
 def run(tmp_path):
     """채점 명령을 돌려 (종료 코드, scores 또는 None, CQ 줄 목록)을 돌려주는 함수."""
 
-    def go(pred=None, *, goldset=None, inputs=True, entry=main, extra=(), key=KEY):
+    def go(
+        pred=None,
+        *,
+        goldset=None,
+        inputs=True,
+        entry=main,
+        extra=(),
+        key=KEY,
+        index_version="cite-idx-v2",
+        write=True,
+    ):
         root = tmp_path / "goldsets"
         if goldset is None:
             write_goldset(root)
         else:
             goldset(root)
         preds = tmp_path / "preds"
-        write_run(preds, pred if pred is not None else prediction(), inputs=inputs, key=key)
+        preds.mkdir(exist_ok=True)
+        if write:
+            write_run(preds, pred if pred is not None else prediction(), inputs=inputs, key=key)
         cfg = tmp_path / "config.yaml"
         cfg.write_text(
             "experiment: m2-f3-x\nfeature: f3\ngoldset: tune\ngoldset_version: 1\n"
-            "impl: split_search\nindex_version: cite-idx-v2\nk: 10\n",
+            f"impl: split_search\nindex_version: {index_version}\nk: 10\n",
             encoding="utf-8",
         )
         out, cq = tmp_path / "out", tmp_path / "cq"
@@ -213,3 +225,44 @@ def test_예측이_없는_OA는_0점으로_세고_건수를_남긴다(run):
     assert code == 0 and scores["failures"]["missing_prediction"] == 1
     assert scores["metrics"]["search_recall"] == 0.25  # OA 평균: (0.5 + 0) / 2
     assert scores["n"] == 2
+
+
+# ---- B9 리뷰 고침 ----
+def test_검색_정답_줄이_전부_빠지면_점수_없이_멈춘다(run, capsys):
+    # 설정의 색인 판에 조각이 하나도 없다 (판 이름 오타, DB에 그 판 없음).
+    # 명확성 점수만으로 성공하지 않는다
+    code, scores, _ = run(prediction(searched=(), selected=()), index_version="cite-idx-v3")
+    assert code == 1 and scores is None
+    assert "0개" in capsys.readouterr().err
+
+
+def test_예측을_만든_색인_판이_설정과_다르면_멈춘다(run, capsys):
+    # chunk_id 앞에 판이 붙어 있어, 판이 다르면 겹침이 늘 0이 되어 0점이 정상처럼 보인다
+    code, scores, _ = run(index_version="cite-idx-v3")
+    assert code == 1 and scores is None
+    assert "색인 판" in capsys.readouterr().err
+
+
+def test_예측_폴더가_비어_있으면_멈춘다(run, capsys):
+    code, scores, _ = run(write=False)
+    assert code == 1 and scores is None
+    assert "예측" in capsys.readouterr().err
+
+
+def test_심사관_위치_기록만_있어도_오염이라_멈춘다(run, capsys):
+    pred = prediction()
+    pred["examiner_locations"] = [{"claim": 1, "citation": "D1", "location": "[0014]"}]
+    code, scores, _ = run(pred)
+    assert code == 1 and scores is None
+    assert "심사관 지정" in capsys.readouterr().err
+
+
+def test_여러_곳_꼬리가_붙은_위치도_읽는다(run):
+    _, scores, _ = run(prediction(clarity_location="청구항 2 [글자 10-19] (2곳 중 첫 자리)"))
+    assert scores["metrics"]["clarity_location_accuracy"] == 1.0
+    assert scores["failures"]["clarity_location_unreadable"] == 0
+
+
+def test_위치_꼴을_못_읽은_검토는_건수를_남긴다(run):
+    _, scores, _ = run(prediction(clarity_location="청구항 2 (위치 확인되지 않음)"))
+    assert scores["failures"]["clarity_location_unreadable"] == 1

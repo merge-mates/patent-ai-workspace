@@ -41,7 +41,7 @@ from eval.f3.pred import F3Pred
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import CiteMatcher
-from patent_ai.core.f3_claim_compare.textmatch import squeeze
+from patent_ai.core.f3_claim_compare.textmatch import find_all_spans
 from patent_ai.retrieval.repository import (
     ChunkRepository,
     InMemoryChunkRepository,
@@ -76,6 +76,7 @@ FAILURE_KEYS = (
     "clarity_no_claim_text",
     "clarity_gold_term_not_in_claim",
     "excluded_clarity_no_terms",
+    "clarity_location_unreadable",
 )
 _LOCATION = re.compile(r"\[글자 (\d+)-(\d+)\]")
 
@@ -200,6 +201,17 @@ def _score_cite(
                     "why": "",
                 }
             )
+    if failures["excluded_body_missing"]:
+        logger.warning(
+            "색인(%s)에 조각이 없는 인용문헌의 정답 줄 %d개를 뺐다",
+            cfg.index_version,
+            failures["excluded_body_missing"],
+        )
+    if not per_oa:
+        # 빼고 남은 줄이 0개면 회수율을 잴 수 없다. 다른 지표만으로 성공하지 않는다
+        raise EvalError(
+            "검색 정답 줄을 빼고 남은 줄이 0개다 (설정 index_version과 색인 조각을 확인)"
+        )
     names = {
         "sh": "search_hit",
         "sr": "search_recall",
@@ -228,6 +240,32 @@ def _check_not_contaminated(preds: dict[str, F3Pred]) -> None:
         )
 
 
+def _check_index_version(preds: dict[str, F3Pred], index_version: str) -> None:
+    """예측이 설정과 같은 색인 판으로 만들어졌는지. chunk_id 앞에 판이 붙어 있어,
+
+    판이 다르면 정답 조각과 겹침이 늘 0이 되어 0점이 정상처럼 나온다.
+    """
+    prefix = f"{index_version}:"
+    other = 0
+    for pred in preds.values():
+        other += sum(
+            1 for log in pred.search_log for cid in log.hit_chunk_ids if not cid.startswith(prefix)
+        )
+        for table in pred.comparisons:
+            for row in table.rows:
+                other += sum(
+                    1
+                    for e in row.evidence
+                    if e.chunk_id is not None
+                    and (e.index_version != index_version or not e.chunk_id.startswith(prefix))
+                )
+    if other:
+        raise EvalError(
+            f"예측의 조각 {other}개가 설정의 색인 판 {index_version}이 아니다"
+            " (예측을 만든 색인 판과 설정 index_version을 맞춘다)"
+        )
+
+
 # ---- ② 신규성 한 문헌 규칙 ----
 def _novelty(preds: dict[str, F3Pred]) -> tuple[int, int]:
     """(신규성 대비표 수, 인용문헌 하나와만 대비하지 않은 표 수)."""
@@ -241,18 +279,6 @@ def _novelty(preds: dict[str, F3Pred]) -> tuple[int, int]:
 
 
 # ---- ③ 명확성 문구 위치 ----
-def _occurrences(term: str, text: str) -> list[tuple[int, int]]:
-    """term이 text에 나오는 모든 자리 (원문 오프셋, 공백 줄이기만 허용)."""
-    squeezed, offsets = squeeze(text)
-    wanted = " ".join(term.split())
-    spans, at = [], squeezed.find(wanted) if wanted else -1
-    while at >= 0:
-        last = at + len(wanted) - 1
-        spans.append((offsets[at], offsets[last] + 1))
-        at = squeezed.find(wanted, at + 1)
-    return spans
-
-
 def _score_clarity(
     golds: list[F1Gold], run: RunInputs, failures: dict[str, int], missing: set[str]
 ) -> tuple[float | None, set[str]]:
@@ -281,7 +307,7 @@ def _score_clarity(
                 if pred is None:
                     marks.append(0.0)
                     continue
-                gold_spans = _occurrences(term, claims.get(row.claim, ""))
+                gold_spans = find_all_spans(term, claims.get(row.claim, ""))
                 if not gold_spans:
                     failures["clarity_gold_term_not_in_claim"] += 1  # 정답 표현이 청구항에 없다
                     continue
@@ -289,7 +315,11 @@ def _score_clarity(
                 for review in pred.clarity_reviews:
                     m = _LOCATION.search(review.claim_location)
                     same = " ".join(review.term.split()) == " ".join(term.split())
-                    if review.claim != row.claim or not same or m is None:
+                    if review.claim != row.claim or not same:
+                        continue
+                    if m is None:
+                        # 위치 꼴(`[글자 a-b]`)을 못 읽음: 앱이 위치를 못 정했거나 꼴이 바뀜 (틀림)
+                        failures["clarity_location_unreadable"] += 1
                         continue
                     a, b = int(m.group(1)), int(m.group(2))
                     # 같은 표현이 여러 번 나오면 하나라도 겹치면 맞음
@@ -314,6 +344,7 @@ def score_f3(
     if not run.preds:
         raise EvalError("F3 예측이 0개다")
     _check_not_contaminated(run.preds)
+    _check_index_version(run.preds, cfg.index_version)
     failures = dict.fromkeys(FAILURE_KEYS, 0)
     metrics: dict[str, float] = {}
     skipped = dict.fromkeys(NEEDS_HUMAN_GOLD, NO_GOLD)

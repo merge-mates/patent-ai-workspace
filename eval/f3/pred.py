@@ -14,6 +14,7 @@ class _Loose(BaseModel):
 class PredEvidence(_Loose):
     document_id: str
     chunk_id: str | None = None
+    index_version: str | None = None
 
 
 class PredRow(_Loose):
