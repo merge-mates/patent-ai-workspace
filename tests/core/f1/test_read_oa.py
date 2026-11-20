@@ -348,6 +348,33 @@ def test_첫_답이_검사에_떨어져도_두_번째가_맞으면_결과를_돌
     assert result.status.value == StatusValue.CONFIRMED
 
 
+def test_첫_답이_잘려도_지금처럼_한_번_더_부르고_경고_로그에_잘림이_남는다(caplog):
+    # 재시도 방식은 그대로, 잘림인지는 경고 로그로 알 수 있다 (#172)
+    cut = TransportResponse('{"application_number": ', 100, 50, "max_tokens")
+    transport = FakeTransport({STEP: [cut, _ok("basic")]})
+    rec = MemoryRecorder()
+    ctx = RunContext(run_id="r_1", budget=CallBudget(), recorder=rec, transport=transport)
+    with caplog.at_level(logging.WARNING):
+        result = read_oa(_pages("notice_basic"), "d_1", "oa_1", "r_1", ctx=ctx)
+    assert result.status.value == StatusValue.CONFIRMED
+    assert len(transport.calls) == 2
+    (warn,) = [m for m in caplog.messages if "한 번 더 부름" in m]
+    assert "잘림=True" in warn
+    assert "stop_reason=max_tokens" in warn
+
+
+def test_두_번_다_잘리면_ModelOutputInvalid가_잘림을_알려_준다():
+    cut = TransportResponse('{"application_number": ', 100, 50, "max_tokens")
+    transport = FakeTransport({STEP: [cut, cut]})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    with pytest.raises(ModelOutputInvalid) as e:
+        read_oa(_pages("notice_basic"), "d_1", "oa_1", "r_1", ctx=ctx)
+    assert e.value.truncated is True
+    assert len(transport.calls) == 2
+
+
 # ---- 모으기: 칸 하나 conflict / 지원 안 하는 이유의 칸은 status를 안 바꿈 ----
 def test_지원_안_하는_이유_안의_나쁜_칸은_결과_status를_안_바꾼다():
     answer = _answer("unsupported")

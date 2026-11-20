@@ -6,7 +6,23 @@ class ModelConfigError(Exception):
 
 
 class ModelOutputInvalid(Exception):
-    """모델 답이 JSON이 아니거나 output_schema 검사에 떨어짐. 메시지에 이유."""
+    """모델 답이 JSON이 아니거나 output_schema 검사에 떨어짐. 메시지에 이유.
+
+    stop_reason은 모델이 답을 끝낸 이유(모르면 None). truncated가 True면 답이 max_tokens에
+    닿아 잘린 것이다 (모양이 틀린 답과 가르려고 둔다).
+    """
+
+    def __init__(self, message: str, stop_reason: str | None = None) -> None:
+        super().__init__(message)
+        self.stop_reason = stop_reason
+
+    @property
+    def truncated(self) -> bool:
+        return self.stop_reason == TRUNCATED_STOP_REASON
+
+
+# 출력 상한(max_tokens)에 닿아 답이 잘렸을 때 API가 주는 stop_reason 값
+TRUNCATED_STOP_REASON = "max_tokens"
 
 
 class ModelCallFailed(Exception):

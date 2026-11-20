@@ -169,7 +169,10 @@ def call_model(
     tries = 0  # 성공한 전송 시도 번호 (캐시 적중은 0)
     if hit is not None:
         # 캐시 적중: 전송층을 부르지 않고 상한에도 세지 않는다
-        resp = TransportResponse(hit["text"], hit["input_tokens"], hit["output_tokens"])
+        # stop_reason 칸이 없는 옛 캐시 파일은 None으로 읽는다
+        resp = TransportResponse(
+            hit["text"], hit["input_tokens"], hit["output_tokens"], hit.get("stop_reason")
+        )
     else:
         resp = None
         retries = cfg.max_retries or 0
@@ -214,14 +217,15 @@ def call_model(
     # 스키마가 있으면 답을 JSON으로 읽어 Pydantic 검사한다
     parsed = None
     if output_schema is not None:
+        # 예외에 stop_reason을 실어 보낸다 (max_tokens면 잘린 답: ModelOutputInvalid.truncated)
         try:
             parsed = output_schema.model_validate(json.loads(resp.text))
         except json.JSONDecodeError as e:
             record(resp, elapsed_ms, hit is not None, "invalid_output", tries)
-            raise ModelOutputInvalid(f"답이 JSON이 아님: {e}") from e
+            raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason) from e
         except ValidationError as e:
             record(resp, elapsed_ms, hit is not None, "invalid_output", tries)
-            raise ModelOutputInvalid(f"스키마 검사 실패: {e}") from e
+            raise ModelOutputInvalid(f"스키마 검사 실패: {e}", resp.stop_reason) from e
 
     # 검사를 통과한 답만 캐시에 쓴다 (위에서 예외가 나면 여기까지 오지 않음)
     if cache is not None and hit is None:
@@ -231,6 +235,7 @@ def call_model(
                 "text": resp.text,
                 "input_tokens": resp.input_tokens,
                 "output_tokens": resp.output_tokens,
+                "stop_reason": resp.stop_reason,
             },
         )
 

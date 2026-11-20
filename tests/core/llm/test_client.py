@@ -134,6 +134,10 @@ def test_attempt_기본값은_1이고_바꿀_수_있다():
     assert r.text == "x"
 
 
+def test_TransportResponse의_stop_reason은_안_주면_None():
+    assert TransportResponse("x", 1, 1).stop_reason is None
+
+
 def test_SDK_응답_모양을_파싱한다():
     class Block:
         def __init__(self, type, text=""):
@@ -146,7 +150,8 @@ def test_SDK_응답_모양을_파싱한다():
     class Msg:
         content = [Block("text", "안녕"), Block("tool_use"), Block("text", "하세요")]
         usage = Usage()
+        stop_reason = "max_tokens"
 
     resp = parse_anthropic_message(Msg())
-    assert resp == TransportResponse("안녕하세요", 12, 7)
+    assert resp == TransportResponse("안녕하세요", 12, 7, "max_tokens")
     assert AnthropicTransport is not None  # 만들거나 부르지는 않는다

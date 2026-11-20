@@ -11,6 +11,8 @@ class TransportResponse:
     text: str
     input_tokens: int
     output_tokens: int
+    # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등, API 값 그대로). 모르면 None (옛 캐시·녹화)
+    stop_reason: str | None = None
 
 
 class TransportError(Exception):
@@ -35,9 +37,11 @@ class Transport(Protocol):
 
 
 def parse_anthropic_message(message) -> TransportResponse:
-    """SDK 응답에서 text 블록을 이어 붙이고 토큰 수를 읽는다."""
+    """SDK 응답에서 text 블록을 이어 붙이고 토큰 수와 답을 끝낸 이유(stop_reason)를 읽는다."""
     text = "".join(b.text for b in message.content if b.type == "text")
-    return TransportResponse(text, message.usage.input_tokens, message.usage.output_tokens)
+    return TransportResponse(
+        text, message.usage.input_tokens, message.usage.output_tokens, message.stop_reason
+    )
 
 
 class AnthropicTransport:

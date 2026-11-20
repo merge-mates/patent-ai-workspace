@@ -16,6 +16,7 @@ class _RecordingMessages:
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text="ok")],
             usage=SimpleNamespace(input_tokens=3, output_tokens=1),
+            stop_reason="end_turn",  # 진짜 SDK Message에는 늘 있는 칸
         )
 
 
@@ -44,3 +45,4 @@ def test_SDK에_모델_최대_토큰_프롬프트는_넘긴다():
         "messages": [{"role": "user", "content": "p"}],
     }
     assert resp.text == "ok"
+    assert resp.stop_reason == "end_turn"
