@@ -7,7 +7,7 @@ import type { OALoaderData } from '../loaders'
 const STEPS = [
   { key: 'materials', label: '1 자료', path: '', anchor: 'materials' },
   { key: 'rejections', label: '2 거절이유 정리', path: '', anchor: 'rejections' },
-  { key: 'compare', label: '3 대비와 근거', path: '/compare', disabled: true },
+  { key: 'compare', label: '3 대비와 근거', path: '/compare' },
   { key: 'directions', label: '4 대응 방향', path: '/directions', disabled: true },
   { key: 'drafts', label: '5 의견서·보정 초안', path: '/drafts', disabled: true },
 ]

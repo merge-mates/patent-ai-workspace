@@ -12,6 +12,20 @@ import type {
   OADetail,
   OAResultResponse,
 } from '../types/provisional/case'
+import type {
+  ClarityReview,
+  ComparisonTable,
+  JudgmentUnit,
+  LegalEvidenceBundle,
+  LegalQuestion,
+} from '../types/provisional/analysis'
+import {
+  exampleClarity,
+  exampleComparisons,
+  exampleLegal,
+  exampleLegalAnswer,
+  exampleUnits,
+} from '../types/provisional/examples'
 import demoFiles from 'virtual:demo-results'
 import { ApiError } from './errors'
 
@@ -131,9 +145,33 @@ export const mockApi = {
     if (!found?.document) throw new ApiError('document_not_found', '원문을 찾을 수 없습니다', 404)
     return found.document
   },
+  // ②③④는 스키마가 아직 없어 예시 데이터 (types/provisional/examples.ts)
+  async getUnits(oaId: string): Promise<JudgmentUnit[]> {
+    await byOA(oaId)
+    return exampleUnits[oaId] ?? []
+  },
+  async getComparisons(oaId: string): Promise<ComparisonTable[]> {
+    return ofOA(exampleComparisons, oaId)
+  },
+  async getClarityReviews(oaId: string): Promise<ClarityReview[]> {
+    return ofOA(exampleClarity, oaId)
+  },
+  async getLegalEvidence(oaId: string): Promise<LegalEvidenceBundle[]> {
+    return ofOA(exampleLegal, oaId)
+  },
+  async askLegal(q: LegalQuestion): Promise<LegalEvidenceBundle> {
+    return exampleLegalAnswer(q)
+  },
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
   async createCase(_file: File): Promise<CreatedCase> {
     const b = committed[0]
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: b.run_id }
   },
+}
+
+// unit_id가 `<oa_id>:`로 시작하는 예시만 (판단 단위 ID는 OA ID로 시작한다)
+function ofOA<T>(table: Record<string, T>, oaId: string): T[] {
+  return Object.entries(table)
+    .filter(([unitId]) => unitId.startsWith(`${oaId}:`))
+    .map(([, v]) => v)
 }

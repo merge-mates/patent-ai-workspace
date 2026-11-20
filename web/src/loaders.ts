@@ -5,6 +5,12 @@ import { ApiError, isNotReady } from './api/errors'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { PageText } from './types/generated/PageText'
 import type { ReviewItem } from './types/generated/ReviewItem'
+import type {
+  ClarityReview,
+  ComparisonTable,
+  JudgmentUnit,
+  LegalEvidenceBundle,
+} from './types/provisional/analysis'
 import type { CaseSummary, OADetail, OAResultResponse } from './types/provisional/case'
 
 export async function casesLoader(): Promise<CaseSummary[]> {
@@ -53,4 +59,29 @@ export async function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoader
 function notReadyAsNull(e: unknown): null {
   if (isNotReady(e)) return null
   throw e
+}
+
+export interface CompareLoaderData {
+  // 판단 단위 결과가 아직 없으면 null (실행 중, 404 result_not_ready)
+  units: JudgmentUnit[] | null
+  comparisons: ComparisonTable[]
+  clarity: ClarityReview[]
+  legal: LegalEvidenceBundle[]
+}
+
+// 3 대비와 근거: 판단 단위 · 대비표 · 명확성 문구 검토 · 법률 근거
+export async function compareLoader({ params }: LoaderFunctionArgs): Promise<CompareLoaderData> {
+  const oaId = params.oaId!
+  // 결과가 아직 없음(result_not_ready)만 "없음"으로 받고, 다른 오류는 오류 화면으로
+  const notReady = <T,>(fallback: T) => (e: unknown): T => {
+    if (isNotReady(e)) return fallback
+    throw e
+  }
+  const [units, comparisons, clarity, legal] = await Promise.all([
+    api.getUnits(oaId).catch(notReady(null)),
+    api.getComparisons(oaId).catch(notReady([])),
+    api.getClarityReviews(oaId).catch(notReady([])),
+    api.getLegalEvidence(oaId).catch(notReady([])),
+  ])
+  return { units, comparisons, clarity, legal }
 }
