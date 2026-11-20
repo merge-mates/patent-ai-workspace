@@ -1,0 +1,803 @@
+{
+  "case_id": "c_3",
+  "case_name": "가상의 온도 조절 장치",
+  "last_opened_at": "2099-01-30T17:40:00",
+  "oa_id": "oa_3",
+  "run_id": "r_oa_3",
+  "oa_result": {
+    "status": {
+      "value": "conflict",
+      "reason": null,
+      "checked": null,
+      "searched_scope": null
+    },
+    "evidence": [
+      {
+        "document_id": "d_3",
+        "page": 1,
+        "raw_text": "9-5-2099-000000003",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 1,
+        "raw_text": "2099.01.26.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 1,
+        "raw_text": "2099.03.26.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 1,
+        "raw_text": "최후거절이유통지",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 1,
+        "raw_text": "제1항 내지 제7항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 3,
+        "raw_text": "청구항 5, 7",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 3,
+        "raw_text": "청구항 5의 종속 관계를 정리하세요.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "특허법 제29조제2항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "제1항 내지 제4항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "공개특허공보 제10-2099-0000003호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "공개특허공보 제10-2099-0000003호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "식별번호 [0023], [0031]",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "US 2099/0000001 A1",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "US 2099/0000001 A1",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 2,
+        "raw_text": "식별번호 [0045]",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 3,
+        "raw_text": "특허법 제42조제4항제2호",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 3,
+        "raw_text": "제1항",
+        "edition": null,
+        "checked_on": null
+      },
+      {
+        "document_id": "d_3",
+        "page": 3,
+        "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+        "edition": null,
+        "checked_on": null
+      }
+    ],
+    "origin": "ai_generated",
+    "needs_recheck": false,
+    "recheck_reason": null,
+    "flags": [],
+    "oa_id": "oa_3",
+    "application_number": {
+      "value": null,
+      "raw_text": null,
+      "page": null,
+      "status": {
+        "value": "conflict",
+        "reason": null,
+        "checked": null,
+        "searched_scope": null
+      },
+      "candidates": [
+        {
+          "value": "1020990000003",
+          "raw_text": "10-2099-0000003",
+          "page": 1,
+          "source": "rule"
+        },
+        {
+          "value": "1020990000999",
+          "raw_text": "10-2099-0000999",
+          "page": 1,
+          "source": "model"
+        }
+      ]
+    },
+    "dispatch_number": {
+      "value": "952099000000003",
+      "raw_text": "9-5-2099-000000003",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_date": {
+      "value": null,
+      "raw_text": "2099.01.26.",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "response_due": {
+      "value": null,
+      "raw_text": "2099.03.26.",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_kind": {
+      "value": "final",
+      "raw_text": "최후거절이유통지",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "최후 표시를 찾음",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claims": {
+      "value": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "raw_text": "제1항 내지 제7항",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "1쪽 원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claim_version": null,
+    "examiner_hints": {
+      "allowable_claims": {
+        "value": [
+          5,
+          7
+        ],
+        "raw_text": "청구항 5, 7",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "3쪽 원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      },
+      "amendment_note": {
+        "value": null,
+        "raw_text": "청구항 5의 종속 관계를 정리하세요.",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "3쪽 원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      }
+    },
+    "rejections": [
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "특허법 제29조제2항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "제1항 내지 제4항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "공개특허공보 제10-2099-0000003호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "공개특허공보 제10-2099-0000003호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "식별번호 [0023], [0031]",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "US 2099/0000001 A1",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "US 2099/0000001 A1",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 2,
+            "raw_text": "식별번호 [0045]",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "no": 1,
+        "kind": "inventive_step",
+        "article": {
+          "value": "29-2",
+          "raw_text": "특허법 제29조제2항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "2쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "raw_text": "제1항 내지 제4항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "2쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [
+          {
+            "label": "D1",
+            "number": {
+              "value": "KR20990000003A",
+              "raw_text": "공개특허공보 제10-2099-0000003호",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "KR",
+              "raw_text": "공개특허공보 제10-2099-0000003호",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "인용 표기에서 나라 판정",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": true,
+            "cited_paragraphs": {
+              "value": [
+                "[0023]",
+                "[0031]"
+              ],
+              "raw_text": "식별번호 [0023], [0031]",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": []
+          },
+          {
+            "label": "D2",
+            "number": {
+              "value": "US20990000001A1",
+              "raw_text": "US 2099/0000001 A1",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "US",
+              "raw_text": "US 2099/0000001 A1",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "인용 표기에서 나라 판정",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": true,
+            "cited_paragraphs": {
+              "value": [
+                "[0045]"
+              ],
+              "raw_text": "식별번호 [0045]",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "2쪽 원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": []
+          }
+        ],
+        "examiner_reasoning": {
+          "value": "센서 구성이 인용발명 1과 같아 쉽게 만들 수 있다는 판단",
+          "raw_text": "청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "2쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      },
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "d_3",
+            "page": 3,
+            "raw_text": "특허법 제42조제4항제2호",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 3,
+            "raw_text": "제1항",
+            "edition": null,
+            "checked_on": null
+          },
+          {
+            "document_id": "d_3",
+            "page": 3,
+            "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+            "edition": null,
+            "checked_on": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "no": 2,
+        "kind": "clarity",
+        "article": {
+          "value": "42-4-2",
+          "raw_text": "특허법 제42조제4항제2호",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "3쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            1
+          ],
+          "raw_text": "제1항",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "3쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [],
+        "examiner_reasoning": {
+          "value": "'약' 표현이 불명확하다는 판단",
+          "raw_text": "청구항 제1항의 '약'이라는 표현이 불명확합니다.",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "3쪽 원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      }
+    ],
+    "claim_rows": [
+      {
+        "claim": 1,
+        "rejection": 1,
+        "citations": [],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": null,
+        "page": null,
+        "status": {
+          "value": "unverified",
+          "reason": "not_extracted",
+          "checked": null,
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 2,
+        "rejection": 1,
+        "citations": [],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": null,
+        "page": null,
+        "status": {
+          "value": "unverified",
+          "reason": "not_extracted",
+          "checked": null,
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 3,
+        "rejection": 1,
+        "citations": [],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": null,
+        "page": null,
+        "status": {
+          "value": "unverified",
+          "reason": "not_extracted",
+          "checked": null,
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 4,
+        "rejection": 1,
+        "citations": [],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": null,
+        "page": null,
+        "status": {
+          "value": "unverified",
+          "reason": "not_extracted",
+          "checked": null,
+          "searched_scope": null
+        }
+      },
+      {
+        "claim": 1,
+        "rejection": 2,
+        "citations": [],
+        "locations": {},
+        "same_as": [],
+        "clarity_terms": [],
+        "clarity_reason": null,
+        "clarity_reason_origin": null,
+        "no_location": null,
+        "raw_text": null,
+        "page": null,
+        "status": {
+          "value": "unverified",
+          "reason": "not_extracted",
+          "checked": null,
+          "searched_scope": null
+        }
+      }
+    ]
+  },
+  "materials": {
+    "case_id": "c_3",
+    "documents": [
+      {
+        "document_id": "d_3",
+        "kind": "oa",
+        "source": "uploaded",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "출원번호 대조",
+          "searched_scope": null
+        }
+      }
+    ],
+    "missing": [
+      {
+        "what": "D1 KR20990000003A 본문",
+        "depends_on_tasks": [
+          "F3 대비: D1 KR20990000003A"
+        ],
+        "lookup_result": "body_missing",
+        "ask_upload": true
+      },
+      {
+        "what": "D2 US20990000001A1 본문",
+        "depends_on_tasks": [
+          "F3 대비: D2 US20990000001A1"
+        ],
+        "lookup_result": "lookup_failed",
+        "ask_upload": true
+      }
+    ],
+    "held_tasks": [
+      {
+        "task": "F3 대비: D1 KR20990000003A",
+        "waiting_for": "D1 KR20990000003A 본문"
+      },
+      {
+        "task": "F3 대비: D2 US20990000001A1",
+        "waiting_for": "D2 US20990000001A1 본문"
+      }
+    ],
+    "review_items_count": 8
+  },
+  "review_items": [
+    {
+      "kind": "conflict",
+      "target": "oa_result[0].application_number",
+      "label": "oa_3",
+      "reason": "값이 서로 충돌"
+    },
+    {
+      "kind": "unverified",
+      "target": "oa_result[0].claim_rows[0]",
+      "label": "청구항 1·거절이유 1",
+      "reason": "not_extracted"
+    },
+    {
+      "kind": "unverified",
+      "target": "oa_result[0].claim_rows[1]",
+      "label": "청구항 2·거절이유 1",
+      "reason": "not_extracted"
+    },
+    {
+      "kind": "unverified",
+      "target": "oa_result[0].claim_rows[2]",
+      "label": "청구항 3·거절이유 1",
+      "reason": "not_extracted"
+    },
+    {
+      "kind": "unverified",
+      "target": "oa_result[0].claim_rows[3]",
+      "label": "청구항 4·거절이유 1",
+      "reason": "not_extracted"
+    },
+    {
+      "kind": "unverified",
+      "target": "oa_result[0].claim_rows[4]",
+      "label": "청구항 1·거절이유 2",
+      "reason": "not_extracted"
+    },
+    {
+      "kind": "missing_material",
+      "target": "materials.missing[0]",
+      "label": "D1 KR20990000003A 본문",
+      "reason": "body_missing"
+    },
+    {
+      "kind": "missing_material",
+      "target": "materials.missing[1]",
+      "label": "D2 US20990000001A1 본문",
+      "reason": "lookup_failed"
+    }
+  ],
+  "document": {
+    "document_id": "d_3",
+    "pages": [
+      {
+        "page": 1,
+        "text": "의견제출통지서\n(최후거절이유통지)\n출원번호 10-2099-0000003\n발송번호 9-5-2099-000000003\n발송일자 2099.01.26.\n심사 대상 청구항 제1항 내지 제7항\n제출기일 2099.03.26.\n출원인 가나다 주식회사\n발명의 명칭 가상의 온도 조절 장치\n분할 원출원 10-2099-0000999\n이 출원에 대한 심사 결과 아래와 같은 거절이유가 있어 통지합니다.",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "글자 있음",
+          "searched_scope": null
+        },
+        "tables": []
+      },
+      {
+        "page": 2,
+        "text": "[거절이유]\n1. 이 출원의 청구항 제1항 내지 제4항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.\n인용발명 1: 공개특허공보 제10-2099-0000003호 (식별번호 [0023], [0031])\n인용발명 2: US 2099/0000001 A1 (식별번호 [0045])\n심사관 판단: 청구항 제1항의 센서 구성은 인용발명 1의 센서 구성과 같고 쉽게 만들 수 있습니다.",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "글자 있음",
+          "searched_scope": null
+        },
+        "tables": []
+      },
+      {
+        "page": 3,
+        "text": "2. 이 출원의 청구항 제1항은 특허법 제42조제4항제2호에 해당하여 특허를 받을 수 없습니다.\n심사관 판단: 청구항 제1항의 '약'이라는 표현이 불명확합니다.\n「특허 가능한 청구항」 청구항 5, 7\n【보정에 관한 참고사항】 청구항 5의 종속 관계를 정리하세요.\n[첨 부]",
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "글자 있음",
+          "searched_scope": null
+        },
+        "tables": []
+      }
+    ],
+    "status": {
+      "value": "confirmed",
+      "reason": null,
+      "checked": "글자 있는 쪽",
+      "searched_scope": null
+    }
+  }
+}
