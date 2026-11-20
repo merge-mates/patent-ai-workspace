@@ -5,6 +5,8 @@
 impl: split_search
 # 켜면 못 찾은 구성요소만 다른 문단·도면으로 한 번 더 찾는다 (PRD F3 3번). M3에서 켬/끔 비교
 second_search: false
+# 한 번 더 찾을 때 같은 질의로 받는 상위 조각 수 (1차 search.k의 두 배. 1차에 보여 준 조각은 뺀다)
+second_search_depth: 20
 # false면 심사관 지정 위치를 검색 질의·대비 프롬프트·결과 줄 어디에도 넣지 않는다 (tune 채점 실행용, 평가 누출 막기)
 use_examiner_paragraphs: true
 # 모델이 근거로 옮긴 글자(공백 뺀 뒤) 길이 하한: 대비 근거와 명확성 정의 근거가 같이 쓴다.

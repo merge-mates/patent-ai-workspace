@@ -13,9 +13,8 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.f3_claim_compare.retry import call_checked, confirmed, unverified
 from patent_ai.core.f3_claim_compare.textmatch import find_from, squeeze
-from patent_ai.core.llm.client import call_model
-from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason, worst_status
 
@@ -70,14 +69,6 @@ class SplitClaim(BaseModel):
     status: Status  # 구성요소·인용 관계 status 중 가장 나쁜 값
 
 
-def _confirmed(checked: str) -> Status:
-    return Status(value=StatusValue.CONFIRMED, checked=checked)
-
-
-def _unverified(reason: UnverifiedReason) -> Status:
-    return Status(value=StatusValue.UNVERIFIED, reason=reason)
-
-
 def element_location(claim: int, no: int) -> str:
     """사람이 읽는 구성요소 위치. 화면·대비표 줄이 같은 꼴을 쓴다."""
     return f"청구항 {claim} [구성 {claim}-{no}]"
@@ -124,13 +115,13 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
     elements: list[ClaimElement] = []
     for i, (item, spot) in enumerate(zip(answer.elements, spots, strict=True)):
         no = i + 1
-        status = _confirmed("구성요소 글자가 청구항 원문에 순서대로 그대로 있음")
+        status = confirmed("구성요소 글자가 청구항 원문에 순서대로 그대로 있음")
         if spot is None:
             errors.append(
                 f"elements[{i}].text가 청구항 원문에 그대로 없거나 앞 구성요소보다 앞에 있음: "
                 f"{item.text!r}"
             )
-            status = _unverified(UnverifiedReason.NOT_EXTRACTED)
+            status = unverified(UnverifiedReason.NOT_EXTRACTED)
         else:
             # 같은 글자가 다음 구성요소 자리 앞에 또 있으면 어느 것인지 원문만으로 못 가린다
             later = [s for s in spots[i + 1 :] if s is not None]
@@ -141,7 +132,7 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
                     f"elements[{i}].text와 같은 글자가 원문에 여러 번 있어 위치를 못 정함 "
                     f"(앞뒤 글자를 더 넣어 하나로 정해지게): {item.text!r}"
                 )
-                status = _unverified(UnverifiedReason.AMBIGUOUS)
+                status = unverified(UnverifiedReason.AMBIGUOUS)
         located = spot is not None and status.value == StatusValue.CONFIRMED
         # 버리지 않는다. 위치를 못 정한 것은 모델이 준 글자 그대로 "확인되지 않음"으로 남긴다
         elements.append(
@@ -160,14 +151,14 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
 
     if depends_errors:
         errors += depends_errors
-        bad = _unverified(UnverifiedReason.NOT_EXTRACTED)
+        bad = unverified(UnverifiedReason.NOT_EXTRACTED)
         return _Checked(elements, None, None, bad, errors, wrong_claim)
     if not answer.depends_on:
         # 독립항 여부는 모델이 읽은 그대로다. 인용구가 없어 코드가 원문과 대조할 것이 없다
         # (값은 confirmed로 두되 무엇을 확인했는지에 "대조 없음"을 분명히 적는다. 사람 판단 대기)
-        status = _confirmed("독립항 여부는 모델 판단 (인용구 없음, 원문 대조 없음)")
+        status = confirmed("독립항 여부는 모델 판단 (인용구 없음, 원문 대조 없음)")
         return _Checked(elements, [], None, status, errors, wrong_claim)
-    status = _confirmed("인용구가 청구항 원문에 있고 인용 번호가 이 사건의 앞 청구항임")
+    status = confirmed("인용구가 청구항 원문에 있고 인용 번호가 이 사건의 앞 청구항임")
     quote_text = claim_text[quote_at[0] : quote_at[1]]
     depends_on = sorted(set(answer.depends_on))
     return _Checked(elements, depends_on, quote_text, status, errors, wrong_claim)
@@ -189,41 +180,22 @@ def _check_depends_on(answer: ClaimElements, claim: int, claim_numbers: set[int]
     return errors
 
 
-# ---- 모델 호출 (검사 실패면 검사 오류를 붙여 한 번 더) ----
-_RETRY_NOTE = (
-    "\n앞 답이 검사에 떨어졌습니다. 아래 오류를 고쳐 같은 형식으로 다시 답하세요.\n"
-    "검사 오류:\n{error}\n"
-)
-_MAX_ERROR_CHARS = 2000  # 오류 문구가 길면 앞부분만 (프롬프트가 불어나지 않게)
-
-
+# ---- 모델 호출 (검사 실패면 검사 오류를 붙여 한 번 더: retry.call_checked) ----
 def _ask(claim: int, claim_text: str, claim_numbers: set[int], ctx: RunContext) -> _Checked:
-    """모델을 부르고 원문과 대조한다. 대조에 떨어지면 검사 오류를 붙여 한 번만 더 부른다.
-
-    두 번째 답도 형식(JSON·스키마)이 틀리면 ModelOutputInvalid를 그대로 던진다.
-    (실패를 성공으로 숨기지 않는다)
-    """
+    """모델을 부르고 원문과 대조한다. 대조에 떨어지면 검사 오류를 붙여 한 번만 더 부른다."""
     variables = {
         "claim": str(claim),
         "claim_text": claim_text,
         "claim_numbers": ", ".join(str(n) for n in sorted(claim_numbers)),
         "retry_note": "",
     }
-    try:
-        first = call_model(STEP, variables, ClaimElements, ctx=ctx, attempt=1)
-        checked = _check(first.parsed, claim, claim_text, claim_numbers)
-        if not checked.errors:
-            return checked
-        error = "\n".join(checked.errors)
-    except ModelOutputInvalid as e:
-        error = str(e)
-    logger.warning(
-        "split_elements 청구항 %d: 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름", claim
-    )
-    variables["retry_note"] = _RETRY_NOTE.format(error=error[:_MAX_ERROR_CHARS])
-    second = call_model(STEP, variables, ClaimElements, ctx=ctx, attempt=2)
-    # 두 번째 답만 쓴다 (첫 답과 섞으면 순서·겹침 검사가 깨진다)
-    return _check(second.parsed, claim, claim_text, claim_numbers)
+
+    def check(answer: ClaimElements) -> tuple[_Checked, list[str]]:
+        checked = _check(answer, claim, claim_text, claim_numbers)
+        return checked, checked.errors
+
+    who = f"split_elements 청구항 {claim}"
+    return call_checked(STEP, variables, ClaimElements, check, ctx=ctx, who=who)
 
 
 def split_elements(
@@ -237,7 +209,7 @@ def split_elements(
     # 청구항 글자가 없으면 모델을 부르지 않는다
     if not claim_text.strip():
         logger.warning("split_elements 청구항 %d: 청구항 글자가 비어 모델을 부르지 않음", claim)
-        bad = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
+        bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
         return SplitClaim(
             claim=claim,
             elements=[],
@@ -253,7 +225,7 @@ def split_elements(
     statuses = [e.status for e in checked.elements] + [checked.depends_on_status]
     if not checked.elements:
         logger.warning("split_elements 청구항 %d: 구성요소가 0개 (확인되지 않음으로 남김)", claim)
-        statuses.insert(0, _unverified(UnverifiedReason.NOT_EXTRACTED))
+        statuses.insert(0, unverified(UnverifiedReason.NOT_EXTRACTED))
     lost = [e.no for e in checked.elements if e.status.value != StatusValue.CONFIRMED]
     if lost:
         logger.warning(
@@ -267,7 +239,7 @@ def split_elements(
         # 다시 불러도 다른 청구항 번호로 답했다: 다른 청구항을 나눈 답일 수 있어 애매로 낮춘다
         # (결과의 번호는 입력으로 아는 값을 쓴다)
         logger.warning("split_elements 청구항 %d: 모델이 다른 청구항 번호로 답함", claim)
-        statuses.insert(0, _unverified(UnverifiedReason.AMBIGUOUS))
+        statuses.insert(0, unverified(UnverifiedReason.AMBIGUOUS))
     return SplitClaim(
         claim=claim,
         elements=checked.elements,

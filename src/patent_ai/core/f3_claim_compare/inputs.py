@@ -4,7 +4,7 @@
 OA 당시 청구항 판을 고르는 일은 부르는 쪽이 한다 (F3는 받은 글자만 읽는다).
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.schemas.common import Status
 from patent_ai.core.schemas.document import PageText
@@ -54,11 +54,19 @@ class F3Settings(BaseModel):
 
     impl: str  # 대비 방식 이름 (B8 전략 패턴)
     second_search: bool  # 못 찾은 구성요소를 한 번 더 찾을지 (B7)
+    second_search_depth: int = Field(ge=2)  # 한 번 더 찾을 때 받는 상위 조각 수 (1차 k보다 커야 함)
     use_examiner_paragraphs: bool  # 심사관 지정 위치를 쓸지 (false = 평가 누출 막기)
     # 모델이 근거로 옮긴 글자(공백 뺀 뒤)의 길이 하한. 한두 글자는 아무 조각에나 맞아 받지 않는다
     min_quote_chars: int = Field(ge=1)
     search: SearchSettings
     clarity_search: ClaritySearchSettings
+
+    @model_validator(mode="after")
+    def _두_번째_검색은_더_깊어야_함(self) -> F3Settings:
+        # 1차 k 이하면 새 조각이 하나도 안 나와 "두 번 찾음"이 거짓이 된다
+        if self.second_search_depth <= self.search.k:
+            raise ValueError("second_search_depth는 search.k보다 커야 함")
+        return self
 
 
 class F3Inputs(BaseModel):

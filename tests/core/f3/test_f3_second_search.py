@@ -7,6 +7,8 @@
 import functools
 import json
 
+import pytest
+
 from patent_ai.core.f3_claim_compare.compare import STEP, compare_unit, make_searcher
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Inputs
@@ -83,6 +85,7 @@ def _run(second_search: bool, responses, *, use_examiner=True, result=None):
     settings = settings.model_copy(
         update={
             "second_search": second_search,
+            "second_search_depth": 2,  # 1차 k=1 다음에 상위 2까지
             "use_examiner_paragraphs": use_examiner,
             "search": settings.search.model_copy(update={"k": 1}),
         }
@@ -175,3 +178,10 @@ def test_켜고_심사관_위치를_꺼도_두_번째까지_심사관_출처가_
     rows = out.tables[0].rows
     assert all(r.paragraph_source == ParagraphSource.AI_FOUND for r in rows)
     assert _tank_row(out).evidence[0].chunk_id == P40 and _tank_row(out).why_retrieved
+
+
+def test_두_번째_검색_깊이는_설정_값이고_1차_k보다_커야_한다():
+    settings = load_f3_settings()
+    assert settings.second_search_depth == 2 * settings.search.k  # 기본: 1차의 두 배
+    with pytest.raises(ValueError, match="second_search_depth"):
+        settings.model_validate({**settings.model_dump(), "second_search_depth": settings.search.k})

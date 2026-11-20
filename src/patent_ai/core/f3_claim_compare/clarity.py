@@ -18,9 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from patent_ai.core.f3_claim_compare.examiner import find_claim_row
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
+from patent_ai.core.f3_claim_compare.retry import call_checked, confirmed, unverified
 from patent_ai.core.f3_claim_compare.textmatch import find_all_spans, find_span, is_too_short
-from patent_ai.core.llm.client import call_model
-from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.case_materials import HeldTask
 from patent_ai.core.schemas.common import Evidence, Status, StatusValue, UnverifiedReason
@@ -157,14 +156,6 @@ def split_spec(spec: PageText, skip_headings: Sequence[str] = ()) -> list[SpecCh
 
 
 # ---- 작은 도우미 ----
-def _confirmed(checked: str) -> Status:
-    return Status(value=StatusValue.CONFIRMED, checked=checked)
-
-
-def _unverified(reason: UnverifiedReason) -> Status:
-    return Status(value=StatusValue.UNVERIFIED, reason=reason)
-
-
 def _same(a: str, b: str) -> bool:
     return " ".join(a.split()) == " ".join(b.split())
 
@@ -270,13 +261,6 @@ def _check(
     return judged, errors
 
 
-_RETRY_NOTE = (
-    "\n앞 답이 검사에 떨어졌습니다. 아래 오류를 고쳐 같은 형식으로 다시 답하세요.\n"
-    "검사 오류:\n{error}\n"
-)
-_MAX_ERROR_CHARS = 2000
-
-
 def _ask(
     unit: JudgmentUnit, terms: list[_Term], config: F3Config, ctx: RunContext
 ) -> dict[str, _Judged]:
@@ -302,21 +286,13 @@ def _ask(
     }
     spec = config.inputs.spec
     min_chars = config.settings.min_quote_chars
-    try:
-        first = call_model(STEP, variables, ClarityAnswer, ctx=ctx, attempt=1)
-        judged, errors = _check(first.parsed, claim, terms, spec, min_chars)
-        if not errors:
-            return judged
-        error = "\n".join(errors)
-    except ModelOutputInvalid as e:
-        error = str(e)
-    logger.warning("clarity 청구항 %d: 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름", claim)
-    variables["retry_note"] = _RETRY_NOTE.format(error=error[:_MAX_ERROR_CHARS])
-    second = call_model(STEP, variables, ClarityAnswer, ctx=ctx, attempt=2)
-    judged, errors = _check(second.parsed, claim, terms, spec, min_chars)
-    if errors:
-        logger.warning("clarity 청구항 %d: 다시 불러도 검사 오류 %d건", claim, len(errors))
-    return judged
+
+    def check(answer: ClarityAnswer):
+        return _check(answer, claim, terms, spec, min_chars)
+
+    return call_checked(
+        STEP, variables, ClarityAnswer, check, ctx=ctx, who=f"clarity 청구항 {claim}"
+    )
 
 
 # ---- 단위 하나 ----
@@ -391,27 +367,27 @@ def review_clarity_unit(
     reviews: list[ClarityReview] = []
     for term in wanted:
         if term in lost:
-            status = _unverified(UnverifiedReason.NOT_EXTRACTED)
+            status = unverified(UnverifiedReason.NOT_EXTRACTED)
             note = "OA가 짚은 문구를 청구항 원문에서 찾지 못함 (직접 확인)"
             reviews.append(review(term, f"청구항 {claim} (위치 확인되지 않음)", status, note))
             continue
         one = judged.get(term)
         location = by_term[term].location
         if one is None:
-            status = _unverified(UnverifiedReason.NOT_EXTRACTED)
+            status = unverified(UnverifiedReason.NOT_EXTRACTED)
             reviews.append(review(term, location, status, "모델이 이 문구 검토를 주지 않음"))
             continue
         note = f"[문제 유형 후보: {_ISSUE_NAMES[one.answer.issue_type]}] {one.answer.note.strip()}"
         if not input_ok:
-            status = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
+            status = unverified(UnverifiedReason.INPUT_UNVERIFIED)
         elif one.dropped:
-            status = _unverified(UnverifiedReason.EVIDENCE_REJECTED)
+            status = unverified(UnverifiedReason.EVIDENCE_REJECTED)
         elif one.definition is not None:
-            status = _confirmed(
+            status = confirmed(
                 "짚은 문구가 청구항 원문에 있고 정의 근거 글자가 명세서 그 쪽에 있음"
             )
         elif not chunks:
-            status = _unverified(UnverifiedReason.BODY_MISSING)  # 명세서가 없거나 글자가 없음
+            status = unverified(UnverifiedReason.BODY_MISSING)  # 명세서가 없거나 글자가 없음
         else:
             # 못 찾음: 없다고 단정하지 않고 찾아본 범위를 남긴다
             status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)

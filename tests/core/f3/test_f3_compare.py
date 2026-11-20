@@ -21,7 +21,7 @@ from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Inputs
 from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.llm.config import load_step_config
 from patent_ai.core.llm.embed import load_embed_config
-from patent_ai.core.llm.errors import ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
@@ -544,7 +544,7 @@ def test_신규성_차이_없음과_실질적_동일_후보에는_늘_직접_검
         assert Flag.NEEDS_HUMAN_REVIEW in out.tables[0].flags
     reason = out.tables[0].summary.reason
     assert "가리기 어려운 구성요소만 있음, 실질적 동일 판단 아님" in reason
-    # 근거가 있는 차이 후보(못 찾음이 아님)면 "차이 있음" 표에는 표시를 붙이지 않는다
+    # 근거가 있는 "차이 있음"에도 붙는다: 요약 표시는 AI 정리일 뿐 신규성 결론이 아니다
     shown = _answer(
         [
             _row(1, "D1", "disclosed", (P23, FULL23)),
@@ -553,7 +553,9 @@ def test_신규성_차이_없음과_실질적_동일_후보에는_늘_직접_검
     )
     different, _, _ = _run(_novelty([citation("D1", D1)]), shown)
     assert different.tables[0].summary.verdict == NoveltyVerdict.DIFFERENT
-    assert different.tables[0].flags == []
+    assert Flag.NEEDS_HUMAN_REVIEW in different.tables[0].flags
+    assert "판정 아님" in different.tables[0].summary.reason
+    assert "못 찾은 것" not in different.tables[0].summary.reason  # 못 찾음 글은 그 경우에만
 
 
 def test_못_찾음에서만_나온_차이_있음에는_직접_검토_필요와_판단_아님을_적는다():
@@ -593,3 +595,11 @@ def test_심사관_위치를_끄면_진보성_요약에_심사관_논리_원문�
 def test_근거_글자_하한과_대비_호출_상한_설정():
     assert load_f3_settings().min_quote_chars == 10
     assert load_step_config("f3.compare").max_model_calls == 240
+
+
+def test_모르는_검색_방식_이름은_조용히_바꾸지_않고_설정_오류로_멈춘다():
+    config = _config()
+    search = config.settings.search.model_copy(update={"impl": "fake"})
+    settings = config.settings.model_copy(update={"search": search})
+    with pytest.raises(ModelConfigError, match="fake"):
+        _run(_inventive(), [], config.model_copy(update={"settings": settings}))

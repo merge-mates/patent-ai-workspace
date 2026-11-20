@@ -8,7 +8,6 @@
 - 신규성은 인용문헌 하나와만: 인용문헌마다 모델을 따로 부르고 표도 따로 만든다.
 """
 
-import hashlib
 import json
 import logging
 from collections.abc import Mapping
@@ -25,10 +24,10 @@ from patent_ai.core.f3_claim_compare.examiner import (
 )
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
 from patent_ai.core.f3_claim_compare.result import ExaminerLocationRow, SearchLogRow
-from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
-from patent_ai.core.llm.client import call_model
+from patent_ai.core.f3_claim_compare.retry import call_checked, confirmed, unverified
+from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short, text_hash
 from patent_ai.core.llm.embed import query_embedder
-from patent_ai.core.llm.errors import ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.case_materials import HeldTask
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
@@ -116,12 +115,13 @@ def make_searcher(settings: F3Settings, repo: ChunkRepository, embed: Embed | No
 
 
 # ---- 작은 도우미 ----
-def _confirmed(checked: str) -> Status:
-    return Status(value=StatusValue.CONFIRMED, checked=checked)
-
-
-def _unverified(reason: UnverifiedReason) -> Status:
-    return Status(value=StatusValue.UNVERIFIED, reason=reason)
+def _mode(impl: str) -> str:
+    """검색 구현 이름 -> 검색 방식. 모르는 이름을 조용히 hybrid로 바꾸지 않는다."""
+    if impl not in _MODES:
+        raise ModelConfigError(
+            f"config/f3.yaml search.impl {impl!r}은 대비 단계가 모르는 검색 방식 (가능: {_MODES})"
+        )
+    return impl
 
 
 def _scope_text(cite: ResolvedCitation, settings: F3Settings) -> str:
@@ -166,10 +166,10 @@ class _Collected:
 # ---- 1) 후보 모으기: 검색 상위 k ∪ 심사관 지정 조각 ----
 def _log_status(result: SearchResult, scope: str) -> Status:
     if result.hits:
-        return _confirmed("검색 결과를 받음")
+        return confirmed("검색 결과를 받음")
     if result.status == "not_found_in_scope":
         return Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
-    return _unverified(UnverifiedReason.BODY_MISSING)
+    return unverified(UnverifiedReason.BODY_MISSING)
 
 
 def _gather(
@@ -185,7 +185,7 @@ def _gather(
 ) -> dict[str, _Candidate]:
     settings = config.settings
     search = settings.search
-    mode = search.impl if search.impl in _MODES else "hybrid"
+    mode = _mode(search.impl)
     candidates: dict[str, _Candidate] = {}
     for e in elements:
         for cite in cites:
@@ -197,7 +197,7 @@ def _gather(
                     unit_id=unit.unit_id,
                     claim=claim,
                     element_no=e.no,
-                    element_hash=hashlib.sha256(e.text.encode("utf-8")).hexdigest()[:12],
+                    element_hash=text_hash(e.text),
                     citation=cite.label,
                     doc_id=cite.doc_id,
                     status=_log_status(result, scope),
@@ -292,13 +292,6 @@ def _check(
     return judged, errors
 
 
-_RETRY_NOTE = (
-    "\n앞 답이 검사에 떨어졌습니다. 아래 오류를 고쳐 같은 형식으로 다시 답하세요.\n"
-    "검사 오류:\n{error}\n"
-)
-_MAX_ERROR_CHARS = 2000  # 오류 문구가 길면 앞부분만
-
-
 def _ask(
     claim: int,
     claim_text: str,
@@ -310,7 +303,7 @@ def _ask(
 ) -> dict[tuple[int, str], _Judged]:
     """모델 1회. 형식이나 대조 검사에 떨어지면 검사 오류를 붙여 한 번만 더 부른다.
 
-    두 번째 답도 형식(JSON·스키마)이 틀리면 ModelOutputInvalid를 그대로 던진다.
+    틀린 근거는 _check가 버리고, 줄 status는 줄 만들기에서 낮춘다.
     """
     shown = sorted(candidates.values(), key=lambda c: (c.label, c.chunk.chunk_id))
     variables = {
@@ -329,25 +322,12 @@ def _ask(
         ),
         "retry_note": "",
     }
-    try:
-        first = call_model(STEP, variables, CompareAnswer, ctx=ctx, attempt=1)
-        judged, errors = _check(first.parsed, claim, pairs, candidates, min_chars)
-        if not errors:
-            return judged
-        error = "\n".join(errors)
-    except ModelOutputInvalid as e:
-        error = str(e)
-    logger.warning("compare 청구항 %d: 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름", claim)
-    variables["retry_note"] = _RETRY_NOTE.format(error=error[:_MAX_ERROR_CHARS])
-    second = call_model(STEP, variables, CompareAnswer, ctx=ctx, attempt=2)
-    judged, errors = _check(second.parsed, claim, pairs, candidates, min_chars)
-    if errors:
-        logger.warning(
-            "compare 청구항 %d: 다시 불러도 검사 오류 %d건 (틀린 근거는 버리고 상태를 낮춤)",
-            claim,
-            len(errors),
-        )
-    return judged
+
+    def check(answer: CompareAnswer):
+        return _check(answer, claim, pairs, candidates, min_chars)
+
+    who = f"compare 청구항 {claim}"
+    return call_checked(STEP, variables, CompareAnswer, check, ctx=ctx, who=who)
 
 
 # ---- 3) 줄 만들기 ----
@@ -374,7 +354,8 @@ def _scope_text_twice(cite: ResolvedCitation, settings: F3Settings, figures: int
     s = settings.search
     return (
         f"{cite.label} 조각 {cite.chunk_count}개 중 {s.impl} 상위 {s.k}, "
-        f"이어서 상위 {2 * s.k}까지와 도면 설명 조각 {figures}개 ({s.index_version}) · 두 번 찾음"
+        f"이어서 상위 {settings.second_search_depth}까지와 도면 설명 조각 {figures}개 "
+        f"({s.index_version}) · 두 번 찾음"
     )
 
 
@@ -403,24 +384,24 @@ def _rows_of(
 
     if e.status.value != StatusValue.CONFIRMED:
         why = "구성요소 글자를 청구항 원문에서 확인하지 못해 찾지 않음"
-        return [row(Judgment.UNCLEAR, _unverified(UnverifiedReason.INPUT_UNVERIFIED), why=why)]
+        return [row(Judgment.UNCLEAR, unverified(UnverifiedReason.INPUT_UNVERIFIED), why=why)]
     if one is None:
         why = "모델이 이 구성요소 × 인용문헌 판정을 주지 않음"
-        return [row(Judgment.UNCLEAR, _unverified(UnverifiedReason.NOT_EXTRACTED), why=why)]
+        return [row(Judgment.UNCLEAR, unverified(UnverifiedReason.NOT_EXTRACTED), why=why)]
     if not one.picks:
         if one.dropped or one.judgment == Judgment.DISCLOSED:
             # 근거가 대조에 다 떨어졌거나 근거 없이 개시됨이라고 함: 판정을 싣지 않는다
             why = "모델이 준 근거가 후보 조각과 맞지 않아 뺌"
-            status = _unverified(UnverifiedReason.EVIDENCE_REJECTED)
+            status = unverified(UnverifiedReason.EVIDENCE_REJECTED)
             return [row(Judgment.UNCLEAR, status, why=why)]
         # 못 찾음: 없다고 단정하지 않고 찾아본 범위를 남긴다
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
         why = f"구성요소 글자를 질의로 검색 ({scope}): AI가 근거로 고른 문단이 없음"
         return [row(one.judgment, status, why=why)]
     status = (
-        _unverified(UnverifiedReason.EVIDENCE_REJECTED)
+        unverified(UnverifiedReason.EVIDENCE_REJECTED)
         if one.dropped
-        else _confirmed("근거 글자가 인용문헌 조각에 그대로 있음")
+        else confirmed("근거 글자가 인용문헌 조각에 그대로 있음")
     )
     by_examiner = [p for p in one.picks if p[0].examiner]
     by_ai = [p for p in one.picks if not p[0].examiner]
@@ -436,7 +417,7 @@ def _rows_of(
 # ---- 한 번 더 찾기 (second_search): 1차에서 근거를 못 고른 구성요소만 ----
 def _second_log_status(result: SearchResult, fresh: bool, scope: str) -> Status:
     if fresh:
-        return _confirmed("두 번째 검색에서 새 조각을 받음")
+        return confirmed("두 번째 검색에서 새 조각을 받음")
     if result.status == "unverified":
         # 본문이 없어 못 찾은 것은 "조회 범위 내 없음"으로 덮지 않는다
         return _log_status(result, scope)
@@ -457,13 +438,13 @@ def _second_round(
 ) -> dict[tuple[int, str], _Judged]:
     """다른 문단·도면으로 한 번 더 찾는다.
 
-    다른 문단 = 같은 질의로 상위 2k까지 받아 1차에 보여 준 조각을 뺀 것 (검색 계약 그대로, 더 깊이).
+    다른 문단 = 같은 질의로 더 깊이(설정 second_search_depth까지) 받아 1차에 보여 준 조각을 뺀 것.
     도면 = 그 인용문헌의 도면 설명 조각 가운데 1차에 안 보여 준 것.
     그래도 근거를 못 고르면 판정은 그대로 두고 두 번 찾아본 범위를 남긴다.
     """
     settings = config.settings
     search = settings.search
-    mode = search.impl if search.impl in _MODES else "hybrid"
+    mode = _mode(search.impl)
     claim = split.claim
     candidates: dict[str, _Candidate] = {}
     scopes: dict[str, str] = {}
@@ -479,7 +460,8 @@ def _second_round(
         scopes[cite.label] = _scope_text_twice(cite, settings, len(figures))
     for e, cite in missing:
         # 질의는 1차와 같다 (구성요소 원문뿐). 더 깊이 받아 이미 본 조각을 뺀다
-        result = searcher.search(e.text, "cite", mode, 2 * search.k, doc_ids=[cite.doc_id])
+        depth = settings.second_search_depth
+        result = searcher.search(e.text, "cite", mode, depth, doc_ids=[cite.doc_id])
         fresh = [h for h in result.hits if h.chunk_id not in shown]
         scope = scopes[cite.label]
         seen.search_log.append(
@@ -487,7 +469,7 @@ def _second_round(
                 unit_id=unit.unit_id,
                 claim=claim,
                 element_no=e.no,
-                element_hash=hashlib.sha256(e.text.encode("utf-8")).hexdigest()[:12],
+                element_hash=text_hash(e.text),
                 citation=cite.label,
                 doc_id=cite.doc_id,
                 round=2,
@@ -750,22 +732,13 @@ def compare_unit(
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )
-        only_not_found = novelty and _differences_only_not_found(rows)
         if not input_ok:
             # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
-            bad = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
+            bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
             rows = [r.model_copy(update={"status": bad}) for r in rows]
-        # 직접 검토 필요: 대비 안 한 인용이 있음 / 효과 후보를 안 뽑음(진보성) /
-        # 단위에 표시가 있음(묶음 미확인, 독립항이 대상 밖) / 신규성 표시가 "차이 있음"이 아님 /
-        # "차이 있음"이 못 찾은 줄에서만 나옴 (못 찾음 ≠ 없음)
-        review = (
-            bool(skipped)
-            or not novelty
-            or Flag.NEEDS_HUMAN_REVIEW in unit.flags
-            or unit.status.value != StatusValue.CONFIRMED
-            or summary.verdict != NoveltyVerdict.DIFFERENT
-            or only_not_found
-        )
+        # 대비표에는 늘 직접 검토 필요를 붙인다: 진보성은 효과 후보를 아직 뽑지 않았고,
+        # 신규성 요약 표시는 AI 정리일 뿐이라 "차이 있음"도 결론처럼 읽히면 안 된다.
+        # (대비 안 한 인용, 확인 안 된 단위도 이 표시로 사람에게 간다)
         tables.append(
             ComparisonTable(
                 unit_id=unit.unit_id,
@@ -774,7 +747,7 @@ def compare_unit(
                 rows=rows,
                 summary=summary,
                 status=summarize_table_status(rows),
-                flags=[Flag.NEEDS_HUMAN_REVIEW] if review else [],
+                flags=[Flag.NEEDS_HUMAN_REVIEW],
             )
         )
     return CompareOutput(
