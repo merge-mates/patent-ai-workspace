@@ -263,8 +263,24 @@ def _hint_note(item: Item | None, pages: PageText) -> ExtractedValue:
     return merge(None, _found(item), pages, derive=_original_sentence, field="amendment_note")
 
 
+# 보정 참고사항 칸 제목: 맨 앞의 (여는 괄호·기호) + 짧은 글자 + "참고사항"
+# + (닫는 괄호) + (":"·"-"). 꼴을 하나씩 늘리지 않으려고 일반 꼴로 찾고,
+# 머리에 "보정"이 있을 때만 뗀다 (다른 칸 제목은 그대로).
+_NOTE_HEAD = re.compile(
+    r"^\s*[【\[〔<(「■◎※]?\s*"
+    r"(?P<head>[^\n】\]〕>)」]{0,20}?)참\s*고\s*사\s*항"
+    r"\s*[】\]〕>)」]?\s*[:\-]?\s*"
+)
+
+
 def _original_sentence(raw_text: str) -> str | None:
-    """보정 참고사항 값: 원문 글자의 앞뒤 공백만 뺀다. 비면 None(못 씀)."""
+    """보정 참고사항 값: 원문 글자에서 앞머리 칸 제목을 떼고 앞뒤 공백을 뺀다. 비면 None(못 씀).
+
+    raw_text(원문 대조용)는 그대로 두고 value에서만 뗀다. 정답 형식은 칸 제목 없는 본문이다.
+    """
+    m = _NOTE_HEAD.match(raw_text)
+    if m and "보정" in re.sub(r"\s", "", m.group("head")):
+        raw_text = raw_text[m.end() :]
     return raw_text.strip() or None
 
 
