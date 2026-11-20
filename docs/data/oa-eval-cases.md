@@ -114,6 +114,6 @@ G3(신규성만)은 두지 않는다 (11/17 재아·은진 합의, 조건에 맞
 
 ## 5. 쓰면 안 되는 곳
 - git, 공개 배포, 테스트 fixture (fixture는 지어낸 글자만). 목록·파일 이름에 출원번호가 있으니 파일 목록도 커밋하지 않는다.
-- report 사건의 서류·실패 사례(`report/case_full/`, `report/case_fail/`)는 마일스톤 끝 채점 전까지 열지 않는다. 뒤 OA·거절결정이 report 정답의 힌트가 되기 때문이다 (product.md 6.1절).
+- report 사건의 서류·실패 사례(`report/case_full/`, `report/case_fail/`)는 M3 끝(11/26) 채점 전까지 열지 않는다. 뒤 OA·거절결정이 report 정답의 힌트가 되기 때문이다 (product.md 6.1절).
 - `case_full/`은 AI 입력으로 쓰지 않는다. 의견서·보정서·등록공보·결정서와 OA 뒤 이력 줄이 들어 있다. AI 입력은 잘린 `data/processed/cases/`만 쓴다 (2.3절, [eval/GUIDE.md](../../eval/GUIDE.md) 1절).
 - 미검토 외부 모델 전송은 architecture.md 표를 따른다.
