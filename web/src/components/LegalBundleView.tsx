@@ -1,99 +1,119 @@
-import { Card, Descriptions, List, Space, Tag, Typography } from 'antd'
+import { Button, Tag, Typography } from 'antd'
+import { useState } from 'react'
 import { furtherReviewWhyLabel, reviewVerdictLabel, sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalEvidenceBundle, LegalSource } from '../types/generated/LegalEvidenceBundle'
+import type { Status } from '../types/generated/OAResult'
 import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
 
-// 근거 하나: 자료 종류·식별자·판본·원문 위치 + 전문/요지 + 법원 판단/당사자 주장
-function SourceItem({ s }: { s: LegalSource }) {
+// 상태 글자: 확인됨은 꼬리표 없이 초록 글자("확인됨 · 무엇을 확인했나"), 나머지(확인되지 않음·충돌 등)만 꼬리표
+function StatusText({ status }: { status: Status }) {
+  if (status.value === 'confirmed') {
+    return (
+      <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
+        확인됨{status.checked ? ` · ${status.checked}` : ''}
+      </span>
+    )
+  }
+  return <StatusTag status={status} />
+}
+
+// 근거 한 줄: 제목 + (확인됨 아니면 꼬리표) + "자세히". 펼치면 원문 위치·원문 일부
+function SourceRow({ s }: { s: LegalSource }) {
+  const [open, setOpen] = useState(false)
   return (
-    <Space direction="vertical" size={2} style={{ width: '100%' }}>
-      <Space size={4} wrap>
-        <Tag color="geekblue">{sourceKindLabel[s.source_kind]}</Tag>
-        <Typography.Text strong>{s.identifier}</Typography.Text>
-        {s.text_kind && <Tag>{s.text_kind === 'full' ? '전문' : '요지'}</Tag>}
-        {s.speaker && <Tag>{speakerLabel[s.speaker]}</Tag>}
-        <StatusTag status={s.status} />
-      </Space>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        {/* 판본은 법령·심사기준에만 있다 (판례·심결은 원문 위치만) */}
-        {s.source_kind === 'statute' || s.source_kind === 'guideline' ? `판본: ${s.evidence.edition ?? '모름'} · ` : ''}
-        원문 위치: {s.evidence.location ?? '—'}
-        {/* 판례·심결의 법원·선고일(심결일)은 알 때만 한 줄 */}
-        {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
-      </Typography.Text>
-      {s.evidence.raw_text && (
-        <Typography.Text style={{ fontSize: 13 }}>
-          “{s.evidence.raw_text}”
-        </Typography.Text>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: '14px 0',
+        borderBottom: '1px solid var(--line-neutral-tertiary)',
+      }}
+    >
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="body1" style={{ flex: '1 1 280px', fontWeight: 600 }}>
+          {sourceKindLabel[s.source_kind]} · {s.identifier}
+          {s.text_kind && ` · ${s.text_kind === 'full' ? '전문' : '요지'}`}
+        </span>
+        {s.status.value !== 'confirmed' && <StatusText status={s.status} />}
+        <Button type="text" size="small" onClick={() => setOpen(!open)}>
+          {open ? '접기' : '자세히'}
+        </Button>
+      </div>
+      {s.status.value === 'confirmed' && !open && <StatusText status={s.status} />}
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 2 }}>
+          {s.evidence.raw_text && <span className="body2r t2">“{s.evidence.raw_text}”</span>}
+          <span className="label1 t3">
+            {/* 판본은 법령·심사기준에만 있다 (판례·심결은 원문 위치만) */}
+            {s.source_kind === 'statute' || s.source_kind === 'guideline'
+              ? `판본: ${s.evidence.edition ?? '모름'} · `
+              : ''}
+            원문 위치: {s.evidence.location ?? '—'}
+            {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
+            {s.speaker && ` · ${speakerLabel[s.speaker]}`}
+          </span>
+          {s.status.value === 'confirmed' && <StatusText status={s.status} />}
+        </div>
       )}
-    </Space>
+    </div>
   )
 }
 
-// 법률 근거 묶음: 주장 번호마다 근거. "적용된다"는 판단은 하지 않는다 (근거와 상태만)
+// 법률 근거 묶음: 주장마다 제목 + 근거 줄. "적용된다"는 판단은 하지 않는다 (근거와 상태만)
 export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
   return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Descriptions size="small" column={1} bordered>
-        <Descriptions.Item label="질문">{b.question.text}</Descriptions.Item>
-        <Descriptions.Item label="기준 시점">{b.question.as_of ?? '현행'}</Descriptions.Item>
-        <Descriptions.Item label="확인 기준일">{b.checked_on}</Descriptions.Item>
-        <Descriptions.Item label="상태">
-          <StatusTag status={b.status} />
-        </Descriptions.Item>
-      </Descriptions>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* 법률 질문 답은 AI 결과임을 머리에 한 번 보인다 */}
+          <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>
+            AI 답
+          </Tag>
+          <span className="label2 t3">
+            {b.question.as_of ?? '현행'} · 확인 기준일 {b.checked_on}
+          </span>
+          <StatusText status={b.status} />
+        </div>
+      </div>
       {b.claims.map((c) => (
-        <Card
-          key={c.no}
-          size="small"
-          type="inner"
-          title={<span style={{ whiteSpace: 'normal' }}>주장 {c.no}</span>}
-          extra={<StatusTag status={c.status} />}
-        >
-          <Typography.Paragraph style={{ marginBottom: 8 }}>{c.text}</Typography.Paragraph>
-          {c.flags.includes('needs_human_review') && (
-            <div style={{ marginBottom: 8 }}>
-              <HumanCheckTag>직접 검토 필요</HumanCheckTag>
-            </div>
-          )}
+        <div key={c.no} style={{ display: 'flex', flexDirection: 'column' }}>
+          <h2 className="headline1" style={{ marginBottom: 4 }}>
+            {c.text}
+          </h2>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {c.status.value !== 'confirmed' && <StatusText status={c.status} />}
+            {c.flags.includes('needs_human_review') && <HumanCheckTag>직접 검토 필요</HumanCheckTag>}
+          </div>
           {c.review && (
-            <Typography.Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
-              <Tag>{reviewVerdictLabel[c.review.verdict]}</Tag>
-              {c.review.reason}
-            </Typography.Paragraph>
+            <span className="label1 t3" style={{ marginTop: 4 }}>
+              {reviewVerdictLabel[c.review.verdict]} · {c.review.reason}
+            </span>
           )}
-          <List
-            size="small"
-            dataSource={c.sources}
-            renderItem={(s) => (
-              <List.Item style={{ paddingInline: 0 }}>
-                <SourceItem s={s} />
-              </List.Item>
-            )}
-          />
-        </Card>
+          {c.sources.map((s, i) => (
+            <SourceRow key={`${s.identifier}-${s.evidence.chunk_id ?? i}`} s={s} />
+          ))}
+        </div>
       ))}
       {b.claims.length === 0 && (
         <Typography.Text type="secondary">
           {b.unit_id === null ? '고른 자료 유형에서 근거를 찾지 못했습니다.' : '이 판단 단위의 근거 주장이 없습니다.'}
         </Typography.Text>
       )}
-      <Card size="small" title="추가 검토할 자료">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span className="label1 t3">추가 검토할 자료 {b.further_review.length}</span>
         {b.further_review.length === 0 ? (
-          <Typography.Text type="secondary">없음</Typography.Text>
+          <span className="body2 t2">없음</span>
         ) : (
-          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
-            {b.further_review.map((x) => (
-              <li key={x.chunk_id}>
-                <Tag>{furtherReviewWhyLabel[x.why]}</Tag>
-                {x.chunk_id}
-                {x.note && ` — ${x.note}`}
-              </li>
-            ))}
-          </ul>
+          b.further_review.map((x) => (
+            <span key={x.chunk_id} className="body2 t2">
+              {furtherReviewWhyLabel[x.why]} · {x.chunk_id}
+              {x.note && ` — ${x.note}`}
+            </span>
+          ))
         )}
-      </Card>
-    </Space>
+      </div>
+    </div>
   )
 }

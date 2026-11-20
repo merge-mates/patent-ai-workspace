@@ -34,8 +34,9 @@ export function CaseShell() {
     navigate(base + step.path)
   }
 
+  // 머리 막대가 본문 여백을 주지 않으므로 이 틀이 직접 여백을 갖는다 (사건 화면 재설계 전까지)
   return (
-    <Row gutter={[16, 16]}>
+    <Row gutter={[16, 16]} style={{ padding: 16 }}>
       <Col xs={{ span: 24, order: 2 }} lg={{ span: 4, order: 1 }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
           {data.oa.case_name}

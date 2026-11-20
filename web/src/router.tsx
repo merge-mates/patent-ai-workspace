@@ -7,6 +7,7 @@ import { ComparePage } from './pages/compare/ComparePage'
 import { DirectionsPage } from './pages/directions/DirectionsPage'
 import { DraftsPage } from './pages/drafts/DraftsPage'
 import { LegalPage } from './pages/legal/LegalPage'
+import { UploadPage } from './pages/UploadPage'
 import { RouteError } from './pages/RouteError'
 import { WorkbenchPage } from './pages/workbench/WorkbenchPage'
 
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, loader: () => redirect('/cases') },
       { path: 'cases', loader: casesLoader, element: <CaseListPage />, errorElement: <RouteError /> },
+      { path: 'cases/new', element: <UploadPage /> },
       { path: 'legal', element: <LegalPage /> },
       { path: 'cases/:caseId', loader: caseLoader, errorElement: <RouteError /> },
       {

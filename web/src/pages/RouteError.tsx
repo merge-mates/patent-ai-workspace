@@ -16,6 +16,7 @@ export function RouteError() {
     detail = error.message
   }
   return (
+    <main style={{ padding: 16 }}>
     <Result
       status="warning"
       title={title}
@@ -26,5 +27,6 @@ export function RouteError() {
         </Link>
       }
     />
+    </main>
   )
 }
