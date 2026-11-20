@@ -78,6 +78,16 @@ def summarize_claim_status(sources: list[LegalSource]) -> Status:
     return worst_status([s.status for s in sources], ALL_SOURCES_CHECKED)
 
 
+# 비어 있는 목록(근거 0개 주장, 주장 0개 묶음)에 둘 수 있는 status.
+# F2는 찾아본 범위에 결과가 없으면 not_found_in_scope, 못 찾은 이유가 따로 있으면 unverified로 둔다.
+_EMPTY_OK = {StatusValue.UNVERIFIED, StatusValue.NOT_FOUND_IN_SCOPE}
+
+
+def _빈_목록_status_검사(status: Status, what: str) -> None:
+    if status.value not in _EMPTY_OK:
+        raise ValueError(f"{what}가 비어 있으면 status는 unverified 또는 not_found_in_scope")
+
+
 class LegalClaim(ResultBase):
     no: int = Field(ge=1)
     text: str  # 주장 문장
@@ -87,6 +97,10 @@ class LegalClaim(ResultBase):
     def _검사(self) -> LegalClaim:
         if not self.text.strip():
             raise ValueError("text가 비어 있음")
+        if not self.sources:
+            # 근거 0개는 모을 값이 없다: 확인됨·충돌만 막는다
+            _빈_목록_status_검사(self.status, "sources")
+            return self
         expected = summarize_claim_status(self.sources)
         if self.status.value != expected.value:
             raise ValueError(f"status {self.status.value}가 근거를 모은 값 {expected.value}와 다름")
@@ -112,6 +126,9 @@ class LegalEvidenceBundle(ResultBase):
         nos = [c.no for c in self.claims]
         if len(set(nos)) != len(nos):
             raise ValueError("claims의 no에 중복이 있음")
+        if not self.claims:
+            _빈_목록_status_검사(self.status, "claims")
+            return self
         expected = summarize_bundle_status(self.claims)
         if self.status.value != expected.value:
             raise ValueError(f"status {self.status.value}가 주장을 모은 값 {expected.value}와 다름")

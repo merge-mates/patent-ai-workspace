@@ -138,19 +138,32 @@ def test_묶음_모두_confirmed면_checked_상수():
     assert bundle().status.checked == ALL_CLAIMS_CHECKED
 
 
-def test_주장_0개_묶음은_not_extracted일_때만_통과():
-    b = bundle(claims=[], status=NOT_EXTRACTED)
-    assert b.status.reason == "not_extracted"
-    with pytest.raises(ValidationError):
-        bundle(claims=[], status=OK)
+NOT_FOUND = Status(value="not_found_in_scope", searched_scope="law-idx-v2 특허법, 2024-01-01")
+CONFLICT = Status(value="conflict")
 
 
-def test_근거_0개_주장은_not_extracted일_때만_통과():
-    # 근거를 못 찾은 주장은 F2에서 평소에 나온다. 근거 없이 확인됨일 수는 없다
-    c = claim(sources=[], status=NOT_EXTRACTED)
-    assert c.status.reason == "not_extracted"
-    with pytest.raises(ValidationError):
-        claim(sources=[], status=OK)
+@pytest.mark.parametrize("empty_status", [NOT_EXTRACTED, NOT_FOUND])
+def test_주장_0개_묶음은_unverified나_조회범위내없음으로_저장(empty_status):
+    # F2 design 2절: 결과가 모두 비어도 ④를 저장, status는 not_found_in_scope + 찾아본 범위
+    assert bundle(claims=[], status=empty_status).status.value == empty_status.value
+
+
+@pytest.mark.parametrize("bad", [OK, CONFLICT])
+def test_주장_0개_묶음은_확인됨_충돌_불가(bad):
+    with pytest.raises(ValidationError, match="비어"):
+        bundle(claims=[], status=bad)
+
+
+@pytest.mark.parametrize("empty_status", [NOT_EXTRACTED, NOT_FOUND])
+def test_근거_0개_주장은_unverified나_조회범위내없음으로_저장(empty_status):
+    # 근거를 못 찾은 주장은 F2에서 평소에 나온다 (출처 확인에서 근거가 다 빠진 경우 포함)
+    assert claim(sources=[], status=empty_status).status.value == empty_status.value
+
+
+@pytest.mark.parametrize("bad", [OK, CONFLICT])
+def test_근거_0개_주장은_확인됨_충돌_불가(bad):
+    with pytest.raises(ValidationError, match="비어"):
+        claim(sources=[], status=bad)
 
 
 def test_no_중복_거부():
