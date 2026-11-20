@@ -47,6 +47,17 @@ def find_span(needle: str, text: str) -> tuple[int, int] | None:
     return None if found is None else (found[0], found[1])
 
 
+def find_all_spans(needle: str, text: str) -> list[tuple[int, int]]:
+    """needle이 text에 나오는 모든 자리 (원문 start, end). 서로 겹치지 않게 앞에서부터 센다."""
+    squeezed, offsets = squeeze(text)
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    while (found := find_from(needle, squeezed, offsets, cursor)) is not None:
+        spans.append((found[0], found[1]))
+        cursor = found[2]
+    return spans
+
+
 def is_too_short(quote: str, text: str, min_chars: int) -> bool:
     """근거로 옮긴 글자가 너무 짧은가 (공백을 뺀 글자 수로 센다).
 

@@ -544,8 +544,25 @@ def test_신규성_차이_없음과_실질적_동일_후보에는_늘_직접_검
         assert Flag.NEEDS_HUMAN_REVIEW in out.tables[0].flags
     reason = out.tables[0].summary.reason
     assert "가리기 어려운 구성요소만 있음, 실질적 동일 판단 아님" in reason
-    different, _, _ = _run(_novelty([citation("D1", D1)]), ONE_DIFFERENT)
+    # 근거가 있는 차이 후보(못 찾음이 아님)면 "차이 있음" 표에는 표시를 붙이지 않는다
+    shown = _answer(
+        [
+            _row(1, "D1", "disclosed", (P23, FULL23)),
+            _row(2, "D1", "difference_candidate", (P31, "물통은 물을 담아 둔다")),
+        ]
+    )
+    different, _, _ = _run(_novelty([citation("D1", D1)]), shown)
+    assert different.tables[0].summary.verdict == NoveltyVerdict.DIFFERENT
     assert different.tables[0].flags == []
+
+
+def test_못_찾음에서만_나온_차이_있음에는_직접_검토_필요와_판단_아님을_적는다():
+    # 못 찾음 ≠ 없음: 차이 후보가 전부 "조회 범위 내 없음" 줄이면 사람이 보게 한다
+    out, _, _ = _run(_novelty([citation("D1", D1)]), ONE_DIFFERENT)
+    table = out.tables[0]
+    assert table.summary.verdict == NoveltyVerdict.DIFFERENT
+    assert Flag.NEEDS_HUMAN_REVIEW in table.flags
+    assert "찾아본 범위에서 못 찾은 것, 없다는 판단 아님" in table.summary.reason
 
 
 def test_독립항이_대상이_아닌_단위의_대비표에는_직접_검토_필요가_붙는다():

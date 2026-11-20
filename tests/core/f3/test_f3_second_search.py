@@ -14,9 +14,18 @@ from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import StatusValue
-from patent_ai.core.schemas.comparison import Judgment
+from patent_ai.core.schemas.comparison import Judgment, ParagraphSource
 from patent_ai.retrieval.repository import InMemoryChunkRepository
-from tests.core.f3.fakes import OK, chunk, citation, oa, paragraph, rejection, split
+from tests.core.f3.fakes import (
+    OK,
+    chunk,
+    citation,
+    claim_row,
+    oa,
+    paragraph,
+    rejection,
+    split,
+)
 
 D1 = "KR20990000001A"
 SENSOR, TANK = "흙의 습도를 재는 습도 센서", "물을 담는 물통"
@@ -68,11 +77,13 @@ FIRST = _answer(
 )
 
 
-def _run(second_search: bool, responses):
+def _run(second_search: bool, responses, *, use_examiner=True, result=None):
+    result = result or RESULT
     settings = load_f3_settings()
     settings = settings.model_copy(
         update={
             "second_search": second_search,
+            "use_examiner_paragraphs": use_examiner,
             "search": settings.search.model_copy(update={"k": 1}),
         }
     )
@@ -83,8 +94,8 @@ def _run(second_search: bool, responses):
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     searcher = _Recorder()
-    units, _ = build_units(RESULT, SPLITS)
-    out = compare_unit(units[0], RESULT, SPLITS, config, ctx=ctx, searcher=searcher, repo=REPO)
+    units, _ = build_units(result, SPLITS)
+    out = compare_unit(units[0], result, SPLITS, config, ctx=ctx, searcher=searcher, repo=REPO)
     return out, transport.calls, searcher.calls
 
 
@@ -147,3 +158,20 @@ def test_켜도_1차에서_다_찾았으면_다시_찾지_않는다():
     out, model_calls, searches = _run(True, [found])
     assert len(model_calls) == 1 and len(searches) == 2
     assert all(log.round == 1 for log in out.search_log)
+
+
+def test_켜고_심사관_위치를_꺼도_두_번째까지_심사관_출처가_어디에도_없다():
+    # 심사관이 [0040]을 짚은 통지서. 2차 검색에서 [0040]이 나와도 AI가 찾은 것으로만 남는다
+    result = oa(
+        [rejection(1, "29-2", [1], [citation("D1", D1)])],
+        [claim_row(1, 1, ["D1"], {"D1": ["[0040]"]})],
+    )
+    second = _answer((2, "disclosed", (P40, "뚜껑 아래 수조가 있다")))
+    out, model_calls, searches = _run(True, [FIRST, second], use_examiner=False, result=result)
+    assert len(model_calls) == 2
+    assert "수조" not in model_calls[0]["prompt"]  # 1차 후보에 지정 문단을 끼워 넣지 않는다
+    assert all("0040" not in s["query"] for s in searches)
+    assert out.examiner_locations == []
+    rows = out.tables[0].rows
+    assert all(r.paragraph_source == ParagraphSource.AI_FOUND for r in rows)
+    assert _tank_row(out).evidence[0].chunk_id == P40 and _tank_row(out).why_retrieved

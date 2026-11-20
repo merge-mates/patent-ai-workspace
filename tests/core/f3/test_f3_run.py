@@ -1,5 +1,6 @@
 """run_f3 한 바퀴 테스트: 나누기 -> 판단 단위 -> 대비 + 명확성 -> F3Result. 진짜 호출·DB 없음."""
 
+import json
 import logging
 
 import pytest
@@ -10,7 +11,7 @@ from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.transport import TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from tests.core.f3 import scenario
-from tests.core.f3.fakes import bad
+from tests.core.f3.fakes import OK, bad, citation, oa, rejection
 
 
 def _run(oa=None, config=None, answers=None):
@@ -121,3 +122,38 @@ def test_검색기만_주고_저장소를_안_주면_멈춘다():
             ctx=ctx,
             searcher=scenario.searcher(),
         )
+
+
+# ---- B4·B8 리뷰 고침: 낮춘 판단 단위가 대비 단계에 들어간다 ----
+def _novelty_run(claims_status):
+    """신규성 한 건: 구성요소 1 개시됨, 2는 근거가 있는 차이 후보 (못 찾음이 아님)."""
+    result = oa([rejection(1, "29-1-1", [1], [citation("D1", scenario.D1)])])
+    answers = scenario.responses()
+    answers["f3.split_elements"] = answers["f3.split_elements"][:1]
+    rows = [
+        {
+            "element_no": 1,
+            "citation": "D1",
+            "judgment": "disclosed",
+            "evidence": [{"chunk_id": scenario.P23, "quote": "습도 센서는 흙에 꽂혀 습도를 잰다"}],
+        },
+        {
+            "element_no": 2,
+            "citation": "D1",
+            "judgment": "difference_candidate",
+            "evidence": [{"chunk_id": scenario.P31, "quote": "물통은 물을 담아 둔다"}],
+        },
+    ]
+    body = json.dumps({"claim": 1, "rows": rows}, ensure_ascii=False)
+    answers["f3.compare"] = [TransportResponse(body, 100, 50)]
+    answers["f3.clarity"] = []
+    return _run(result, scenario.config(claims_status=claims_status), answers)[0]
+
+
+def test_청구항_판이_확인되지_않으면_신규성_대비표에_직접_검토_필요가_붙는다():
+    confirmed = _novelty_run(OK)
+    assert confirmed.comparisons[0].summary.verdict == "different"
+    assert confirmed.comparisons[0].flags == []
+    lowered = _novelty_run(bad(UnverifiedReason.EDITION_UNKNOWN))
+    assert lowered.comparisons[0].summary.verdict == "different"  # 요약은 그대로
+    assert Flag.NEEDS_HUMAN_REVIEW in lowered.comparisons[0].flags

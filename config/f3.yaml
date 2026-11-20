@@ -41,6 +41,7 @@ compare:
   prompt: prompts/f3/compare.md
   # 실행 하나의 합계: 판단 단위 × 청구항마다 1번(신규성은 × 인용문헌) + 검사 실패 때 1번 더.
   # 여러 독립항을 인용하는 종속항은 묶음마다 다시 센다
+  # second_search를 켜면 못 찾은 청구항마다 한 번 더 불러 최대 두 배가 된다
   max_model_calls: 240
   max_retries: 2
 
@@ -64,3 +65,12 @@ clarity:
 # 명확성 용어 정의 찾기: 그 사건 출원서만, 메모리 BM25 (DB·임베딩 없음. 토크나이저·bm25 값은 search 칸과 같이 씀)
 clarity_search:
   k: 5                  # 문구마다 모델에 보여 줄 명세서 조각 수 (근거 글자 하한은 맨 위 min_quote_chars)
+  # 이 머리 줄부터 다음 식별번호(【0001】 꼴)가 나올 때까지는 정의 찾기 색인에서 뺀다.
+  # 청구항 글이 자기 정의 근거로 뽑히지 않게 (공백과 【】[]를 뺀 줄 글자 전체에 맞춘다.
+  # config/cite_search.yaml chunking의 claims_heading·abstract_heading과 같은 생각)
+  skip_headings:
+    - '^(특허)?청구(의)?범위$'
+    - '^청구항\d+$'
+    - '^(\(57\))?요약서?$'
+    - '^도면$'
+    - '^도\d+[a-zA-Z]?$'
