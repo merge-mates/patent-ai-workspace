@@ -28,12 +28,14 @@ class RowHit:
     row_id: str
     doc_ids: list[str]
     first_hit_rank: int | None  # 1부터, 못 찾으면 None
+    k_max: int  # 채점 때 검색한 가장 큰 k (이보다 큰 k의 Hit는 잴 수 없다)
 
 
 @dataclass
 class CompareTable:
     k: int
     methods: list[str]
+    hit_ks: tuple[int, ...]  # 표에 찍는 Hit 열 (모든 줄의 k_max 이하만)
     n: dict[str, int]  # 묶음별 줄 수
     hit: dict[str, dict[str, dict[int, float | None]]]  # 방식 -> 묶음 -> k -> Hit (줄 없으면 None)
     cq: dict[str, int]  # 방식 -> 상위 k에 없는 줄 수
@@ -59,6 +61,11 @@ def compare(rows: dict[str, list[RowHit]], k: int) -> CompareTable:
     methods = list(rows)
     if not methods:
         raise CompareError("비교할 방식이 없다")
+    # 채점 때 본 순위 밖은 모르므로, k_max보다 큰 k는 틀린 값이 된다
+    k_limit = min(r.k_max for m in methods for r in rows[m])
+    if k > k_limit:
+        raise CompareError(f"--k {k}가 채점 때 가장 큰 k({k_limit})보다 크다")
+    hit_ks = tuple(kk for kk in HIT_KS if kk <= k_limit)
     by_id = {m: {r.row_id: r for r in rows[m]} for m in methods}
     for m in methods:
         if len(by_id[m]) != len(rows[m]):
@@ -94,7 +101,7 @@ def compare(rows: dict[str, list[RowHit]], k: int) -> CompareTable:
             # 줄이 0개인 묶음은 0으로 나누지 않고 None (표에는 "줄 없음")
             hit[m][g] = {
                 kk: (sum(_found(by_id[m][r], kk) for r in rids) / len(rids) if rids else None)
-                for kk in HIT_KS
+                for kk in hit_ks
             }
     cq = {m: sum(not _found(by_id[m][r], k) for r in ordered) for m in methods}
     only = {
@@ -104,7 +111,9 @@ def compare(rows: dict[str, list[RowHit]], k: int) -> CompareTable:
         )
         for m in methods
     }
-    return CompareTable(k=k, methods=methods, n=n, hit=hit, cq=cq, only=only, warnings=warnings)
+    return CompareTable(
+        k=k, methods=methods, hit_ks=hit_ks, n=n, hit=hit, cq=cq, only=only, warnings=warnings
+    )
 
 
 def render(t: CompareTable) -> str:
@@ -114,11 +123,12 @@ def render(t: CompareTable) -> str:
         if g == "그 밖" and t.n[g] == 0:
             continue
         out.append(f"### {g} (줄 {t.n[g]}개)")
-        out.append("| 방식 | " + " | ".join(f"Hit@{kk}" for kk in HIT_KS) + " |")
-        out.append("|---|" + "---|" * len(HIT_KS))
+        out.append("| 방식 | " + " | ".join(f"Hit@{kk}" for kk in t.hit_ks) + " |")
+        out.append("|---|" + "---|" * len(t.hit_ks))
         for m in t.methods:
             cells = [
-                "줄 없음" if t.hit[m][g][kk] is None else f"{t.hit[m][g][kk]:.3f}" for kk in HIT_KS
+                "줄 없음" if t.hit[m][g][kk] is None else f"{t.hit[m][g][kk]:.3f}"
+                for kk in t.hit_ks
             ]
             out.append(f"| {m} | " + " | ".join(cells) + " |")
         out.append("")
@@ -142,7 +152,15 @@ def load_rows(path: Path) -> list[RowHit]:
             continue
         try:
             d = json.loads(line)
-            out.append(RowHit(d["row_id"], list(d["doc_ids"]), d["first_hit_rank"]))
+            rank, k_max = d["first_hit_rank"], d["k_max"]
+            # bool은 int의 하위 타입이라 따로 막는다. 순위는 1 이상 정수 또는 null
+            if rank is not None and (
+                isinstance(rank, bool) or not isinstance(rank, int) or rank < 1
+            ):
+                raise ValueError
+            if isinstance(k_max, bool) or not isinstance(k_max, int) or k_max < 1:
+                raise ValueError
+            out.append(RowHit(d["row_id"], list(d["doc_ids"]), rank, k_max))
         except ValueError, KeyError, TypeError:
             raise CompareError(f"{path}: {i}번째 줄 모양이 틀림") from None
     if not out:

@@ -15,7 +15,14 @@ from eval.retrieval import score as score_mod
 from eval.retrieval.config import load_config
 from eval.retrieval.cq import write_cq
 from eval.retrieval.errors import RetrievalEvalError
-from eval.retrieval.score import default_cq_dir, default_scores_dir, main, score
+from eval.retrieval.score import (
+    RowResult,
+    default_cq_dir,
+    default_scores_dir,
+    first_hit_rank,
+    main,
+    score,
+)
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "retrieval"
@@ -441,15 +448,24 @@ def test_rows_out은_점수_줄_수와_같고_순위가_맞다(tmp_path, goldset
     )
     lines = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
     assert len(lines) == read_scores(tmp_path)["n"]
-    assert set(lines[0]) == {"row_id", "doc_ids", "first_hit_rank"}
-    # 점검 예는 상위 5 안에 맞힘(hit@5 = 1)이라 순위가 1~5 사이 정수
-    assert 1 <= lines[0]["first_hit_rank"] <= 5
+    assert set(lines[0]) == {"row_id", "doc_ids", "first_hit_rank", "k_max"}
+    # 점검 예는 1위가 정답 조각이다
+    assert lines[0]["first_hit_rank"] == 1
+    assert lines[0]["k_max"] == max(load_config(make_config(tmp_path)).k)
     assert "query" not in lines[0]
 
 
-def test_rows_out_없으면_파일을_안_만든다(tmp_path, goldsets_root):
+def test_rows_out_없으면_출력_폴더에_rows_파일이_안_생긴다(tmp_path, goldsets_root):
     assert run_main(tmp_path, goldsets_root) == 0
-    assert not (tmp_path / "rows.jsonl").exists()
+    assert not any("rows" in p.name for p in tmp_path.rglob("*.jsonl"))
+
+
+def test_first_hit_rank_순수_함수():
+    def rr(found):
+        return RowResult(None, found, [], 0, [], 0)
+
+    assert first_hit_rank(rr([set(), set(), {0}])) == 3
+    assert first_hit_rank(rr([set(), set()])) is None
 
 
 def test_rows_out이_git_안_추적_경로면_1과_파일_없음(tmp_path, goldsets_root):

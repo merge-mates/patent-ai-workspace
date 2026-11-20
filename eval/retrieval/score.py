@@ -273,10 +273,10 @@ def postgres_repo() -> ChunkRepository:
     return PostgresChunkRepository.from_url()
 
 
-def git_ignored(path: Path) -> bool:
+def git_ignored_strict(path: Path) -> bool:
     """git이 무시하는 경로면 True. cite_index와 같은 `git check-ignore -q` 방식.
 
-    저장소 밖 경로는 git이 128을 돌려주는데, 이것도 "확인 못 함"이라 False로 거절한다.
+    저장소 밖(128)도 거절한다. paths.is_git_ignored(저장소 밖=통과)와 반대라 이름을 다르게 둔다.
     """
     r = subprocess.run(
         ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", "--", str(Path(path).resolve())],
@@ -302,6 +302,8 @@ def write_rows(report: ScoreReport, path: Path) -> None:
                 "row_id": r.row.row_id,
                 "doc_ids": list(r.row.doc_ids or []),
                 "first_hit_rank": first_hit_rank(r),
+                # 채점 때 검색한 가장 큰 k. 이보다 큰 k로 비교하면 틀린 값이라 compare가 막는다
+                "k_max": report.k_max,
             }
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
@@ -309,7 +311,7 @@ def write_rows(report: ScoreReport, path: Path) -> None:
 def main(
     argv: list[str] | None = None,
     commit: str | None = None,
-    ignored: Callable[[Path], bool] = git_ignored,
+    ignored: Callable[[Path], bool] = git_ignored_strict,
 ) -> int:
     ap = argparse.ArgumentParser(prog="eval.retrieval.score")
     ap.add_argument("--config", required=True)

@@ -9,7 +9,7 @@ from eval.retrieval.compare import CompareError, RowHit, compare, group_of, main
 
 def rows(spec):
     """spec: [(row_id, doc_id, rank)]"""
-    return [RowHit(r, [d], k) for r, d, k in spec]
+    return [RowHit(r, [d], k, 10) for r, d, k in spec]
 
 
 # KR 2줄 + NPL 1줄. 순위: 줄별로 방식마다 다름
@@ -94,7 +94,12 @@ def write(path, rs):
     path.write_text(
         "".join(
             json.dumps(
-                {"row_id": r.row_id, "doc_ids": r.doc_ids, "first_hit_rank": r.first_hit_rank}
+                {
+                    "row_id": r.row_id,
+                    "doc_ids": r.doc_ids,
+                    "first_hit_rank": r.first_hit_rank,
+                    "k_max": r.k_max,
+                }
             )
             + "\n"
             for r in rs
@@ -128,3 +133,31 @@ def test_CLI_row_id가_다르면_1(tmp_path, capsys):
 def test_CLI_없는_파일은_1(tmp_path):
     p1 = write(tmp_path / "a.jsonl", BM25)
     assert main(["--rows", f"x={p1}", f"y={tmp_path / 'none.jsonl'}"]) == 1
+
+
+def test_k가_채점_k_max보다_크면_오류():
+    small = [RowHit("a", ["KR1"], 1, 5)]
+    with pytest.raises(CompareError, match="k_max|가장 큰 k"):
+        compare({"x": small, "y": small}, k=10)
+    # k_max 5면 Hit 열은 5까지만 찍는다
+    t = compare({"x": small, "y": small}, k=5)
+    assert t.hit_ks == (1, 3, 5)
+
+
+def test_CLI_k가_k_max보다_크면_1(tmp_path, capsys):
+    small = [RowHit("a", ["KR1"], 1, 5)]
+    p1, p2 = write(tmp_path / "a.jsonl", small), write(tmp_path / "b.jsonl", small)
+    assert main(["--rows", f"x={p1}", f"y={p2}", "--k", "10"]) == 1
+    assert "가장 큰 k" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("bad", ["true", '"2"', "1.5", "0", "-1"])
+def test_first_hit_rank가_정수나_null이_아니면_1(tmp_path, capsys, bad):
+    p1 = write(tmp_path / "a.jsonl", BM25)
+    p2 = tmp_path / "b.jsonl"
+    p2.write_text(
+        '{"row_id": "a", "doc_ids": ["KR1"], "first_hit_rank": ' + bad + ', "k_max": 10}\n',
+        encoding="utf-8",
+    )
+    assert main(["--rows", f"x={p1}", f"y={p2}"]) == 1
+    assert "모양이 틀림" in capsys.readouterr().err
