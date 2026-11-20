@@ -1,0 +1,33 @@
+# F4 설정. 단계 칸(direction 등)은 core/llm이 읽고, 맨 위 스위치·상한은 f4_response_draft/config.py가 읽는다.
+# 가격 키는 모르니 넣지 않는다 (비용 계산 안 함 경고가 남음).
+
+# 켜면: 최후거절이유통지일 때 보정 프롬프트에 네 가지 제한(특허법 47조 3항)을 넣고 결과에 표시한다.
+# 통지 종류를 모르면 후보에 "통지 종류 확인 필요"를 붙인다. 제한을 지켰는지는 판정하지 않는다.
+final_rejection_limit: false
+max_units: 20        # 한 실행에서 다루는 판단 단위(묶음) 수 상한. 넘으면 모델을 부르기 전에 멈춘다
+min_basis_chars: 10  # 명세서 근거 글자(띄어쓰기 뺀 길이) 하한. 더 짧으면 어디든 맞아 근거로 받지 않는다
+max_candidates: 3    # 묶음 하나의 방향 후보 수 상한 (ADR 0001: 설정 값, 돌려 본 뒤 정함)
+
+direction:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/direction.md
+  max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2       # 전송 오류(429·연결)를 다시 부르는 횟수
+
+opinion:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/opinion.md
+  max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
+
+amendment:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/amendment.md
+  max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2

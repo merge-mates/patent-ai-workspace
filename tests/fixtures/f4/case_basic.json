@@ -1,0 +1,757 @@
+{
+  "oa": {
+    "status": {
+      "value": "confirmed",
+      "reason": null,
+      "checked": "모든 칸 원문 대조",
+      "searched_scope": null
+    },
+    "evidence": [
+      {
+        "document_id": "d_1",
+        "page": 1,
+        "location": null,
+        "raw_text": "10-2099-0000001",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 1,
+        "location": null,
+        "raw_text": "9-5-2099-000000001",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 1,
+        "location": null,
+        "raw_text": "2099.01.26.",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 1,
+        "location": null,
+        "raw_text": "2099.03.26.",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 1,
+        "location": null,
+        "raw_text": "제1항 내지 제3항",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 3,
+        "location": null,
+        "raw_text": "제3항",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 3,
+        "location": null,
+        "raw_text": "제3항의 구성을 제1항에 부가하는 보정을 참고하시기 바랍니다",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 2,
+        "location": null,
+        "raw_text": "특허법 제29조제2항",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 2,
+        "location": null,
+        "raw_text": "제1항 내지 제2항",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 2,
+        "location": null,
+        "raw_text": "청구항 1의 센서 구성은 인용발명 1에 개시되어 있습니다",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 2,
+        "location": null,
+        "raw_text": "공개특허공보 제10-2099-0000001호",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 2,
+        "location": null,
+        "raw_text": "공개특허공보",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 2,
+        "location": null,
+        "raw_text": "식별번호 [0023]",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 3,
+        "location": null,
+        "raw_text": "특허법 제42조제4항제2호",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 3,
+        "location": null,
+        "raw_text": "제2항",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      {
+        "document_id": "d_1",
+        "page": 3,
+        "location": null,
+        "raw_text": "청구항 2의 '적당한 간격'은 그 범위가 불명확합니다",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      }
+    ],
+    "origin": "ai_generated",
+    "needs_recheck": false,
+    "recheck_reason": null,
+    "flags": [],
+    "oa_id": "oa_1",
+    "application_number": {
+      "value": "1020990000001",
+      "raw_text": "10-2099-0000001",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "dispatch_number": {
+      "value": "952099000000001",
+      "raw_text": "9-5-2099-000000001",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_date": {
+      "value": null,
+      "raw_text": "2099.01.26.",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "response_due": {
+      "value": null,
+      "raw_text": "2099.03.26.",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "notice_kind": {
+      "value": "initial",
+      "raw_text": null,
+      "page": null,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "머리말에 최후 표시 없음",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claims": {
+      "value": [
+        1,
+        2,
+        3
+      ],
+      "raw_text": "제1항 내지 제3항",
+      "page": 1,
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "examined_claim_version": null,
+    "examiner_hints": {
+      "allowable_claims": {
+        "value": [
+          3
+        ],
+        "raw_text": "제3항",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      },
+      "amendment_note": {
+        "value": "제3항의 구성을 제1항에 더하면 거절이유가 해소될 수 있음",
+        "raw_text": "제3항의 구성을 제1항에 부가하는 보정을 참고하시기 바랍니다",
+        "page": 3,
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "원문 대조",
+          "searched_scope": null
+        },
+        "candidates": []
+      }
+    },
+    "rejections": [
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "d_1",
+            "page": 2,
+            "location": null,
+            "raw_text": "특허법 제29조제2항",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 2,
+            "location": null,
+            "raw_text": "제1항 내지 제2항",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 2,
+            "location": null,
+            "raw_text": "청구항 1의 센서 구성은 인용발명 1에 개시되어 있습니다",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 2,
+            "location": null,
+            "raw_text": "공개특허공보 제10-2099-0000001호",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 2,
+            "location": null,
+            "raw_text": "공개특허공보",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 2,
+            "location": null,
+            "raw_text": "식별번호 [0023]",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "no": 1,
+        "kind": "inventive_step",
+        "article": {
+          "value": "29-2",
+          "raw_text": "특허법 제29조제2항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            1,
+            2
+          ],
+          "raw_text": "제1항 내지 제2항",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [
+          {
+            "label": "D1",
+            "number": {
+              "value": "KR20990000001A",
+              "raw_text": "공개특허공보 제10-2099-0000001호",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country": {
+              "value": "KR",
+              "raw_text": "공개특허공보",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "country_supported": true,
+            "cited_paragraphs": {
+              "value": [
+                "[0023]"
+              ],
+              "raw_text": "식별번호 [0023]",
+              "page": 2,
+              "status": {
+                "value": "confirmed",
+                "reason": null,
+                "checked": "원문 대조",
+                "searched_scope": null
+              },
+              "candidates": []
+            },
+            "flags": []
+          }
+        ],
+        "examiner_reasoning": {
+          "value": "센서 구성은 인용발명 1에 나와 있어 쉽게 발명할 수 있다고 봄",
+          "raw_text": "청구항 1의 센서 구성은 인용발명 1에 개시되어 있습니다",
+          "page": 2,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      },
+      {
+        "status": {
+          "value": "confirmed",
+          "reason": null,
+          "checked": "모든 칸 원문 대조",
+          "searched_scope": null
+        },
+        "evidence": [
+          {
+            "document_id": "d_1",
+            "page": 3,
+            "location": null,
+            "raw_text": "특허법 제42조제4항제2호",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 3,
+            "location": null,
+            "raw_text": "제2항",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          },
+          {
+            "document_id": "d_1",
+            "page": 3,
+            "location": null,
+            "raw_text": "청구항 2의 '적당한 간격'은 그 범위가 불명확합니다",
+            "edition": null,
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
+          }
+        ],
+        "origin": "ai_generated",
+        "needs_recheck": false,
+        "recheck_reason": null,
+        "flags": [],
+        "no": 2,
+        "kind": "clarity",
+        "article": {
+          "value": "42-4-2",
+          "raw_text": "특허법 제42조제4항제2호",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "supported": true,
+        "claims": {
+          "value": [
+            2
+          ],
+          "raw_text": "제2항",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        },
+        "citations": [],
+        "examiner_reasoning": {
+          "value": "'적당한 간격'의 뜻이 분명하지 않다고 봄",
+          "raw_text": "청구항 2의 '적당한 간격'은 그 범위가 불명확합니다",
+          "page": 3,
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "candidates": []
+        }
+      }
+    ],
+    "claim_rows": []
+  },
+  "units": [
+    {
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "evidence": [],
+      "origin": "ai_generated",
+      "needs_recheck": false,
+      "recheck_reason": null,
+      "flags": [],
+      "unit_id": "oa_1:29-2:c1",
+      "rejection": 1,
+      "rejection_kind": "inventive_step",
+      "unit_kind": "independent_group",
+      "representative_claim": 1,
+      "claims": [
+        1,
+        2
+      ],
+      "read_with": [],
+      "order": 1,
+      "parent_unit_id": null
+    },
+    {
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "evidence": [],
+      "origin": "ai_generated",
+      "needs_recheck": false,
+      "recheck_reason": null,
+      "flags": [],
+      "unit_id": "oa_1:42-4-2:c2",
+      "rejection": 2,
+      "rejection_kind": "clarity",
+      "unit_kind": "single_claim",
+      "representative_claim": 2,
+      "claims": [
+        2
+      ],
+      "read_with": [
+        1
+      ],
+      "order": 2,
+      "parent_unit_id": null
+    }
+  ],
+  "tables": [
+    {
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "모든 줄 원문 대조",
+        "searched_scope": null
+      },
+      "evidence": [
+        {
+          "document_id": "cite_D1",
+          "page": 4,
+          "location": "[0023]",
+          "raw_text": "가상의 센서는 기판 위에 놓인다",
+          "edition": null,
+          "checked_on": null,
+          "chunk_id": null,
+          "index_version": null
+        }
+      ],
+      "origin": "ai_generated",
+      "needs_recheck": false,
+      "recheck_reason": null,
+      "flags": [],
+      "unit_id": "oa_1:29-2:c1",
+      "rejection_kind": "inventive_step",
+      "citations": [
+        {
+          "label": "D1",
+          "number": "KR20990000001A",
+          "compared": true,
+          "skipped_reason": null,
+          "skipped_status": null
+        }
+      ],
+      "rows": [
+        {
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "evidence": [
+            {
+              "document_id": "cite_D1",
+              "page": 4,
+              "location": "[0023]",
+              "raw_text": "가상의 센서는 기판 위에 놓인다",
+              "edition": null,
+              "checked_on": null,
+              "chunk_id": null,
+              "index_version": null
+            }
+          ],
+          "origin": "ai_generated",
+          "needs_recheck": false,
+          "recheck_reason": null,
+          "flags": [],
+          "claim": 1,
+          "element": "기판 위에 놓인 센서",
+          "element_location": "청구항 1 첫째 줄",
+          "citation": "D1",
+          "judgment": "disclosed",
+          "paragraph_source": "examiner",
+          "why_retrieved": null
+        },
+        {
+          "status": {
+            "value": "confirmed",
+            "reason": null,
+            "checked": "원문 대조",
+            "searched_scope": null
+          },
+          "evidence": [
+            {
+              "document_id": "cite_D1",
+              "page": 5,
+              "location": "[0031]",
+              "raw_text": "가상의 덮개가 센서를 덮는다",
+              "edition": null,
+              "checked_on": null,
+              "chunk_id": null,
+              "index_version": null
+            }
+          ],
+          "origin": "ai_generated",
+          "needs_recheck": false,
+          "recheck_reason": null,
+          "flags": [],
+          "claim": 1,
+          "element": "센서를 덮는 투명 덮개",
+          "element_location": "청구항 1 둘째 줄",
+          "citation": "D1",
+          "judgment": "difference_candidate",
+          "paragraph_source": "ai_found",
+          "why_retrieved": "덮개를 말하는 문단"
+        }
+      ],
+      "summary": {
+        "kind": "inventive_step",
+        "differences": [
+          "덮개가 투명한지는 인용발명 1에 적혀 있지 않음"
+        ],
+        "combination": "인용발명 1 하나",
+        "effect_candidates": [
+          "덮개 너머로 센서 상태를 볼 수 있음"
+        ]
+      }
+    }
+  ],
+  "clarity": [
+    {
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "원문 대조",
+        "searched_scope": null
+      },
+      "evidence": [
+        {
+          "document_id": "spec_1",
+          "page": 2,
+          "location": "[0012]",
+          "raw_text": "적당한 간격은 1mm 이상 2mm 이하를 말한다",
+          "edition": null,
+          "checked_on": null,
+          "chunk_id": null,
+          "index_version": null
+        }
+      ],
+      "origin": "ai_generated",
+      "needs_recheck": false,
+      "recheck_reason": null,
+      "flags": [],
+      "unit_id": "oa_1:42-4-2:c2",
+      "claim": 2,
+      "term": "적당한 간격",
+      "claim_location": "청구항 2 첫째 줄",
+      "spec_definition": {
+        "document_id": "spec_1",
+        "page": 2,
+        "location": "[0012]",
+        "raw_text": "적당한 간격은 1mm 이상 2mm 이하를 말한다",
+        "edition": null,
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
+      },
+      "note": "명세서 [0012]에 범위가 적혀 있음"
+    }
+  ],
+  "legal": [],
+  "claims_text": [
+    {
+      "claim": 1,
+      "text": "기판 위에 놓인 센서와, 상기 센서를 덮는 투명 덮개를 포함하는 가상의 센서 장치.",
+      "document_id": "claims_1"
+    },
+    {
+      "claim": 2,
+      "text": "제1항에 있어서, 상기 센서와 상기 덮개가 적당한 간격을 두고 떨어진 가상의 센서 장치.",
+      "document_id": "claims_1"
+    },
+    {
+      "claim": 3,
+      "text": "제1항에 있어서, 상기 덮개에 김 서림 방지 막을 둔 가상의 센서 장치.",
+      "document_id": "claims_1"
+    }
+  ],
+  "spec": null,
+  "checked_on": "2099-02-01"
+}
