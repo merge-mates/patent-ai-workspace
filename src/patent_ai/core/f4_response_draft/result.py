@@ -9,12 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from patent_ai.core.schemas.common import Flag, Status
 from patent_ai.core.schemas.direction import DirectionCandidates
 from patent_ai.core.schemas.drafts import Drafts
+from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 
 
 class F4Output(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     oa_id: str
+    units: list[JudgmentUnit]  # 이 실행에 넣은 판단 단위 (채점·다시 내기가 결과 하나로 되게)
     directions: list[DirectionCandidates]  # 판단 단위마다 하나 (order 순)
     drafts: Drafts | None  # OA 하나에 하나. 모든 묶음이 보류면 null
     held_units: list[str]  # 초안을 보류한 묶음 (사람이 방향을 고르거나 자료를 채우면 다시 만든다)
@@ -25,5 +27,10 @@ class F4Output(BaseModel):
     # 최후거절이유통지 보정 제한을 보정 프롬프트에 넣었나 (스위치 켬 + 통지 종류 final일 때만 true).
     # 제한을 지켰다는 판정이 아니다: 넣었다는 사실만 적는다
     amendment_limit_applied: bool = False
-    status: Status  # 방향 후보·초안 status 중 가장 나쁜 값
+    # 화면·API가 결과와 함께 보일 알림 문구 (결과 스키마에 칸이 없어 여기 싣는다)
+    rank_notice: str  # 순위는 검토 순서 제안이고 등록 가능성 보증이 아님
+    legality_notice: str  # 보정 초안은 검토용이고 적법성은 판단하지 않음
+    # 방향 후보·초안 status 중 가장 나쁜 값. 값은 원문 확인 여부만 뜻한다:
+    # 보류·누락처럼 사람이 봐야 할 것은 flags·held_units·uncovered로 본다
+    status: Status
     flags: list[Flag] = Field(default_factory=list)

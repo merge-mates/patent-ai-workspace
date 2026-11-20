@@ -15,3 +15,4 @@
 | m2-i2-cite-search-vector | cite-search (이슈 #67) | `mode`·`impl`: bm25 → vector (`cite-idx-v2` = v1 조각 + text-embedding-3-small 벡터, 1536차원) | hit@5 0.559 | +0.059 | $0.00 | [card](m2-i2-cite-search-vector/card.md) |
 | m2-i2-law-bm25-v2 | 검색 (법령, 이슈 #66) | `index_version`: law-idx-v1 → law-idx-v2 (조각 같음, embedding만 더함) | hit@5 1.000 | +0.000 | $0.00 | [card](m2-i2-law-bm25-v2/card.md) |
 | m2-i2-law-vector-baseline | 검색 (법령, 이슈 #66) | `mode`·`impl`: bm25·law_bm25 → vector·vector (`law-idx-v2` = v1 조각 + text-embedding-3-small 벡터) | hit@5 0.316 | -0.684 | $0.00 | [card](m2-i2-law-vector-baseline/card.md) |
+| m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |

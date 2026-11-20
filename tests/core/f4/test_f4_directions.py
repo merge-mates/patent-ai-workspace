@@ -19,7 +19,6 @@ from patent_ai.core.f4_response_draft.directions import (
     STEP,
     amendment_limit_of,
     build_directions,
-    direction_payload,
 )
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.llm.errors import ModelCallLimitExceeded, ModelOutputInvalid
@@ -236,14 +235,9 @@ def test_묶음_밖_청구항을_보정하겠다는_후보는_출력_검사_실�
         build_directions(_case(), ctx)
 
 
-# ---- 순위는 보증이 아니라는 문구 ----
-def test_순위는_보증이_아니라는_문구를_결과와_함께_꺼낼_수_있다():
+# ---- 순위는 보증이 아니라는 문구 (결과에 싣는 것은 run_f4, test_f4_run.py) ----
+def test_순위는_보증이_아니라는_문구가_상수로_있다():
     assert RANK_NOTICE == "순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"
-    results, _ = _basic()
-    payload = direction_payload(results[0])
-    assert payload["rank_notice"] == RANK_NOTICE
-    assert payload["unit_id"] == UNIT_INVENTIVE
-    assert payload["candidates"][0]["rank"] == 1
 
 
 # ---- status 전파와 근거 ----

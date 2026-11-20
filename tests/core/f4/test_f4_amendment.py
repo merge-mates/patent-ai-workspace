@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 
 from patent_ai.core.f4_response_draft.amendment import (
+    HELD_NO_CLAIM_TEXT,
+    HELD_NO_SELECTION,
     LEGALITY_NOTICE,
     STEP,
     assemble_drafts,
@@ -279,26 +281,46 @@ def test_삭제로_표시하고_다른_글을_쓰면_출력_검사_실패_뒤_�
 
 
 # ---- 한 청구항이 여러 묶음에 걸침 ----
-def test_앞선_묶음이_보류면_뒤_묶음의_실제_초안도_덮어쓰지_않고_표시한다(caplog):
+def test_앞선_묶음이_보류여도_뒤_묶음의_실제_초안은_남는다():
     low = copy.deepcopy(_answer("direction_low"))  # 진보성 묶음(청구항 1·2)을 확신 낮음으로
     for c in low["candidates"]:
         c["per_rejection"] = [{"rejection": 1, "response": "직접 판단 필요"}]
         c["amendment_core"] = [{"claim": 1, "kind": "limit"}] if c["rebuttal"] is None else []
         if c["rebuttal"]:
             c["rebuttal"]["type"] = "difference"
-    with caplog.at_level(logging.WARNING):
-        part, transport, _ = _run(
-            ["amendment_clarity"],
-            directions=(low, "direction_clarity"),
-            opinions=("opinion_clarity",),
-        )
+    part, transport, opinion = _run(
+        ["amendment_clarity"],
+        directions=(low, "direction_clarity"),
+        opinions=("opinion_clarity",),
+    )
     assert len(_calls(transport)) == 1  # 명확성 묶음은 불렀다
     assert [c.claim for c in part.claims] == [1, 2]
-    second = part.claims[1]
-    # 청구항 2는 앞선(보류) 묶음 것이 남고, 명확성 묶음이 쓴 초안은 버려졌다
-    assert second.unit_id == UNIT_INVENTIVE and second.ai_text is None and second.held_reason
+    first, second = part.claims
+    # 청구항 1은 보류 자리 표시, 청구항 2는 명확성 묶음이 쓴 실제 초안 (자리 표시가 막지 않는다)
+    assert first.unit_id == UNIT_INVENTIVE and first.ai_text is None
+    assert first.held_reason == HELD_NO_SELECTION
+    assert second.unit_id == UNIT_CLARITY
+    assert second.ai_text == _answer("amendment_clarity")["claims"][0]["text"]
+    assert part.held_units == [UNIT_INVENTIVE]
+    assert Flag.NEEDS_HUMAN_REVIEW not in part.flags  # 실제 초안끼리 겹친 것이 아니다
+    # 의견서를 만든 묶음(based_on)은 보정 청구항도 갖는다 (어긋난 데이터가 아님)
+    assert [b.unit_id for b in opinion.based_on] == [UNIT_CLARITY]
+
+
+def test_청구항_글자가_빠진_묶음만_보류하고_이유는_그_청구항에만_붙는다():
+    data = json.loads((FIXTURES / "case_basic.json").read_text("utf-8"))
+    data["spec"] = json.loads((FIXTURES / "spec_basic.pages.json").read_text("utf-8"))
+    data["claims_text"] = [c for c in data["claims_text"] if c["claim"] != 1]  # 청구항 1 글자 없음
+    part, transport, _ = _run(["amendment_clarity"], inp=F4Input.model_validate(data))
+    assert len(_calls(transport)) == 1  # 진보성 묶음은 부르지 않고, 명확성 묶음만
+    first, second = part.claims
+    assert (first.claim, first.unit_id, first.ai_text) == (1, UNIT_INVENTIVE, None)
+    assert first.held_reason == HELD_NO_CLAIM_TEXT and first.before == ""
+    # 글자가 있는 청구항 2에는 "글자 없음" 이유가 붙지 않고, 명확성 묶음의 실제 초안이 남는다
+    assert (second.claim, second.unit_id) == (2, UNIT_CLARITY)
+    assert second.ai_text and second.held_reason is None
+    assert part.held_units == [UNIT_INVENTIVE]
     assert Flag.NEEDS_HUMAN_REVIEW in part.flags
-    assert UNIT_CLARITY in caplog.text and "덮어쓰지 않음" in caplog.text
 
 
 def test_앞선_묶음이_가진_청구항을_뒤_묶음이_덮어쓰지_않는다(caplog):

@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 STEP = "f4.direction"
 
-# 결과 스키마(v0)에 이 문구를 담을 칸이 없어 상수로 둔다. 화면·API는 direction_payload로 같이 꺼낸다
+# 결과 스키마(v0)에 이 문구를 담을 칸이 없어 상수로 둔다. run_f4가 F4Output.rank_notice에 싣는다
 RANK_NOTICE = "순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"
 # 보정 제한 스위치가 켜져 있는데 통지 종류를 모를 때 후보마다 붙이는 확인 사항
 NOTICE_KIND_CHECK = "통지 종류 확인 필요 (최후거절이유통지이면 보정할 수 있는 범위가 제한됨)"
@@ -372,11 +372,3 @@ def build_directions(
             )
         results.append(result)
     return results
-
-
-def direction_payload(result: DirectionCandidates) -> dict:
-    """결과를 화면·API로 내보낼 때의 모양: 결과 칸 + `rank_notice`(순위는 보증이 아니라는 문구).
-
-    저장하는 것은 DirectionCandidates 그대로다. 스키마에 문구 칸이 없어 꺼낼 때 붙인다.
-    """
-    return {**result.model_dump(mode="json"), "rank_notice": RANK_NOTICE}

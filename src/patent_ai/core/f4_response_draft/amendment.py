@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 STEP = "f4.amendment"
 
 HELD_NO_SELECTION = "확신이 낮아 방향을 미리 고르지 않은 묶음입니다. 방향을 고르면 초안을 만듭니다."
+HELD_SIBLING_NO_TEXT = (
+    "같은 묶음의 다른 청구항 글자가 입력에 없어 이 묶음 초안을 만들지 못했습니다."
+)
 HELD_NO_CLAIM_TEXT = (
     "OA 당시 청구항 글자가 입력에 없어 초안을 만들지 못했습니다. 청구항 자료를 확인해 주세요."
 )
@@ -167,8 +170,8 @@ def _spec_text(spec: PageText | None) -> str:
     return "\n\n".join(f"[쪽 {p.page}]\n{p.text}" for p in spec.pages)
 
 
-def _held(unit: JudgmentUnit, texts: dict[int, str], reason: str) -> list[AmendedClaim]:
-    """묶음의 청구항을 초안 없이 보류로 둔다."""
+def _held(unit: JudgmentUnit, texts: dict[int, str], reasons: dict[int, str]) -> list[AmendedClaim]:
+    """청구항마다 그 청구항에 해당하는 이유로 보류 자리 표시를 만든다 (초안 없음)."""
     return [
         AmendedClaim(
             claim=n,
@@ -178,7 +181,7 @@ def _held(unit: JudgmentUnit, texts: dict[int, str], reason: str) -> list[Amende
             spec_basis=[],
             held_reason=reason,
         )
-        for n in unit.claims
+        for n, reason in reasons.items()
     ]
 
 
@@ -213,7 +216,9 @@ def build_amendments(
         raise ValueError(f"의견서 단계 결과에 없는 판단 단위(또는 후보): {unknown}")
 
     texts = {c.claim: c.text for c in inp.claims_text}
-    taken: dict[int, tuple[AmendedClaim, Status]] = {}  # 청구항 번호 -> 먼저 가진 묶음의 초안
+    taken: dict[int, tuple[AmendedClaim, Status]] = {}  # 청구항 번호 -> 먼저 가진 묶음의 실제 초안
+    # 청구항 번호 -> 보류 자리 표시. 어느 묶음도 그 청구항의 실제 초안을 못 냈을 때만 결과에 남는다
+    placeholders: dict[int, AmendedClaim] = {}
     held_units: list[str] = []
     flags: list[Flag] = []
 
@@ -221,8 +226,13 @@ def build_amendments(
         if f not in flags:
             flags.append(f)
 
+    def hold(claims: list[AmendedClaim]) -> None:
+        # 자리 표시는 실제 초안을 막지 않는다. 자리 표시끼리는 order가 앞선 묶음 것을 둔다
+        for claim in claims:
+            placeholders.setdefault(claim.claim, claim)
+
     def take(unit: JudgmentUnit, claim: AmendedClaim, status: Status) -> None:
-        # 한 청구항이 여러 묶음에 걸치면 order가 앞선 묶음 것을 두고, 뒤 묶음 것은 덮어쓰지 않는다
+        # 실제 초안끼리 겹치면 order가 앞선 묶음 것을 두고, 뒤 묶음 것은 덮어쓰지 않는다
         if claim.claim in taken:
             owner = taken[claim.claim][0].unit_id
             logger.warning(
@@ -235,7 +245,6 @@ def build_amendments(
             return
         taken[claim.claim] = (claim, status)
 
-    held_status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         if unit.unit_id in opinion.held_units:
             logger.warning(
@@ -243,8 +252,7 @@ def build_amendments(
             )
             held_units.append(unit.unit_id)
             flag(Flag.NEEDS_HUMAN_JUDGMENT)
-            for claim in _held(unit, texts, HELD_NO_SELECTION):
-                take(unit, claim, held_status)
+            hold(_held(unit, texts, dict.fromkeys(unit.claims, HELD_NO_SELECTION)))
             continue
         chosen: DirectionCandidate = candidates[chosen_id[unit.unit_id]]
         if not has_amendment(chosen):
@@ -261,8 +269,12 @@ def build_amendments(
             )
             held_units.append(unit.unit_id)
             flag(Flag.NEEDS_HUMAN_REVIEW)
-            for claim in _held(unit, texts, HELD_NO_CLAIM_TEXT):
-                take(unit, claim, held_status)
+            # 이유는 청구항마다 실제로 해당하는 것만: 글자가 없는 청구항과, 그 때문에 못 만든 청구항
+            reasons = {
+                n: HELD_NO_CLAIM_TEXT if n not in texts else HELD_SIBLING_NO_TEXT
+                for n in sorted(required)
+            }
+            hold(_held(unit, texts, reasons))
             continue
         allowed = {n for n in [*unit.claims, *unit.read_with] if n in texts}
 
@@ -305,6 +317,9 @@ def build_amendments(
                 status,
             )
 
+    held_status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    for n, placeholder in placeholders.items():
+        taken.setdefault(n, (placeholder, held_status))  # 실제 초안이 없는 청구항만
     ordered = [taken[n] for n in sorted(taken)]
     return AmendmentPart(
         claims=[c for c, _ in ordered],
