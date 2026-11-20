@@ -159,6 +159,45 @@ def test_심사관_힌트_칸이_없으면_없음이고_확인됨():
     assert result.status.value == StatusValue.CONFIRMED
 
 
+# 모델이 칸이 없을 때 null 대신 값·원문이 빈 객체를 주는 경우
+# (tune 녹화 응답에서 자주 나옴, 이슈 #154)
+_EMPTY = {"value": None, "raw_text": None, "page": None, "ambiguous": False}
+_EMPTY_WITH_PAGE = {"value": None, "raw_text": None, "page": 3, "ambiguous": False}
+
+
+@pytest.mark.parametrize("empty", [_EMPTY, _EMPTY_WITH_PAGE])
+def test_칸이_없는데_모델이_빈_객체를_주면_칸_없음_확인됨(empty):
+    answer = _answer("no_hints")
+    answer["allowable_claims"] = dict(empty)
+    answer["amendment_note"] = dict(empty)
+    result, _ = _run("notice_no_hints", _text(answer))
+    claims, note = result.examiner_hints.allowable_claims, result.examiner_hints.amendment_note
+    assert claims.value == [] and note.value is None
+    for v in (claims, note):
+        assert v.page is None and v.raw_text is None
+        assert v.status.value == StatusValue.CONFIRMED
+        assert v.status.checked == "원문에 칸 없음, 모든 쪽 글자를 봄"
+
+
+@pytest.mark.parametrize("empty", [_EMPTY, _EMPTY_WITH_PAGE])
+def test_칸이_있는데_모델이_빈_객체를_주면_못_뽑음(empty):
+    answer = _answer("basic")
+    answer["allowable_claims"] = dict(empty)
+    answer["amendment_note"] = dict(empty)
+    result, _ = _run("notice_basic", _text(answer))
+    for v in (result.examiner_hints.allowable_claims, result.examiner_hints.amendment_note):
+        assert v.value is None  # 칸이 있으니 '없음'으로 덮지 않는다
+        assert v.status.value == StatusValue.UNVERIFIED
+        assert v.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+def test_칸이_없어도_모델이_애매하다고_한_빈_객체는_칸_없음으로_보지_않는다():
+    answer = _answer("no_hints")
+    answer["amendment_note"] = {**_EMPTY, "ambiguous": True}
+    result, _ = _run("notice_no_hints", _text(answer))
+    assert result.examiner_hints.amendment_note.status.value != StatusValue.CONFIRMED
+
+
 # ---- 보정 참고사항 값 = 원문 문장 (이슈 #154) ----
 def test_보정_참고사항이_있으면_값에_원문_문장이_들어간다():
     result, _ = _run("notice_basic", _ok("basic"))

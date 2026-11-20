@@ -246,8 +246,19 @@ def _hint_missing(pages: PageText, titles: list[re.Pattern[str]]) -> Status:
     return Status(value=StatusValue.CONFIRMED, checked="원문에 칸 없음, 모든 쪽 글자를 봄")
 
 
-def _hint_claims(item: Item | None, pages: PageText) -> ExtractedValue:
+def _empty_hint(item: Item | None) -> bool:
+    """힌트 칸을 모델이 '안 줌'으로 볼지. null이거나, 값·원문이 다 빈 객체(page만 있어도)면 안 줌.
+
+    모델이 칸이 없을 때 null 대신 빈 객체를 주는 일이 잦다 (이슈 #154).
+    애매하다고 한 것은 그대로 둔다.
+    """
     if item is None:
+        return True
+    return item.value is None and not (item.raw_text or "").strip() and not item.ambiguous
+
+
+def _hint_claims(item: Item | None, pages: PageText) -> ExtractedValue:
+    if _empty_hint(item):
         status = _hint_missing(pages, _CLAIMS_TITLES)
         return ExtractedValue(
             value=[] if status.value == StatusValue.CONFIRMED else None, status=status
@@ -256,7 +267,7 @@ def _hint_claims(item: Item | None, pages: PageText) -> ExtractedValue:
 
 
 def _hint_note(item: Item | None, pages: PageText) -> ExtractedValue:
-    if item is None:
+    if _empty_hint(item):
         return ExtractedValue(status=_hint_missing(pages, _NOTE_TITLES))
     # 값 = 원문 대조를 통과한 글자 그대로 (모델이 준 value는 쓰지 않는다, 이슈 #154).
     # 정답 형식(f1-oa-gold.md)도 원문 문장 그대로라 화면·채점이 value를 바로 쓴다.
