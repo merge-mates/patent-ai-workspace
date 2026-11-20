@@ -39,7 +39,7 @@ flowchart LR
 ```
 1. **질문 읽기:** 입력 글에서 자료 유형·시점·사건번호·조문을 뽑아 `LegalQuestion`을 만든다. 날짜 계산과 사건번호·조문 번호 꼴 맞추기는 코드 도구(`normalize_refs`)다. 자연어 시점과 선택 조건 시점이 다르면 `clarifications`에 한 줄을 넣는다.
    - OA 흐름: 지휘 에이전트가 거절이유 하나마다 `LegalQuestion`을 만든다. 글 = 심사관 논리 글(조문 표기는 가리지 않음, 앱에서는 정답 누출이 없음), 조문 = F1 조문, 시점 = OA 발송일(검색 기준일), 자료 유형 = 전부. 청구항 글은 넣지 않는다 [가정: 조문·심사기준·판례 찾기에 청구항 글은 잡음. 7-3 실험에서 확인].
-2. **조사 계획:** 시점이 걸리지 않는 조회(판례 검색)는 바로 하고, 시점이 걸린 조회(조문·심사기준)는 `clarifications`가 비었을 때만 한다. 계획은 서브에이전트가 정하지만 고를 수 있는 도구는 7-1 목록뿐이다.
+2. **조사 계획:** 시점이 걸리지 않는 조회(사건번호·심판번호 ID 조회, 시점 없는 질문의 판례 검색)는 바로 하고, 시점이 걸린 조회(조문·심사기준)는 `clarifications`가 비었을 때만 한다. 판례·심결 검색은 4절 날짜 규칙대로 한다 (부딪힘이면 이른 날로 먼저). 계획은 서브에이전트가 정하지만 고를 수 있는 도구는 7-1 목록뿐이다.
 3. **검색:** 도구마다 검색 계약 `SearchResult`를 받는다. 0개면 질의를 바꿔(결론 문장만, 핵심어만) 한 번 더 찾는다 (설정 `f2.max_research_retries`). 그래도 0개면 그 유형은 `not_found_in_scope` + 찾아본 범위. 단 0개이고 `skipped_unverified_edition` > 0(판본 모름 조각이 기준일 거르기에서 빠짐)이면 `unverified(edition_unknown)`로 바꾼다. 판본을 몰라 못 본 것을 "찾았지만 없음"으로 내지 않는다.
    - 그 유형 조각이 0개면(색인 전, 예 `law-idx-v3` 전의 심사기준·판례. 저장소에서 셈) `search`를 부르지 않고 `unverified(body_missing)`.
    - 기준일이 그 유형의 가장 이른 판 시행일보다 앞서면(특허법은 2017.9.22판, 심사기준은 2018.1.1판부터 있음) 결과 0개를 `not_found_in_scope`로 내지 않는다. 조문은 법령 API로 그 판을 한 번 조회하고(4절) 실패하면 `unverified(lookup_failed)`, 심사기준은 받을 API가 없어 `unverified(edition_unknown)`. 검색 계약 채점기의 `excluded_no_edition_in_scope`와 같은 경우다. 가장 이른 시행일은 저장소에서 센다 (5-1 저장소 메서드).
@@ -126,17 +126,26 @@ flowchart LR
 - 쓰는 법령·심사기준 판: 기준일 = `conditions.as_of`. 검색 계약 `as_of` 거르기(그날 시행판)를 그대로 쓴다. 없으면 `as_of = checked_on`(오늘)으로 검색한다. 검색 계약은 `as_of = None`이면 판본을 거르지 않아 같은 조문의 옛 판들이 상위 k를 나눠 차지하기 때문이다. 판본 모름 조각은 기준일 검색에서 빠지고 `search_log`에 건수 (0개면 2절 3단계대로 `edition_unknown`).
   - OA 흐름: 발송일판으로 찾고, 같은 조문의 출원일판을 `get_article`로 한 번 더 읽어 글이 다르면 3-2 규칙.
   - 두 갈래를 나눈다. ① 그 조문의 조각은 있는데 판본 모름 조각만 걸림 → `unverified(edition_unknown)`. ② 그날 판이 색인에 아예 없음(2017.9.22판보다 앞선 출원일판 등) → 법령 API(`law_api`, 캐시·호출 상한)로 한 번 조회, 받으면 그 판 글을 근거로 쓰고(`api_cache`에 저장, 색인 판은 `law_api`로 표시), 실패하면 `unverified(lookup_failed)`. 심사기준은 API가 없어 ②도 `edition_unknown`.
+- 쓰는 판례·심결 날짜 (11/20 은진, #147 재아 리뷰): 판례·심결은 판본이 없어서 메타데이터 `decided_on`(판례 선고일, 심결 심결일)으로 거른다. 그 시점에는 없던 자료를 근거로 내지 않으려는 것이고, #150 1번 제안(OA 시점 입력만 쓰기)과 같은 방향이다.
+  - 날짜 기준은 조문·심사기준과 같은 기준일 `conditions.as_of`다. OA 흐름 = OA 발송일, 법률 질문 = 사용자가 준 시점. `decided_on ≤ as_of`만 남기고, 검색 전에 거른다(pre-filter). 판본 `as_of` 거르기와 따로 돈다 (판례는 판본이 `not_applicable`이라 판본 거르기를 그냥 통과하기 때문).
+  - 시점이 없는 법률 질문: 오늘(`checked_on`)까지, 사실상 거르지 않는다.
+  - OA 발송일이 `unverified`(OA 흐름): 거를 날짜가 없으니 판례·심결 검색도 조문·심사기준처럼 보류하고 사람에게 날짜 확인을 받는다. 그대로 찾으면 OA 뒤 판례가 섞인다.
+  - 글 시점과 선택 시점이 부딪힐 때(합격 기준 1): 판례·심결은 **두 날짜 중 이른 날**로 먼저 찾아 둔다. 이른 날까지의 판례는 어느 쪽으로 확인돼도 쓸 수 있다. 확인 뒤 늦은 날이면 두 날짜 사이 판례만 더 찾는다. 조문·심사기준은 판본이 갈려 미리 못 찾고 확인을 기다린다.
+  - 날짜를 모르는 조각(심결 PDF에서 심결일을 못 뽑음 등): 거르기에서 빼고 `skipped_unknown_date` 건수를 `search_log`와 찾아본 범위에 남긴다. 결과가 0개이고 이 건수 > 0이면 `not_found_in_scope`가 아니라 `unverified(edition_unknown)` (판본 모름과 같은 처리).
+  - 사건번호·심판번호 ID 조회(`get_precedent`)는 날짜와 상관없이 읽되, `decided_on`이 기준일보다 뒤면 근거가 아니라 `further_review`(`edition_out_of_scope`)로 보인다.
 - 근거 위치 적는 법: 검색 계약 그대로 `doc_id` + `location.label` + `edition` + `index_version`. 화면은 `label`을 보이고 원문 보기로 잇는다 (조문은 그 조 전체, 심사기준은 그 쪽 PDF, 판례는 그 문단).
 
 ## 5. 저장
 - 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: `legal_evidence_bundles`, `legal_chats` (새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
 - 가져오는 길은 둘이다 (11/20 은진): **아는 문헌은 ID 조회, 모르는 근거는 검색.** OA에 명시된 인용문헌은 번호로 DB에서 정확히 가져온다 (F1·F3). 명시되지 않은 근거(조문·심사기준·판례·심결)와, 인용문헌 안에서 관련 문단을 고르는 일은 검색(BM25·벡터)으로 한다. F2 안에서도 같다: 조문 번호·사건번호·심판번호를 알면 `get_article`·`get_precedent`로 ID 조회, 모르면 `search_*`로 검색. 검색 계약의 `mode: hybrid`(BM25 + 벡터 섞기)와는 다른 말이라, 문서에서는 "ID 조회 + 검색"으로 부른다.
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
-- 외부 API: 법령 API(색인에 없는 판), KIPRIS Plus 심판 Open API(월 1,000회 무료, 유료는 BULK 상품)는 실행 중에 부르지 않고 심결을 미리 받을 때만 쓴다 (지금은 웹에서 받은 12건, requirements 열린 질문 3·9). 먼저 `api_cache`에 저장하고 쓴다.
-- 외부 모델로 보내는 자료: 법령·심사기준·판례 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
+- 외부 API는 둘이고 쓰는 때가 다르다.
+  - 법령 API(법제처): **실행 중에** `law_api`(캐시·호출 상한)로 부른다. 색인에 없는 판(4절 ②)과 받은 74건 밖 판례(`get_precedent`)를 조회한다. 먼저 `api_cache`에 저장하고 쓴다.
+  - KIPRIS Plus 심판사항 Open API: 실행 중에는 부르지 않고, 심결을 **미리 받을 때만** 쓴다 (지금 색인할 것은 웹에서 받은 12건, requirements 열린 질문 3·9). 요금: 무료 옵션은 월 1,000건, 유료는 Open API 무제한 옵션과 BULK(기간제) 두 가지다 (확인: KIPRIS Plus 데이터 신청 화면 11/20, #54 댓글).
+- 외부 모델로 보내는 자료: 법령·심사기준·판례·심결 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
 
 ### 5-1. 색인 `law-idx-v3` (#24가 만듦, 여기서는 모양만)
-[제안 — 재아 님 확인 필요] 검색 계약 조각 표에 그대로 넣는다. 새 말뭉치·새 표를 만들지 않는다.
+검색 계약 조각 표에 그대로 넣는다. 새 말뭉치·새 표를 만들지 않는다 (재아 님 11/20 동의).
 
 | 자료 | `doc_id` | 조각 단위 | `chunk_kind` | `loc_kind`·`loc_label` | 판본 |
 |---|---|---|---|---|---|
@@ -146,10 +155,14 @@ flowchart LR
 | 판례 전문 | `판례_<사건번호>` | 판례내용 "이유" 아래 번호 문단 | `judgment` | `paragraph`, `이유 2. 가.` | `not_applicable` |
 | 심결 (12건, PDF) | `심결_<심판번호>` | "이유" 아래 번호 문단 (요지 칸이 없어 전문만) | `judgment` | `paragraph`, `이유 3. 나.` | `not_applicable` |
 
-- #24 PR에서 검색 계약을 고치는 것은 둘이다 (그 밖은 그대로).
-  1. `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
-  2. 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 기준일 거르기는 지금도 `not_applicable`을 통과시키므로 검색 동작은 바뀌지 않는다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
-- 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 조각 메타데이터로 거른다. `search()`에 `chunk_kinds`(조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`) 거르기를 더하고, 판례와 심결은 메타데이터 `source_kind`(`precedent` / `trial`)로 가른다. 더 붙일 메타데이터 후보: 법원·선고일, 거절이유 유형, 심결 결과, IPC 분야(심결·판례를 분야 없이 받되 비전 사건 먼저 보이기용, requirements 열린 질문 9). 검색 계약을 고치는 PR이 따르고 #24 범위에 넣는다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`)에는 메서드 둘이 필요하다: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기.
+- #24에서 바뀌는 것 (공유 자원: 검색 계약·마이그레이션·채점기라 PR로, 상대 리뷰). 아래가 전부다.
+  1. 조각 종류 값: `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
+  2. 판본 값: 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
+  3. 조각 메타데이터 칸: `Chunk`(`retrieval/schemas.py`, 지금 `extra="forbid"`)와 `law_chunks` 열에 `source_kind`(`statute` / `guideline` / `precedent` / `trial`), `decided_on`(판례·심결 필수, 못 뽑으면 null + 건수), 판례 문단 역할(`court` / `party` / `unknown`), `rejection_ground`(거절이유 근거 조문 표시, 7-3), 후보 칸(법원, 거절이유 유형, 심결 결과, IPC 분야). **Alembic 마이그레이션**이 필요하다 (5절 #29 표와 따로).
+  4. `search()` 매개변수: `chunk_kinds` 거르기, 메타데이터 거르기(`source_kind`, `decided_on ≤ 날짜`, `rejection_ground`). 모두 점수 매기기 전에 거른다 (pre-filter). 결과에 `skipped_unknown_date` 건수를 더한다. `CheckedSearcher`·`fake`·`law_bm25`·`vector` 구현이 같이 바뀐다.
+  5. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`) 메서드 둘: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기. 메모리·Postgres 저장소 둘 다.
+  6. 채점기(`eval/retrieval/score.py`): 정답 줄의 검색 범위에 `chunk_kinds`(와 판례 줄의 날짜)를 넣는다. 지금 법령 정답 줄은 `doc_ids: null`이라, `law-idx-v3`에 심사기준·판례가 같은 표로 들어오면 조문 줄 검색 범위에 섞인다(판례는 `not_applicable`이라 `as_of`도 통과). 그러면 Recall·무작위 기준선이 v2와 비교가 안 되므로, 조문 줄은 `chunk_kinds = [article]`로 고정한다. 정답 파일 칸이 바뀌면 `eval/GUIDE.md`도 같이.
+- 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 위 3·4의 조각 메타데이터로 거른다. 조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`, 판례와 심결은 `source_kind`로 가른다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. IPC 분야는 심결·판례를 분야 없이 받되 비전 사건을 먼저 보이기용이다 (requirements 열린 질문 9).
 - 심사기준 HWP→PDF 변환본 2판(제108·116호)은 쪽 번호가 원본과 다를 수 있다 (데이터 카드 3절). 그 판 조각의 `loc_label`에 "(변환본 쪽)"을 붙인다.
 
 ## 6. 화면 (시연용)
@@ -164,13 +177,13 @@ flowchart LR
   | 도구 | 입력 → 출력 | 실패 시 |
   |---|---|---|
   | `get_article` | 법령 이름 + 조·항 + 기준일 → 그 판 조각 + 시행 기간 | 판본 모름 조각만 있음 `unverified(edition_unknown)` / 그날 판이 색인에 없음 → 법령 API 조회, 실패 `unverified(lookup_failed)` (4절) |
-  | `search_article` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [article]`). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)` |
+  | `search_article` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [article]`). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)`, 기준일이 가장 이른 판보다 앞섬 `unverified(edition_unknown)` (조문 번호를 몰라 법령 API로 조회할 수 없음) |
   | `search_guideline` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [guideline]`) | 위와 같음, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음), 기준일이 가장 이른 판보다 앞섬 `unverified(edition_unknown)` |
-  | `search_precedent` | 질의 + 종류(`precedent` 판례 / `trial` 심결 / 둘 다, 기본 둘 다) → `SearchResult` (`chunk_kinds = [judgment, judgment_summary]` + `source_kind`. 판본 기준일은 없고, OA 흐름에서는 선고일(심결은 심결일) ≤ OA 발송일로 거른다). OA 흐름에서 사건번호를 모를 때도 심결 12건이 검색에 걸린다 | 0개 `not_found_in_scope`, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음) |
+  | `search_precedent` | 질의 + 종류(`precedent` 판례 / `trial` 심결 / 둘 다, 기본 둘 다) → `SearchResult` (`chunk_kinds = [judgment, judgment_summary]` + `source_kind`. 판본 기준일은 없고, `decided_on ≤ as_of`로 거른다. 4절). OA 흐름에서 사건번호를 모를 때도 심결 12건이 검색에 걸린다 | 0개 `not_found_in_scope`, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음), 0개이고 날짜 모름 건수 > 0이면 `unverified(edition_unknown)` |
   | `get_precedent` | 사건번호·심판번호 → 그 판례·심결 조각들 | 색인 전 `unverified(body_missing)` / 받은 판례 74건 밖의 사건번호 → 법령 API로 사건번호 조회([architecture.md](../../architecture.md) 6절 "그 밖은 필요할 때"), 실패 `unverified(lookup_failed)`, API에도 없음 `not_found_in_scope` (+ 찾아본 범위) / 받은 심결 12건 밖의 심판번호 → `not_found_in_scope` (+ 찾아본 범위: 받은 심결 12건, 실행 중에는 심판 API를 부르지 않음) |
   | `normalize_refs` | 글 → 조문·사건번호·날짜 꼴 맞춘 목록 (코드) | 못 읽음은 빈 목록 + 경고 |
 - **평가 세트·지표:**
-  - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 조문 주 지표는 Recall@5, 같이 보는 지표는 Hit@1이다. BM25 Hit@5가 이미 1.000(19줄)이라 Hit@5로는 7-3 실험 1(질의 모양)의 차이가 안 보이기 때문이다. 심사기준·판례는 기준선을 잰 뒤 정한다. MRR은 채점기에 없어 지금은 쓰지 않는다 (검색 계약 "안 할 것"). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
+  - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 조문 주 지표는 Hit@1, 같이 보는 지표는 Recall@5다. BM25 Hit@5 1.000·Recall@5 0.974(19줄)라 k=5로는 7-3 실험 1의 차이가 안 보이기 때문이다 (재아 님 11/20 리뷰). 심사기준·판례는 기준선을 잰 뒤 정한다. MRR은 채점기에 없어 지금은 쓰지 않는다 (검색 계약 "안 할 것"). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
   - 근거 검토: `data/goldsets/tune/f2/` 실제 질문 + 오류 주입 5종 (#35, 20개 이상). 지표 출처 존재·위치·판본 일치율, 뒷받침 판정 정확도, 주입 오류 탐지율·고친 비율. 채점기 `eval/run_eval.py --config experiments/<실험>/config.yaml` (`feature: f2`, 새 채점기는 #29).
   - 문턱: [확인 필요: 기준선 뒤]. 지킬 선: 없는 출처 0건, 확인하지 않은 위치 0건.
 - **데이터:** `law-idx-v2` (지금), `law-idx-v3` (#24 뒤). 평가 단위는 OA 한 통(출원번호 + 발송번호), 범위는 컴퓨터 비전 분야 tune 사건 ([product.md](../../product.md) 7절).
@@ -186,20 +199,28 @@ flowchart LR
 
 ### 7-3. 비교 실험 목록 (M2 안, 순서대로)
 재아 님 색인 기법 조사(#147 댓글, 11/20)를 반영해 은진·재아가 정했다 (11/20). 숫자는 각 논문 자체 보고라 우리 데이터에서는 다를 수 있다.
-0. **먼저 확인 (비용 0):** 조문 BM25 Hit@5 1.000의 이유. 조문 번호는 가렸지만 거절이유 글이 조문 글귀를 그대로 옮겨 써서 쉽게 맞히는지 tune 몇 줄을 직접 본다. 그렇다면 주 지표 Recall@5 + Hit@1(7-1)이 맞고, 실험 1은 글귀를 지운 질의로도 한 번 잰다.
+재아 님 시험판 숫자 (11/20, 법령 색인 시험판을 BM25로 돌린 것. 저장소에 안 올림. 질의 = tune 18줄 + OA 표로 정답을 붙인 silver 538·200줄, 사람 검수 없음. 순서를 정하는 참고로만 쓴다):
+- 머리 문장만 질의: Recall@1 0.417 → 0.944 (tune). 가장 컸다.
+- `rejection_ground` 선필터(특허법 제62조 각 호가 가리키는 조문 + 그 조를 받는 시행령 조에만): Recall@5 +0.10~0.13. 단 정답이 모두 거절이유 조문인 세트라 이 필터가 손해 볼 수 없는 조건이었다.
+- 조각 앞말: **BM25에서는 나빠짐** (항 조각 Recall@5 0.628 → 0.593 (538줄), 0.772 → 0.650 (200줄), 95% 구간이 0을 넘지 않음). 앞말 낱말(특허·요건·조·항)이 긴 OA 질의와 고르게 맞아 조각 차이를 지운다.
+- 조 조각: 조 맞힘 조R@5 0.854 → 0.922 (글자 수 약 6배).
+
+0. **먼저 확인 (비용 0):** 조문 BM25 Hit@5 1.000·Recall@5 0.974의 이유. 조문 번호는 가렸지만 거절이유 글이 조문 글귀를 그대로 옮겨 써서 쉽게 맞히는지, 머리 문장이 답을 거의 다 주는지 tune 몇 줄을 직접 본다. 실험 1의 차이는 사실상 Hit@1에서 보이므로 **조문 주 지표는 Hit@1**(같이 Recall@5)로 둔다 (7-1).
 1. 법령 질의·조각 모양 (말뭉치 `law`, 기준선 `law-idx-v2`). 순서대로:
-   a. 조각 앞말: 조각마다 코드로 만든 앞말("특허법 제29조제2항(특허요건)", "심사기준 제3부 제3장 4.1", "대법원 2007후3660 판결요지 [1]")을 붙여 BM25·임베딩 둘 다에 넣는다. 새 색인 판. 벡터가 낮은 원인 후보(짧은 항 조각에 맥락 없음)를 본다. 모델 비용 0, 임베딩 비용만 ([contextual retrieval](https://www.anthropic.com/engineering/contextual-retrieval)).
-   b. 질의 모양: 거절이유 본문 전체(지금) / 결론 문장만.
-   c. 모델이 관련 조문을 먼저 써 보고 그 글로 찾기. 모델 호출 비용이 들어 a·b 뒤에 한다. 지어낸 조문은 2절 4단계 출처 확인이 거른다 ([KoBLEX, arXiv 2509.01324](https://arxiv.org/html/2509.01324v1)).
+   a. 질의 모양: 거절이유 본문 전체(지금) / 머리 문장만 / **머리 문장 + 본문 두 번 찾아 순위로 합치기**(드문 조문은 본문이 있어야 찾으므로). 시험판에서 효과가 가장 커서 먼저 한다.
+   b. `rejection_ground` 선필터: "거절이유 → 근거 조문" 길(OA 흐름에서 거절이유의 근거 조문을 찾을 때)에서만 켠다. 사건 없는 질문·심사기준·판례에는 켜지 않는다. 정답 세트가 이 필터에 유리하게 생겼으니 켬/끔을 같이 보인다.
+   c. 조각 앞말: **임베딩에서만** 잰다 (벡터가 낮은 원인 후보: 짧은 항 조각에 맥락 없음, [contextual retrieval](https://www.anthropic.com/engineering/contextual-retrieval)). BM25는 시험판에서 나빠졌으니 앞말 없이 둔다. 새 색인 판, 모델 비용 0, 임베딩 비용만.
+   d. 조 조각을 하나 더 색인 (항 조각은 그대로): 조 맞힘이 더 좋았다. 근거 위치는 항까지 보여야 하므로 조 조각으로 찾고 항 조각으로 위치를 붙이는 변형.
+   e. 모델이 관련 조문을 먼저 써 보고 그 글로 찾기. 모델 호출 비용이 들어 맨 뒤에 한다. 지어낸 조문은 2절 4단계 출처 확인이 거른다 ([KoBLEX, arXiv 2509.01324](https://arxiv.org/html/2509.01324v1)).
 2. 심사기준·판례·심결 BM25 / 벡터 기준선 (`law-idx-v3`, #24 뒤). 판례·심결은 조각 단위에 더해 **문헌 단위**로도 센다 (한 판례의 조각 여럿이 상위 k를 다 차지하는지).
 3. (M3, 시간 나면) 근거 검토 역할 분리 `single` / `split` (PRD 비교 축). M2는 `split`만 만든다.
 - 메타데이터 거르기는 점수를 매기기 **전에** 한다 (pre-filter). 상위 k를 뽑은 뒤 거르면 결과가 모자란다. 지금은 벡터 인덱스가 없어 그대로 되고, HNSW 인덱스를 붙이면 pgvector `iterative_scan`이나 값마다 부분 인덱스가 필요하다. 판례 문단 역할(판단 / 당사자 주장)도 같은 메타데이터로 두어 8절 구분을 검색 조건으로 쓸 수 있게 한다 (#24 검색 계약 PR).
-- 판례·심결 날짜 거르기 (11/20 은진): OA 흐름에서는 선고일(심결은 심결일)이 OA 발송일보다 뒤인 판례·심결을 검색 전에 뺀다. 그 OA 시점에는 없던 자료라 "OA 시점 입력만 쓴다"는 입력·정답 나누기 규칙(#150 1번)과 맞추려는 것이다. 판본 `as_of` 거르기와 따로, 메타데이터 `decided_on` 거르기로 한다. 사건 없는 법률 질문에서 시점이 있으면 같은 규칙, 없으면 거르지 않는다. 뺀 건수는 `search_log`에 남긴다.
+- 판례·심결 날짜 거르기는 4절 "쓰는 판례·심결 날짜"로 옮겼다.
 - 나중 (M2에서 안 함):
   - hybrid: 1·2 뒤 BM25·벡터가 서로 다른 줄을 찾을 때만 (한국어·법률 결과가 엇갈림).
   - 조문 참조 따라가기: "제1항 각 호" 같은 참조를 정규식으로 뽑아 후보에 더함. 그래프 DB 없이 코드로 되니 M3 그래프 판단(11/24) 때 같이 본다.
   - 재순위(reranker): 조각이 긴 심사기준·판례에서 먼저 볼 만함. 들이려면 검색 계약에 자리가 필요하다.
-  - 임베딩 모델 비교 후보: `text-embedding-3-large`, KURE-v1(MIT), bge-m3, EVE-Embed-1.1-Legal(판례 전용, Apache-2.0). 1a 뒤에도 벡터가 BM25보다 크게 낮을 때(조문 Recall@5 차이 0.3 넘음 [가정]) 한다.
+  - 임베딩 모델 비교 후보: `text-embedding-3-large`, KURE-v1(MIT), bge-m3, EVE-Embed-1.1-Legal(판례 전용, Apache-2.0). 1c 뒤에도 벡터가 BM25보다 크게 낮을 때(조문 Recall@5 차이 0.3 넘음 [가정]) 한다.
 - 각 실험의 CQ 후보는 검색 계약대로 `work/retrieval/<실험>/`에 쌓는다.
 
 ## 8. 이 기능 안의 결정
@@ -233,11 +254,12 @@ flowchart LR
   - 받은 12건 밖의 심판번호 → `not_found_in_scope` + 찾아본 범위.
   - `unverified(input_unverified)`: F1 조문이 `unverified`인 거절이유.
   - 오류 주입 5종: 녹화 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
-  - 부딪힘: 글 시점 ≠ 선택 시점 → `clarifications` 1건, 판례 검색은 끝남.
+  - 부딪힘: 글 시점 ≠ 선택 시점 → `clarifications` 1건, 판례 검색은 두 날짜 중 이른 날로 끝나 있음, 조문·심사기준은 확인 대기.
   - 대화 두 번: 두 번째에 시점 바꿈 → `scope_changed`, `prior_evidence` 유지.
   - 사건번호만 입력 "2007후3660" → `get_precedent`로 읽음.
   - 요지/전문: 판결요지 조각 근거 `text_kind = summary`, 판례내용 조각 `full`. `speaker = unknown`이면 `needs_human_review`.
   - 반대 판례: 주장과 반대로 판단한 조각 → `further_review`의 `opposite_holding`.
   - OA 흐름: 거절이유 3개인 가짜 `OAResult` → ④ 3개, 모두 `origin = ai_generated`. 질의에 등록공보 글 0자 (등록공보 판을 넘기면 멈춤).
-  - OA 발송일 `unverified` → 조문·심사기준 조회 보류, 판례 검색은 함, 결과 `input_unverified`.
+  - OA 발송일 `unverified` → 조문·심사기준·판례·심결 검색 모두 보류, 결과 `input_unverified`.
+  - 판례 날짜: 선고일이 OA 발송일보다 뒤인 판례 조각 하나 + 날짜 모름 심결 조각 하나 → 앞의 것은 검색 결과에서 빠지고(`get_precedent`로 읽으면 `further_review`), 뒤의 것은 `skipped_unknown_date` 1로 `search_log`에 남는다. 이 둘만 있으면 결과는 `unverified(edition_unknown)`.
   - 사건 적용 표현: 녹화 응답의 답 글(따옴표 안 원문 인용 밖)에 "이 사건에 적용"·"등록 가능"을 넣으면 거부하지 않고 그 주장에 `needs_human_review` + 경고. 판례 인용 안의 "적용된다"는 걸리지 않는다.
