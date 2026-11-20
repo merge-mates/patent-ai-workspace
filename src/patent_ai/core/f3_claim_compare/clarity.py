@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from patent_ai.core.f3_claim_compare.examiner import find_claim_row
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
-from patent_ai.core.f3_claim_compare.textmatch import find_span
+from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
@@ -226,7 +226,8 @@ def _check(
             found = mine.candidates.get(pick.chunk_id)
             span = find_span(pick.quote, found.chunk.text) if found else None
             # 아주 짧은 글자는 아무 조각에나 맞으므로 근거로 받지 않는다
-            too_short = len("".join(pick.quote.split())) < min_chars
+            # (조각 전체를 옮긴 것은 받음)
+            too_short = found is not None and is_too_short(pick.quote, found.chunk.text, min_chars)
             if found is None:
                 errors.append(f"terms[{i}]: 후보에 없는 chunk_id {pick.chunk_id!r}")
             elif span is None:
@@ -280,7 +281,7 @@ def _ask(
         "retry_note": "",
     }
     spec = config.inputs.spec
-    min_chars = config.settings.clarity_search.min_quote_chars
+    min_chars = config.settings.min_quote_chars
     try:
         first = call_model(STEP, variables, ClarityAnswer, ctx=ctx, attempt=1)
         judged, errors = _check(first.parsed, claim, terms, spec, min_chars)

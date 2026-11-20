@@ -127,7 +127,7 @@ EXAMINER_OA = _inventive(rows=[claim_row(1, 1, ["D1"], {"D1": ["[0040]"]})])
 BOTH = _answer(
     [
         _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
-        _row(2, "D1", "disclosed", (P40, "수조가 있다")),
+        _row(2, "D1", "disclosed", (P40, "뚜껑 아래 수조가 있다")),
     ]
 )
 
@@ -189,7 +189,7 @@ def test_못_맞춘_심사관_위치는_근거_없이_확인되지_않음으로_
 def test_근거를_못_고르면_조회_범위_내_없음과_찾아본_범위를_남긴다():
     answer = _answer(
         [
-            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀")),
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
             _row(2, "D1", "difference_candidate"),
         ]
     )
@@ -233,7 +233,12 @@ def test_다시_불러_고쳐_오면_통과한다():
     wrong = _answer(
         [_row(1, "D1", "disclosed", (P23, "센서는 온도를 잰다")), _row(2, "D1", "unclear")]
     )
-    good = _answer([_row(1, "D1", "disclosed", (P23, "습도를 잰다")), _row(2, "D1", "unclear")])
+    good = _answer(
+        [
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
+            _row(2, "D1", "unclear"),
+        ]
+    )
     out, calls, _ = _run(_inventive(), [wrong, good])
     assert len(calls) == 2
     assert _find(out.tables[0], 1, "D1").status.value == StatusValue.CONFIRMED
@@ -242,7 +247,13 @@ def test_다시_불러_고쳐_오면_통과한다():
 def test_근거_일부만_틀리면_맞는_근거는_남기고_상태를_낮춘다():
     mixed = _answer(
         [
-            _row(1, "D1", "disclosed", (P23, "습도를 잰다"), ("없는:조각", "글자")),
+            _row(
+                1,
+                "D1",
+                "disclosed",
+                (P23, "습도 센서는 흙에 꽂혀 습도를 잰다"),
+                ("없는:조각", "글자"),
+            ),
             _row(2, "D1", "unclear"),
         ]
     )
@@ -254,7 +265,7 @@ def test_근거_일부만_틀리면_맞는_근거는_남기고_상태를_낮춘�
 
 
 def test_모델이_판정을_빼먹은_줄은_버리지_않고_확인되지_않음():
-    partial = _answer([_row(1, "D1", "disclosed", (P23, "습도를 잰다"))])
+    partial = _answer([_row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다"))])
     out, calls, _ = _run(_inventive(), [partial, partial])
     assert len(calls) == 2
     row = _find(out.tables[0], 2, "D1")
@@ -294,7 +305,7 @@ def test_결합_진보성은_인용문헌마다_따로_찾고_줄도_따로다()
     cited = [citation("D1", D1), citation("D2", D2)]
     answer = _answer(
         [
-            _row(1, "D1", "disclosed", (P23, "습도를 잰다")),
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
             _row(2, "D1", "disclosed", (P31, "물통은 물을 담아 둔다")),
             _row(1, "D2", "difference_candidate"),
             _row(2, "D2", "difference_candidate"),
@@ -319,7 +330,7 @@ def test_진보성_요약은_어느_문헌에도_개시되지_않은_구성요�
     cited = [citation("D1", D1), citation("D2", D2)]
     answer = _answer(
         [
-            _row(1, "D1", "disclosed", (P23, "습도를 잰다")),
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
             _row(2, "D1", "difference_candidate"),
             _row(1, "D2", "difference_candidate"),
             _row(2, "D2", "unclear"),
@@ -344,7 +355,7 @@ def _novelty(citations):
 def test_신규성_대비표는_인용문헌_하나와만_대비한다():
     d1 = _answer(
         [
-            _row(1, "D1", "disclosed", (P23, "습도를 잰다")),
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
             _row(2, "D1", "disclosed", (P31, "물통은 물을 담아 둔다")),
         ]
     )
@@ -365,7 +376,12 @@ def test_신규성_대비표는_인용문헌_하나와만_대비한다():
 
 
 def test_신규성_불명만_있으면_실질적_동일_후보로_모은다():
-    answer = _answer([_row(1, "D1", "disclosed", (P23, "습도를 잰다")), _row(2, "D1", "unclear")])
+    answer = _answer(
+        [
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
+            _row(2, "D1", "unclear"),
+        ]
+    )
     out, _, _ = _run(_novelty([citation("D1", D1)]), answer)
     assert out.tables[0].summary.verdict == NoveltyVerdict.SUBSTANTIALLY_SAME_CANDIDATE
 
@@ -382,7 +398,10 @@ def test_쓸_인용문헌이_없으면_표를_만들지_않고_보류한다(capl
 def test_청구항_판이_확인되지_않으면_줄이_모두_input_unverified():
     config = _config(claims_status=bad(UnverifiedReason.EDITION_UNKNOWN))
     answer = _answer(
-        [_row(1, "D1", "disclosed", (P23, "습도를 잰다")), _row(2, "D1", "difference_candidate")]
+        [
+            _row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다")),
+            _row(2, "D1", "difference_candidate"),
+        ]
     )
     out, _, _ = _run(_inventive(), answer, config)
     (table,) = out.tables
@@ -394,7 +413,7 @@ def test_원문에서_확인하지_못한_구성요소는_찾지_않고_확인�
     base = split(1, [SENSOR, TANK])
     lost = base.elements[1].model_copy(update={"start": None, "end": None, "status": bad()})
     splits = {1: base.model_copy(update={"elements": [base.elements[0], lost]})}
-    answer = _answer([_row(1, "D1", "disclosed", (P23, "습도를 잰다"))])
+    answer = _answer([_row(1, "D1", "disclosed", (P23, "습도 센서는 흙에 꽂혀 습도를 잰다"))])
     out, calls, searches = _run(_inventive(), answer, splits=splits)
     assert [s["query"] for s in searches] == [SENSOR] and len(calls) == 1
     row = _find(out.tables[0], 2, "D1")
@@ -450,3 +469,110 @@ def test_같은_질의는_임베딩을_한_번만_부른다():
     assert memo("물통") == memo("물통") == [1.0, 0.0]
     memo("센서")
     assert seen == ["물통", "센서"]
+
+
+# ---- B2 리뷰 고침 ----
+FULL23 = "습도 센서는 흙에 꽂혀 습도를 잰다"
+ONE_DIFFERENT = _answer(
+    [_row(1, "D1", "disclosed", (P23, FULL23)), _row(2, "D1", "difference_candidate")]
+)
+
+
+def test_청구항_판이_확인되지_않아도_요약에서_차이_후보가_빠지지_않는다():
+    config = _config(claims_status=bad(UnverifiedReason.EDITION_UNKNOWN))
+    novelty, _, _ = _run(_novelty([citation("D1", D1)]), ONE_DIFFERENT, config)
+    assert novelty.tables[0].summary.verdict == NoveltyVerdict.DIFFERENT
+    inventive, _, _ = _run(_inventive(), ONE_DIFFERENT, config)
+    assert inventive.tables[0].summary.differences == [f"청구항 1 [구성 1-2] {TANK}"]
+
+
+def _splits_with_lost_element():
+    base = split(1, [SENSOR, TANK])
+    lost = base.elements[1].model_copy(update={"start": None, "end": None, "status": bad()})
+    return {1: base.model_copy(update={"elements": [base.elements[0], lost]})}
+
+
+def test_확인_못_한_구성요소가_있으면_차이_없음으로_모으지_않는다():
+    answer = _answer([_row(1, "D1", "disclosed", (P23, FULL23))])
+    out, _, _ = _run(_novelty([citation("D1", D1)]), answer, splits=_splits_with_lost_element())
+    summary = out.tables[0].summary
+    assert summary.verdict == NoveltyVerdict.SUBSTANTIALLY_SAME_CANDIDATE
+    assert "확인 못 한 구성요소 1개" in summary.reason
+
+
+def test_진보성_차이점에_확인_못_한_구성요소가_대비하지_않음으로_남는다():
+    answer = _answer([_row(1, "D1", "disclosed", (P23, FULL23))])
+    out, _, _ = _run(_inventive(), answer, splits=_splits_with_lost_element())
+    assert out.tables[0].summary.differences == [
+        "청구항 1 [구성 1-2] (구성요소 글자를 확인하지 못해 대비하지 않음)"
+    ]
+
+
+@pytest.mark.parametrize("quote", ["습", "습도 센서"])
+def test_너무_짧은_근거_글자는_검사_오류로_다시_부르고_그래도_짧으면_버린다(quote):
+    short = _answer([_row(1, "D1", "disclosed", (P23, quote)), _row(2, "D1", "unclear")])
+    out, calls, _ = _run(_inventive(), [short, short])
+    assert len(calls) == 2 and "검사 오류" in calls[1]["prompt"]
+    row = _find(out.tables[0], 1, "D1")
+    assert row.evidence == [] and row.status.reason == UnverifiedReason.EVIDENCE_REJECTED
+
+
+def test_조각_글_전체를_옮긴_근거는_짧아도_받는다():
+    # 조각 글이 하한보다 짧으면(도면 설명 한 줄 등) 통째로 옮긴 것만 받는다
+    whole = _answer(
+        [_row(1, "D1", "unclear"), _row(2, "D1", "disclosed", (P31, "물통은 물을 담아 둔다"))]
+    )
+    out, calls, _ = _run(_inventive(), whole)
+    assert len(calls) == 1
+    assert _find(out.tables[0], 2, "D1").status.value == StatusValue.CONFIRMED
+
+
+def test_신규성_차이_없음과_실질적_동일_후보에는_늘_직접_검토_필요가_붙는다():
+    same = _answer(
+        [
+            _row(1, "D1", "disclosed", (P23, FULL23)),
+            _row(2, "D1", "disclosed", (P31, "물통은 물을 담아 둔다")),
+        ]
+    )
+    unclear = _answer([_row(1, "D1", "disclosed", (P23, FULL23)), _row(2, "D1", "unclear")])
+    for answer, verdict in (
+        (same, NoveltyVerdict.NO_DIFFERENCE),
+        (unclear, NoveltyVerdict.SUBSTANTIALLY_SAME_CANDIDATE),
+    ):
+        out, _, _ = _run(_novelty([citation("D1", D1)]), answer)
+        assert out.tables[0].summary.verdict == verdict
+        assert Flag.NEEDS_HUMAN_REVIEW in out.tables[0].flags
+    reason = out.tables[0].summary.reason
+    assert "가리기 어려운 구성요소만 있음, 실질적 동일 판단 아님" in reason
+    different, _, _ = _run(_novelty([citation("D1", D1)]), ONE_DIFFERENT)
+    assert different.tables[0].flags == []
+
+
+def test_독립항이_대상이_아닌_단위의_대비표에는_직접_검토_필요가_붙는다():
+    claims = {1: CLAIMS[1], 2: "제1항에 있어서, 뚜껑을 더 포함하는 화분."}
+    splits = {1: SPLITS[1], 2: split(2, ["뚜껑"], [1])}
+    result = oa([rejection(1, "29-1-1", [2], [citation("D1", D1)])])
+    config = _config()
+    config = config.model_copy(
+        update={"inputs": config.inputs.model_copy(update={"claims_at_oa": claims})}
+    )
+    out, _, _ = _run(
+        result, _answer([_row(1, "D1", "difference_candidate")], claim=2), config, splits
+    )
+    (table,) = out.tables
+    assert table.unit_id == "oa_1:29-1-1:c2" and {r.claim for r in table.rows} == {2}
+    assert Flag.NEEDS_HUMAN_REVIEW in table.flags
+
+
+def test_심사관_위치를_끄면_진보성_요약에_심사관_논리_원문을_넣지_않는다(caplog):
+    answer = _answer([_row(1, "D1", "unclear"), _row(2, "D1", "unclear")])
+    with caplog.at_level(logging.WARNING):
+        out, _, _ = _run(_inventive(), answer, _config(use_examiner=False))
+    combination = out.tables[0].summary.combination
+    assert "D1에 D2를 결합" not in combination and combination.strip()
+    assert any("결합 논리" in r.getMessage() for r in caplog.records)
+
+
+def test_근거_글자_하한과_대비_호출_상한_설정():
+    assert load_f3_settings().min_quote_chars == 10
+    assert load_step_config("f3.compare").max_model_calls == 240

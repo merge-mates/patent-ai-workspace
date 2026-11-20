@@ -18,6 +18,7 @@ _SETTING_KEYS = (
     "impl",
     "second_search",
     "use_examiner_paragraphs",
+    "min_quote_chars",
     "search",
     "clarity_search",
 )

@@ -25,7 +25,7 @@ from patent_ai.core.f3_claim_compare.examiner import (
 )
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
 from patent_ai.core.f3_claim_compare.result import ExaminerLocationRow, SearchLogRow
-from patent_ai.core.f3_claim_compare.textmatch import find_span
+from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
 from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.embed import query_embedder
 from patent_ai.core.llm.errors import ModelOutputInvalid
@@ -239,6 +239,7 @@ def _check(
     element_nos: list[int],
     labels: list[str],
     candidates: Mapping[str, _Candidate],
+    min_chars: int,
 ) -> tuple[dict[tuple[int, str], _Judged], list[str]]:
     errors: list[str] = []
     if answer.claim != claim:
@@ -267,6 +268,11 @@ def _check(
                 )
                 one.dropped += 1
                 continue
+            # 한두 글자는 아무 조각에나 맞아 근거가 되지 못한다 (조각 전체를 옮긴 것은 받음)
+            if is_too_short(pick.quote, found.chunk.text, min_chars):
+                errors.append(f"rows[{i}]: quote가 너무 짧음 ({min_chars}자 이상): {pick.quote!r}")
+                one.dropped += 1
+                continue
             one.picks.append((found, found.chunk.text[span[0] : span[1]]))
         if row.judgment == Judgment.DISCLOSED and not row.evidence:
             errors.append(f"rows[{i}]: disclosed인데 evidence가 없음")
@@ -290,6 +296,7 @@ def _ask(
     elements: list[ClaimElement],
     labels: list[str],
     candidates: Mapping[str, _Candidate],
+    min_chars: int,
     ctx: RunContext,
 ) -> dict[tuple[int, str], _Judged]:
     """모델 1회. 형식이나 대조 검사에 떨어지면 검사 오류를 붙여 한 번만 더 부른다.
@@ -316,7 +323,7 @@ def _ask(
     element_nos = [e.no for e in elements]
     try:
         first = call_model(STEP, variables, CompareAnswer, ctx=ctx, attempt=1)
-        judged, errors = _check(first.parsed, claim, element_nos, labels, candidates)
+        judged, errors = _check(first.parsed, claim, element_nos, labels, candidates, min_chars)
         if not errors:
             return judged
         error = "\n".join(errors)
@@ -325,7 +332,7 @@ def _ask(
     logger.warning("compare 청구항 %d: 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름", claim)
     variables["retry_note"] = _RETRY_NOTE.format(error=error[:_MAX_ERROR_CHARS])
     second = call_model(STEP, variables, CompareAnswer, ctx=ctx, attempt=2)
-    judged, errors = _check(second.parsed, claim, element_nos, labels, candidates)
+    judged, errors = _check(second.parsed, claim, element_nos, labels, candidates, min_chars)
     if errors:
         logger.warning(
             "compare 청구항 %d: 다시 불러도 검사 오류 %d건 (틀린 근거는 버리고 상태를 낮춤)",
@@ -426,7 +433,8 @@ def _compare_claim(
     judged: dict[tuple[int, str], _Judged] = {}
     if usable and candidates:
         claim_text = config.inputs.claims_at_oa.get(claim, "")
-        judged = _ask(claim, claim_text, usable, labels, candidates, ctx)
+        min_chars = config.settings.min_quote_chars
+        judged = _ask(claim, claim_text, usable, labels, candidates, min_chars, ctx)
     elif usable:
         # 후보가 하나도 없으면 모델을 부르지 않는다: 모두 "조회 범위 내 없음"
         logger.warning("compare 청구항 %d: 후보 조각이 0개라 모델을 부르지 않음", claim)
@@ -443,42 +451,62 @@ def _compare_claim(
 
 
 # ---- 4) 요약 (줄 판정을 모은 표시일 뿐, 판정이 아니다) ----
-def _element_marks(rows: list[ComparisonRow]) -> dict[tuple[int, str], tuple[str, Judgment]]:
-    """구성요소(청구항, 위치)마다 (글자, 모은 판정). 개시됨 줄이 하나라도 있으면 개시됨."""
+_Key = tuple[int, str]  # (청구항 번호, 구성요소 위치)
+_LOST_NOTE = "(구성요소 글자를 확인하지 못해 대비하지 않음)"
+
+
+def _element_marks(rows: list[ComparisonRow], lost: set[_Key]) -> dict[_Key, tuple[str, Judgment]]:
+    """구성요소마다 (글자, 모은 판정). 개시됨 줄이 하나라도 있으면 개시됨.
+
+    rows는 입력 상태로 status를 덮기 전의 줄이다 (줄 status로 거르지 않는다).
+    원문에서 확인 못 한 구성요소(lost)는 대비하지 않았으므로 늘 불명으로 센다.
+    """
     order = [Judgment.DISCLOSED, Judgment.DIFFERENCE_CANDIDATE, Judgment.UNCLEAR]
-    marks: dict[tuple[int, str], tuple[str, Judgment]] = {}
+    marks: dict[_Key, tuple[str, Judgment]] = {}
     for r in rows:
-        if r.status.reason == UnverifiedReason.INPUT_UNVERIFIED and not r.evidence:
-            continue  # 원문에서 확인 못 한 구성요소는 요약에 넣지 않는다
         key = (r.claim, r.element_location)
+        if key in lost:
+            marks[key] = (r.element, Judgment.UNCLEAR)
+            continue
         old = marks.get(key)
         if old is None or order.index(r.judgment) < order.index(old[1]):
             marks[key] = (r.element, r.judgment)
     return marks
 
 
-def _inventive_summary(rows: list[ComparisonRow], rej: Rejection) -> InventiveSummary:
-    marks = _element_marks(rows)
-    # 차이점: 대비한 어느 문헌에서도 개시됨 줄이 없는 구성요소
+def _inventive_summary(
+    rows: list[ComparisonRow], lost: set[_Key], rej: Rejection, settings: F3Settings
+) -> InventiveSummary:
+    marks = _element_marks(rows, lost)
+    # 차이점: 대비한 어느 문헌에서도 개시됨 줄이 없는 구성요소.
+    # 확인 못 한 구성요소는 글자를 싣지 않고 대비하지 않았다고만 적는다 (빠뜨리지 않는다)
     differences = [
-        f"{location} {text}"
-        for (_, location), (text, mark) in marks.items()
+        f"{location} {_LOST_NOTE if (claim, location) in lost else text}"
+        for (claim, location), (text, mark) in marks.items()
         if mark != Judgment.DISCLOSED
     ]
     reasoning = rej.examiner_reasoning
+    if settings.use_examiner_paragraphs:
+        combination = reasoning.value or reasoning.raw_text or "심사관 결합 논리 확인되지 않음"
+    else:
+        # 심사관 쪽 글을 쓰지 않는 실행: 결합 논리 원문도 싣지 않는다
+        logger.warning("compare 거절이유 %d: 설정에 따라 심사관 결합 논리를 싣지 않음", rej.no)
+        combination = "심사관 결합 논리를 싣지 않음 (use_examiner_paragraphs=false)"
     logger.warning(
         "compare 거절이유 %d: 효과 후보는 아직 뽑지 않음 (빈 목록, 직접 검토 필요)", rej.no
     )
     return InventiveSummary(
         kind="inventive_step",
         differences=differences,
-        combination=reasoning.value or reasoning.raw_text or "심사관 결합 논리 확인되지 않음",
+        combination=combination,
         effect_candidates=[],
     )
 
 
-def _novelty_summary(rows: list[ComparisonRow], unit: JudgmentUnit, label: str) -> NoveltySummary:
-    marks = _element_marks(rows)
+def _novelty_summary(
+    rows: list[ComparisonRow], lost: set[_Key], unit: JudgmentUnit, label: str
+) -> NoveltySummary:
+    marks = _element_marks(rows, lost)
     names = {
         Judgment.DISCLOSED: "개시됨",
         Judgment.DIFFERENCE_CANDIDATE: "차이 후보",
@@ -494,13 +522,18 @@ def _novelty_summary(rows: list[ComparisonRow], unit: JudgmentUnit, label: str) 
     basis = [mark for (c, _), (_, mark) in marks.items() if c == rep] or [
         mark for _, mark in marks.values()
     ]
+    reason = f"AI 정리, 판정 아님 (대표 청구항 {rep}의 줄 판정을 모은 표시). " + "; ".join(told)
     if basis and all(m == Judgment.DISCLOSED for m in basis):
         verdict = NoveltyVerdict.NO_DIFFERENCE
     elif Judgment.DIFFERENCE_CANDIDATE in basis:
         verdict = NoveltyVerdict.DIFFERENT
     else:
+        # 스키마 세 값 중 남는 값이다. 실질적 동일이라고 본 것이 아님을 글로 분명히 한다
         verdict = NoveltyVerdict.SUBSTANTIALLY_SAME_CANDIDATE
-    reason = f"AI 정리, 판정 아님 (대표 청구항 {rep}의 줄 판정을 모은 표시). " + "; ".join(told)
+        reason += ". 가리기 어려운 구성요소만 있음, 실질적 동일 판단 아님"
+    lost_here = [key for key in marks if key in lost]
+    if lost_here:
+        reason += f". 확인 못 한 구성요소 {len(lost_here)}개 (대비하지 않음)"
     return NoveltySummary(kind="novelty", citation=label, verdict=verdict, reason=reason)
 
 
@@ -553,6 +586,14 @@ def compare_unit(
     # 신규성은 인용문헌 하나씩 따로 (두 문헌을 한 프롬프트·한 표에 섞지 않는다)
     groups = [[c] for c in usable] if novelty else ([usable] if usable else [])
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
+    # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
+    lost: set[tuple[int, str]] = {
+        (e.claim, e.element_location)
+        for claim in unit.claims
+        if claim in splits
+        for e in splits[claim].elements
+        if e.status.value != StatusValue.CONFIRMED
+    }
     for group in groups:
         rows: list[ComparisonRow] = []
         for claim in unit.claims:
@@ -570,23 +611,30 @@ def compare_unit(
             cites = _labels_for(oa, unit.rejection, claim, group)
             if cites:
                 rows += _compare_claim(unit, split, cites, oa, config, ctx, searcher, repo, seen)
-        if not input_ok:
-            # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
-            bad = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
-            rows = [r.model_copy(update={"status": bad}) for r in rows]
         if not rows:
             labels = "·".join(c.label for c in group)
             logger.warning("compare %s: %s 대비 줄이 0개라 표를 만들지 않음", unit.unit_id, labels)
             _hold(seen, f"f3_compare:{unit.unit_id}:{labels}", "대비할 청구항 구성요소")
             continue
+        # 요약은 status를 덮기 전의 줄로 모은다 (입력 상태 때문에 차이 후보가 빠지지 않게)
         summary = (
-            _novelty_summary(rows, unit, group[0].label)
+            _novelty_summary(rows, lost, unit, group[0].label)
             if novelty
-            else _inventive_summary(rows, rej)
+            else _inventive_summary(rows, lost, rej, settings)
         )
+        if not input_ok:
+            # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
+            bad = _unverified(UnverifiedReason.INPUT_UNVERIFIED)
+            rows = [r.model_copy(update={"status": bad}) for r in rows]
         # 직접 검토 필요: 대비 안 한 인용이 있음 / 효과 후보를 안 뽑음(진보성) /
-        # 단위 묶음이 확인 안 됨
-        review = bool(skipped) or not novelty or unit.status.value != StatusValue.CONFIRMED
+        # 단위에 표시가 있음(묶음 미확인, 독립항이 대상 밖) / 신규성 표시가 "차이 있음"이 아님
+        review = (
+            bool(skipped)
+            or not novelty
+            or Flag.NEEDS_HUMAN_REVIEW in unit.flags
+            or unit.status.value != StatusValue.CONFIRMED
+            or summary.verdict != NoveltyVerdict.DIFFERENT
+        )
         tables.append(
             ComparisonTable(
                 unit_id=unit.unit_id,

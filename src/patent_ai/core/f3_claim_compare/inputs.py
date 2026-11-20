@@ -43,7 +43,6 @@ class ClaritySearchSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     k: int = Field(ge=1)  # 문구마다 모델에 보여 줄 명세서 조각 수 (BM25 상위)
-    min_quote_chars: int = Field(ge=1)  # 정의 근거 글자 길이 하한 (짧은 글자 헛통과 막기)
 
 
 class F3Settings(BaseModel):
@@ -54,6 +53,8 @@ class F3Settings(BaseModel):
     impl: str  # 대비 방식 이름 (B8 전략 패턴)
     second_search: bool  # 못 찾은 구성요소를 한 번 더 찾을지 (B7)
     use_examiner_paragraphs: bool  # 심사관 지정 위치를 쓸지 (false = 평가 누출 막기)
+    # 모델이 근거로 옮긴 글자(공백 뺀 뒤)의 길이 하한. 한두 글자는 아무 조각에나 맞아 받지 않는다
+    min_quote_chars: int = Field(ge=1)
     search: SearchSettings
     clarity_search: ClaritySearchSettings
 

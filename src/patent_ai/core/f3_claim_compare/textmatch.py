@@ -45,3 +45,13 @@ def find_span(needle: str, text: str) -> tuple[int, int] | None:
     squeezed, offsets = squeeze(text)
     found = find_from(needle, squeezed, offsets, 0)
     return None if found is None else (found[0], found[1])
+
+
+def is_too_short(quote: str, text: str, min_chars: int) -> bool:
+    """근거로 옮긴 글자가 너무 짧은가 (공백을 뺀 글자 수로 센다).
+
+    한두 글자는 아무 글에나 들어 있어 "원문에 있음"이 근거가 되지 못한다.
+    글 전체가 하한보다 짧을 때(도면 설명 한 줄 등)는 글 전체를 옮긴 것만 받는다.
+    """
+    n = len("".join(quote.split()))
+    return n < min_chars and n < len("".join(text.split()))

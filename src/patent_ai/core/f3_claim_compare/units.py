@@ -99,7 +99,19 @@ def _units_of(rej: Rejection, oa_id: str, splits: Mapping[int, SplitClaim]) -> l
         members = groups[root]
         # 독립항이 이 거절이유의 대상이 아니면 대상 중 가장 앞 청구항이 대표
         rep = root if root in members else members[0]
-        units.append(_unit(rej, oa_id, UnitKind.INDEPENDENT_GROUP, rep, members, known=True))
+        unit = _unit(rej, oa_id, UnitKind.INDEPENDENT_GROUP, rep, members, known=True)
+        if root not in members:
+            # 이 단위에서는 독립항의 구성요소를 대비하지 않는다. 조용히 넘어가지 않게 표시한다
+            logger.warning(
+                "build_units 거절이유 %d: 독립항 %d이 대상이 아니라 청구항 %s만 묶음"
+                " (직접 검토 필요)",
+                rej.no,
+                root,
+                members,
+            )
+            flags = list(dict.fromkeys([*unit.flags, Flag.NEEDS_HUMAN_REVIEW]))
+            unit = unit.model_copy(update={"flags": flags})
+        units.append(unit)
     units += [_unit(rej, oa_id, UnitKind.INDEPENDENT_GROUP, c, [c], known=False) for c in unknown]
     return units
 

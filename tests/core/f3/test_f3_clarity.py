@@ -242,4 +242,4 @@ def test_clarity_단계_설정():
     assert (cfg.model, cfg.effort, cfg.max_tokens) == ("claude-haiku-5-5", "medium", 64000)
     assert cfg.prompt == "prompts/f3/clarity.md" and cfg.max_model_calls is not None
     settings = load_f3_settings()
-    assert settings.clarity_search.k >= 1 and settings.clarity_search.min_quote_chars >= 1
+    assert settings.clarity_search.k >= 1 and settings.min_quote_chars >= 1

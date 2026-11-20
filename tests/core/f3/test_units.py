@@ -66,10 +66,15 @@ def test_거절이유가_여럿이면_거절이유_순서대로_순서를_매긴
     ]
 
 
-def test_독립항이_대상이_아니면_대상_청구항만으로_묶는다():
-    units, _ = _units([rejection(1, "29-2", [2, 3])])
+def test_독립항이_대상이_아니면_대상_청구항만으로_묶고_직접_검토_필요를_붙인다(caplog):
+    # 독립항(청구항 1)의 구성요소는 이 단위에서 대비하지 않는다. 조용히 넘어가지 않게 표시한다
+    with caplog.at_level(logging.WARNING):
+        units, _ = _units([rejection(1, "29-2", [2, 3])])
     (unit,) = units
     assert (unit.unit_id, unit.claims) == ("oa_1:29-2:c2", [2, 3])
+    assert unit.status.value == StatusValue.CONFIRMED
+    assert Flag.NEEDS_HUMAN_REVIEW in unit.flags
+    assert any("독립항" in r.getMessage() for r in caplog.records)
 
 
 def test_인용_관계를_확인하지_못한_청구항은_혼자_단위가_되고_확인되지_않음(caplog):
