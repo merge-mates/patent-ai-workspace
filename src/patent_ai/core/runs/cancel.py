@@ -45,7 +45,10 @@ def request_cancel(run_id: str, store: RunStatusStore, registry: CancelRegistry)
     if status.state == RunState.RUNNING:
         registry.request(run_id)
         return status
-    # queued, waiting_for_human: 바로 cancelled
+    # queued, waiting_for_human: 바로 cancelled.
+    # 표시를 먼저 세운다: 읽은 직후 실행기가 running으로 바꿔도 다음 단계 전에 멈추고
+    # 결과를 저장하지 않게. 표시는 실행기가 끝날 때(finally) 지운다.
+    registry.request(run_id)
     try:
         updated = store.transition(run_id, RunState.CANCELLED)
     except InvalidRunTransition:
@@ -55,7 +58,7 @@ def request_cancel(run_id: str, store: RunStatusStore, registry: CancelRegistry)
             raise RunNotFound(run_id) from None
         if latest.state in FINISHED_STATES:
             raise RunAlreadyFinished(run_id) from None
-        registry.request(run_id)
         return latest
-    registry.forget(run_id)
+    if status.state == RunState.WAITING_FOR_HUMAN:
+        registry.forget(run_id)  # 이 실행을 도는 스레드가 없으니 여기서 지운다
     return updated

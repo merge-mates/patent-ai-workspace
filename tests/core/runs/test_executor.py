@@ -3,7 +3,7 @@
 import pytest
 
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
-from patent_ai.core.runs.executor import NotConnectedExecutor
+from patent_ai.core.runs.executor import NotConnectedExecutor, Step
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunNotFound
 from tests.core.runs.fake_executor import (
@@ -11,6 +11,7 @@ from tests.core.runs.fake_executor import (
     MemorySink,
     MemoryStatusStore,
     cancelling_step,
+    load_oa_result,
     make_fake_executor,
     raising_step,
     recording_step,
@@ -43,7 +44,7 @@ def test_성공하면_succeeded_이고_OA_정리가_저장된다(store, registry
     assert len(sink.saved) == 1
     oa_id, run_id, result = sink.saved[0]
     assert (oa_id, run_id) == ("oa_1", RID)
-    assert result.oa_id
+    assert result == load_oa_result()
 
 
 def test_단계마다_current_step이_바뀐다(store, registry, sink):
@@ -149,3 +150,24 @@ def test_연결_전_실행기는_failed_executor_not_connected(store):
     st = store.get_status(RID)
     assert st.state == RunState.FAILED
     assert st.error == {"code": "executor_not_connected", "message": "지휘 에이전트 연결 전"}
+
+
+def test_취소가_시작과_겹쳐도_결과가_저장되지_않는다(store, registry, sink):
+    # 취소 요청이 queued를 읽은 직후 실행기가 running으로 바꾼 경우를 흉내 낸다
+    real_get = store.get_status
+    stale = store.get_status(RID)
+    calls = {"n": 0}
+
+    def stale_once(run_id):
+        calls["n"] += 1
+        return stale if calls["n"] == 1 else real_get(run_id)
+
+    def cancel_during_first_step() -> None:
+        store.get_status = stale_once  # 첫 읽기는 옛 queued 값
+        request_cancel(RID, store, registry)
+        store.get_status = real_get
+
+    steps = [Step("OA 읽는 중", cancel_during_first_step), Step("거절이유 정리 중", lambda: None)]
+    make_fake_executor(store, registry, sink, steps).execute(RID, "oa_1")
+    assert store.get_status(RID).state == RunState.CANCELLED
+    assert sink.saved == []
