@@ -55,7 +55,7 @@ flowchart LR
 | 인용문헌 번호, 인용 식별번호 | 안 뽑음 | 블록마다 원문 | 대조 뒤 번호는 ⑥ `citation_key`로 키 꼴(나라와 맞아야 함), 식별번호는 `parse_cited_locations`로 정답 꼴, 나라는 ⑥ 정규식 |
 | 심사관 논리 요지 | 안 뽑음 | 요지 + 원문 | 원문 `raw_text`만 대조 (요지 글은 대조하지 않음, `origin: ai_generated`) |
 | 청구항 줄 `claim_rows`(청구항 x 거절이유) | 안 뽑음 | 줄마다 청구항 번호 원문, 거절이유 순번, 인용 라벨 또는 인용 원문, 짚은 위치 원문, 위치 없음 표현(인용 안 또는 줄 단위), 같은 취지 원문, 명확성 표현 원문, 판단 원문 글자·쪽 | 판단 원문이 그 쪽에 있어야 `confirmed`(없으면 그 줄만 `unverified(not_extracted)`, 값 버림). 청구항은 `expand_claims`(묶음은 번호마다 한 줄), 위치는 원문 글자에서 `parse_cited_locations`로 다시 뽑음(모델 `value` 안 씀), 같은 취지는 `parse_same_as`, 명확성 표현은 판단 원문의 따옴표 안 글자와 맞아야 함. 줄 단위 `no_location` 표현은 판단 원문 안에 있어야 함(없으면 그 줄 `unverified(not_extracted)`). 지원 안 하는 거절이유의 줄은 만들지 않음. 줄이 빠진 청구항(지원하는 거절이유의 대상 청구항 중)은 코드가 `unverified(not_extracted)` 빈 줄로 채움. 인용은 모델이 고르지 않고 정답 형식 3절 12번 순서로 코드가 정함: 판단 원문에 인용발명이 적혀 있으면 그 문헌(가리키는 인용이 그 거절이유 밖이거나 모델 라벨이 그 밖이면 `unverified`), 없고 같은 취지면 대상 줄 인용의 합(`claim:N` = 같은 거절이유의 청구항 N 줄, `rejection:N` = 같은 청구항의 거절이유 N 줄, 모든 줄을 만든 뒤 풀고 대상 줄이 없거나·확인되지 않음이거나·순환이면 그 줄도 `unverified(not_extracted)`, 대상 줄 위치는 복사하지 않음, 같은 취지 줄의 위치는 대상 줄에서 인용을 채운 뒤 붙이고, 위치 라벨이 그 인용 밖이면 `unverified(ambiguous)`), 둘 다 아니면 그 거절이유 인용 전부(`confirmed`, `checked`에 "문장에 인용 표기 없음, 거절이유 인용 전부로 봄"). 위치는 원문이 정함: 판단 원문에 인용 언급이 없고 거절이유 인용이 여럿인데 모델이 위치를 짚으면 어느 문헌의 위치인지 몰라 그 줄은 `unverified(ambiguous)`(값·원문·쪽은 남김), 위치(`location`) 원문은 그 줄 판단 원문 안에 있어야 함(없으면 그 줄 `unverified(ambiguous)`, 값·원문·쪽은 남김, 이슈 #161), 청구항 번호 원문은 판단 원문 안에, 순번은 판단 원문 머리 번호(`N-M.`)와 맞아야 함. 청구항 번호는 원문 대조를 통과한 원문 글자에서만 읽고(모델 `value` 안 씀), `제9항(제6항 인용)`처럼 괄호 밖 번호만 읽히면 그 번호 줄을 `unverified(ambiguous)`로 남김(값 없음, 같은 청구항의 다른 줄이 있으면 그 줄, 대상 밖 청구항은 안 만듦). 번호를 아예 못 읽은 줄은 만들지 않음(대상 청구항은 위 빈 줄로 채움). 목록 칸(`same_as`·`clarity_terms`)에 원문·쪽 없는 문자열이 오면 그 줄만 `unverified(not_extracted)`. `clarity_reason`은 모델이 쓴 글이라 `clarity_reason_origin: ai_generated`로 표시 |
-| 「특허 가능한 청구항」, 【보정에 관한 참고사항】 | 안 뽑음 | 원문 (칸이 없으면 "없음") | 대조 뒤 청구항은 `expand_claims`. 칸이 없으면 "없음": 값 `[]` / `null`, `raw_text`·`page`는 `null`, `confirmed`(`checked` = "원문에 칸 없음"). "확인되지 않음"과 다름 (정답 형식 f1-oa-gold.md 2.1·4절) |
+| 「특허 가능한 청구항」, 【보정에 관한 참고사항】 | 안 뽑음 | 원문 (칸이 없으면 "없음") | 대조 뒤 청구항은 `expand_claims`. 보정 참고사항 `value`는 대조를 통과한 원문 문장 그대로(앞뒤 공백만 뺌, `raw_text`와 같음. 모델이 준 value는 안 씀, 이슈 #154. 칸 제목을 뺀 본문만 주는 것은 프롬프트가 맡음). 칸이 없으면 "없음": 값 `[]` / `null`, `raw_text`·`page`는 `null`, `confirmed`(`checked` = "원문에 칸 없음"). 모델이 `null` 대신 값·원문이 다 빈 객체를 주면(`page`만 있어도) `null`과 같게 보고 쪽 글자에서 칸 제목을 찾는다 (애매 표시한 것은 제외, 이슈 #154). "확인되지 않음"과 다름 (정답 형식 f1-oa-gold.md 2.1·4절) |
 - 원문에 글자가 없어서 정한 값(통지 종류 `initial`, 힌트 "없음")은 쪽이 없는 `confirmed`이고 `checked`에 본 범위를 적는다. "확인하지 않은 원문 위치 0건"은 쪽이 있는 값에만 건다.
 - `ambiguous` 표시: 모델이 애매하다고 하면 `value`는 `null`, `raw_text`·`page`는 대조에 통과할 때만 남기고 `unverified(ambiguous)`.
 - 글자 층이 없으면(① `unverified`) ③④를 건너뛰고 모델을 부르지 않는다.
@@ -99,7 +99,7 @@ flowchart LR
   "examined_claims": {"value": [1, 2, 3, 4, 5, 6, 7], "raw_text": "제1항 내지 제7항", "page": 1, "status": {"...": "..."}},
   "examined_claim_version": null,
   "examiner_hints": {"allowable_claims": {"value": [5, 7], "raw_text": "청구항 5, 7", "page": 3, "status": {"...": "..."}},
-                     "amendment_note": {"value": null, "raw_text": "…", "page": 3, "status": {"...": "..."}}},
+                     "amendment_note": {"value": "청구항 5의 종속 관계를 정리하세요.", "raw_text": "청구항 5의 종속 관계를 정리하세요.", "page": 3, "status": {"...": "..."}}},
   "rejections": [
     {"no": 1, "kind": "inventive_step",
      "article": {"value": "29-2", "raw_text": "특허법 제29조제2항", "page": 2, "status": {"...": "..."}},
