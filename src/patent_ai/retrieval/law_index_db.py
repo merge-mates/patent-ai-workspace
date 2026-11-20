@@ -19,7 +19,6 @@
 import argparse
 import hashlib
 import logging
-import re
 import struct
 import sys
 from collections.abc import Sequence
@@ -30,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
 from patent_ai.retrieval.errors import RetrievalError
+from patent_ai.retrieval.index_version import is_index_version
 from patent_ai.retrieval.repository import InMemoryChunkRepository, chunk_to_row, row_to_chunk
 from patent_ai.retrieval.schemas import Chunk, Corpus
 from patent_ai.settings import get_settings
@@ -58,7 +58,7 @@ def delete_statement(corpus: Corpus, index_version: str) -> Delete:
 
 def _check(chunks: Sequence[Chunk], corpus: Corpus, index_version: str) -> None:
     _check_corpus(corpus)
-    if not re.match(rf"^{corpus}-idx-v[0-9]+$", index_version):
+    if not is_index_version(corpus, index_version):
         raise IndexDbError(f"{corpus} 색인 판 이름이 아니다: {index_version!r}")
     if not chunks:
         raise IndexDbError("넣을 조각이 0개다")

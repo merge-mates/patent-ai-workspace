@@ -22,11 +22,11 @@ from pathlib import Path
 import yaml
 
 from patent_ai.retrieval.errors import RetrievalError
+from patent_ai.retrieval.index_version import is_index_version
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 
 logger = logging.getLogger(__name__)
 
-_INDEX_VERSION = re.compile(r"^law-idx-v[0-9]+$")
 _RAW_NAME = re.compile(r"^body_(?P<doc_id>(?P<law>.+)_(?P<mst>[0-9]+)_(?P<date>[0-9]{8}))\.json$")
 # 개정 꼬리표: <개정 2016.2.29>, <신설 …>, <2006.3.3> 처럼 날짜가 든 꺾쇠 묶음
 _AMEND_TAG = re.compile(r"<[^<>]*[0-9]{4}\.\s?[0-9]{1,2}\.\s?[0-9]{1,2}\.?[^<>]*>")
@@ -197,7 +197,7 @@ def build_index(
     raw_dir: str | Path, laws: list[str], index_version: str
 ) -> tuple[list[Chunk], int]:
     """원본 폴더 → (조각 목록, 설정에 없어 뺀 파일 수)."""
-    if not _INDEX_VERSION.match(index_version):
+    if not is_index_version("law", index_version):
         raise LawIndexError(f"법령 색인 판 이름이 아니다: {index_version}")
     loaded: dict[str, dict] = {}
     skipped = 0

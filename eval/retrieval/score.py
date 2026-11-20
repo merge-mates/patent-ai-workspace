@@ -9,7 +9,6 @@ import argparse
 import hashlib
 import json
 import logging
-import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -26,6 +25,7 @@ from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
 from eval.retrieval.metrics import random_hit, random_recall, row_hit, row_recall
 from patent_ai.db.index_dump import index_fingerprint
+from patent_ai.git_paths import is_git_ignored  # 저장소 밖도 거절 (cite_index와 같은 검사)
 from patent_ai.retrieval import get_searcher
 from patent_ai.retrieval.repository import (
     ChunkRepository,
@@ -273,18 +273,6 @@ def postgres_repo() -> ChunkRepository:
     return PostgresChunkRepository.from_url()
 
 
-def git_ignored_strict(path: Path) -> bool:
-    """git이 무시하는 경로면 True. cite_index와 같은 `git check-ignore -q` 방식.
-
-    저장소 밖(128)도 거절한다. paths.is_git_ignored(저장소 밖=통과)와 반대라 이름을 다르게 둔다.
-    """
-    r = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", "--", str(Path(path).resolve())],
-        capture_output=True,
-    )
-    return r.returncode == 0
-
-
 def first_hit_rank(r: RowResult) -> int | None:
     """처음 맞힌 순위 (1부터). 검색한 범위 안에 없으면 None."""
     for i, found in enumerate(r.found_by_rank):
@@ -311,7 +299,7 @@ def write_rows(report: ScoreReport, path: Path) -> None:
 def main(
     argv: list[str] | None = None,
     commit: str | None = None,
-    ignored: Callable[[Path], bool] = git_ignored_strict,
+    ignored: Callable[[Path], bool] = is_git_ignored,
 ) -> int:
     ap = argparse.ArgumentParser(prog="eval.retrieval.score")
     ap.add_argument("--config", required=True)

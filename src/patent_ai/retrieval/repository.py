@@ -5,7 +5,6 @@ core를 import하지 않는다. Postgres 저장소는 같은 Protocol로 같은 
 
 from __future__ import annotations
 
-import re
 from datetime import date
 from pathlib import Path
 from typing import Any, Protocol
@@ -14,6 +13,7 @@ from sqlalchemy import and_, create_engine, func, or_, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.retrieval.index_version import is_index_version
 from patent_ai.retrieval.schemas import Chunk, Corpus, Edition, Location
 from patent_ai.settings import get_settings
 
@@ -77,7 +77,6 @@ class InMemoryChunkRepository:
     @classmethod
     def from_jsonl(cls, corpus: Corpus, *paths: str | Path) -> InMemoryChunkRepository:
         """JSONL 줄마다 Chunk 하나. Chunk에 말뭉치 칸이 없어서 어느 표인지 인자로 받는다."""
-        prefix = re.compile(rf"^{corpus}-idx-v[0-9]+$")
         rows: list[Chunk] = []
         seen: set[str] = set()
         for path in paths:
@@ -91,7 +90,7 @@ class InMemoryChunkRepository:
                     first = e.errors()[0]["msg"] if hasattr(e, "errors") else str(e)
                     raise ValueError(f"{path}:{no} 조각 JSON을 못 읽는다: {first}") from e
                 # 말뭉치와 색인 판 앞말이 다르면 (law 표에 cite-idx-v1) 막는다
-                if not prefix.match(chunk.index_version):
+                if not is_index_version(corpus, chunk.index_version):
                     raise ValueError(
                         f"{path}:{no} 색인 판 {chunk.index_version!r}이 {corpus}와 안 맞는다"
                     )
