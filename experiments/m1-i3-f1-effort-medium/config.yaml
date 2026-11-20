@@ -1,0 +1,22 @@
+# F1 read_oa #136 뒤 다시 재기 (이슈 #142). effort를 medium으로 적어 둠.
+# Haiku 5.5 기본 effort가 medium이라 기준선과 보내는 요청은 같다 → 같은 설정 두 번의 흔들림을 본다
+experiment: m1-i3-f1-effort-medium
+feature: f1
+baseline: m1-i3-f1-read-oa-baseline
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: main                # main 8ed3d67(#136) 뒤. read_oa·프롬프트는 기준선(3f72364)과 같음
+settings:                 # config/f1.yaml read_oa
+  model: claude-haiku-5-5
+  effort: medium          # changed (기준선: temperature 0, 전송층이 안 보냄 → 모델 기본 effort medium)
+  max_tokens: 16000
+  prompt: prompts/f1/read_oa.md
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 2                   # scores.json은 1회차. 2회차는 work/f1_effort/medium2/scores.json, 둘 다 card에
+runner: work/f1_baseline/run.py <src> work/f1_effort/medium<N> medium   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.25
+  max_external_calls: 40  # 2회 × 10건 × 2

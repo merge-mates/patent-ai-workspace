@@ -34,10 +34,10 @@
 | 기능 | 담당 | 마일스톤 | 상태 | requirements | design | tasks |
 |---|---|---|---|---|---|---|
 | F1 OA 읽기·거절이유별 정리 | 재아 | M1 | 문서 초안, 구현 계획 승인 | [requirements](features/F1/requirements.md) | [design](features/F1/design.md) | [tasks](features/F1/tasks.md) · [tasks-2](features/F1/tasks-2.md) |
-| F2 법률 근거 조사 | | M2 | PRD | | | |
+| F2 법률 근거 조사 | 은진 | M2 | 문서 초안 | [requirements](features/F2/requirements.md) | [design](features/F2/design.md) | |
 | F3 청구항–인용문헌 대비 | | M2 | PRD | | | |
 | F4 대응 방향 후보와 초안 | | M3 | PRD | | | |
-| F5 근거·상태 표시와 진행·보류 | | M1 | PRD | | | |
+| F5 근거·상태 표시와 진행·보류 | 은진 | M1 | 문서 초안, 구현 계획 초안 | [requirements](features/F5/requirements.md) | [design](features/F5/design.md) | [tasks](features/F5/tasks.md) |
 | F2·F3 공통 검색 계약 (이슈 #65) | 재아 | M2 | requirements·design 초안 | [requirements](features/retrieval/requirements.md) | [design](features/retrieval/design.md) | |
 | F3 인용문헌 문단 검색 기준선 (이슈 #67) | 재아 | M2 | m2-i1 BM25 구현 (벡터 남음) | [requirements](features/cite-search/requirements.md) | [design](features/cite-search/design.md) | [tasks](features/cite-search/tasks.md) |
 
