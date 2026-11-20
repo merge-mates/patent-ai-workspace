@@ -822,3 +822,70 @@ def test_같은_취지_줄의_위치가_이미_애매여도_멈추지_않고_위
     assert row.status.reason == UnverifiedReason.AMBIGUOUS
     assert row.citations == ["D1"] and row.locations == {"D1": ["[0043]"]}
     assert row.same_as == ["claim:1"] and row.page == 3 and row.raw_text
+
+
+# ---- 위치 원문은 그 줄 판단 원문 안에 있어야 확인됨 (이슈 #161) ----
+# 이슈 #161 정한 것: 위치 원문이 그 줄 판단 원문 밖이면 그 줄은 unverified(ambiguous),
+# 값·원문·쪽은 남긴다. 지어낸 모양: 11·12항을 한 줄로 묶고, 판단 원문은 두 항을 묶은 결론 문장,
+# 위치 글자는 같은 쪽 11항 문단.
+_CONCLUSION = (
+    "따라서 청구항 제11항 및 제12항 발명은 인용발명 1 및 2의 결합에 의하여 쉽게 발명할 수 있습니다."
+)
+
+
+def _bundled(judgment: str, extra_line: str | None = None):
+    """11·12항(답의 8·9번째 줄)을 한 줄로 묶은 모델 답과, 필요하면 4쪽 끝에 한 줄 더한 통지서."""
+    answer = _answer()
+    bundle = copy.deepcopy(answer["claim_rows"][8])  # 11항 줄: D1 [16, 38, 78]
+    bundle["claims"]["raw_text"] = "제11항 및 제12항"
+    bundle["judgment"]["raw_text"] = judgment
+    answer["claim_rows"][8:10] = [bundle]
+    pages = _pages()
+    if extra_line:
+        data = pages.model_dump()
+        page = next(p for p in data["pages"] if p["page"] == 4)
+        page["text"] = page["text"].replace("\n3-1.", f"\n{extra_line}\n3-1.")
+        pages = PageText.model_validate(data)
+    return answer, pages
+
+
+def test_묶은_결론_문장_밖의_위치면_묶인_줄_모두_애매이고_확인된_위치는_없다():
+    answer, pages = _bundled(_CONCLUSION, extra_line=_CONCLUSION)
+    result = _read(answer, pages)
+    for claim in (11, 12):
+        row = _row(result, claim, 2)
+        assert row.status.value == StatusValue.UNVERIFIED
+        assert row.status.reason == UnverifiedReason.AMBIGUOUS
+        # 값·원문·쪽은 남긴다 (사람이 보고 고를 수 있게)
+        assert row.locations == {"D1": ["[0016]", "[0038]", "[0078]"]}
+        assert row.citations == ["D1", "D2"]
+        assert row.raw_text == _CONCLUSION and row.page == 4
+    confirmed_locations = [
+        loc
+        for r in result.claim_rows
+        if r.claim in (11, 12) and r.status.value == StatusValue.CONFIRMED
+        for loc in r.locations.values()
+    ]
+    assert confirmed_locations == []
+    assert _row(result, 13, 2).status.value == StatusValue.CONFIRMED  # 다른 줄은 그대로
+
+
+def test_묶은_줄이라도_위치가_판단_원문_안이면_줄마다_같은_위치로_확인됨():
+    # 3절 10번: 묶어 짚은 청구항은 줄마다 같은 위치 (위치 글자가 판단 원문 안)
+    judgment = "청구항 제11항 및 제12항은 인용발명 1의 [16, 38, 78]에 개시되어 있습니다."
+    answer, pages = _bundled(judgment, extra_line=judgment)
+    result = _read(answer, pages)
+    for claim in (11, 12):
+        row = _row(result, claim, 2)
+        assert row.status.value == StatusValue.CONFIRMED
+        assert row.locations == {"D1": ["[0016]", "[0038]", "[0078]"]}
+
+
+def test_위치_원문이_판단_원문_밖이면_묶지_않은_줄도_애매():
+    # 13항 줄 판단 원문을 2-10 문단 앞부분만으로 줄임: 위치 [0050]은 판단 원문 밖, 같은 쪽 안
+    answer = _answer()
+    answer["claim_rows"][10]["judgment"]["raw_text"] = "청구항 제13항은 인용발명 2의"
+    row = _row(_read(answer), 13, 2)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS
+    assert row.locations == {"D2": ["[0050]"]} and row.page == 4
