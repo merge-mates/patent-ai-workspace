@@ -12,6 +12,7 @@ import type {
   LegalEvidenceBundle,
 } from './types/provisional/analysis'
 import type { CaseSummary, OADetail, OAResultResponse } from './types/provisional/case'
+import type { CaseCheck, DirectionCandidates, Drafts } from './types/provisional/direction'
 
 export async function casesLoader(): Promise<CaseSummary[]> {
   return api.listCases()
@@ -84,4 +85,41 @@ export async function compareLoader({ params }: LoaderFunctionArgs): Promise<Com
     api.getLegalEvidence(oaId).catch(notReady([])),
   ])
   return { units, comparisons, clarity, legal }
+}
+
+export interface DirectionsLoaderData {
+  units: JudgmentUnit[]
+  directions: DirectionCandidates[]
+  // 아직 없으면 null (확인되지 않음으로 보인다)
+  caseCheck: CaseCheck | null
+}
+
+// 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
+export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<DirectionsLoaderData> {
+  const oaId = params.oaId!
+  const [units, directions, caseCheck] = await Promise.all([
+    api.getUnits(oaId),
+    api.getDirections(oaId),
+    api.getCaseCheck(oaId).catch(notReadyAsNull),
+  ])
+  return { units, directions, caseCheck }
+}
+
+export interface DraftsLoaderData {
+  // 초안이 아직 없으면 null (404 result_not_ready)
+  drafts: Drafts | null
+  // 지금 선택: 초안이 바탕으로 삼은 선택과 다른지 본다
+  directions: DirectionCandidates[]
+  caseCheck: CaseCheck | null
+}
+
+// 5 의견서·보정 초안
+export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData> {
+  const oaId = params.oaId!
+  const [drafts, directions, caseCheck] = await Promise.all([
+    api.getDrafts(oaId).catch(notReadyAsNull),
+    api.getDirections(oaId),
+    api.getCaseCheck(oaId).catch(notReadyAsNull),
+  ])
+  return { drafts, directions, caseCheck }
 }

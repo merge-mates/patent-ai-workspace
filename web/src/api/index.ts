@@ -6,6 +6,7 @@ import type {
   JudgmentUnit,
   LegalEvidenceBundle,
 } from '../types/provisional/analysis'
+import type { CaseCheck, DirectionCandidates, Drafts } from '../types/provisional/direction'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { PageText } from '../types/generated/PageText'
 import type { ReviewItem } from '../types/generated/ReviewItem'
@@ -17,7 +18,7 @@ import type {
   OAResultResponse,
 } from '../types/provisional/case'
 import { ApiError } from './errors'
-import { getJson, postForm, postJson } from './http'
+import { getJson, postForm, postJson, sendJson } from './http'
 import { mockApi } from './mock'
 
 export const API_MODE = import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'server'
@@ -43,6 +44,14 @@ const httpApi: typeof mockApi = {
     const chat = await postJson<{ chat_id: string }>('/legal-chats', {})
     return postJson<LegalEvidenceBundle>(`/legal-chats/${chat.chat_id}/messages`, q)
   },
+  getDirections: (oaId) => getJson<DirectionCandidates[]>(`/oas/${oaId}/directions`),
+  selectDirection: (unitId, candidateId) =>
+    sendJson<DirectionCandidates>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, {
+      candidate_id: candidateId,
+    }),
+  getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
+  getDrafts: (oaId) => getJson<Drafts>(`/oas/${oaId}/drafts`),
+  patchDraft: (draftId, patch) => sendJson<Drafts>('PATCH', `/drafts/${draftId}`, patch),
   createCase: (file) => {
     const form = new FormData()
     form.append('file', file)

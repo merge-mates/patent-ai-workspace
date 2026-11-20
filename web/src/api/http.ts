@@ -21,6 +21,15 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return readBody<T>(res)
 }
 
+export async function sendJson<T>(method: 'PUT' | 'PATCH', path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return readBody<T>(res)
+}
+
 async function readBody<T>(res: Response): Promise<T> {
   if (res.ok) return (await res.json()) as T
   // 오류 본문이 {code, message}가 아니어도 조용히 넘기지 않고 HTTP 코드로 알린다
