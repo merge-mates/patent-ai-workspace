@@ -120,7 +120,7 @@ def amendment_limit_of(oa: OAResult) -> ExtractedValue[AmendmentLimit]:
 
 
 # ---- 앞 단계 결과에서 status·근거 모으기 ----
-def _f3_results(inp: F4Input, unit: JudgmentUnit) -> list:
+def f3_results(inp: F4Input, unit: JudgmentUnit) -> list:
     """이 묶음의 F3 결과 (대비표 + 명확성 검토)."""
     tables = [t for t in inp.tables if t.unit_id == unit.unit_id]
     clarity = [c for c in inp.clarity if c.unit_id == unit.unit_id]
@@ -158,6 +158,7 @@ def _build(
     evidence: list[Evidence],
     limit: ExtractedValue[AmendmentLimit],
     max_candidates: int,
+    extra_flags: list[Flag] | None = None,
 ) -> DirectionCandidates:
     """모델 답 하나를 DirectionCandidates로 만든다. 규칙을 어기면 ValueError(스키마 검사 포함)."""
     if len(out.candidates) > max_candidates:
@@ -174,7 +175,8 @@ def _build(
         if unit.rejection not in answered:
             raise ValueError(f"per_rejection에 이 묶음의 거절이유 {unit.rejection}이 없음")
         if set(answered) - known_rejections:
-            raise ValueError(f"per_rejection에 OA에 없는 거절이유 번호: {sorted(set(answered))}")
+            unknown = sorted(set(answered) - known_rejections)
+            raise ValueError(f"per_rejection에 OA에 없는 거절이유 번호: {unknown}")
         claims = [a.claim for a in c.amendment_core]
         if len(set(claims)) != len(claims):
             raise ValueError("amendment_core에 같은 청구항이 두 번 나옴")
@@ -219,7 +221,7 @@ def _build(
         amendment_limit=limit,
         status=summarize_direction_status(candidates, limit),
         evidence=evidence,
-        flags=[] if first is not None else [Flag.NEEDS_HUMAN_JUDGMENT],
+        flags=[*([] if first is not None else [Flag.NEEDS_HUMAN_JUDGMENT]), *(extra_flags or [])],
     )
 
 
@@ -240,7 +242,7 @@ def _checked_schema(build) -> type[DirectionsOut]:
 
 
 # ---- 프롬프트 변수 (모두 글자. 캐시 키가 되므로 JSON으로 바꿀 수 있어야 한다) ----
-def _json(value) -> str:
+def to_json(value) -> str:
     return json.dumps(value, ensure_ascii=False, indent=1)
 
 
@@ -251,19 +253,22 @@ def _rejection_of(oa: OAResult, unit: JudgmentUnit) -> Rejection:
     raise ValueError(f"판단 단위 {unit.unit_id}의 거절이유 {unit.rejection}이 OA 결과에 없음")
 
 
-def _variables(
+def missing_claim_texts(inp: F4Input, unit: JudgmentUnit) -> list[int]:
+    """이 묶음이 쓰는 청구항(함께 읽는 청구항 포함) 중 입력에 글자가 없는 번호."""
+    have = {c.claim for c in inp.claims_text}
+    return [n for n in [*unit.claims, *unit.read_with] if n not in have]
+
+
+def unit_variables(
     inp: F4Input, unit: JudgmentUnit, f3: list, bundle: LegalEvidenceBundle, max_candidates: int
 ) -> dict[str, str]:
     oa, rej = inp.oa, _rejection_of(inp.oa, unit)
     wanted = [*unit.claims, *unit.read_with]
     texts = {c.claim: c.text for c in inp.claims_text}
-    missing = [n for n in wanted if n not in texts]
-    if missing:
-        logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
     claims_text = "\n\n".join(f"[청구항 {n}]\n{texts[n]}" for n in wanted if n in texts)
     return {
         "max_candidates": str(max_candidates),
-        "unit": _json(
+        "unit": to_json(
             {
                 "unit_id": unit.unit_id,
                 "rejection": unit.rejection,
@@ -273,7 +278,7 @@ def _variables(
                 "read_with": unit.read_with,
             }
         ),
-        "rejection": _json(
+        "rejection": to_json(
             {
                 "no": rej.no,
                 "kind": rej.kind.value,
@@ -293,7 +298,7 @@ def _variables(
                 },
             }
         ),
-        "oa_context": _json(
+        "oa_context": to_json(
             {
                 "notice_kind": oa.notice_kind.value,
                 "allowable_claims": oa.examiner_hints.allowable_claims.value,
@@ -301,8 +306,8 @@ def _variables(
             }
         ),
         "claims_text": claims_text or "(입력에 청구항 글자가 없음)",
-        "comparison": _json([r.model_dump(mode="json") for r in f3]),
-        "legal": _json(
+        "comparison": to_json([r.model_dump(mode="json") for r in f3]),
+        "legal": to_json(
             {
                 "status": bundle.status.model_dump(mode="json"),
                 "claims": [c.model_dump(mode="json") for c in bundle.claims],
@@ -335,14 +340,19 @@ def build_directions(
     limit = amendment_limit_of(inp.oa)
     results: list[DirectionCandidates] = []
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
-        f3 = _f3_results(inp, unit)
+        f3 = f3_results(inp, unit)
         bundle = legal_bundle_for(inp, unit)
         status, evidence = _status_of(f3, bundle, unit), _evidence_of(f3)
+        # 청구항 글자 없이 모델을 부르면 후보가 글자를 못 보고 나온 것이라 사람이 보게 표시한다
+        missing = missing_claim_texts(inp, unit)
+        if missing:
+            logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
+        flags = [Flag.NEEDS_HUMAN_REVIEW] if missing else []
 
-        def build(out: DirectionsOut, unit=unit, status=status, evidence=evidence):
-            return _build(out, unit, inp.oa, status, evidence, limit, options.max_candidates)
+        def build(out: DirectionsOut, unit=unit, status=status, evidence=evidence, flags=flags):
+            return _build(out, unit, inp.oa, status, evidence, limit, options.max_candidates, flags)
 
-        variables = _variables(inp, unit, f3, bundle, options.max_candidates)
+        variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)
         out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
         result = build(out)
         if not result.candidates:

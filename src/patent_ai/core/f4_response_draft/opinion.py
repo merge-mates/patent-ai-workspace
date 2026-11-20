@@ -13,7 +13,7 @@ import logging
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
-from patent_ai.core.f4_response_draft.directions import _f3_results, _json, _variables
+from patent_ai.core.f4_response_draft.directions import f3_results, to_json, unit_variables
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.llm.errors import ModelCallLimitExceeded
@@ -125,10 +125,10 @@ def _prompt_variables(
     inp: F4Input, unit: JudgmentUnit, chosen: DirectionCandidate, f3: list, bundle
 ) -> dict[str, str]:
     """프롬프트 변수. 방향은 고른 후보 하나만 싣는다 (다른 후보는 어디에도 넣지 않음)."""
-    variables = _variables(inp, unit, f3, bundle, max_candidates=1)
+    variables = unit_variables(inp, unit, f3, bundle, max_candidates=1)
     del variables["max_candidates"]  # 방향 후보 단계에만 있는 자리
     oa = inp.oa
-    variables["case_info"] = _json(
+    variables["case_info"] = to_json(
         {
             "application_number": oa.application_number.raw_text,
             "dispatch_number": oa.dispatch_number.raw_text,
@@ -136,7 +136,7 @@ def _prompt_variables(
             "response_due": oa.response_due.raw_text,
         }
     )
-    variables["selected"] = _json(
+    variables["selected"] = to_json(
         chosen.model_dump(
             mode="json",
             include={
@@ -189,7 +189,7 @@ def build_opinion(
             logger.warning("f4.opinion %s: 고른 방향이 없어 이 묶음 의견서는 보류", unit.unit_id)
             held.append(unit.unit_id)
             continue
-        f3, bundle = _f3_results(inp, unit), legal_bundle_for(inp, unit)
+        f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)
         amended = has_amendment(chosen)
         variables = _prompt_variables(inp, unit, chosen, f3, bundle)
         out = call_with_one_retry(STEP, variables, _checked_schema(amended), ctx)

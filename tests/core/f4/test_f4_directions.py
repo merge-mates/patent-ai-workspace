@@ -199,6 +199,7 @@ def test_후보가_설정_상한보다_많으면_출력_검사_실패():
     )
     with pytest.raises(ModelOutputInvalid):
         build_directions(_case(), ctx, options=options)
+    assert len(transport.calls) == 2  # 첫 호출 + 다시 한 번
 
 
 def test_거절이유_종류에_안_맞는_반박_유형은_출력_검사_실패_뒤_다시_부른다():
@@ -315,3 +316,22 @@ def test_통지_종류를_모르면_보정_제한은_값_없이_확인되지_않
     )
     assert all(r.amendment_limit == limit for r in results)
     assert all(r.status.value == StatusValue.UNVERIFIED for r in results)
+
+
+# ---- 청구항 글자가 입력에 없음 ----
+def test_청구항_글자가_입력에_없으면_결과에_직접_검토_필요를_붙인다(caplog):
+    data = _case_data()
+    data["claims_text"] = [c for c in data["claims_text"] if c["claim"] != 2]
+    with caplog.at_level(logging.WARNING):
+        results, _ = _run(
+            [_text(_answer("direction_inventive")), _text(_answer("direction_clarity"))],
+            _case(data),
+        )
+    # 두 묶음 모두 청구항 2를 쓴다 (진보성 묶음의 종속항, 명확성 묶음의 대표 청구항)
+    assert all(Flag.NEEDS_HUMAN_REVIEW in r.flags for r in results)
+    assert "청구항 글자" in caplog.text
+
+
+def test_청구항_글자가_다_있으면_직접_검토_필요를_붙이지_않는다():
+    results, _ = _basic()
+    assert all(Flag.NEEDS_HUMAN_REVIEW not in r.flags for r in results)
