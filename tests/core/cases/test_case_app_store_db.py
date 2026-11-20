@@ -1,6 +1,6 @@
 """PostgresCaseAppStore: 실제 DB 왕복과 sha256 찾기 (make test-db). 끝에 되돌린다."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -87,10 +87,17 @@ def test_latest_for_oa는_시각이_같으면_id_큰_쪽(session):
     assert runs.latest_for_oa(created.oa_id).id == max(ids)
 
 
-def _result(session, oa_id, run_id, status, kinds):
+def _result(session, oa_id, run_id, status, kinds, created_at):
     body = {"rejections": [{"kind": k} for k in kinds]}
     session.add(
-        OAResultRow(oa_id=oa_id, run_id=run_id, body=body, status=status, origin="ai_generated")
+        OAResultRow(
+            oa_id=oa_id,
+            run_id=run_id,
+            body=body,
+            status=status,
+            origin="ai_generated",
+            created_at=created_at,
+        )
     )
     session.flush()
 
@@ -102,9 +109,14 @@ def test_succeeded_정리만_거절이유와_status로_나온다(session):
     done = Run(oa_id=created.oa_id, state="succeeded", created_at=T0)
     session.add(done)
     session.flush()
-    _result(session, created.oa_id, created.run_id, "confirmed", ["clarity"])  # queued 쪽: 무시
+    # queued 쪽(무시): succeeded 쪽보다 확실히 늦게 넣어, 거르기가 빠지면 이쪽이 뽑혀 늘 실패하게
+    _result(
+        session, created.oa_id, created.run_id, "confirmed", ["clarity"], T0 + timedelta(days=1)
+    )
     # succeeded 쪽: 같은 kind가 두 번 나와도 한 번만
-    _result(session, created.oa_id, done.id, "conflict", ["novelty", "inventive_step", "novelty"])
+    _result(
+        session, created.oa_id, done.id, "conflict", ["novelty", "inventive_step", "novelty"], T0
+    )
 
     row = next(r for r in store.list_cases() if r.case_id == created.case_id)
     assert row.rejection_kinds == ["novelty", "inventive_step"]
