@@ -1,0 +1,79 @@
+"""F4 진입 함수: 방향 후보 → 의견서 초안 → 보정 청구항 초안 → 한데 묶기.
+
+멈추지 않고 끝까지 돈다 (확신 낮은 묶음은 그 묶음만 보류). 사람을 기다릴지는 지휘가 정한다.
+단계가 예외로 실패하면 삼키지 않고 그대로 올린다 (지휘가 실행을 failed로 끝낸다).
+"""
+
+import logging
+
+from patent_ai.core.f4_response_draft.amendment import assemble_drafts, build_amendments
+from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
+from patent_ai.core.f4_response_draft.coverage import uncovered
+from patent_ai.core.f4_response_draft.directions import build_directions
+from patent_ai.core.f4_response_draft.inputs import F4Input
+from patent_ai.core.f4_response_draft.opinion import build_opinion
+from patent_ai.core.f4_response_draft.result import F4Output
+from patent_ai.core.llm.limits import RunContext
+from patent_ai.core.schemas.common import Flag, worst_status
+
+logger = logging.getLogger(__name__)
+
+ALL_F4_CHECKED = "방향 후보와 초안 모두 확인됨"
+
+
+def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -> F4Output:
+    """OA 하나의 대응 방향 후보와 초안을 만든다. 모델 호출 순서는 방향 → 의견서 → 보정."""
+    options = options or load_f4_options()
+    oa_id = inp.oa.oa_id
+
+    directions = build_directions(inp, ctx, options=options)
+    opinion = build_opinion(inp, directions, ctx, options=options)
+    amendment = build_amendments(inp, directions, opinion, ctx, options=options)
+    drafts = assemble_drafts(oa_id, opinion, amendment)
+
+    # 보류한 묶음: 의견서 보류(확신 낮음) + 보정 보류(청구항 글자 없음 등), 묶음 순서 그대로
+    held = [
+        u.unit_id
+        for u in sorted(inp.units, key=lambda u: (u.order, u.unit_id))
+        if u.unit_id in opinion.held_units or u.unit_id in amendment.held_units
+    ]
+    if held:
+        logger.warning("f4 %s: 초안을 보류한 묶음 %s", oa_id, held)
+
+    flags: list[Flag] = []
+
+    def flag(f: Flag) -> None:
+        if f not in flags:
+            flags.append(f)
+
+    for inner in [*directions, *([drafts] if drafts else [])]:
+        for f in inner.flags:
+            flag(f)
+    for f in [*opinion.flags, *amendment.flags]:  # 초안이 없어도(모두 보류) 표시는 남긴다
+        flag(f)
+
+    # 지원 안 하는 거절이유: status는 나쁘게 하지 않고 번호와 표시만 남긴다
+    unsupported = [r.no for r in inp.oa.rejections if not r.supported]
+    if unsupported:
+        logger.warning(
+            "f4 %s: AI가 다루지 않은 거절이유가 남아 있음 %s (직접 대응 필요)", oa_id, unsupported
+        )
+        flag(Flag.NEEDS_HUMAN_REVIEW)
+
+    # 누락 검사: 모든 거절이유 × 모든 대상 청구항
+    missing = uncovered(inp.oa, inp.units)
+    if missing:
+        logger.warning("f4 %s: 대응 누락 (거절이유, 청구항) %s", oa_id, missing)
+        flag(Flag.NEEDS_HUMAN_REVIEW)
+
+    statuses = [d.status for d in directions] + ([drafts.status] if drafts else [])
+    return F4Output(
+        oa_id=oa_id,
+        directions=directions,
+        drafts=drafts,
+        held_units=held,
+        unsupported_rejections=unsupported,
+        uncovered=missing,
+        status=worst_status(statuses, ALL_F4_CHECKED),
+        flags=flags,
+    )
