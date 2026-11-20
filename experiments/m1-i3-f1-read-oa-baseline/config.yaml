@@ -1,0 +1,20 @@
+# F1 read_oa tune 기준선 (이슈 #142). 처음 정답 대비 채점이라 이번 실험이 기준선이다
+experiment: m1-i3-f1-read-oa-baseline
+feature: f1
+baseline: m1-i3-f1-read-oa-baseline
+goldset: tune
+goldset_version: 2
+gold: f1                  # data/goldsets/tune/f1/ (10건)
+impl: main                # main 3f72364의 core/f1_oa_reader (pdfplumber, model_input raw)
+settings:                 # config/f1.yaml read_oa를 그대로 옮겨 적음 (실행은 config/f1.yaml을 읽는다)
+  model: claude-haiku-5-5
+  temperature: 0          # 설정에 있지만 전송층이 SDK에 안 넘긴다 (#134·#136 머지 전)
+  max_tokens: 16000
+  prompt: prompts/f1/read_oa.md
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runner: work/f1_baseline/run.py   # git 밖 일회용. 예측 work/f1_baseline/pred, 쪽 글자 work/f1_baseline/pages
+budget:
+  max_usd: 0.15
+  max_external_calls: 20  # 10건 × (첫 호출 + 출력 검사 실패 재시도 1)

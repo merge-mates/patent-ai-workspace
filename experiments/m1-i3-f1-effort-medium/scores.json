@@ -1,0 +1,35 @@
+{
+  "experiment": "m1-i3-f1-effort-medium",
+  "commit": "6c05c199d497f16f633d8e08d80b7dd2f2cc9d79",
+  "goldset": "tune",
+  "goldset_version": 2,
+  "gold_sha256": "0d37b62bb3764311287223715bf1789e57d23e5941b23696be603046d2afbfee",
+  "impl": "main",
+  "metric_name": "필드별 추출 정확도",
+  "n": 10,
+  "metrics": {
+    "field_accuracy": 0.6366609649273501,
+    "field_accuracy_micro": 0.5895953757225434,
+    "field_accuracy.basic": 0.75,
+    "field_accuracy.rejections": 0.8947368421052632,
+    "field_accuracy.citations": 0.84375,
+    "field_accuracy.claim_rows": 0.4561933534743202,
+    "location_recall": 0.24913194444444445,
+    "location_exact": 0.1267361111111111,
+    "fabricated_values": 3,
+    "unverified_locations": 0
+  },
+  "failures": {
+    "missing_prediction": 1,
+    "pages_missing": 0,
+    "excluded_location_same_as": 17,
+    "excluded_location_none": 2
+  },
+  "cost": {
+    "usd": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "external_calls": 0,
+    "seconds": 0.002
+  }
+}
