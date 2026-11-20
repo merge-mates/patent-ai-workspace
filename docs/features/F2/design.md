@@ -166,7 +166,7 @@ flowchart LR
   | `get_article` | 법령 이름 + 조·항 + 기준일 → 그 판 조각 + 시행 기간 | 판본 모름 조각만 있음 `unverified(edition_unknown)` / 그날 판이 색인에 없음 → 법령 API 조회, 실패 `unverified(lookup_failed)` (4절) |
   | `search_article` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [article]`). 조문 번호가 없는 질문, F1 조문이 `unverified`일 때 | 0개 `not_found_in_scope`, 0개이고 판본 모름 건수 > 0이면 `unverified(edition_unknown)` |
   | `search_guideline` | 질의 + 기준일 → `SearchResult` (`chunk_kinds = [guideline]`) | 위와 같음, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음), 기준일이 가장 이른 판보다 앞섬 `unverified(edition_unknown)` |
-  | `search_precedent` | 질의 + 종류(`precedent` 판례 / `trial` 심결 / 둘 다, 기본 둘 다) → `SearchResult` (`chunk_kinds = [judgment, judgment_summary]` + `source_kind`, 기준일 없음). OA 흐름에서 사건번호를 모를 때도 심결 12건이 검색에 걸린다 | 0개 `not_found_in_scope`, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음) |
+  | `search_precedent` | 질의 + 종류(`precedent` 판례 / `trial` 심결 / 둘 다, 기본 둘 다) → `SearchResult` (`chunk_kinds = [judgment, judgment_summary]` + `source_kind`. 판본 기준일은 없고, OA 흐름에서는 선고일(심결은 심결일) ≤ OA 발송일로 거른다). OA 흐름에서 사건번호를 모를 때도 심결 12건이 검색에 걸린다 | 0개 `not_found_in_scope`, 그 유형 조각 0개 `unverified(body_missing)` (`search`를 부르지 않음) |
   | `get_precedent` | 사건번호·심판번호 → 그 판례·심결 조각들 | 색인 전 `unverified(body_missing)` / 받은 판례 74건 밖의 사건번호 → 법령 API로 사건번호 조회([architecture.md](../../architecture.md) 6절 "그 밖은 필요할 때"), 실패 `unverified(lookup_failed)`, API에도 없음 `not_found_in_scope` (+ 찾아본 범위) / 받은 심결 12건 밖의 심판번호 → `not_found_in_scope` (+ 찾아본 범위: 받은 심결 12건, 실행 중에는 심판 API를 부르지 않음) |
   | `normalize_refs` | 글 → 조문·사건번호·날짜 꼴 맞춘 목록 (코드) | 못 읽음은 빈 목록 + 경고 |
 - **평가 세트·지표:**
@@ -194,6 +194,7 @@ flowchart LR
 2. 심사기준·판례·심결 BM25 / 벡터 기준선 (`law-idx-v3`, #24 뒤). 판례·심결은 조각 단위에 더해 **문헌 단위**로도 센다 (한 판례의 조각 여럿이 상위 k를 다 차지하는지).
 3. (M3, 시간 나면) 근거 검토 역할 분리 `single` / `split` (PRD 비교 축). M2는 `split`만 만든다.
 - 메타데이터 거르기는 점수를 매기기 **전에** 한다 (pre-filter). 상위 k를 뽑은 뒤 거르면 결과가 모자란다. 지금은 벡터 인덱스가 없어 그대로 되고, HNSW 인덱스를 붙이면 pgvector `iterative_scan`이나 값마다 부분 인덱스가 필요하다. 판례 문단 역할(판단 / 당사자 주장)도 같은 메타데이터로 두어 8절 구분을 검색 조건으로 쓸 수 있게 한다 (#24 검색 계약 PR).
+- 판례·심결 날짜 거르기 (11/20 은진): OA 흐름에서는 선고일(심결은 심결일)이 OA 발송일보다 뒤인 판례·심결을 검색 전에 뺀다. 그 OA 시점에는 없던 자료라 "OA 시점 입력만 쓴다"는 입력·정답 나누기 규칙(#150 1번)과 맞추려는 것이다. 판본 `as_of` 거르기와 따로, 메타데이터 `decided_on` 거르기로 한다. 사건 없는 법률 질문에서 시점이 있으면 같은 규칙, 없으면 거르지 않는다. 뺀 건수는 `search_log`에 남긴다.
 - 나중 (M2에서 안 함):
   - hybrid: 1·2 뒤 BM25·벡터가 서로 다른 줄을 찾을 때만 (한국어·법률 결과가 엇갈림).
   - 조문 참조 따라가기: "제1항 각 호" 같은 참조를 정규식으로 뽑아 후보에 더함. 그래프 DB 없이 코드로 되니 M3 그래프 판단(11/24) 때 같이 본다.
