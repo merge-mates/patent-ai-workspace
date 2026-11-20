@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # 아는 설정 키 (상한·재시도는 limits와 client가 쓴다). 이 밖의 키는 오타로 보고 경고한다
 KNOWN_KEYS = {
     "model",
-    "temperature",
+    "effort",
     "max_tokens",
     "prompt",
     "price_per_mtok_input",
@@ -24,6 +24,16 @@ KNOWN_KEYS = {
     "model_input",
 }
 
+# effort(output_config.effort)로 쓸 수 있는 값 (anthropic SDK 2.10.0 OutputConfigParam)
+EFFORT_VALUES = ("low", "medium", "high", "xhigh", "max")
+
+# 지금 API에서 빠진 키. 남아 있으면 그 값이 쓰이는 것처럼 읽히므로 조용히 넘기지 않고 멈춘다 (#134)
+REMOVED_KEYS = {
+    "temperature": "temperature는 API에서 빠져 보낼 수 없음. 지우고 effort를 쓴다",
+    "top_p": "top_p는 API에서 빠져 보낼 수 없음. 지운다",
+    "top_k": "top_k는 API에서 빠져 보낼 수 없음. 지운다",
+}
+
 # 저장소 루트 (src/patent_ai/core/llm/config.py 기준 네 단계 위)
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -31,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 @dataclass(frozen=True)
 class StepConfig:
     model: str
-    temperature: float
+    effort: str  # output_config.effort: low | medium | high | xhigh | max
     max_tokens: int
     prompt: str  # 저장소 루트 기준 경로 (prompts/...)
     price_per_mtok_input: float | None = None
@@ -57,11 +67,20 @@ def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
     section = data.get(name)
     if not isinstance(section, dict):
         raise ModelConfigError(f"{path.name}에 단계 {name!r}이 없음 (step={step})")
+    # 빠진 키(temperature 등)가 있으면 설정 읽기를 멈춘다
+    for key, why in REMOVED_KEYS.items():
+        if key in section:
+            raise ModelConfigError(f"{step}: 설정 키 {key!r}를 지워야 함 ({why})")
     for key in section.keys() - KNOWN_KEYS:
         logger.warning("%s: 모르는 설정 키 %r (오타?)", step, key)
-    for key in ("model", "temperature", "max_tokens", "prompt"):
+    for key in ("model", "effort", "max_tokens", "prompt"):
         if key not in section:
             raise ModelConfigError(f"{step}에 설정 키가 빠짐: {key}")
+    # effort는 정해진 값만 받는다 (오타면 API가 400으로 끝나므로 미리 멈춤)
+    if section["effort"] not in EFFORT_VALUES:
+        raise ModelConfigError(
+            f"{step}의 effort는 {'|'.join(EFFORT_VALUES)} 중 하나여야 함: {section['effort']!r}"
+        )
 
     def number(key: str, kind):
         try:
@@ -92,7 +111,7 @@ def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
             raise ModelConfigError(f"{step}의 {key}는 0 이상이어야 함: {limits[key]}")
     return StepConfig(
         model=section["model"],
-        temperature=number("temperature", float),
+        effort=section["effort"],
         max_tokens=number("max_tokens", int),
         prompt=section["prompt"],
         price_per_mtok_input=price_in,

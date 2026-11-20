@@ -123,7 +123,7 @@ def test_녹화_답을_읽는다(tmp_path):
         step=STEP,
         model=c["model"],
         prompt=c["prompt"],
-        temperature=c["temperature"],
+        effort=c["effort"],
         max_tokens=c["max_tokens"],
     )
     saved = next(rec.glob("*.json"))
@@ -155,7 +155,7 @@ def test_녹화도_글자_하나가_다르면_못_찾는다(tmp_path):
         step=STEP,
         model=c["model"],
         prompt=c["prompt"],
-        temperature=c["temperature"],
+        effort=c["effort"],
         max_tokens=c["max_tokens"],
     )
     with pytest.raises(RecordingMissing):
