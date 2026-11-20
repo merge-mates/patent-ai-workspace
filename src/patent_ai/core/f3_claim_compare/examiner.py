@@ -73,7 +73,8 @@ def match_location(location: str, chunks: list[Chunk]) -> ExaminerMatch:
     )
 
 
-def _row(oa: OAResult, rejection_no: int, claim: int) -> ClaimRow | None:
+def find_claim_row(oa: OAResult, rejection_no: int, claim: int) -> ClaimRow | None:
+    """그 청구항 × 거절이유의 확인된 청구항 줄 (없으면 None)."""
     for row in oa.claim_rows:
         confirmed = row.status.value == StatusValue.CONFIRMED
         if confirmed and row.claim == claim and row.rejection == rejection_no:
@@ -96,7 +97,7 @@ def examiner_locations(oa: OAResult, rejection_no: int, claim: int, label: str) 
         if (rej_no, claim_no) in seen:
             continue
         seen.add((rej_no, claim_no))
-        row = _row(oa, rej_no, claim_no)
+        row = find_claim_row(oa, rej_no, claim_no)
         if row is None:
             continue
         if label in row.locations:
