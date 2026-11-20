@@ -9,7 +9,7 @@
 
 - 이름: 이터레이션 M1-i3에 F5 이슈가 둘이라 계획 제목을 `m1-i3-<이슈번호>`로 쓴다 (F1 tasks.md와 같은 방식).
 - 끝난 F5 이슈: #14 결과 스키마·상태 규칙 (계획은 [F1 tasks.md](../F1/tasks.md)의 `m1-i2-14`). F5 합격 기준 1·2·3의 데이터 쪽 대부분이 여기서 들어갔다.
-- 순서: 검토할 사항 칸(`m1-i3-140`)의 task-1이 인터페이스라 먼저. 화면(`m1-i3-19`)은 task-1의 칸 모양만 정해지면 fixture로 같이 간다.
+- 순서: 검토할 사항 칸(`m1-i3-140`)의 task-1이 인터페이스라 먼저. 화면 부품은 #19 PR #151에 있고(`m1-i3-19`는 대체됨), #140 뒤 fixture를 다시 뽑아 맞춘다.
 - 다른 이슈와 겹치는 파일: PR #137(#16)이 `CaseDocument.status`(필수), `case_grouping.py`의 `build_case_materials`, `case_missing_citation` fixture를 고친다. `m1-i3-140`는 **#137 머지 뒤 최신 main에서** 시작한다 (task-1·2·3 모두 같은 파일).
 
 ```mermaid
@@ -19,7 +19,7 @@ graph LR
     N2 --> N4["140 task-4 화면 fixture"]
     I16["PR #137 (#16) 묶기 상태·저장소"] --> N1
     N2 --> N3["140 task-3 F1 입력 정리"]
-    N4 --> W1["19 task-1·2·3 F5 부품"]
+    N4 --> W1["#19 화면 (PR #151)이 fixture로 확인"]
 ```
 
 ## m1-i3-140  (11/20~11/21)  상태: 초안  (이슈 [#140](https://github.com/merge-mates/patent-ai-workspace/issues/140))
@@ -88,62 +88,7 @@ graph LR
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
 
-## m1-i3-19  (11/20~11/21)  상태: 초안  (이슈 [#19](https://github.com/merge-mates/patent-ai-workspace/issues/19)의 F5 부분. 이 계획 PR은 `Refs #19`)
-**구현할 design 부분**: design.md 6절 (상태 표시 규칙, 사람 판단 표시, 검토할 사항 패널)   **맡은 합격 기준**: requirements.md 1·2·3의 화면 줄
-**목표** (한 줄): 모든 결과 화면이 쓸 상태 표시·사람 판단 표시·검토할 사항 패널 부품을 만든다.
-**끝나면 보여 줄 것** (데모 한 줄): 미리보기 페이지 `/#/f5-preview`에 `case_all_statuses`를 넣은 스크린샷에서 네 값·"직접 확인"·"직접 검토 필요"·검토할 사항 N건이 보인다.
-
-- #19 주인은 재아다. 이 계획은 `web/src/components/status/`와 미리보기 `web/src/preview/F5Preview.tsx`만 만든다. `App.tsx`에는 미리보기로 가는 한 줄(해시 경로)만 더하고, 사건 화면 배치·올리기·목록은 #19 본 계획이 한다. 부품은 props만 받는다.
-- 타입: 손으로 서버 타입을 쓰지 않는다 (web/CLAUDE.md). 서버 OpenAPI 타입이 생기기 전까지 fixture JSON에서 끌어온다: `web/src/components/status/types.ts`가 `import type materials from "../../../../tests/fixtures/f5/case_all_statuses/case_materials.json"`·같은 폴더 `oa_result.json`을 **타입으로만** 읽고 (`verbatimModuleSyntax: true`라 `import type`이 아니면 런타임에 남아, `./web`만 마운트하는 `make up` web 컨테이너에서 import 오류가 나고 fixture가 번들에 들어감) `export type CaseMaterials = typeof materials`, `ReviewItem = CaseMaterials["review_items"][number]`, `Status = …["status"]`처럼 뽑기만 한다 (`tsconfig.app.json`에 `resolveJsonModule`). 그래서 `case_all_statuses`는 네 status 값·reason·checked·searched_scope·candidates가 다 들어 있어야 한다 (늘 null인 칸은 타입이 `null`로 굳음, m1-i3-140 task-4). 값 목록(네 status 값 등)이 글자로 넓어지는 것은 받아들이고, 화면 글 표(`statusLabels.ts`)의 열쇠로만 쓴다. #56 OpenAPI 타입이 나오면 `types.ts` 안의 import만 바꾼다.
-- 미리보기에 실제 값이 필요하면 (값 import는 미리보기 `F5Preview.tsx`에서만): `tests/fixtures/f5/case_all_statuses/`를 `web/` 밖에서 읽으니 `vite.config.ts`의 `server.fs.allow`에 그 폴더를 더하고, `make up`의 web 컨테이너에는 `compose.yaml`에 `./tests/fixtures:/tests/fixtures:ro` 마운트를 더한다 (지금은 `./web:/app`만, compose.yaml 55줄). 부품(`components/status/`)은 값을 import하지 않는다.
-- 앱 폴더라 `web/CLAUDE.md` 규칙(테스트 먼저 대신 빌드·린트 + 스크린샷)을 따른다.
-- 머지 순서: #19 본 계획 PR이 먼저 머지된다 (`App.tsx`의 사건 화면 뼈대). 이 계획 PR은 그 뒤 최신 main 위에서 `App.tsx`에 미리보기 해시 경로 한 줄만 더한다. #19 본문에도 같은 순서를 적는다.
-
-```mermaid
-graph LR
-    task-1 --> task-2
-    task-1 --> task-3
-    task-2 --> task-3
-```
-
-### task-1: 상태 표시 부품과 임시 타입
-- 담당: 은진
-- 합격 기준: requirements.md 1 화면 줄
-- 고칠 파일: `web/src/components/status/types.ts`(fixture에서 `import type`으로 끌어온 타입), `web/tsconfig.app.json`(`resolveJsonModule`), `web/vite.config.ts`(`server.fs.allow`), `compose.yaml`(fixture 마운트), `web/src/components/status/StatusBadge.tsx`, `web/src/components/status/statusLabels.ts`, `web/src/preview/F5Preview.tsx`, `web/src/App.tsx` (미리보기 한 줄)
-- 만들 함수·인터페이스 모양: `<StatusBadge status={Status | null} evidence?={Evidence[]} candidates?={...} />` — 글자 + 모양(● ○ ◌ ◐), `confirmed`면 `checked`, `unverified`면 이유 한국어, `not_found_in_scope`면 찾아본 범위, `conflict`면 후보 나란히. 쪽이 있고 원문에서 확인된 근거에만 원문 링크. status가 `null`이면 "확인되지 않음"으로 그림. 판본이 빈 근거는 "판본 확인되지 않음".
-- 테스트할 경우: 평소(네 값) / 빈 입력(status 없음 → "확인되지 않음") / 실패·경계(쪽 없는 값 → 링크 없음, 판본 빈 값)
-- 확인 방법: `cd web && npm run lint && npm run build` → 오류 없음 + `/#/f5-preview` 스크린샷 1장
-- 먼저: m1-i3-140 task-4 (fixture, 타입이 여기서 나옴), #19 본 계획 PR 머지 (`App.tsx`)
-
-### task-2: 사람 판단 표시와 금지 낱말 검사
-- 담당: 은진
-- 합격 기준: requirements.md 2
-- 고칠 파일: `web/src/components/status/HumanJudgment.tsx`, `web/src/components/status/judgmentLabels.ts`, `web/src/preview/F5Preview.tsx`
-- 만들 함수·인터페이스 모양: `<OriginMark origin={Origin} />`("AI" / "AI 기본값" / "내가 고름" / "내가 고침"), `<NeedsReview flags={Flag[]} reason={string} />`("직접 검토 필요"·"직접 판단 필요" 띠), `<RawDate rawText page />`(원문 글자 + "직접 확인", 날짜 계산 없음)
-- 테스트할 경우: 평소(`needs_human_review` 1, 날짜 칸) / 빈 입력(flags 없음 → 띠 없음) / 실패(금지 낱말이 글자에 들어감 → 아래 검사가 잡음)
-- 확인 방법: `cd web && npm run lint && npm run build && ! grep -rnE "적용된다|등록 가능|적법|거절 해소" src` → 오류 없음, grep 0줄 + 스크린샷 1장
-- 먼저: task-1 (같은 미리보기 파일)
-
-### task-3: 검토할 사항 패널
-- 담당: 은진
-- 합격 기준: requirements.md 3 화면 줄, 실패할 때 (불러오지 못함)
-- 고칠 파일: `web/src/components/status/ReviewPanel.tsx`, `web/src/preview/F5Preview.tsx`
-- 만들 함수·인터페이스 모양: `<ReviewPanel materials={CaseMaterials | null} error={string | null} onGo={(target) => void} onUpload={(missingIndex) => void} />` — "검토할 사항 N건"(N = `review_items.length`), 줄마다 종류·이름·이유, 빠진 자료 줄에 "올려 주세요", 줄을 누르면 `onGo(target)`. `error`가 있으면 "검토할 사항을 불러오지 못함" + 이유 (0건으로 그리지 않음). 패널 줄에는 원문 링크를 달지 않는다.
-- 테스트할 경우: 평소(`case_all_statuses`, 줄 3개 이상) / 빈 입력(줄 0 → "검토할 사항 없음") / 실패(`error` 있음 → 실패 글)
-- 확인 방법: `cd web && npm run lint && npm run build` → 오류 없음 + 스크린샷 3장(평소·빈·실패)
-- 먼저: task-1, task-2
-
-### 이번에 안 하는 것
-- 사건 화면 배치·올리기·목록·다시 열기 (#19 본 계획). 부품을 사건 화면에 끼우는 것도 #19 본 계획.
-- F4 "고르기" (#43).
-- OpenAPI 타입 생성 (#56).
-
-### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- 다음: task-1
-- 막힌 것: 
-
-### 끝난 뒤 (이슈가 끝난 날)
-- 된 것 / 안 된 것 / 다음 이슈로
+## m1-i3-19  상태: 대체됨  (이슈 [#19](https://github.com/merge-mates/patent-ai-workspace/issues/19)의 F5 부분)
+- 11/20: 상태 표시·사람 판단 표시·검토할 사항 패널 부품(`StatusTag`·`HumanCheckTag`·`ReviewPanel`·`labels.ts`)은 재아가 #19 사건 화면 PR #151에서 먼저 만들었다. 대응 방향 꼬리표(`AI 기본값`·`사람이 고름`·`사람이 고침 N곳`)는 PR #153. 그래서 이 계획(따로 부품·미리보기 만들기)은 하지 않고, design.md 6절을 그 화면 글자·모양에 맞췄다 (PR #151·#153 리뷰에서 약속).
+- 화면에 남은 F5 일 (#19 몫, #151 리뷰 참고 6·7·10번): 보류 작업 글을 `task` 코드 이름 대신 `waiting_for` + 작업 종류 한국어로 (#140 뒤), 원문 링크는 확인된 값만, 검토할 사항 줄을 누르면 `target`(`oa_result[<oa_id>]…`)의 카드로 이동, #140 뒤 `review_items`를 ⑥에서 읽고 `None`이면 "아직 모으지 않음".
+- 금지 낱말 검사 명령: `! grep -rnE "적용된다|등록 가능|적법|거절 해소" web/src` (M1 고정 글자만, design.md 9절).
