@@ -1,0 +1,244 @@
+"""받은 사건 묶음을 OA 시점까지 자른 AI 입력으로 만든다 (#148, #150 1번).
+
+받은 묶음 전체(정답 쪽)는 그대로 두고, OA 한 통마다 `<out>/<출원번호>/<발송번호>/`에 입력만 쓴다.
+자르는 규칙 (날짜로 자르지 않는다. eval/retrieval/claim_history.py와 같은 줄 순서 규칙):
+- 행정이력: 줄 순서로 대상 OA 줄까지 남긴다.
+- 청구항이력: OA 앞 행정이력에 나온 접수번호의 줄만 남긴다. 행정이력에 없는 접수의 줄은 빼고 센다.
+- 파일: 이름 끝 번호가 OA 앞 행정이력에 나왔거나 그 OA 발송번호인 것만 복사한다.
+  번호가 없는 파일(공개공보·등록공보·결정본문)은 시점을 모르므로 뺀다 (F1 합격 기준 8).
+
+실행 (기본은 마른 실행, 아무것도 안 씀):
+  uv run python scripts/split_cases_at_oa.py --src <받은 묶음 폴더> --out data/processed/cases
+  ... --write --log work/split_cases_<날짜>.log   # 실제로 쓰기, 파일 이름 목록은 git 밖 로그로
+  uv run python scripts/split_cases_at_oa.py --audit data/processed/cases   # 다 쓴 뒤 새는 것 세기
+출력에는 원문 글자를 넣지 않는다. 이미 있는 대상 폴더는 덮어쓰지 않고 멈춘다.
+"""
+
+import argparse
+import re
+import shutil
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+SEP = "¶"
+OA_DOC_NAME = "의견제출통지서"
+ADMIN = "행정이력.txt"
+CLAIMS = "청구항이력.txt"
+# 파일 이름 끝의 접수·발송번호: <출원번호>_<종류>_<번호>.<확장자>
+NUMBER_RE = re.compile(r"_(\d{10,})\.[^.]+$")
+
+
+@dataclass
+class OaPlan:
+    """OA 한 통의 입력 폴더에 쓸 것."""
+
+    app_no: str
+    oa_no: str
+    src_dir: Path
+    admin_lines: list[str]  # 머리글 포함, 원래 줄 그대로
+    claim_lines: list[str]
+    copy_files: list[str] = field(default_factory=list)
+    dropped_files: list[tuple[str, str]] = field(default_factory=list)  # (파일 이름, 이유)
+    dropped_claim_rows: int = 0  # OA 뒤 접수의 청구항 줄
+    unmatched_claim_rows: int = 0  # 행정이력에 없는 접수의 청구항 줄
+
+
+def _lines(path: Path) -> list[str]:
+    """줄 끝을 살린 채 읽는다 (자른 파일이 원래 줄과 글자가 같도록). BOM은 뗀다."""
+    return path.read_text(encoding="utf-8-sig").splitlines(keepends=True)
+
+
+def _cell(line: str, header: list[str], name: str) -> str:
+    cells = line.rstrip("\r\n").split(SEP)
+    i = header.index(name)
+    return cells[i].strip() if i < len(cells) else ""
+
+
+def _file_number(name: str) -> str | None:
+    m = NUMBER_RE.search(name)
+    return m.group(1) if m else None
+
+
+def plan_case(case_dir: Path) -> list[OaPlan]:
+    """받은 사건 폴더 하나 → OA마다 자를 계획. OA가 없으면 빈 목록."""
+    app_no = case_dir.name
+    admin_path = case_dir / f"{app_no}_{ADMIN}"
+    claim_path = case_dir / f"{app_no}_{CLAIMS}"
+    if not admin_path.exists() or not claim_path.exists():
+        raise FileNotFoundError(f"{case_dir.name}: 행정이력·청구항이력이 둘 다 있어야 한다")
+
+    admin = _lines(admin_path)
+    a_head = admin[0].rstrip("\r\n").split(SEP)
+    a_rows = [ln for ln in admin[1:] if ln.strip()]
+    claims = _lines(claim_path)
+    c_head = claims[0].rstrip("\r\n").split(SEP)
+    c_rows = [ln for ln in claims[1:] if ln.strip()]
+
+    all_nos = {_cell(r, a_head, "접수발송번호") for r in a_rows}
+    others = sorted(
+        p.name
+        for p in case_dir.iterdir()
+        if p.is_file() and p.name not in {admin_path.name, claim_path.name}
+    )
+
+    plans = []
+    for idx, row in enumerate(a_rows):
+        if _cell(row, a_head, "접수발송서류명") != OA_DOC_NAME:
+            continue
+        oa_no = _cell(row, a_head, "접수발송번호")
+        # OA 앞(그 OA 줄 포함)에 나온 번호만 입력이 된다
+        before = {_cell(r, a_head, "접수발송번호") for r in a_rows[: idx + 1]}
+        plan = OaPlan(
+            app_no=app_no,
+            oa_no=oa_no,
+            src_dir=case_dir,
+            admin_lines=[admin[0], *a_rows[: idx + 1]],
+            claim_lines=[claims[0]],
+        )
+        for r in c_rows:
+            no = _cell(r, c_head, "접수발송번호")
+            if no in before:
+                plan.claim_lines.append(r)
+            elif no in all_nos:
+                plan.dropped_claim_rows += 1
+            else:
+                plan.unmatched_claim_rows += 1
+        for name in others:
+            no = _file_number(name)
+            if no is None:
+                plan.dropped_files.append((name, "시점 모름"))
+            elif no in before:
+                plan.copy_files.append(name)
+            elif no in all_nos:
+                plan.dropped_files.append((name, "OA 뒤"))
+            else:
+                plan.dropped_files.append((name, "이력에 없음"))
+        plans.append(plan)
+    return plans
+
+
+def write_plan(plan: OaPlan, out_root: Path) -> Path:
+    """`<out_root>/<출원번호>/<발송번호>/`에 쓴다. 이미 있으면 아무것도 안 쓰고 멈춘다."""
+    target = out_root / plan.app_no / plan.oa_no
+    if target.exists():
+        raise FileExistsError(f"이미 있음, 덮어쓰지 않음: {target}")
+    tmp = target.with_name(target.name + ".tmp")
+    if tmp.exists():
+        raise FileExistsError(f"이전 실행이 남긴 임시 폴더: {tmp}")
+    tmp.mkdir(parents=True)
+    # 임시 폴더에 다 쓴 뒤 이름을 바꾼다 (중간에 멈춰도 반쯤 쓴 입력 폴더가 남지 않게)
+    (tmp / f"{plan.app_no}_{ADMIN}").write_text("".join(plan.admin_lines), encoding="utf-8")
+    (tmp / f"{plan.app_no}_{CLAIMS}").write_text("".join(plan.claim_lines), encoding="utf-8")
+    for name in plan.copy_files:
+        shutil.copy2(plan.src_dir / name, tmp / name)
+    tmp.rename(target)
+    return target
+
+
+def audit(out_root: Path) -> list[str]:
+    """입력 폴더에서 OA 뒤 줄·시점 모를 파일을 찾는다. 문제 한 줄씩 (원문 글자 없음)."""
+    problems = []
+    for oa_dir in sorted(p for p in out_root.glob("*/*") if p.is_dir()):
+        app_no, oa_no = oa_dir.parent.name, oa_dir.name
+        admin_path = oa_dir / f"{app_no}_{ADMIN}"
+        if not admin_path.exists():
+            problems.append(f"{app_no}/{oa_no}: 행정이력 없음")
+            continue
+        admin = _lines(admin_path)
+        head = admin[0].rstrip("\r\n").split(SEP)
+        rows = [ln for ln in admin[1:] if ln.strip()]
+        if not rows or _cell(rows[-1], head, "접수발송번호") != oa_no:
+            problems.append(f"{app_no}/{oa_no}: 행정이력 마지막 줄이 대상 OA가 아님")
+        nos = {_cell(r, head, "접수발송번호") for r in rows}
+        claim_path = oa_dir / f"{app_no}_{CLAIMS}"
+        if claim_path.exists():
+            claims = _lines(claim_path)
+            c_head = claims[0].rstrip("\r\n").split(SEP)
+            bad = sum(
+                1 for r in claims[1:] if r.strip() and _cell(r, c_head, "접수발송번호") not in nos
+            )
+            if bad:
+                problems.append(f"{app_no}/{oa_no}: 행정이력에 없는 접수의 청구항 줄 {bad}개")
+        for p in sorted(oa_dir.iterdir()):
+            if p.name in {admin_path.name, claim_path.name}:
+                continue
+            no = _file_number(p.name)
+            if no is None:
+                problems.append(f"{app_no}/{oa_no}: 시점 모를 파일 {p.name}")
+            elif no not in nos:
+                problems.append(f"{app_no}/{oa_no}: 잘린 행정이력에 없는 번호의 파일 {p.name}")
+    return problems
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--src", type=Path, help="받은 묶음 폴더 (<출원번호>/ 폴더들)")
+    ap.add_argument("--out", type=Path, help="입력 폴더 뿌리 (예: data/processed/cases)")
+    ap.add_argument("--write", action="store_true", help="실제로 쓴다 (없으면 마른 실행)")
+    ap.add_argument("--log", type=Path, help="파일 이름 목록 로그 (git 밖, 예: work/...)")
+    ap.add_argument("--audit", type=Path, help="이 입력 폴더를 검사만 한다")
+    args = ap.parse_args(argv)
+
+    if args.audit:
+        problems = audit(args.audit)
+        n = len([p for p in args.audit.glob("*/*") if p.is_dir()])
+        for line in problems:
+            print(line)
+        print(f"검사: OA 폴더 {n}개, 문제 {len(problems)}건")
+        if n == 0:
+            print("경고: 검사할 OA 폴더가 없음", file=sys.stderr)
+            return 1
+        return 1 if problems else 0
+
+    if not args.src or not args.out:
+        ap.error("--src와 --out이 필요하다 (검사만 하려면 --audit)")
+    cases = sorted(p for p in args.src.iterdir() if p.is_dir()) if args.src.is_dir() else []
+    if not cases:
+        print(f"경고: 사건 폴더가 없음: {args.src}", file=sys.stderr)
+        return 1
+
+    plans: list[OaPlan] = []
+    no_oa = 0
+    for case in cases:
+        found = plan_case(case)
+        if not found:
+            no_oa += 1
+            print(
+                f"경고: OA 없음 (행정이력에 {OA_DOC_NAME} 줄이 없다): {case.name}", file=sys.stderr
+            )
+        plans.extend(found)
+    if not plans:
+        print("경고: 자를 OA가 하나도 없음", file=sys.stderr)
+        return 1
+
+    reasons: dict[str, int] = {}
+    for p in plans:
+        for _, why in p.dropped_files:
+            reasons[why] = reasons.get(why, 0) + 1
+    print(
+        f"{'쓰기' if args.write else '마른 실행'}: 사건 {len(cases)}건, OA {len(plans)}통, "
+        f"OA 없음 {no_oa}건, "
+        f"입력 파일 {sum(len(p.copy_files) for p in plans)}개(이력 두 파일 빼고), "
+        f"뺀 파일 {sum(reasons.values())}개 {reasons}, "
+        f"뺀 청구항 줄 {sum(p.dropped_claim_rows for p in plans)}개, "
+        f"행정이력에 없는 접수의 청구항 줄 {sum(p.unmatched_claim_rows for p in plans)}개"
+    )
+    if any(p.unmatched_claim_rows for p in plans):
+        print("경고: 행정이력에 없는 접수의 청구항 줄은 입력에서 뺐다", file=sys.stderr)
+
+    if args.write:
+        for p in plans:
+            write_plan(p, args.out)
+    if args.log:
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+        with args.log.open("x", encoding="utf-8") as f:  # 이미 있으면 멈춤
+            for p in plans:
+                f.write(f"## {p.app_no}/{p.oa_no}\n")
+                f.writelines(f"입력 {n}\n" for n in p.copy_files)
+                f.writelines(f"뺌({why}) {n}\n" for n, why in p.dropped_files)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
