@@ -1,4 +1,4 @@
-"""PostgresCaseRepository: 실제 DB 왕복과 보정서 판 CHECK (make db 뒤 make test-db).
+"""PostgresCaseRepository: 실제 DB 왕복과 보정서 판 CHECK (make test-db).
 
 번호는 모두 지어낸 것 (2099년 값). 바깥 트랜잭션을 끝에 되돌려 DB에 남기지 않는다.
 """

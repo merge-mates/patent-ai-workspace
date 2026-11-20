@@ -17,7 +17,7 @@ def make_cache_key(
     model: str,
     prompt_template: str,
     variables: dict,
-    temperature: float,
+    effort: str,
     max_tokens: int,
     attempt: int,
 ) -> str:
@@ -30,7 +30,7 @@ def make_cache_key(
         "model": model,
         "prompt_sha256": hashlib.sha256(prompt_template.encode("utf-8")).hexdigest(),
         "variables": variables,
-        "temperature": temperature,
+        "effort": effort,
         "max_tokens": max_tokens,
         "attempt": attempt,
     }

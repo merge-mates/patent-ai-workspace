@@ -55,7 +55,7 @@ def test_모델과_설정값은_설정_파일에서_전송층으로_간다():
     run(fake)
     call = fake.calls[0]
     assert call["model"] == "fake-model-1"
-    assert call["temperature"] == 0.0
+    assert call["effort"] == "medium"
     assert call["max_tokens"] == 256
 
 
