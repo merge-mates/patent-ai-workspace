@@ -1,0 +1,21 @@
+# F1 read_oa 프롬프트: no_location·clarity_reason 모양과 JSON 끝 규칙 (이슈 #172 T4). 프롬프트 문구 하나만 바꿈
+experiment: m1-i3-f1-read-oa-prompt-shape
+feature: f1
+baseline: m1-i3-f1-stream-64k
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: fix/172 6b87e06     # 스트리밍 + 64000 (기준선과 같음) + 프롬프트 3줄
+settings:                 # config/f1.yaml read_oa
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f1/read_oa.md   # changed (sha256 앞 12자 f86da6d01b6b → d680efd54818)
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 2                   # scores.json은 1회차. 2회차는 git 밖 work/overnight_1120/f1/a4_medium2_scores.json, 둘 다 card에
+runner: work/overnight_1120/f1_run.py work/overnight_1120/f1/a4_medium<N> --effort medium   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.30
+  max_external_calls: 40

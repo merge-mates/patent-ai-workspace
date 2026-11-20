@@ -2,7 +2,7 @@
 # 앞 실험 experiments/m1-i3-f1-effort-low/ (16000·스트리밍 전, 은진 11/20)를 새 전송층에서 다시 잰 것
 experiment: m1-i3-f1-effort-low-stream64k
 feature: f1
-baseline: m1-i3-f1-stream-64k
+baseline: m1-i3-f1-read-oa-prompt-shape   # 같은 판(6b87e06) medium. effort 하나만 다름
 goldset: tune
 goldset_version: 2
 gold: f1

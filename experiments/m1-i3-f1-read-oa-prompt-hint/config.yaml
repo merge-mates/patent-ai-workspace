@@ -1,7 +1,7 @@
 # F1 read_oa 프롬프트: 힌트 칸 없음은 null, raw_text는 칸 제목 빼고 본문만 (이슈 #173). 프롬프트 문구 하나만 바꿈
 experiment: m1-i3-f1-read-oa-prompt-hint
 feature: f1
-baseline: m1-i3-f1-effort-medium
+baseline: m1-i3-f1-effort-medium   # 주의: 같은 판(main ea00d43, PR #160·#170 뒤) 기준선 폴더가 없어 가장 가까운 medium 폴더를 적음. index의 "기준선 대비"는 프롬프트 말고도 #160·#170 차이와 예측 없음 건수가 섞인 값이다 (card의 비교는 git 밖 #161 v2 실행)
 goldset: tune
 goldset_version: 2
 gold: f1
