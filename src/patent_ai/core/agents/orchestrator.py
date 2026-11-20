@@ -2,6 +2,8 @@
 
 그래프: extract_pages(늘 처음) -> decide -> read_oa -> decide -> ... -> cut_to_oa -> 끝
 - decide: plan=agent면 모델이 다음 code_tool을 고르고, plan=fixed_order면 설정 순서대로.
+- fixed_order 단계의 도구가 아직 없으면: 설정 skip_if_missing에 있는 이름만 "확인되지 않음"으로
+  넘기고(경고 + 단계 기록에 이유), 없는 이름은 설정 오류로 failed (오타를 조용히 넘기지 않는다).
 - cut_to_oa(fixed_stage)는 decide가 stop을 낼 때 그래프 간선으로 늘 지난다 (지휘가 고르지 못함).
 - 도구가 실패하면 그 자리에서 끝내고 state=failed (성공으로 끝나지 않는다).
 """
@@ -15,7 +17,7 @@ import yaml
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
-from patent_ai.core.agents.steps import StepRecord, StepRecorder
+from patent_ai.core.agents.steps import SKIP_PREFIX, StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
 from patent_ai.core.llm.client import call_model
@@ -71,6 +73,8 @@ class RunOutcome(BaseModel):
     error: dict | None = None  # {code, message} (+ oa_already_exists면 case_id, oa_id)
     searched_scope: list[str] | None = None  # max_steps로 실패했을 때 찾아본 도구 목록
     trace: list[str] = []  # 돈 도구 순서 (되풀이 포함)
+    # 돌리지 않고 넘긴 단계: 이름 -> 이유. state가 succeeded여도 이 단계들의 결과는 없다
+    skipped: dict[str, str] = {}
     case_id: str
 
 
@@ -88,6 +92,15 @@ class _State(TypedDict):
     error: dict | None
     waiting_for: WaitingFor | None
     case_id: str  # 같은 출원번호의 기존 사건이 있으면 그 사건
+    skipped: dict[str, str]  # 넘긴 단계 이름 -> 이유
+
+
+def _name_list(cfg: dict, key: str) -> list[str]:
+    """설정의 이름 목록 칸을 읽는다. 목록이 아니거나 글자가 아닌 것이 있으면 멈춘다."""
+    value = cfg.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(n, str) for n in value):
+        raise ValueError(f"{key}는 단계 이름(글자) 목록이어야 함: {value!r}")
+    return value
 
 
 def _error(code: str, message: str) -> dict:
@@ -115,12 +128,16 @@ def run_case(
     plan = cfg.get("plan", "agent")
     if plan not in ("agent", "fixed_order"):
         raise ValueError(f"plan은 agent 또는 fixed_order여야 함: {plan!r}")
-    fixed_order: list[str] = cfg.get("fixed_order", [])
+    fixed_order = _name_list(cfg, "fixed_order")
+    skip_if_missing = set(_name_list(cfg, "skip_if_missing"))
+    if plan == "fixed_order" and not fixed_order:
+        logger.warning("run_case %s: fixed_order가 비어 있음 (돌릴 단계가 없음)", run_id)
     max_steps: int = cfg.get("max_steps", 10)
 
     registry = ToolRegistry()
     register_f1_tools(registry)
     code_tools = {t.name for t in registry.list(kind="code_tool")}
+    registered = {t.name for t in registry.list()}
     trace: list[str] = []  # 돈 도구 순서 (되풀이 포함)
 
     def note(kind, name, reason, outcome, status=None, calls=None) -> None:
@@ -136,6 +153,13 @@ def run_case(
                 outcome=outcome,
             )
         )
+
+    def skip(name: str, skipped: dict[str, str], why: str) -> dict[str, str]:
+        """단계를 돌리지 않고 넘긴다: 경고 + 단계 기록(확인되지 않음 + 이유). ok로 적지 않는다."""
+        logger.warning("run_case %s: %s 단계를 넘김 (확인되지 않음): %s", run_id, name, why)
+        # 넘긴 이유는 reason 칸에 담는다 (새 칸·새 outcome 값은 DB agent_steps를 바꿔야 해서 안 둠)
+        note("code_tool", name, f"{SKIP_PREFIX}{why}", "waiting", StatusValue.UNVERIFIED.value)
+        return {**skipped, name: why}
 
     def model_calls() -> int | None:
         """실제 전송 시도 수. records 없는 기록기는 셀 수 없어 None (0으로 속이지 않음)."""
@@ -177,9 +201,15 @@ def run_case(
         )
 
     def decide_node(state: _State) -> dict:
+        skipped = state["skipped"]
         if plan == "fixed_order":
-            todo = [n for n in fixed_order if n not in state["results"]]
-            choice, reason, calls = (todo[0] if todo else "stop"), "고정 순서", None
+            reason, calls = "고정 순서", None
+            todo = [n for n in fixed_order if n not in state["results"] and n not in skipped]
+            # 도구가 아직 없는 단계: 설정에 넘겨도 된다고 적힌 이름만 넘기고 다음 단계로 간다
+            while todo and todo[0] not in registered and todo[0] in skip_if_missing:
+                why = "tool_missing: 등록된 도구가 없음 (설정 skip_if_missing에 있어 넘김)"
+                skipped = skip(todo.pop(0), skipped, why)
+            choice = todo[0] if todo else "stop"
         else:
             before = model_calls()
             try:
@@ -191,7 +221,7 @@ def run_case(
 
         def reject(code: str, message: str) -> dict:
             note("decide", choice, reason, "failed", calls=calls)
-            return {"error": _error(code, message)}
+            return {"error": _error(code, message), "skipped": skipped}
 
         if choice == "stop":
             # 자르기는 read_oa 뒤 간선에서 이미 돌았다. read_oa 없이 멈추면 실패
@@ -199,7 +229,11 @@ def run_case(
                 return reject("no_oa_result", "read_oa 없이 멈춤")
         # 지휘가 고를 수 있는 것은 code_tool뿐 (fixed_stage·없는 이름·이미 돈 read_oa는 거부)
         elif choice not in code_tools or (choice == "read_oa" and "read_oa" in state["results"]):
-            return reject("invalid_tool_choice", f"고를 수 없는 도구: {choice}")
+            hint = ""
+            if plan == "fixed_order" and choice not in registered:
+                # 오타인지 아직 없는 단계인지 코드가 짐작하지 않는다: 표시가 없으면 설정 오류
+                hint = " (등록된 도구가 아니고 설정 skip_if_missing에도 없음)"
+            return reject("invalid_tool_choice", f"고를 수 없는 도구: {choice}{hint}")
         # 끝내자고 하지 않았는데 상한에 닿았으면 못 끝낸 것: 성공으로 두지 않는다
         elif state["steps"] >= max_steps:
             return reject(
@@ -207,7 +241,7 @@ def run_case(
             )
         if plan == "agent":  # 고정 순서는 모델 판단이 없어 성공 줄을 남기지 않는다
             note("decide", choice, reason, "ok", calls=calls)
-        return {"next_tool": choice}
+        return {"next_tool": choice, "skipped": skipped}
 
     def check_oa_node(state: _State) -> dict:
         """read_oa 뒤 검사: 번호를 모르면 사람을 기다리고, 이미 있는 OA면 실패로 끝낸다."""
@@ -286,6 +320,7 @@ def run_case(
                 "error": None,
                 "waiting_for": None,
                 "case_id": case_input.case_id,
+                "skipped": {},
             }
         )
     except Exception:
@@ -293,7 +328,12 @@ def run_case(
         logger.exception("run_case %s 예외, 지금까지 돈 도구: %s", run_id, trace)
         raise
 
-    base = {"results": final["results"], "case_id": final["case_id"], "trace": list(trace)}
+    base = {
+        "results": final["results"],
+        "case_id": final["case_id"],
+        "trace": list(trace),
+        "skipped": final["skipped"],
+    }
     if final["error"]:
         logger.warning("run_case %s 실패: %s", run_id, final["error"])
         scope = list(trace) if final["error"]["code"] == "max_steps" else None
