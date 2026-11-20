@@ -74,6 +74,9 @@
 
 - examiner_reasoning만 value에 요약을 적습니다. 나머지 value는 null로 둬도 됩니다.
 - 목록 칸(same_as, clarity_terms)의 항목도 문자열이 아니라 {value, raw_text, page, ambiguous} 객체입니다. 해당하는 것이 없으면 빈 목록 []입니다.
+- no_location(인용 안의 것과 줄 단위 것 모두)도 문자열이 아니라 {value, raw_text, page, ambiguous} 객체입니다. raw_text에 그 표현 글자를 적습니다. 해당하지 않으면 null입니다.
+- clarity_reason만 객체가 아니라 짧은 문자열 하나입니다 (예: "clarity_reason": "지시 대상이 불명확"). 해당하지 않으면 null입니다.
+- 위 출력 모양에 없는 키를 만들지 않습니다. JSON 객체 하나만 출력하고, 마지막 닫는 중괄호 뒤에는 아무 글자도 붙이지 않습니다.
 $retry_note
 
 통지서 글자
