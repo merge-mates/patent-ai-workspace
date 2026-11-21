@@ -201,7 +201,7 @@ class ExaminerHints(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     allowable_claims: ExtractedValue[list[int]]  # 「특허 가능한 청구항」. 칸이 없으면 값 []
-    amendment_note: ExtractedValue[str]  # 【보정에 관한 참고사항】. 칸이 없으면 값 null
+    amendment_note: ExtractedValue[str]  # 【보정에 관한 참고사항】 원문 문장. 없으면 null
 
 
 class OAResult(ResultBase):
