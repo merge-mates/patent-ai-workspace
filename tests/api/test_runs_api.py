@@ -3,12 +3,10 @@
 launcher는 그 자리에서 바로 도는 것을 끼운다 (진짜 앱은 백그라운드 스레드).
 """
 
-from typing import Annotated
-
 import pytest
-from fastapi import Depends
 from fastapi.testclient import TestClient
 
+from patent_ai.api import deps
 from patent_ai.api.deps import (
     get_cancel_registry,
     get_case_unit,
@@ -21,7 +19,8 @@ from patent_ai.api.main import create_app
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
 from patent_ai.core.runs.cancel import CancelRegistry
-from patent_ai.core.runs.executor import RunExecutor, Step, StepRunExecutor
+from patent_ai.core.runs.executor import Step, StepRunExecutor
+from patent_ai.core.runs.run_case_executor import RunCaseExecutor
 from patent_ai.core.runs.state import RunError, RunState
 from tests.core.runs.fake_executor import (
     cancelling_step,
@@ -48,7 +47,7 @@ class FakeUnit:
 class Env:
     """한 테스트의 앱과 공유 저장소. steps를 바꿔 가짜 실행기 시나리오를 고른다."""
 
-    def __init__(self, tmp_path, executor_kind="fake"):
+    def __init__(self, tmp_path):
         self.runs = InMemoryRunStore()
         self.cases = InMemoryCaseAppStore(runs=self.runs)
         self.registry = CancelRegistry()
@@ -62,20 +61,8 @@ class Env:
         app.dependency_overrides[get_upload_dir] = lambda: tmp_path
         app.dependency_overrides[get_run_status_store] = lambda: self.runs
         app.dependency_overrides[get_cancel_registry] = lambda: self.registry
-        if executor_kind == "fake":
-            app.dependency_overrides[get_run_executor] = self._fake_executor
-            app.dependency_overrides[get_run_launcher] = lambda: self._launch
-        else:
-            # 앱 기본 실행기: get_run_executor를 override하지 않고 deps의 것을 그대로 받는다.
-            # 그래서 누가 deps 기본 실행기를 바꾸면 이 모드의 테스트가 깨진다
-            def inline_launcher(executor: Annotated[RunExecutor, Depends(get_run_executor)]):
-                def launch(run_id, oa_id):
-                    self.launched.append((run_id, oa_id))
-                    executor.execute(run_id, oa_id)
-
-                return launch
-
-            app.dependency_overrides[get_run_launcher] = inline_launcher
+        app.dependency_overrides[get_run_executor] = self._fake_executor
+        app.dependency_overrides[get_run_launcher] = lambda: self._launch
         self.app = app
         self.client = TestClient(app, raise_server_exceptions=False)
 
@@ -185,22 +172,18 @@ def test_waiting_for_human_취소는_바로_cancelled(env):
     assert res.status_code == 200 and res.json()["state"] == "cancelled"
 
 
-def test_앱_기본_실행기면_failed_executor_not_connected(tmp_path):
-    env = Env(tmp_path, executor_kind="default")
-    created = env.upload()  # POST /cases가 만든 실행
-    body = env.client.get(f"/runs/{created['run_id']}").json()
-    assert body["state"] == "failed" and body["error"]["code"] == "executor_not_connected"
-    # POST /oas/{id}/runs가 만든 실행도, POST /cases/{id}/oas가 만든 실행도
-    again = env.client.post(f"/oas/{created['oa_id']}/runs").json()
-    assert env.client.get(f"/runs/{again['run_id']}").json()["error"]["code"] == (
-        "executor_not_connected"
-    )
-    second = env.client.post(
-        f"/cases/{created['case_id']}/oas", files={"file": ("b.pdf", b"%PDF-1.7\nB", "x/pdf")}
-    ).json()
-    assert env.client.get(f"/runs/{second['run_id']}").json()["error"]["code"] == (
-        "executor_not_connected"
-    )
+def test_run_case_앱_기본_실행기는_지휘_실행기이고_취소_결과_저장소를_API와_같이_쓴다():
+    # DB에 붙지 않는다 (엔진·세션 만드는 함수만 만들고 연결은 처음 쓸 때)
+    executor = deps.get_run_executor()
+    assert isinstance(executor, RunCaseExecutor)
+    assert executor is deps.get_run_executor()  # 앱에 하나: 잠금 하나로 한 번에 하나만 돈다
+    # 취소 API가 쓰는 표시와 같아야 취소가 실행기에 닿는다
+    assert executor._registry is deps.get_cancel_registry()
+    assert executor._store is deps.get_run_status_store()
+    # 결과 API가 읽는 저장소에 쓴다
+    assert executor._oa_results is deps.get_oa_result_store()
+    assert executor._step_results is deps.get_step_result_store()
+    assert executor._config_path == deps.ORCHESTRATOR_CONFIG and executor._config_path.exists()
 
 
 def test_켜질_때_running_queued는_server_restarted로_waiting은_그대로(tmp_path):

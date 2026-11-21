@@ -4,7 +4,7 @@ import pytest
 
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
-from patent_ai.core.runs.executor import NotConnectedExecutor, Skip, Step
+from patent_ai.core.runs.executor import Skip, Step
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunNotFound, SkippedStep
 from tests.core.runs.fake_executor import (
@@ -146,13 +146,6 @@ def test_끝나면_취소_표시가_지워진다(store, registry, sink):
     steps = [cancelling_step("OA 읽는 중", registry, RID)]
     make_fake_executor(store, registry, sink, steps).execute(RID, "oa_1")
     assert not registry.is_requested(RID)
-
-
-def test_연결_전_실행기는_failed_executor_not_connected(store):
-    NotConnectedExecutor(store).execute(RID, "oa_1")
-    st = store.get_status(RID)
-    assert st.state == RunState.FAILED
-    assert st.error == {"code": "executor_not_connected", "message": "지휘 에이전트 연결 전"}
 
 
 def test_취소가_시작과_겹쳐도_결과가_저장되지_않는다(store, registry, sink):

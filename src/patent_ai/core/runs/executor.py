@@ -1,6 +1,6 @@
 """실행기. 단계를 차례로 도는 공통 루프(StepRunExecutor)는 가짜 실행기도 쓴다.
 
-실패는 failed + 이유로 남기고 성공으로 끝내지 않는다. 지휘 에이전트(run_case) 연결은 이 파일 밖.
+실패는 failed + 이유로 남기고 성공으로 끝내지 않는다. 앱 기본 실행기는 run_case_executor.py.
 """
 
 import logging
@@ -54,20 +54,6 @@ class Skip:
 class Step:
     name: str  # current_step에 보이는 한 줄
     run: Callable[[], WaitForHuman | Skip | None]
-
-
-class NotConnectedExecutor:
-    """앱 기본 실행기: 지휘 에이전트가 아직 안 붙었으니 바로 failed로 끝낸다."""
-
-    def __init__(self, store: RunStatusStore) -> None:
-        self._store = store
-
-    def execute(self, run_id: str, oa_id: str) -> None:
-        error = RunError("executor_not_connected", "지휘 에이전트 연결 전")
-        try:
-            self._store.transition(run_id, RunState.FAILED, error=error)
-        except InvalidRunTransition:
-            logger.warning("실행 %s는 이미 끝나 있어 failed로 바꾸지 않는다", run_id)
 
 
 class StepRunExecutor:
