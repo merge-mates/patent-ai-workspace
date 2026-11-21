@@ -269,13 +269,16 @@ class InMemoryRunStore:
         current_step: str | None = None,
         waiting_for: str | None = None,
         error: RunError | None = None,
+        expected: RunState | None = None,
     ) -> RunStatus:
         with self._lock:
             cur = self._status.get(run_id)
             if cur is None:
                 raise RunNotFound(run_id)
             # 지금 값을 읽어 전이 규칙을 꼭 거친다 (규칙은 state.py 한 곳)
-            check_transition(cur.state, new, error=error, waiting_for=waiting_for)
+            check_transition(
+                cur.state, new, error=error, waiting_for=waiting_for, expected=expected
+            )
             updated = cur.model_copy(
                 update={
                     "state": new,

@@ -76,6 +76,9 @@ def test_거부_전이와_없는_실행(factory):
     assert store.get_status(rid).state == RunState.QUEUED
     store.transition(rid, RunState.RUNNING)
     with pytest.raises(InvalidRunTransition):
+        store.transition(rid, RunState.CANCELLED, expected=RunState.QUEUED)  # 조건부 전이
+    assert store.get_status(rid).state == RunState.RUNNING
+    with pytest.raises(InvalidRunTransition):
         store.transition(rid, RunState.FAILED)  # error 없음
     store.transition(rid, RunState.FAILED, error=RunError("boom", "실패했다"))
     with pytest.raises(InvalidRunTransition):

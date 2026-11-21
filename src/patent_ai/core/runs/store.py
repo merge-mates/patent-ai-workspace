@@ -48,8 +48,12 @@ class RunStatusStore(Protocol):
         current_step: str | None = None,
         waiting_for: str | None = None,
         error: RunError | None = None,
+        expected: RunState | None = None,
     ) -> RunStatus:
-        """지금 상태를 읽어 check_transition으로 검사한 뒤 바꾼다. 안 되면 InvalidRunTransition."""
+        """지금 상태를 읽어 check_transition으로 검사한 뒤 바꾼다. 안 되면 InvalidRunTransition.
+
+        expected를 주면 지금 상태가 그것일 때만 바꾼다.
+        """
         ...
 
     def set_current_step(self, run_id: str, step: str) -> None: ...

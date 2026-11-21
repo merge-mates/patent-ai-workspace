@@ -58,8 +58,17 @@ def check_transition(
     *,
     error: RunError | None = None,
     waiting_for: str | None = None,
+    expected: RunState | None = None,
 ) -> None:
-    """current -> new 가 되는지 확인한다. 안 되면 InvalidRunTransition."""
+    """current -> new 가 되는지 확인한다. 안 되면 InvalidRunTransition.
+
+    expected를 주면 지금 상태가 그것일 때만 바꾼다 (조건부 전이).
+    예: 취소는 "queued일 때만 바로 cancelled". 읽은 직후 실행기가 running으로 바꿨으면 거부된다.
+    """
+    if expected is not None and current != expected:
+        raise InvalidRunTransition(
+            f"실행 상태가 {expected.value}일 때만 바꾼다 (지금은 {current.value})"
+        )
     if new not in _ALLOWED[current]:
         raise InvalidRunTransition(
             f"실행 상태를 {current.value}에서 {new.value}(으)로 바꿀 수 없다"

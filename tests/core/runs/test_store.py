@@ -136,3 +136,12 @@ def test_record_skipped와_skipped_steps는_기록한_순서로_돌려준다(sto
 def test_없는_실행에_record_skipped하면_RunNotFound(store):
     with pytest.raises(RunNotFound):
         store.record_skipped("r_없음", "인용문헌 조회", "자료 없음")
+
+
+def test_expected가_다르면_상태를_안_바꾼다():
+    store = InMemoryRunStore()
+    run = store.create_queued("oa_1")
+    store.transition(run.id, RunState.RUNNING)
+    with pytest.raises(InvalidRunTransition):
+        store.transition(run.id, RunState.CANCELLED, expected=RunState.QUEUED)
+    assert store.get_status(run.id).state == RunState.RUNNING

@@ -59,6 +59,7 @@ class PostgresRunStatusStore:
         current_step: str | None = None,
         waiting_for: str | None = None,
         error: RunError | None = None,
+        expected: RunState | None = None,
     ) -> RunStatus:
         with self._factory() as s:
             # 줄을 잠그고 지금 DB 값을 읽는다. 끝나는 순간과 겹치면 먼저 쓴 쪽이 이기고,
@@ -66,7 +67,9 @@ class PostgresRunStatusStore:
             run = s.get(Run, run_id, with_for_update=True, populate_existing=True)
             if run is None:
                 raise RunNotFound(run_id)
-            check_transition(RunState(run.state), new, error=error, waiting_for=waiting_for)
+            check_transition(
+                RunState(run.state), new, error=error, waiting_for=waiting_for, expected=expected
+            )
             now = self._clock()
             run.state = new.value
             if current_step is not None:

@@ -163,15 +163,21 @@ def test_취소가_시작과_겹쳐도_결과가_저장되지_않는다(store, r
         calls["n"] += 1
         return stale if calls["n"] == 1 else real_get(run_id)
 
+    seen: dict[str, RunState] = {}
+
     def cancel_during_first_step() -> None:
         store.get_status = stale_once  # 첫 읽기는 옛 queued 값
-        request_cancel(RID, store, registry)
+        seen["response"] = request_cancel(RID, store, registry).state
         store.get_status = real_get
+        seen["during_step"] = store.get_status(RID).state
 
     steps = [Step("OA 읽는 중", cancel_during_first_step), Step("거절이유 정리 중", lambda: None)]
     make_fake_executor(store, registry, sink, steps).execute(RID, "oa_1")
+    # 단계가 도는 동안에는 running 그대로다 (표시만 하고, 단계가 끝난 뒤 cancelled)
+    assert seen == {"response": RunState.RUNNING, "during_step": RunState.RUNNING}
     assert store.get_status(RID).state == RunState.CANCELLED
     assert sink.saved == []
+    assert not registry.is_requested(RID)  # 끝나면 취소 표시도 지워진다
 
 
 def test_넘긴_단계가_있어도_다음_단계가_돌고_succeeded(store, registry, sink):

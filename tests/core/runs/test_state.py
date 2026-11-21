@@ -93,3 +93,13 @@ def test_대기인데_waiting_for_없거나_빈_글자면_거부(waiting_for):
 
 def test_RunError_to_dict():
     assert ERR.to_dict() == {"code": "model_error", "message": "모델 호출 실패"}
+
+
+def test_expected와_지금_상태가_다르면_거부한다():
+    # 조건부 전이: "queued일 때만 cancelled로" 같은 요청 (취소와 시작이 겹칠 때)
+    with pytest.raises(InvalidRunTransition):
+        check_transition(RunState.RUNNING, RunState.CANCELLED, expected=RunState.QUEUED)
+
+
+def test_expected와_지금_상태가_같으면_통과한다():
+    check_transition(RunState.QUEUED, RunState.CANCELLED, expected=RunState.QUEUED)
