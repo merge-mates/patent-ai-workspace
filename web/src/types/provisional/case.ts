@@ -23,6 +23,12 @@ export interface RunStatus extends LatestRun {
   error?: string | null
 }
 
+// POST /oas/{oa_id}/runs (다시 돌리기) 응답: 명세에 모양이 없음(임시). POST /cases 처럼 새 실행 ID만 있다고 가정한다.
+// 화면은 이 값을 읽지 않고 다시 불러온 OA의 latest_run 으로 실행을 구독한다
+export interface CreatedRun {
+  run_id: string
+}
+
 // GET /cases 의 한 줄
 export interface CaseSummary {
   case_id: string

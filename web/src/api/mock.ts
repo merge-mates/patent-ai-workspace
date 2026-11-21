@@ -15,6 +15,7 @@ import type {
   OADetail,
   OAResultResponse,
   RunStatus,
+  CreatedRun,
   UploadedDocument,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
@@ -278,10 +279,10 @@ export const mockApi = {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
-  async rerunOA(oaId: string): Promise<RunStatus> {
+  async rerunOA(oaId: string): Promise<CreatedRun> {
     const b = await byOA(oaId)
     startRun(b.oa_id)
-    return { ...runOf(b), oa_id: b.oa_id, error: null } as RunStatus
+    return { run_id: runOf(b).run_id }
   },
   async getLegalChat(_chatId: string): Promise<LegalChatView> {
     throw new ApiError('not_in_mock', 'mock에는 법률 질문 대화 보기가 없습니다', 0)
