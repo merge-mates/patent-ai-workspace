@@ -92,8 +92,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 
 실행 상태 (`GET /runs/{id}`):
 ```json
-{"run_id": "r_1", "oa_id": "oa_1", "state": "running", "current_step": "인용문헌 2건 조회 중", "error": null}
+{"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "인용문헌 조회", "reason": "인용문헌 자료 없음"}], "warnings": [{"code": "step_skipped", "message": "인용문헌 조회 단계를 건너뜀: 인용문헌 자료 없음"}]}
 ```
+`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
 
 결과 (`GET /oas/{oa_id}/oa-result`): 결과 스키마를 `result`에 그대로 담는다.
 ```json

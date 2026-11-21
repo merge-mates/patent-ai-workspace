@@ -30,9 +30,16 @@ class WaitForHuman:
 
 
 @dataclass(frozen=True)
+class Skip:
+    """단계가 돌려주면 그 단계를 skipped로 적고 다음 단계로 간다 (자료·도구 없음)."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
 class Step:
     name: str  # current_step에 보이는 한 줄
-    run: Callable[[], WaitForHuman | None]
+    run: Callable[[], WaitForHuman | Skip | None]
 
 
 class NotConnectedExecutor:
@@ -102,6 +109,12 @@ class StepRunExecutor:
             if isinstance(outcome, WaitForHuman):
                 self._finish(run_id, RunState.WAITING_FOR_HUMAN, waiting_for=outcome.waiting_for)
                 return
+            if isinstance(outcome, Skip):
+                # 넘긴 단계는 이유와 함께 남기고 계속 간다. 나머지가 성공하면 succeeded
+                logger.warning(
+                    "실행 %s의 단계 '%s'를 건너뜀: %s", run_id, step.name, outcome.reason
+                )
+                self._store.record_skipped(run_id, step.name, outcome.reason)
 
         # 마지막 단계 뒤에도 한 번 더 본다 (취소면 결과를 저장하지 않는다)
         if self._registry.is_requested(run_id):

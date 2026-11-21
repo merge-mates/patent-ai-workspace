@@ -7,7 +7,7 @@ import pytest
 from patent_ai.core.cases.store import InMemoryRunStore
 from patent_ai.core.runs.recovery import fail_unfinished_runs
 from patent_ai.core.runs.state import InvalidRunTransition, RunError, RunState
-from patent_ai.core.runs.store import RunNotFound
+from patent_ai.core.runs.store import RunNotFound, SkippedStep
 
 T0 = datetime(2099, 1, 1, tzinfo=UTC)
 
@@ -118,3 +118,16 @@ def test_시계를_받으면_latest_for_oa가_created_at으로_고름():
     s.create_queued("oa_1")
     second = s.create_queued("oa_1")
     assert s.latest_for_oa("oa_1").id == second.id
+
+
+def test_record_skipped와_skipped_steps는_기록한_순서로_돌려준다(store):
+    rid = _running(store)
+    other = _running(store)
+    store.record_skipped(rid, "인용문헌 조회", "자료 없음")
+    store.record_skipped(other, "다른 실행 단계", "무관")
+    store.record_skipped(rid, "법령 조회", "도구 없음")
+    assert store.skipped_steps(rid) == [
+        SkippedStep("인용문헌 조회", "자료 없음"),
+        SkippedStep("법령 조회", "도구 없음"),
+    ]
+    assert store.skipped_steps("r_없음") == []

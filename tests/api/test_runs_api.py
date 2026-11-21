@@ -27,6 +27,7 @@ from tests.core.runs.fake_executor import (
     cancelling_step,
     load_oa_result,
     raising_step,
+    skipping_step,
     waiting_step,
 )
 
@@ -114,6 +115,8 @@ def test_만들기_폴링_succeeded_결과가_저장된다(env):
         "current_step": "OA 읽는 중",
         "waiting_for": None,
         "error": None,
+        "skipped_steps": [],
+        "warnings": [],
     }
     assert [(o, r) for o, r, _ in env.sink.saved] == [(created["oa_id"], created["run_id"])]
 
@@ -301,3 +304,34 @@ def test_업로드_파일_마무리가_실패해도_실행이_queued로_남지_�
     status = env.runs.get_status(row.id)
     assert status.state == RunState.FAILED and status.error["code"] == "launch_failed"
     assert env.launched == []  # 실행기에는 넘기지 않았다
+
+
+def test_넘긴_단계가_있으면_succeeded와_skipped_steps_warnings가_보인다(env):
+    env.steps = [
+        skipping_step("인용문헌 조회", "자료 없음"),
+        Step("거절이유 정리 중", lambda: None),
+    ]
+    created = env.upload()
+    body = env.client.get(f"/runs/{created['run_id']}").json()
+    assert body["state"] == "succeeded"
+    assert body["skipped_steps"] == [{"step": "인용문헌 조회", "reason": "자료 없음"}]
+    assert body["warnings"] == [
+        {"code": "step_skipped", "message": "인용문헌 조회 단계를 건너뜀: 자료 없음"}
+    ]
+    assert len(env.sink.saved) == 1  # 넘겨도 결과는 저장된다
+
+
+def test_넘긴_단계가_없으면_skipped_steps_warnings는_빈_목록(env):
+    created = env.upload()
+    body = env.client.get(f"/runs/{created['run_id']}").json()
+    assert body["skipped_steps"] == [] and body["warnings"] == []
+
+
+def test_취소_응답도_같은_모양으로_넘긴_단계를_준다(env):
+    env.steps = [skipping_step("인용문헌 조회", "자료 없음"), waiting_step("사람 확인", "reviewer")]
+    created = env.upload()
+    res = env.client.post(f"/runs/{created['run_id']}/cancel")
+    body = res.json()
+    assert body["state"] == "cancelled"
+    assert body["skipped_steps"] == [{"step": "인용문헌 조회", "reason": "자료 없음"}]
+    assert body["warnings"][0]["code"] == "step_skipped"

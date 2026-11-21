@@ -8,7 +8,7 @@ from pathlib import Path
 
 from patent_ai.core.cases.store import InMemoryRunStore
 from patent_ai.core.runs.cancel import CancelRegistry
-from patent_ai.core.runs.executor import Step, StepRunExecutor, WaitForHuman
+from patent_ai.core.runs.executor import Skip, Step, StepRunExecutor, WaitForHuman
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunStatus
 from patent_ai.core.schemas.oa_result import OAResult
@@ -106,3 +106,7 @@ def cancelling_step(
 
 def recording_step(name: str, log: list[str]) -> Step:
     return Step(name, lambda: log.append(name))
+
+
+def skipping_step(name: str, reason: str) -> Step:
+    return Step(name, lambda: Skip(reason))

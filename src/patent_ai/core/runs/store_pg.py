@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 from patent_ai.core.cases.store import now_utc
 from patent_ai.core.runs.state import FINISHED_STATES, RunError, RunState, check_transition
-from patent_ai.core.runs.store import RunNotFound, RunStatus
-from patent_ai.db.models import Run
+from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
+from patent_ai.db.models import AgentStep, Run
 
 
 def _status(r: Run) -> RunStatus:
@@ -81,6 +81,31 @@ class PostgresRunStatusStore:
                 raise RunNotFound(run_id)
             run.current_step = step
             s.commit()
+
+    def record_skipped(self, run_id: str, step: str, reason: str) -> None:
+        # 넘긴 단계 한 줄을 agent_steps에 적고 바로 커밋한다 (폴링하는 쪽이 보게)
+        with self._factory() as s:
+            if s.get(Run, run_id) is None:
+                raise RunNotFound(run_id)
+            s.add(
+                AgentStep(
+                    run_id=run_id,
+                    step_kind="code_tool",
+                    tool_name=step,
+                    outcome="skipped",
+                    reason=reason,
+                )
+            )
+            s.commit()
+
+    def skipped_steps(self, run_id: str) -> list[SkippedStep]:
+        with self._factory() as s:
+            q = (
+                select(AgentStep)
+                .where(AgentStep.run_id == run_id, AgentStep.outcome == "skipped")
+                .order_by(AgentStep.id)  # id는 자동 증가라 기록 순서
+            )
+            return [SkippedStep(r.tool_name, r.reason or "") for r in s.scalars(q)]
 
     def unfinished_run_ids(self) -> list[str]:
         with self._factory() as s:

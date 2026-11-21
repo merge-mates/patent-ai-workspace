@@ -1165,6 +1165,18 @@ components:
           anyOf:
           - $ref: '#/components/schemas/RunErrorOut'
           - type: 'null'
+        skipped_steps:
+          items:
+            $ref: '#/components/schemas/SkippedStepOut'
+          type: array
+          title: Skipped Steps
+          default: []
+        warnings:
+          items:
+            $ref: '#/components/schemas/RunWarningOut'
+          type: array
+          title: Warnings
+          default: []
       type: object
       required:
       - run_id
@@ -1173,6 +1185,32 @@ components:
       - current_step
       - error
       title: RunStatusOut
+    RunWarningOut:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: RunWarningOut
+    SkippedStepOut:
+      properties:
+        step:
+          type: string
+          title: Step
+        reason:
+          type: string
+          title: Reason
+      type: object
+      required:
+      - step
+      - reason
+      title: SkippedStepOut
     Status:
       properties:
         value:

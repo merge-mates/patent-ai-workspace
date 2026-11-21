@@ -5,7 +5,7 @@ import pytest
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
 from patent_ai.core.runs.executor import NotConnectedExecutor, Step
 from patent_ai.core.runs.state import RunState
-from patent_ai.core.runs.store import RunNotFound
+from patent_ai.core.runs.store import RunNotFound, SkippedStep
 from tests.core.runs.fake_executor import (
     FailingSink,
     MemorySink,
@@ -15,6 +15,7 @@ from tests.core.runs.fake_executor import (
     make_fake_executor,
     raising_step,
     recording_step,
+    skipping_step,
     waiting_step,
 )
 
@@ -171,3 +172,21 @@ def test_취소가_시작과_겹쳐도_결과가_저장되지_않는다(store, r
     make_fake_executor(store, registry, sink, steps).execute(RID, "oa_1")
     assert store.get_status(RID).state == RunState.CANCELLED
     assert sink.saved == []
+
+
+def test_넘긴_단계가_있어도_다음_단계가_돌고_succeeded(store, registry, sink):
+    log: list[str] = []
+    steps = [
+        skipping_step("인용문헌 조회", "인용문헌 자료 없음"),
+        recording_step("거절이유 정리 중", log),
+    ]
+    make_fake_executor(store, registry, sink, steps).execute(RID, "oa_1")
+    assert store.get_status(RID).state == RunState.SUCCEEDED
+    assert log == ["거절이유 정리 중"]
+    assert len(sink.saved) == 1
+    assert store.skipped_steps(RID) == [SkippedStep("인용문헌 조회", "인용문헌 자료 없음")]
+
+
+def test_넘긴_단계가_없으면_skipped_steps는_빈_목록(store, registry, sink):
+    make_fake_executor(store, registry, sink).execute(RID, "oa_1")
+    assert store.skipped_steps(RID) == []

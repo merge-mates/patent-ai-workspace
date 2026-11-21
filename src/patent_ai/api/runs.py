@@ -19,6 +19,7 @@ from patent_ai.core.cases.start_run import OANotFoundError, RunInProgressError, 
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
 from patent_ai.core.runs.launcher import LaunchFailedError, RunLauncher, launch_or_fail
 from patent_ai.core.runs.store import RunNotFound, RunStatus, RunStatusStore
+from patent_ai.core.runs.warnings import skipped_step_warnings
 
 router = APIRouter()
 
@@ -32,6 +33,16 @@ class RunErrorOut(BaseModel):
     message: str
 
 
+class SkippedStepOut(BaseModel):
+    step: str
+    reason: str
+
+
+class RunWarningOut(BaseModel):
+    code: str
+    message: str
+
+
 class RunStatusOut(BaseModel):
     run_id: str
     oa_id: str
@@ -39,9 +50,12 @@ class RunStatusOut(BaseModel):
     current_step: str | None
     waiting_for: str | None = None  # 사람을 기다릴 때만
     error: RunErrorOut | None  # 실패했을 때만 {code, message}
+    skipped_steps: list[SkippedStepOut] = []  # 자료·도구가 없어 넘긴 단계
+    warnings: list[RunWarningOut] = []  # 넘긴 단계마다 step_skipped 하나
 
 
-def _out(s: RunStatus) -> RunStatusOut:
+def _out(s: RunStatus, store: RunStatusStore) -> RunStatusOut:
+    skipped = store.skipped_steps(s.run_id)
     return RunStatusOut(
         run_id=s.run_id,
         oa_id=s.oa_id,
@@ -49,6 +63,10 @@ def _out(s: RunStatus) -> RunStatusOut:
         current_step=s.current_step,
         waiting_for=s.waiting_for,
         error=RunErrorOut(**s.error) if s.error else None,
+        skipped_steps=[SkippedStepOut(step=k.step, reason=k.reason) for k in skipped],
+        warnings=[
+            RunWarningOut(code=w.code, message=w.message) for w in skipped_step_warnings(skipped)
+        ],
     )
 
 
@@ -85,7 +103,7 @@ def get_run(
     status = store.get_status(run_id)
     if status is None:
         raise AppError(404, "run_not_found", "실행을 찾을 수 없습니다")
-    return _out(status)
+    return _out(status, store)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=RunStatusOut)
@@ -96,7 +114,7 @@ def cancel_run(
 ) -> RunStatusOut:
     try:
         # queued·waiting_for_human은 바로 cancelled, running은 표시만 (응답 state는 running 그대로)
-        return _out(request_cancel(run_id, store, registry))
+        return _out(request_cancel(run_id, store, registry), store)
     except RunNotFound:
         raise AppError(404, "run_not_found", "실행을 찾을 수 없습니다") from None
     except RunAlreadyFinished:

@@ -7,7 +7,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
@@ -15,9 +15,9 @@ from patent_ai.core.cases.store import NewDocument
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore, PostgresRunStore
 from patent_ai.core.runs.recovery import fail_unfinished_runs
 from patent_ai.core.runs.state import InvalidRunTransition, RunError, RunState
-from patent_ai.core.runs.store import RunNotFound
+from patent_ai.core.runs.store import RunNotFound, SkippedStep
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
-from patent_ai.db.models import Run
+from patent_ai.db.models import AgentStep, Run
 from patent_ai.settings import get_settings
 from tests.core.runs.fake_executor import load_oa_result
 
@@ -130,3 +130,17 @@ def test_결과_저장과_최근_succeeded만_읽음(factory):
     got = results.latest_succeeded_oa_result(oa_id)
     assert got.run_id == second
     assert got.result == load_oa_result()
+
+
+def test_record_skipped_왕복은_agent_steps에_skipped로_남는다(factory):
+    _, rid = _new_run(factory, "db_skipped_" + "f" * 20)
+    store = PostgresRunStatusStore(factory)
+    store.record_skipped(rid, "인용문헌 조회", "자료 없음")
+    store.record_skipped(rid, "법령 조회", "도구 없음")
+    assert store.skipped_steps(rid) == [
+        SkippedStep("인용문헌 조회", "자료 없음"),
+        SkippedStep("법령 조회", "도구 없음"),
+    ]
+    with factory() as other:
+        rows = list(other.scalars(select(AgentStep).where(AgentStep.run_id == rid)))
+        assert {(r.step_kind, r.outcome) for r in rows} == {("code_tool", "skipped")}

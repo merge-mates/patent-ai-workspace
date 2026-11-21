@@ -24,7 +24,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     DuplicateDocumentError,
 )
 from patent_ai.core.runs.state import RunError, RunState, check_transition
-from patent_ai.core.runs.store import RunNotFound, RunStatus
+from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
 from patent_ai.db.ids import new_id
 
 __all__ = [
@@ -226,6 +226,7 @@ class InMemoryRunStore:
         self._rows: list[RunRow] = []
         # 상태 칸 전체 (RunRow에 없는 waiting_for·error 포함). 실행은 백그라운드 스레드라 잠근다
         self._status: dict[str, RunStatus] = {}
+        self._skipped: dict[str, list[SkippedStep]] = {}  # 실행별 넘긴 단계 (기록 순서)
         self._lock = threading.Lock()
 
     def create_queued(self, oa_id: str) -> RunRow:
@@ -292,6 +293,16 @@ class InMemoryRunStore:
             if cur is None:
                 raise RunNotFound(run_id)
             self._put(cur.model_copy(update={"current_step": step}))
+
+    def record_skipped(self, run_id: str, step: str, reason: str) -> None:
+        with self._lock:
+            if run_id not in self._status:
+                raise RunNotFound(run_id)
+            self._skipped.setdefault(run_id, []).append(SkippedStep(step, reason))
+
+    def skipped_steps(self, run_id: str) -> list[SkippedStep]:
+        with self._lock:
+            return list(self._skipped.get(run_id, []))
 
     def unfinished_run_ids(self) -> list[str]:
         unfinished = {RunState.QUEUED, RunState.RUNNING}
