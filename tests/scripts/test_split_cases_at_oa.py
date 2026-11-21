@@ -448,3 +448,27 @@ def test_audit_skips_non_oa_subfolders_with_warning(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "OA 폴더 1개" in captured.out
     assert "건너뜀" in captured.err and "pages" in captured.err
+
+
+# --- #159: report 입력은 사람이 --allow-report로 한 번 만든다 ---
+
+
+def test_allow_report_cuts_report_bundle_into_sealed_output(tmp_path, capsys):
+    src = tmp_path / "goldsets" / "report" / "case_full"
+    _make_case(src)
+    out = tmp_path / "processed" / "report" / "cases"
+    args = ["--src", str(src), "--out", str(out), "--write", "--allow-report"]
+    assert main(args) == 0
+    assert (out / APP / OA1 / f"{APP}_행정이력.txt").exists()
+    assert main(["--audit", str(out), "--allow-report"]) == 0
+
+
+def test_allow_report_refuses_output_outside_sealed_folder(tmp_path, capsys):
+    # report 입력이 개발 세션이 읽는 data/processed/cases 같은 곳에 섞이지 않게
+    src = tmp_path / "goldsets" / "report" / "case_full"
+    _make_case(src)
+    out = tmp_path / "processed" / "cases"
+    assert main(["--src", str(src), "--out", str(out), "--write", "--allow-report"]) == 1
+    assert not out.exists()
+    assert main(["--audit", str(out), "--allow-report"]) == 1
+    assert "report" in capsys.readouterr().err

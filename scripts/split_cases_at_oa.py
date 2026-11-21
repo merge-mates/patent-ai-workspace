@@ -14,6 +14,9 @@
   uv run python scripts/split_cases_at_oa.py --src <받은 묶음 폴더> --out data/processed/cases
   ... --write --log work/split_cases_<날짜>.log   # 실제로 쓰기, 파일 이름 목록은 git 밖 로그로
   uv run python scripts/split_cases_at_oa.py --audit data/processed/cases   # 다 쓴 뒤 새는 것 세기
+report 입력 (마일스톤 끝 채점용, 사람이 터미널에서 직접. Claude는 report 경로를 열지 않는다, #159):
+  ... --src data/goldsets/report/case_full --out data/processed/report/cases --allow-report --write
+  ... --audit data/processed/report/cases --allow-report
 출력에는 원문 글자를 넣지 않는다. 대상 폴더가 하나라도 이미 있으면 아무것도 안 쓰고 멈춘다.
 --src는 받은 묶음 폴더다. tune은 정답 쪽 `data/goldsets/tune/case_full/`에 있어 이 스크립트가
 거기를 읽는다 (입력을 만드는 데이터 준비 단계라 예외. 앱 코드는 여전히 goldsets를 읽지 않는다).
@@ -271,16 +274,33 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--write", action="store_true", help="실제로 쓴다 (없으면 마른 실행)")
     ap.add_argument("--log", type=Path, help="파일 이름 목록 로그 (git 밖, 예: work/...)")
     ap.add_argument("--audit", type=Path, help="이 입력 폴더를 검사만 한다")
+    ap.add_argument(
+        "--allow-report",
+        action="store_true",
+        help="사람만 쓴다: report 묶음을 자른다. 출력·검사 폴더도 report 경로여야 한다",
+    )
     args = ap.parse_args(argv)
 
-    # report는 봉인: 경로(링크를 따라간 실제 경로 포함)에 report가 있으면 열기 전에 멈춘다
-    for path in (args.src, args.out, args.audit, args.log):
-        if path and any(
+    def sealed(path: Path) -> bool:
+        return any(
             part == "report" or part.startswith("_report")
             for part in (*path.parts, *path.resolve().parts)
-        ):
-            print(f"봉인된 report 경로라 열지 않음: {path}", file=sys.stderr)
-            return 1
+        )
+
+    if args.allow_report:
+        # report 입력이 개발 세션이 읽는 data/processed/cases에 섞이지 않게
+        # 출력도 봉인 자리만 (#159)
+        for path in (args.out, args.audit):
+            if path and not sealed(path):
+                msg = f"--allow-report면 출력·검사 폴더도 report 경로여야 함: {path}"
+                print(msg, file=sys.stderr)
+                return 1
+    else:
+        # report는 봉인: 경로(링크를 따라간 실제 경로 포함)에 report가 있으면 열기 전에 멈춘다
+        for path in (args.src, args.out, args.audit, args.log):
+            if path and sealed(path):
+                print(f"봉인된 report 경로라 열지 않음: {path}", file=sys.stderr)
+                return 1
 
     if args.audit:
         problems = audit(args.audit)
