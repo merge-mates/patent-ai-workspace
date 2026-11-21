@@ -2,6 +2,8 @@ import { Button, Empty, Result, Segmented } from 'antd'
 import { useLoaderData, useNavigate, useRouteLoaderData, useSearchParams, Link } from 'react-router'
 import { API_MODE } from '../../api'
 import { HumanCheckTag } from '../../components/Marks'
+import { isRunEnded } from '../../runPoll'
+import { useRunSnapshot } from '../../useRunSnapshot'
 import { StatusTag } from '../../components/StatusTag'
 import { claimRange } from '../../format'
 import { articleLabel, COMPARE_UNVERIFIED_TEXT, rejectionKindLabel } from '../../labels'
@@ -19,8 +21,11 @@ const unitLabel = (u: JudgmentUnit, all: JudgmentUnit[]) =>
 // 3 인용발명 대비: 묶음을 고르면 그 묶음의 핵심(AI 제안) → 구성요소 표(또는 명확성 줄) → 대응 방향으로
 export function ComparePage() {
   const { units, comparisons, clarity, legal } = useLoaderData() as CompareLoaderData
-  const { oa, oaResult } = useRouteLoaderData('oa') as OALoaderData
+  const { oa, oaResult, ready } = useRouteLoaderData('oa') as OALoaderData
   const navigate = useNavigate()
+  // 실행 중이면 대응 방향 결과가 아직 없을 수 있다 (없는 화면을 열면 result_not_ready 오류가 뜨던 곳)
+  const { run } = useRunSnapshot(oa.latest_run)
+  const running = !isRunEnded(run.state)
   // 고른 묶음은 주소(?unit=)에 둔다: 새로고침·다시 열기 뒤에도 같은 묶음
   const [params, setParams] = useSearchParams()
 
@@ -86,8 +91,8 @@ export function ComparePage() {
         </Link>
       )}
       <div>
-        <Button type="primary" size="large" onClick={() => navigate(`/oas/${oa.oa_id}/directions`)}>
-          대응 방향으로
+        <Button type="primary" size="large" disabled={!ready.directions} onClick={() => navigate(`/oas/${oa.oa_id}/directions`)}>
+          {!ready.directions && running ? '대응 방향이 끝나면 열려요' : '대응 방향으로'}
         </Button>
       </div>
     </div>

@@ -158,7 +158,11 @@ export function DraftsPage() {
               type="info"
               showIcon
               message="방향을 골랐어요. 이 묶음의 초안은 실행을 다시 돌리면 만들어져요 · 다시 만들어야 함"
-              description={API_MODE === 'mock' ? 'mock 예시 초안은 바뀌지 않아요' : undefined}
+              description={
+                API_MODE === 'mock'
+                  ? '고른 방향은 새로고침해도 남아요. 다만 초안을 새로 만드는 API가 아직 없어, mock에서는 이 묶음의 초안이 예시에 없는 채로 보여요. 서버가 오면 실행을 다시 돌려 만들어요.'
+                  : undefined
+              }
             />
           ) : (
             <Space wrap>
