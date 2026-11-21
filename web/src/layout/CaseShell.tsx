@@ -198,7 +198,8 @@ export function CaseShell() {
                 {w}
               </div>
             ))}
-            {run !== null && (!isRunEnded(run.state) || runError !== null) && (
+            {/* 사람 기다림은 폴링이 멈춘 상태지만 방향을 고른 뒤 다시 받아야 해서 버튼은 둔다 */}
+            {run !== null && (!isRunEnded(run.state) || run.state === 'waiting_for_human' || runError !== null) && (
               <div className="label2 t3" style={{ marginTop: 8 }}>
                 {runError !== null && <span>상태를 받지 못했어요 · </span>}
                 <Button type="link" size="small" onClick={() => void refreshRun(run.run_id)}>

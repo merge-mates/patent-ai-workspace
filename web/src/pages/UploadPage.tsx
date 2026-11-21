@@ -117,7 +117,8 @@ function UploadProgress({ data }: { data: OALoaderData }) {
           <Steps direction="vertical" size="small" current={doneCount} items={items} />
           <RunNotice oaId={oa.oa_id} snap={snap} />
           <span className="label2 t3">조회는 이 통지서 시점까지만 해요. 그 뒤 보정서·등록 청구항은 넣지 않아요.</span>
-          {(!ended || runError !== null) && (
+          {/* 사람 기다림은 폴링이 멈춘 상태지만 새로 보기는 눌러 볼 수 있게 둔다 */}
+          {(!ended || run.state === 'waiting_for_human' || runError !== null) && (
             <div className="label2 t3">
               {runError !== null && <span>상태를 받지 못했어요 · </span>}
               <Button type="link" size="small" onClick={() => void refreshRun(run.run_id)}>
