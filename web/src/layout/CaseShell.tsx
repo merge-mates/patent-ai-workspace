@@ -60,8 +60,12 @@ export function CaseShell() {
   const openSource: OpenSource = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
     setEvidence(null)
-    setSrcOpen(true)
-    if (scroll) scrollToPanel()
+    // scroll=false("자세히"로 줄을 펼칠 때)는 판을 새로 펴지 않는다: 열려 있을 때만 문서를 바꾸고 접힘은 그대로.
+    // 쪽 링크·근거 링크를 직접 누를 때(scroll=true)만 편다
+    if (scroll) {
+      setSrcOpen(true)
+      scrollToPanel()
+    }
   }
   // 법률 근거 열기: 근거 글(raw_text)을 판에 보인다
   const openEvidence: OpenEvidence = (src, checkedOn) => {

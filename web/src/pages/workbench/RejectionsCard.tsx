@@ -4,7 +4,9 @@ import { useContext, useState } from 'react'
 import { useLocation } from 'react-router'
 import { FieldValue } from '../../components/FieldValue'
 import { AiResultMark, HumanCheckTag } from '../../components/Marks'
+import { candidatesText } from '../../components/extracted'
 import { RejectionLaw } from '../../components/RejectionLaw'
+import { HintsCard } from './HintsCard'
 import { SourceLink } from '../../components/SourceLink'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
@@ -207,6 +209,7 @@ function ClaimDetail({ rows, byNo }: { rows: ClaimRow[]; byNo: Map<number, Rejec
         dataSource={rows}
         pagination={false}
         scroll={{ x: 640 }}
+        locale={{ emptyText: '청구항 줄 없음 (AI가 다루지 않는 거절이유예요)' }}
       />
     </div>
   )
@@ -234,7 +237,11 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
 
   // 심사 대상 청구항 수와, 그중 거절이유가 걸린 청구항 수 (데이터에 있는 값만)
   const examined = r.examined_claims.value
-  const rejected = new Set(r.claim_rows.map((x) => x.claim).filter((c): c is number => c !== null))
+  // 거절이유가 걸린 청구항 = 청구항 줄이 있는 것 + 거절이유의 대상 청구항 (AI가 다루지 않는 거절이유는 줄이 없다)
+  const rejected = new Set([
+    ...r.claim_rows.map((x) => x.claim).filter((c): c is number => c !== null),
+    ...r.rejections.flatMap((x) => x.claims.value ?? []),
+  ])
   const allowable = r.examiner_hints.allowable_claims.value
   const summary = [
     examined ? `청구항 ${examined.length}개 중 ${rejected.size}개` : null,
@@ -245,7 +252,10 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
 
   const byNo = new Map(r.rejections.map((x) => [x.no, x]))
   // 청구항별: 청구항 번호로 모은다 (모름(null)은 맨 뒤)
-  const claimNos = [...new Set(r.claim_rows.map((x) => x.claim))].sort((a, b) => (a ?? 9999) - (b ?? 9999))
+  const claimNos = [...new Set<number | null>([...r.claim_rows.map((x) => x.claim), ...rejected])].sort(
+    (a, b) => (a ?? 9999) - (b ?? 9999),
+  )
+  const allowableNote = r.examiner_hints.allowable_claims
 
   return (
     <div id="rejections" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -265,6 +275,10 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
             { label: '청구항별', value: 'claim' },
           ]}
         />
+      </div>
+      {/* 심사관 참고사항은 제목 줄 바로 아래 (AI 결과 묶음 안) */}
+      <div style={{ marginBottom: 8 }}>
+        <HintsCard h={r.examiner_hints} />
       </div>
       {r.rejections.length === 0 && <Empty description="거절이유를 찾지 못했습니다 (확인되지 않음)" />}
       {cur.view === 'rejection'
@@ -298,27 +312,67 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
               </Row>
             )
           })
-        : claimNos.map((no) => {
-            const id = `c${no}`
-            const rows = r.claim_rows.filter((row) => row.claim === no)
-            const nos = [...new Set(rows.map((x) => x.rejection))]
-            const rejs = nos.map((n) => (n === null ? undefined : byNo.get(n)))
-            // 거절이유가 둘 이상이거나 AI가 다루지 않는 것이 걸렸으면 직접 검토
-            const inUnsupported = no !== null && r.rejections.some((x) => !x.supported && x.claims.value?.includes(no))
-            const warn = nos.length >= 2 || rejs.some((x) => !x || !x.supported) || inUnsupported
-            return (
-              <Row
-                key={id}
-                title={no === null ? '청구항 모름' : `청구항 ${no}`}
-                sub={rejs.map((x) => (x ? `거절이유 ${x.no} ${rejectionKindLabel[x.kind]}` : '거절이유 모름')).join(' · ')}
-                tags={warn && <Tag color="warning" bordered={false}>직접 검토 필요</Tag>}
-                open={cur.open.includes(id)}
-                onToggle={() => toggle(id)}
+        : <>
+            {claimNos.map((no) => {
+              const id = `c${no}`
+              const rows = r.claim_rows.filter((row) => row.claim === no)
+              // 걸린 거절이유 = 청구항 줄의 거절이유 + 대상 청구항에 이 청구항이 든 거절이유 (합쳐서 번호순)
+              const nos = [
+                ...new Set<number | null>([
+                  ...rows.map((x) => x.rejection),
+                  ...(no === null ? [] : r.rejections.filter((x) => x.claims.value?.includes(no)).map((x) => x.no)),
+                ]),
+              ].sort((a, b) => (a ?? 9999) - (b ?? 9999))
+              const rejs = nos.map((n) => (n === null ? undefined : byNo.get(n)))
+              // 거절이유가 둘 이상이거나 AI가 다루지 않는 것이 걸렸으면 직접 검토
+              const warn = nos.length >= 2 || rejs.some((x) => !x || !x.supported)
+              return (
+                <Row
+                  key={id}
+                  title={no === null ? '청구항 모름' : `청구항 ${no}`}
+                  sub={rejs
+                    .map((x) =>
+                      x
+                        ? `거절이유 ${x.no} ${rejectionKindLabel[x.kind]}${x.supported ? '' : ' (AI가 다루지 않음)'}`
+                        : '거절이유 모름',
+                    )
+                    .join(' · ')}
+                  tags={warn && <Tag color="warning" bordered={false}>직접 검토 필요</Tag>}
+                  open={cur.open.includes(id)}
+                  onToggle={() => toggle(id)}
+                >
+                  <ClaimDetail rows={rows} byNo={byNo} />
+                </Row>
+              )
+            })}
+            {/* 거절이유가 없고 심사관이 특허 가능하다고 한 청구항: 줄 하나 (상태 꼬리표 규칙 같음) */}
+            {allowableNote.value && allowableNote.value.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  padding: '16px 0',
+                  borderBottom: '1px solid var(--line-neutral-tertiary)',
+                }}
               >
-                <ClaimDetail rows={rows} byNo={byNo} />
-              </Row>
-            )
-          })}
+                <span className="headline2" style={{ width: 120 }}>
+                  청구항 {claimRange(allowableNote.value)}
+                </span>
+                <span className="body2 t2" style={{ flex: '1 1 240px' }}>
+                  거절이유 없음 · 심사관이 특허 가능하다고 함
+                  {allowableNote.candidates.length > 0 && ` (후보: ${candidatesText(allowableNote)})`}
+                </span>
+                {allowableNote.status.value !== 'confirmed' && <StatusTag status={allowableNote.status} detail={false} />}
+                <SourceLink
+                  page={allowableNote.page}
+                  rawText={allowableNote.raw_text}
+                  candidate={allowableNote.status.value !== 'confirmed'}
+                />
+              </div>
+            )}
+          </>}
     </div>
   )
 }

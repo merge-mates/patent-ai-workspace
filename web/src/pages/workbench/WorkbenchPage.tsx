@@ -7,7 +7,6 @@ import { TodoRows } from '../../components/TodoList'
 import { runStateLabel } from '../../labels'
 import type { OALoaderData } from '../../loaders'
 import { directTodos } from '../../todos'
-import { HintsCard } from './HintsCard'
 import { MaterialsCard } from './MaterialsCard'
 import { RejectionsCard } from './RejectionsCard'
 
@@ -55,7 +54,6 @@ export function WorkbenchPage() {
       </div>
 
       <RejectionsCard r={r} legal={data.legal} />
-      <HintsCard h={r.examiner_hints} />
       {materials ? (
         <MaterialsCard m={materials} r={r} />
       ) : (

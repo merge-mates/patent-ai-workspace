@@ -1,6 +1,7 @@
 import { UploadOutlined } from '@ant-design/icons'
 import { Button, Tooltip } from 'antd'
 import { useState } from 'react'
+import { useLocation } from 'react-router'
 import { HumanCheckTag } from '../../components/Marks'
 import { StatusTag } from '../../components/StatusTag'
 import { lookupResultLabel, materialKindLabel, sourceLabel } from '../../labels'
@@ -19,8 +20,10 @@ const lineStyle = {
 // 사건 자료: "사건 자료 N건" 제목 줄. 찾아온 자료(documents) · 못 가져온 자료(missing) · 보류한 작업(held_tasks)을 줄로.
 // 빠진 자료가 있으면 펼쳐서 보이고, 없으면 접고 "자세히". 직접 누른 것이 그 뒤를 이긴다
 export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
-  const [pressed, setPressed] = useState<boolean | null>(null)
-  const open = pressed ?? m.missing.length > 0
+  // 펼침: 누른 것은 그때의 주소 key와 묶는다. 새 주소(#materials, 직접 할 일 "자료 보기")로 오면 펼쳐서 보인다 (effect 없이 계산)
+  const location = useLocation()
+  const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
+  const open = pressed?.key === location.key ? pressed.open : location.hash === '#materials' || m.missing.length > 0
   const count = m.documents.length + m.missing.length
 
   return (
@@ -30,7 +33,7 @@ export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
           사건 자료 {count}건
         </h2>
         {m.missing.length > 0 && <span className="label1 t3">못 가져온 자료 {m.missing.length}건</span>}
-        <Button type="link" onClick={() => setPressed(!open)}>
+        <Button type="link" onClick={() => setPressed({ key: location.key, open: !open })}>
           {open ? '접기' : '자세히'}
         </Button>
       </div>
@@ -57,7 +60,7 @@ export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
                 {x.what}
               </span>
               <span className="body2 t2" style={{ flex: '1 1 240px' }}>
-                {lookupResultLabel[x.lookup_result]}
+                {[lookupResultLabel[x.lookup_result], '판 모름', '자동 조회'].join(' · ')}
               </span>
               {x.lookup_result === 'unsupported_country' ? (
                 <HumanCheckTag>직접 확인</HumanCheckTag>
