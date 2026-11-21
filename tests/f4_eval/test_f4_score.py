@@ -660,6 +660,19 @@ def test_merged_into가_문자열_목록이면_거부한다():
         F4Gold.model_validate(gold([deleted_row(merged_into=["claim:1"])]))
 
 
+@pytest.mark.parametrize("value", [["1"], [0]])
+def test_merged_into는_1_이상_정수만_받는다(value):
+    # 문자열 "1"이 조용히 1로 바뀌지 않게 strict로 받는다
+    with pytest.raises(ValidationError):
+        F4Gold.model_validate(gold([deleted_row(merged_into=value)]))
+
+
+def test_merged_into는_삭제_줄에만_둔다():
+    with pytest.raises(ValidationError):
+        added = row(1, 1, "amend_and_argue", kinds=("add",)) | {"merged_into": [2]}
+        F4Gold.model_validate(gold([added]))
+
+
 # ---- 채점 명령 하나로 불림 ----
 def test_run_eval이_feature_f4로_이_채점기를_부른다(env):
     assert run_eval.SCORERS["f4"] is main
