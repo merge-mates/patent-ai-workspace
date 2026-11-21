@@ -69,6 +69,8 @@ from patent_ai.retrieval.schemas import Chunk, SearchResult
 logger = logging.getLogger(__name__)
 
 STEP = "f3.compare"
+# 설정 compare_variant=recall일 때 쓰는 단계 (프롬프트 파일만 다르고 출력 모양·검사는 같다)
+STEP_RECALL = "f3.compare_recall"
 EMBED_STEP = "f3.embed"
 _MODES = ("bm25", "vector", "hybrid")
 
@@ -438,10 +440,54 @@ def _check(
     return judged, errors
 
 
+def _compare_step(settings: F3Settings) -> str:
+    """설정 스위치(compare_variant)로 어느 대비 단계(프롬프트)를 부를지 고른다."""
+    return STEP_RECALL if settings.compare_variant == "recall" else STEP
+
+
 def _item_line(item: _Item, claim: int) -> str:
     """모델에 보여 줄 구성요소 한 줄. 부모 청구항에서 온 것은 어느 청구항 것인지 덧붙인다."""
     line = f"{item.n}: {' '.join(item.e.text.split())}"
     return line if item.e.claim == claim else f"{line} (청구항 {item.e.claim}의 구성요소)"
+
+
+def _by_element(items: list[_Item], shown: list[_Candidate]) -> str:
+    """구성요소마다 그 구성요소 검색에서 온 후보 문단(검색 순위 순)을 묶은 JSON 글.
+
+    어느 구성요소 검색에도 안 잡힌 후보(도면 설명 등)는 맨 끝 element_no null 묶음에 둔다.
+    출력 모양·근거 검사는 그대로다: 근거는 여전히 후보 chunk_id와 원문 글자로 대조한다.
+    """
+    groups = [
+        {
+            "element_no": item.n,
+            "candidates": [
+                {
+                    "chunk_id": c.chunk.chunk_id,
+                    "citation": c.label,
+                    "rank": c.ranks[item.n],
+                    "text": c.chunk.text,
+                }
+                for c in sorted(
+                    (c for c in shown if item.n in c.ranks),
+                    key=lambda c: (c.ranks[item.n], c.label, c.chunk.chunk_id),
+                )
+            ],
+        }
+        for item in items
+    ]
+    wanted = {item.n for item in items}
+    rest = [c for c in shown if not wanted & c.ranks.keys()]
+    if rest:
+        groups.append(
+            {
+                "element_no": None,
+                "candidates": [
+                    {"chunk_id": c.chunk.chunk_id, "citation": c.label, "text": c.chunk.text}
+                    for c in rest
+                ],
+            }
+        )
+    return json.dumps(groups, ensure_ascii=False, indent=1)
 
 
 def _ask(
@@ -452,6 +498,7 @@ def _ask(
     candidates: Mapping[str, _Candidate],
     min_chars: int,
     ctx: RunContext,
+    step: str = STEP,
 ) -> dict[tuple[int, str], _Judged]:
     """모델 1회. 형식이나 대조 검사에 떨어지면 검사 오류를 붙여 한 번만 더 부른다.
 
@@ -474,12 +521,17 @@ def _ask(
         ),
         "retry_note": "",
     }
+    if step == STEP_RECALL:
+        # recall 프롬프트만: 후보를 한 덩어리로 주지 않고 구성요소마다 그 검색 문단을 나눠 준다.
+        # 끔(standard) 변수·프롬프트는 그대로라 캐시 키가 안 바뀐다
+        del variables["candidates"]
+        variables["candidates_by_element"] = _by_element(items, shown)
 
     def check(answer: CompareAnswer):
         return _check(answer, claim, pairs, candidates, min_chars)
 
     who = f"compare 청구항 {claim}"
-    return call_checked(STEP, variables, CompareAnswer, check, ctx=ctx, who=who)
+    return call_checked(step, variables, CompareAnswer, check, ctx=ctx, who=who)
 
 
 # ---- 3) 줄 만들기 ----
@@ -645,7 +697,14 @@ def _second_round(
     if candidates:
         items = list({i.n: i for i, _ in missing}.values())
         again = _ask(
-            claim, view.claim_text, items, pairs, candidates, settings.min_quote_chars, ctx
+            claim,
+            view.claim_text,
+            items,
+            pairs,
+            candidates,
+            settings.min_quote_chars,
+            ctx,
+            _compare_step(settings),
         )
     else:
         logger.warning("compare 청구항 %d: 두 번째 검색에서 새 조각이 0개", claim)
@@ -678,7 +737,8 @@ def _compare_claim(
     if usable and candidates:
         min_chars = config.settings.min_quote_chars
         pairs = [(i.n, label) for i in usable for label in labels]
-        judged = _ask(claim, view.claim_text, usable, pairs, candidates, min_chars, ctx)
+        step = _compare_step(config.settings)
+        judged = _ask(claim, view.claim_text, usable, pairs, candidates, min_chars, ctx, step)
     elif usable:
         # 후보가 하나도 없으면 모델을 부르지 않는다: 모두 "조회 범위 내 없음"
         logger.warning("compare 청구항 %d: 후보 조각이 0개라 모델을 부르지 않음", claim)
