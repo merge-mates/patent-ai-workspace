@@ -22,6 +22,7 @@ KNOWN_KEYS = {
     "max_input_tokens",
     "max_retries",
     "model_input",
+    "search_k",  # f3.effect: 차이점마다 보여 줄 명세서 조각 수 (f3_claim_compare/config.py가 읽음)
 }
 
 # effort(output_config.effort)로 쓸 수 있는 값 (anthropic SDK 2.10.0 OutputConfigParam)

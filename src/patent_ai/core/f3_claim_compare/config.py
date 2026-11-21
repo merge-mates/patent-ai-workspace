@@ -35,7 +35,12 @@ def load_f3_settings(config_dir: Path | None = None) -> F3Settings:
     missing = [key for key in _SETTING_KEYS if key not in data]
     if missing:
         raise ModelConfigError(f"{path.name}에 설정 칸이 빠짐: {missing}")
+    effect = data.get("effect")
+    if not isinstance(effect, dict) or "search_k" not in effect:
+        raise ModelConfigError(f"{path.name}의 effect 칸에 search_k가 빠짐")
     try:
-        return F3Settings.model_validate({key: data[key] for key in _SETTING_KEYS})
+        return F3Settings.model_validate(
+            {**{key: data[key] for key in _SETTING_KEYS}, "effect_search_k": effect["search_k"]}
+        )
     except ValidationError as e:
         raise ModelConfigError(f"{path.name} 설정 값이 잘못됨: {e}") from e

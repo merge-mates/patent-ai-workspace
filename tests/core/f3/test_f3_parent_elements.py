@@ -415,6 +415,7 @@ def test_인용_가지가_여럿이어도_부모가_이미_대비됐으면_보�
     ]
     with caplog.at_level(logging.WARNING):
         out, _, _, _ = _run(result, answers, splits=_branch_splits())
-    assert out.held_tasks == []
+    # 가지 보류는 없다 (최초 명세서가 없어 효과 후보를 못 뽑는 보류만 남는다, 이슈 #30 C2)
+    assert [h.task for h in out.held_tasks] == ["f3_compare:oa_1:spec"]
     assert not any("인용 가지가 여럿" in r.getMessage() for r in caplog.records)
     assert out.tables[0].status.reason != UnverifiedReason.INPUT_UNVERIFIED

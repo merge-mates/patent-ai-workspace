@@ -60,6 +60,8 @@ class F3Settings(BaseModel):
     min_quote_chars: int = Field(ge=1)
     search: SearchSettings
     clarity_search: ClaritySearchSettings
+    # 효과 후보: 차이점마다 모델에 보여 줄 최초 명세서 조각 수 (config/f3.yaml effect.search_k)
+    effect_search_k: int = Field(ge=1)
 
     @model_validator(mode="after")
     def _두_번째_검색은_더_깊어야_함(self) -> F3Settings:

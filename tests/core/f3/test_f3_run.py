@@ -35,12 +35,13 @@ def test_한_바퀴를_돌면_판단_단위와_대비표와_명확성_검토가_
     (review,) = result.clarity_reviews
     assert (review.unit_id, review.claim, review.term) == ("oa_1:42-4-2:c2", 2, scenario.MODULE)
     assert len(result.search_log) == 3  # 구성요소 3개 × D1
-    # 단계 순서: 청구항 나누기 → 대비 → 명확성
+    # 단계 순서: 청구항 나누기 → 대비(독립항 먼저, 무너졌으니 종속항) → 효과 후보 → 명확성
     assert [c["step"] for c in transport.calls] == [
         "f3.split_elements",
         "f3.split_elements",
         "f3.compare",
         "f3.compare",
+        "f3.effect",
         "f3.clarity",
     ]
 

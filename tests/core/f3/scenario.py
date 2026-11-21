@@ -107,6 +107,8 @@ def responses() -> dict:
             ),
             _text({"claim": 2, "rows": [_row(1, "difference_candidate")]}),
         ],
+        # 진보성 차이점(청구항 2 제어 모듈)의 효과 문장은 명세서에 없다고 답한다 (빈 목록)
+        "f3.effect": [_text({"effects": []})],
         "f3.clarity": [
             _text(
                 {

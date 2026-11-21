@@ -302,7 +302,8 @@ def test_대비하지_않는_인용문헌은_표에_이유와_함께_남고_줄�
     assert Flag.NEEDS_HUMAN_REVIEW in table.flags
     assert {r.citation for r in table.rows} == {"D1"}
     assert all(s["doc_ids"] == [D1] for s in searches)
-    assert [h.task for h in out.held_tasks] == ["f3_compare:oa_1:D3"]
+    # 이 입력에는 최초 명세서가 없어 효과 후보를 못 뽑는 보류가 같이 남는다 (이슈 #30 C2)
+    assert [h.task for h in out.held_tasks] == ["f3_compare:oa_1:D3", "f3_compare:oa_1:spec"]
 
 
 def test_결합_진보성은_인용문헌마다_따로_찾고_줄도_따로다():
