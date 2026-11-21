@@ -81,7 +81,7 @@ erDiagram
 ## 5. DB 모델 (저장)
 컬럼 타입·제약·인덱스의 기준은 DB 모델 코드 [`src/patent_ai/db/models/`](../src/patent_ai/db/models/)와 마이그레이션이다. 여기에는 표의 뜻과 규칙만 둔다. ID는 종류 앞글자 + 무작위 글자(`c_…`, `oa_…`, `doc_…`, `r_…`)다.
 
-- 엔티티 표: `users`(기본 한 명 `u_default`, 마이그레이션이 넣음) · `cases`(`user_id`) · `case_events` · `documents`(경로·해시·출처·받은 시각, 같은 사건에 같은 해시는 한 번) · `claim_versions` · `claims` · `oas` · `rejections` · `cited_references` · N:M `rejection_claims`(OA 당시 청구항 번호), `rejection_citations`(심사관 지정 위치).
+- 엔티티 표: `users`(기본 한 명 `u_default`, 마이그레이션이 넣음) · `cases`(`user_id`) · `case_events` · `documents`(경로·해시·출처·받은 시각, 같은 사건에 같은 해시는 한 번. 인용문헌 본문이면 `citation_key` = 인용문헌 번호 값, #201) · `claim_versions` · `claims` · `oas` · `rejections` · `cited_references` · N:M `rejection_claims`(OA 당시 청구항 번호), `rejection_citations`(심사관 지정 위치).
 - 묶는 칸: 출원번호는 `cases.application_number`(출원번호를 읽기 전 임시 사건은 비어 있음), 발송번호(OA)·접수번호(보정서)는 `case_events.doc_number` 한 곳에 둔다. `oas`는 `case_events` 한 줄과 1:1이다. 날짜 칸은 표시용이고 어떤 unique에도 넣지 않는다.
 - 청구항 판: `claim_versions.source_kind`(`application` 출원서 / `amendment` 보정서 / `publication` 공개공보 / `registration` 등록공보)와 `source_doc_number`(보정서면 접수번호가 꼭 있음, 공보면 공개·등록번호)로 어느 서류의 판인지 가른다. `oas.examined_claim_version_id`가 비어 있으면 심사 대상 판은 "확인되지 않음"이다.
 - 결과 표: 결과 스키마마다 표 하나. **원본은 결과 표의 본문(`jsonb`)이다.** `status`·`origin`·`run_id`·`oa_id`는 거르기용 보통 컬럼. M1은 `oa_results`와 `case_materials`(⑥, 사건마다 최신 한 줄). ⑥은 지휘가 실행이 끝날 때·자료가 더해질 때 다시 써서 저장하고, 사건을 다시 열면 저장본을 읽는다. 스키마 검증은 Pydantic이 한다. 거절이유 엔티티 표 4개(`rejections`·`cited_references`·`rejection_claims`·`rejection_citations`)는 M1에서 비어 있고, M2에서 F3가 청구항·인용문헌으로 찾아야 할 때 결과에서 채운다.
