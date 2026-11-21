@@ -227,6 +227,7 @@ def test_F3_결과와_실행_입력_글자가_F4_입력으로_이어진다(tmp_p
     inp, f3 = seen["inp"], out.results["run_f3"]
     assert inp.oa == wired
     assert (inp.units, inp.tables, inp.clarity) == (f3.units, f3.comparisons, f3.clarity_reviews)
+    assert inp.held_tasks == f3.held_tasks  # 단위 안 보류를 F4가 후보에 표시하려고 받는다
     assert [u.unit_id for u in inp.units] == ["oa_1:29-2:c1", "oa_1:42-4-2:c2"]
     assert inp.legal == []  # F2가 없어 비어 있다 (F4가 확인되지 않음 묶음으로 채운다)
     assert [(c.claim, c.text, c.document_id) for c in inp.claims_text] == [

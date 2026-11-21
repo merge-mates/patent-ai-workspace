@@ -60,6 +60,8 @@ def f4_input(
         "units": f3.units,
         "tables": f3.comparisons,
         "clarity": f3.clarity_reviews,
+        # F3 보류: F4가 단위 안 보류(f3_compare:<unit_id>:claimN 등)를 그 묶음 후보에 표시한다
+        "held_tasks": f3.held_tasks,
         # F2 결과는 아직 없다. 비워 두면 F4가 묶음마다 "확인되지 않음" 빈 묶음을 쓴다
         "legal": [],
         "claims_text": [
