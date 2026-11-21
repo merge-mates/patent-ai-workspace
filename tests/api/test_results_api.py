@@ -180,3 +180,18 @@ def test_results_api_없는_OA면_404_oa_not_found(env):
     for n in NAMES:
         r = env.get("oa_없음", n)
         assert r.status_code == 404 and r.json()["code"] == "oa_not_found", n
+
+
+def test_results_api_저장한_결과를_못_읽으면_500이_아니라_빈_결과와_이유(env):
+    # M3에서 F3·F4 결과 칸이 바뀌어 옛 줄을 못 읽는 경우를 흉내 낸다 (#206 리뷰)
+    created = env.upload()
+    oa_id, run_id = created["oa_id"], created["run_id"]
+    for kind in ("f3", "f4"):
+        oa, _ = env.steps._rows[(run_id, kind)]
+        env.steps._rows[(run_id, kind)] = (oa, {"옛_칸": 1})
+    for n in ("units", "comparisons", "clarity-reviews", "directions", "drafts"):
+        r = env.get(oa_id, n)
+        assert r.status_code == 200, n
+        body = r.json()
+        assert body["result"] in ([], None), n
+        assert body["empty_reason"].startswith("확인되지 않음: 저장된 결과를 읽지 못함"), n

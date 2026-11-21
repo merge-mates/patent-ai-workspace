@@ -8,8 +8,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from pydantic import ValidationError
 
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.step_results import StepKind, StepResultStore
@@ -33,6 +36,10 @@ _SOURCES: dict[str, tuple[str, StepKind | None, str | None]] = {
 }
 
 EMPTY_NONE_APPLIES = "해당 거절이유 없음"
+# 저장한 본문을 지금 모델로 못 읽음 (M3에서 칸을 바꾸면 옛 줄이 이렇게 된다. 판 칸은 아직 없다)
+UNREADABLE = "확인되지 않음: 저장된 결과를 읽지 못함 (다시 실행 필요)"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -68,7 +75,12 @@ def result_view(
         return None
     run_id = saved.run_id
     tool, kind, field = _SOURCES[name]
-    body = step_results.step_result(run_id, kind) if kind else None
+    try:
+        body = step_results.step_result(run_id, kind) if kind else None
+    except ValidationError:
+        # 500으로 화면 전체를 막지 않고 그 칸만 "확인되지 않음"으로 (원인은 로그에)
+        logger.exception("실행 %s의 %s 결과를 읽지 못함", run_id, kind)
+        return ResultView(run_id, None if name == "drafts" else [], UNREADABLE, None)
     if body is None:
         empty = None if name == "drafts" else []
         return ResultView(run_id, empty, _why_missing(tool, run_id, runs), None)
