@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from patent_ai.api import cases, health, oas
+from patent_ai.api import cases, documents, health, oas
 from patent_ai.api.errors import add_error_handlers
 
 
@@ -12,6 +12,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(cases.router)
     app.include_router(oas.router)
+    app.include_router(documents.router)
     return app
 
 

@@ -7,9 +7,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from patent_ai.api.deps import get_case_unit, get_upload_dir
+from patent_ai.api.deps import get_case_repository_unit, get_case_unit, get_upload_dir
 from patent_ai.api.main import create_app
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
+from tests.api.repo_fake import FakeRepoUnit
 
 PDF_A = b"%PDF-1.7\nA"
 PDF_B = b"%PDF-1.7\nB"
@@ -44,6 +45,7 @@ def env(tmp_path):
     app = create_app()
     app.dependency_overrides[get_case_unit] = lambda: unit
     app.dependency_overrides[get_upload_dir] = lambda: tmp_path
+    app.dependency_overrides[get_case_repository_unit] = lambda: FakeRepoUnit()
     return TestClient(app, raise_server_exceptions=False), runs, tmp_path, unit
 
 

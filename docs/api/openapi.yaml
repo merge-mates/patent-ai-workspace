@@ -133,6 +133,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /cases/{case_id}/documents:
+    post:
+      summary: Upload Missing Document
+      operationId: upload_missing_document_cases__case_id__documents_post
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_missing_document_cases__case_id__documents_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadedMaterialOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Body_add_oa_cases__case_id__oas_post:
@@ -155,6 +185,48 @@ components:
       required:
       - file
       title: Body_create_case_cases_post
+    Body_upload_missing_document_cases__case_id__documents_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+        what:
+          type: string
+          title: What
+      type: object
+      required:
+      - file
+      - what
+      title: Body_upload_missing_document_cases__case_id__documents_post
+    Candidate_str_:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        source:
+          type: string
+          enum:
+          - rule
+          - model
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: Candidate[str]
     CaseDetail:
       properties:
         case_id:
@@ -165,15 +237,118 @@ components:
           title: Case Name
         oas:
           items:
-            $ref: '#/components/schemas/OARefOut'
+            $ref: '#/components/schemas/CaseOAOut'
           type: array
           title: Oas
+        events:
+          items:
+            $ref: '#/components/schemas/CaseEventOut'
+          type: array
+          title: Events
+          default: []
+        claim_versions:
+          items:
+            $ref: '#/components/schemas/ClaimVersionOut'
+          type: array
+          title: Claim Versions
+          default: []
       type: object
       required:
       - case_id
       - case_name
       - oas
       title: CaseDetail
+    CaseDocument:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        kind:
+          type: string
+          title: Kind
+        source:
+          type: string
+          title: Source
+        status:
+          $ref: '#/components/schemas/Status'
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - kind
+      - source
+      - status
+      title: CaseDocument
+    CaseEventOut:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        doc_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Doc Number
+        seq:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Seq
+      type: object
+      required:
+      - kind
+      - doc_number
+      - seq
+      title: CaseEventOut
+    CaseMaterials:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        documents:
+          items:
+            $ref: '#/components/schemas/CaseDocument'
+          type: array
+          title: Documents
+        missing:
+          items:
+            $ref: '#/components/schemas/MissingMaterial'
+          type: array
+          title: Missing
+        held_tasks:
+          items:
+            $ref: '#/components/schemas/HeldTask'
+          type: array
+          title: Held Tasks
+        review_items_count:
+          type: integer
+          minimum: 0.0
+          title: Review Items Count
+          default: 0
+      additionalProperties: false
+      type: object
+      required:
+      - case_id
+      title: CaseMaterials
+    CaseOAOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        notice_kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notice Kind
+        examined_claim_version:
+          anyOf:
+          - $ref: '#/components/schemas/ExtractedValue_str_'
+          - type: 'null'
+      type: object
+      required:
+      - oa_id
+      - notice_kind
+      title: CaseOAOut
     CaseSummary:
       properties:
         case_id:
@@ -221,6 +396,31 @@ components:
       - review_items_count
       - updated_at
       title: CaseSummary
+    ClaimVersionOut:
+      properties:
+        version:
+          type: integer
+          title: Version
+        source_kind:
+          type: string
+          title: Source Kind
+        source_doc_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Doc Number
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+      type: object
+      required:
+      - version
+      - source_kind
+      - source_doc_number
+      - document_id
+      title: ClaimVersionOut
     CreatedCase:
       properties:
         case_id:
@@ -251,6 +451,35 @@ components:
       - oa_id
       - run_id
       title: CreatedOA
+    ExtractedValue_str_:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+        candidates:
+          items:
+            $ref: '#/components/schemas/Candidate_str_'
+          type: array
+          title: Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: ExtractedValue[str]
     HTTPValidationError:
       properties:
         detail:
@@ -260,6 +489,20 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HeldTask:
+      properties:
+        task:
+          type: string
+          title: Task
+        waiting_for:
+          type: string
+          title: Waiting For
+      additionalProperties: false
+      type: object
+      required:
+      - task
+      - waiting_for
+      title: HeldTask
     LatestRun:
       properties:
         run_id:
@@ -279,6 +522,36 @@ components:
       - state
       - current_step
       title: LatestRun
+    LookupResult:
+      type: string
+      enum:
+      - lookup_failed
+      - body_missing
+      - unsupported_country
+      title: LookupResult
+      description: 빠진 자료를 조회한 결과.
+    MissingMaterial:
+      properties:
+        what:
+          type: string
+          title: What
+        depends_on_tasks:
+          items:
+            type: string
+          type: array
+          title: Depends On Tasks
+        lookup_result:
+          $ref: '#/components/schemas/LookupResult'
+        ask_upload:
+          type: boolean
+          title: Ask Upload
+      additionalProperties: false
+      type: object
+      required:
+      - what
+      - lookup_result
+      - ask_upload
+      title: MissingMaterial
     OADetail:
       properties:
         oa_id:
@@ -328,6 +601,68 @@ components:
       - oa_id
       - notice_kind
       title: OARefOut
+    Status:
+      properties:
+        value:
+          $ref: '#/components/schemas/StatusValue'
+        reason:
+          anyOf:
+          - $ref: '#/components/schemas/UnverifiedReason'
+          - type: 'null'
+        checked:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Checked
+        searched_scope:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Searched Scope
+      additionalProperties: false
+      type: object
+      required:
+      - value
+      title: Status
+      description: 상태 객체. 직렬화하면 늘 네 키(없는 키는 null).
+    StatusValue:
+      type: string
+      enum:
+      - confirmed
+      - unverified
+      - not_found_in_scope
+      - conflict
+      title: StatusValue
+      description: 상태 네 값. 이 밖의 값은 저장 전에 거부한다.
+    UnverifiedReason:
+      type: string
+      enum:
+      - lookup_failed
+      - body_missing
+      - edition_unknown
+      - not_extracted
+      - ambiguous
+      - input_unverified
+      - evidence_rejected
+      - limit_reached
+      title: UnverifiedReason
+      description: '`unverified`일 때 왜 확인되지 않았나.'
+    UploadedMaterialOut:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        document_id:
+          type: string
+          title: Document Id
+        result:
+          $ref: '#/components/schemas/CaseMaterials'
+      type: object
+      required:
+      - case_id
+      - document_id
+      - result
+      title: UploadedMaterialOut
     ValidationError:
       properties:
         loc:

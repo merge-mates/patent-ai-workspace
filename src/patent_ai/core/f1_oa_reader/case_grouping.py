@@ -418,6 +418,19 @@ class UploadNotAskedError(ValueError):
     """올려 달라고 하지 않은 빠진 자료 (지원 안 하는 나라: 직접 확인). API는 422."""
 
 
+def missing_to_answer(materials: CaseMaterials, what: str) -> MissingMaterial:
+    """올린 자료가 답할 빠진 자료 줄. 없거나 올려 달라고 하지 않은 것이면 오류.
+
+    API가 파일을 쓰기 전에 먼저 불러 잘못된 요청을 422로 돌려준다.
+    """
+    hit = next((m for m in materials.missing if m.what == what), None)
+    if hit is None:
+        raise MissingNotFoundError(f"빠진 자료에 없음: {what!r}")
+    if not hit.ask_upload:
+        raise UploadNotAskedError(f"올려 달라고 하지 않은 자료 (직접 확인): {what!r}")
+    return hit
+
+
 def answer_missing(materials: CaseMaterials, what: str, document: GroupedMaterial) -> CaseMaterials:
     """빠진 자료 `what`에 올린 자료 `document`로 답한다. 새 CaseMaterials를 돌려준다.
 
@@ -426,11 +439,7 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     - 검토할 사항 수는 빠진 자료 한 줄만큼 줄인다 (collect_review_items가 빠진 자료마다 한 줄).
     - 빠진 자료가 아니거나 올려 달라고 하지 않은 것이면 오류 (조용히 더하지 않는다).
     """
-    hit = next((m for m in materials.missing if m.what == what), None)
-    if hit is None:
-        raise MissingNotFoundError(f"빠진 자료에 없음: {what!r}")
-    if not hit.ask_upload:
-        raise UploadNotAskedError(f"올려 달라고 하지 않은 자료 (직접 확인): {what!r}")
+    hit = missing_to_answer(materials, what)
     doc = CaseDocument(
         document_id=document.document_id,
         kind=document.kind,

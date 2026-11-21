@@ -3,9 +3,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from patent_ai.api.deps import get_case_unit, get_upload_dir
+from patent_ai.api.deps import get_case_repository_unit, get_case_unit, get_upload_dir
 from patent_ai.api.main import create_app
 from patent_ai.core.cases.store import InMemoryCaseAppStore
+from tests.api.repo_fake import FakeRepoUnit
 
 PDF = b"%PDF-1.7\nA"
 PDF_B = b"%PDF-1.7\nB"
@@ -33,6 +34,7 @@ def env(tmp_path):
     app = create_app()
     app.dependency_overrides[get_case_unit] = lambda: unit
     app.dependency_overrides[get_upload_dir] = lambda: tmp_path
+    app.dependency_overrides[get_case_repository_unit] = lambda: FakeRepoUnit()
     return TestClient(app, raise_server_exceptions=False), unit, tmp_path
 
 
@@ -75,7 +77,10 @@ def test_올린_뒤_목록과_상세(env):
     assert detail == {
         "case_id": created["case_id"],
         "case_name": "출원번호 확인 전",
-        "oas": [{"oa_id": created["oa_id"], "notice_kind": None}],
+        "oas": [{"oa_id": created["oa_id"], "notice_kind": None, "examined_claim_version": None}],
+        # 묶기 결과(#16)가 저장되기 전이라 비어 있다
+        "events": [],
+        "claim_versions": [],
     }
 
 
