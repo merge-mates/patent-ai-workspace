@@ -5,7 +5,7 @@
 import { api } from './api'
 import type { LatestRun, RunState } from './types/provisional/case'
 
-export const POLL_MS = 2500 // 폴링 간격 (판단)
+const POLL_MS = 2500 // 폴링 간격 (판단)
 
 // 화면이 받는 값: 실행 상태 + (상태를 못 받았을 때) 오류 글. 값이 바뀔 때만 새 객체가 된다
 export interface RunSnapshot {

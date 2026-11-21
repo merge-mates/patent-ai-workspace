@@ -8,7 +8,7 @@ import { HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusLine } from '../../components/StatusLine'
 import { StatusTag } from '../../components/StatusTag'
-import { claimRange, claimsText, sentence } from '../../format'
+import { claimRange, claimsText, sentence, unsupportedRejectionNos } from '../../format'
 import {
   addedSourceLabel,
   amendmentKindLabel,
@@ -201,9 +201,7 @@ export function DirectionsPage() {
 
   // AI가 다루지 않은 거절이유: 사건 전체 검사와 정리 결과 양쪽에서 모은다 (번호가 정리 결과에 없어도 번호는 보인다)
   const rejections = oaResult?.result.rejections ?? []
-  const unsupportedNos = [
-    ...new Set([...(caseCheck?.unsupported_rejections ?? []), ...rejections.filter((r) => !r.supported).map((r) => r.no)]),
-  ].sort((a, b) => a - b)
+  const unsupportedNos = unsupportedRejectionNos(caseCheck?.unsupported_rejections, rejections)
   const unsupportedText = unsupportedNos
     .map((no) => {
       const r = rejections.find((x) => x.no === no)

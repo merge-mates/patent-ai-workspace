@@ -5,7 +5,7 @@ import { SourceLink } from '../../components/SourceLink'
 import { StatusTag } from '../../components/StatusTag'
 import type { ExaminerHints } from '../../types/generated/OAResult'
 
-// 심사관 참고사항: 회색 바탕 줄 "심사관 참고사항 | 요지 | 통지서 N쪽" (디자인 B 고친 판).
+// 심사관 참고사항: 회색 바탕 줄 "심사관 참고사항 | 요지 | 원문 N쪽" (디자인 B 고친 판).
 // 거절이유 제목 줄 바로 아래에 놓인다. 요지가 없는데 상태가 확인됨이면(통지서에 참고사항이 없는 것) 줄을 그리지 않는다.
 // 충돌이면 "자세히"에 후보와 출처(규칙/모델)를 나란히 보인다
 export function HintsCard({ h }: { h: ExaminerHints }) {

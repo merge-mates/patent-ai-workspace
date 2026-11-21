@@ -250,7 +250,7 @@ export const mockApi = {
   async getRun(runId: string): Promise<RunStatus> {
     const b = (await bundles()).find((x) => x.run_id === runId)
     if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
-    return { ...runOf(b), oa_id: b.oa_id, error: null } as RunStatus
+    return { ...runOf(b), oa_id: b.oa_id, error: null }
   },
   async cancelRun(runId: string): Promise<RunStatus> {
     const b = (await bundles()).find((x) => x.run_id === runId)
@@ -261,7 +261,7 @@ export const mockApi = {
       run.cancelledAt = Date.now()
       saveRun(b.oa_id, run)
     }
-    return { ...runOf(b), oa_id: b.oa_id, error: null } as RunStatus
+    return { ...runOf(b), oa_id: b.oa_id, error: null }
   },
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
   async createCase(_file: File): Promise<CreatedCase> {
@@ -292,7 +292,7 @@ export const mockApi = {
 
 // ---- mock 실행 흉내 (D5): 통지서를 올리면 첫 fixture 사건의 실행이 새로 시작한 것으로 친다 ----
 // current_step은 서버에서 자유 글 한 줄이라, 화면은 이 글을 그대로 보이기만 한다
-export const RUN_STEPS = [
+const RUN_STEPS = [
   '통지서 읽기',
   '자료 찾아오기',
   '거절이유별 정리',
@@ -316,8 +316,9 @@ function loadRun(oaId: string): MockRun | null {
   try {
     const raw = sessionStorage.getItem(runKey(oaId))
     if (raw) mockRuns[oaId] = JSON.parse(raw) as MockRun
-  } catch {
+  } catch (e) {
     // 저장소를 못 읽으면 메모리만 쓴다
+    console.warn(`[mock] 실행 흉내 저장소를 읽지 못함 (${runKey(oaId)}): 새로고침하면 처음부터예요`, e)
   }
   return mockRuns[oaId] ?? null
 }
@@ -325,8 +326,9 @@ function saveRun(oaId: string, run: MockRun) {
   mockRuns[oaId] = run
   try {
     sessionStorage.setItem(runKey(oaId), JSON.stringify(run))
-  } catch {
+  } catch (e) {
     // 저장소를 못 쓰면 메모리만 쓴다
+    console.warn(`[mock] 실행 흉내 저장소에 쓰지 못함 (${runKey(oaId)}): 새로고침하면 사라져요`, e)
   }
 }
 function startRun(oaId: string) {

@@ -83,7 +83,7 @@ export function buildCoverage(
 // 제출 전에 고칠 곳 한 줄. tag: 충돌(빨강) / 누락(노랑)
 export interface Fix {
   key: string
-  tag: 'conflict' | 'missing' | 'check'
+  tag: 'conflict' | 'missing'
   title: string
   sub?: string
   action?: { kind: 'source'; page: number | null; rawText: string | null } | { kind: 'pick' } | { kind: 'claims' } | { kind: 'opinion'; title: string }

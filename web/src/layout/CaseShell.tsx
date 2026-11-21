@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
 import { CaseInfo } from '../components/CaseInfo'
 import { HumanCheckTag } from '../components/Marks'
-import { type OpenCite, type OpenEvidence, type OpenSource, SourceContext } from '../components/sourceContext'
+import { type OpenCite, type OpenEvidence, type OpenPage, SourceContext } from '../components/sourceContext'
 import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
 import { RunNotice } from '../components/RunNotice'
 import { StatusTag } from '../components/StatusTag'
@@ -106,7 +106,7 @@ export function CaseShell() {
         block: 'nearest',
       }),
     )
-  const openSource: OpenSource = (page, text, scroll = true) => {
+  const openPage: OpenPage = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
     setEvidenceAt(null)
     // scroll=false("자세히"로 줄을 펼칠 때)는 판을 새로 펴지 않는다: 열려 있을 때만 문서를 바꾸고 접힘은 그대로.
@@ -131,7 +131,7 @@ export function CaseShell() {
   }
 
   return (
-    <SourceContext value={{ openPage: openSource, openEvidence, openCite }}>
+    <SourceContext value={{ openPage, openEvidence, openCite }}>
       {/* 자리 이동(#materials 등)을 단계가 바뀐 뒤에도 해 준다 */}
       <ScrollRestoration />
       <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto' }}>

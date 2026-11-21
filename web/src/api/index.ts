@@ -26,6 +26,9 @@ import { ApiError } from './errors'
 import { getJson, postForm, postJson, sendJson } from './http'
 import { clearMockKeys, mockApi } from './mock'
 
+// 화면은 api 한 곳만 쓰게 mock 저장 지우기도 여기서 내보낸다
+export { resetMockStorage } from './mock'
+
 export const API_MODE = import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'server'
 
 // 서버 모드면 옛 mock 값(고른 방향·고친 초안·실행 흉내)이 브라우저에 남아 있지 않게 모듈을 불러올 때 지운다 (D6)

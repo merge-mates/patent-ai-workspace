@@ -14,10 +14,10 @@ export function SourceLink({
   rawText: string | null
   candidate?: boolean
 }) {
-  const { openPage: open } = useContext(SourceContext)
+  const { openPage } = useContext(SourceContext)
   if (page === null) return null
   return (
-    <Typography.Link onClick={() => open(page, rawText)} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+    <Typography.Link onClick={() => openPage(page, rawText)} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
       <FileTextOutlined /> {candidate ? `후보 위치 ${page}쪽` : `원문 ${page}쪽`}
     </Typography.Link>
   )

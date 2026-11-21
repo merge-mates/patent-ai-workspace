@@ -1,7 +1,6 @@
 import { Button, Popconfirm, Spin, Tag } from 'antd'
 import { Link, Outlet, useLocation, useNavigation } from 'react-router'
-import { API_MODE } from '../api'
-import { resetMockStorage } from '../api/mock'
+import { API_MODE, resetMockStorage } from '../api'
 
 // 공통 틀 (디자인 B 고친 판): 높이 56 머리 막대 = 서비스 이름 · 메뉴 두 개(글자 링크) · 통지서 올리기 · 아바타
 export function AppShell() {

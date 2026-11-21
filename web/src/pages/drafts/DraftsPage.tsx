@@ -1,10 +1,12 @@
-import { Alert, App, Button, Input, Segmented, Space, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App, Button, Input, Segmented, Space, Tooltip, Typography } from 'antd'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useRouteLoaderData } from 'react-router'
 import { api, API_MODE } from '../../api'
+import { AiTag, HumanTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { TrackedText } from '../../components/TrackedText'
 import type { DraftsLoaderData, OALoaderData } from '../../loaders'
+import { unsupportedRejectionNos } from '../../format'
 import { LOW_CONFIDENCE_TEXT, rejectionKindLabel } from '../../labels'
 import type { AmendedClaim, Evidence1 } from '../../types/generated/Drafts'
 import type { DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
@@ -20,11 +22,7 @@ type Editing = DraftPatch | null
 // - picked: 보류였던 묶음에서 이제 방향을 골랐음 → 다시 돌려야 초안이 생김
 type BasisNote = 'changed' | 'picked' | null
 
-const humanTag = (
-  <Tag bordered={false} style={{ marginInlineEnd: 0 }}>
-    직접 고침
-  </Tag>
-)
+const humanTag = <HumanTag>직접 고침</HumanTag>
 
 // 글 속 식별번호([0041] 등)를 링크로: 근거 목록에 같은 위치가 있으면 원문 판에 열고, 없으면 그냥 글자로 둔다
 function LinkedText({ text, evidence, onOpen }: { text: string; evidence: Evidence1[]; onOpen: (token: string, e: Evidence1) => void }) {
@@ -78,9 +76,7 @@ export function DraftsPage() {
 
   const rejections = oaResult?.result.rejections ?? []
   // AI가 다루지 않은 거절이유: 사건 전체 검사 + 정리 결과의 supported=false
-  const unsupported = [...new Set([...(caseCheck?.unsupported_rejections ?? []), ...rejections.filter((r) => !r.supported).map((r) => r.no)])].sort(
-    (a, b) => a - b,
-  )
+  const unsupported = unsupportedRejectionNos(caseCheck?.unsupported_rejections, rejections)
   const coverage = buildCoverage(drafts, directions, rejections, unsupported)
   const fixes = buildFixes(drafts, directions, rejections, unsupported, drafts.opinion.map((x) => x.title))
   const caseItems = caseToCheck(caseCheck?.items ?? [])
@@ -129,7 +125,7 @@ export function DraftsPage() {
 
   // 근거 링크는 의견서·보정 청구항 근거 목록에서 같은 위치를 찾아 원문 판으로
   const allEvidence = [...drafts.evidence, ...drafts.claims.flatMap((c) => c.spec_basis)]
-  const openEvidence = (token: string, e: Evidence1) =>
+  const openBasis = (token: string, e: Evidence1) =>
     openCite({ title: `최초 명세서 ${token}`, items: [e], status: drafts.status, note: null })
 
   const claimView = (c: AmendedClaim) => {
@@ -268,7 +264,7 @@ export function DraftsPage() {
             ]}
           />
           <span style={{ flex: '1 1 auto' }} />
-          <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>{`AI 초안 · 묶음 선택 ${pickSource}`}</Tag>
+          <AiTag>{`AI 초안 · 묶음 선택 ${pickSource}`}</AiTag>
           {/* 내려받기는 API가 자리만이라 막아 둔다 */}
           <Tooltip title="서버가 오면 내려받을 수 있어요">
             <Button disabled>내려받기</Button>
@@ -314,10 +310,10 @@ export function DraftsPage() {
                           before={s.ai_text}
                           after={s.human_text!}
                           mode="human"
-                          renderText={(t) => <LinkedText text={t} evidence={allEvidence} onOpen={openEvidence} />}
+                          renderText={(t) => <LinkedText text={t} evidence={allEvidence} onOpen={openBasis} />}
                         />
                       ) : (
-                        <LinkedText text={showAi || !edited ? s.ai_text : s.human_text!} evidence={allEvidence} onOpen={openEvidence} />
+                        <LinkedText text={showAi || !edited ? s.ai_text : s.human_text!} evidence={allEvidence} onOpen={openBasis} />
                       )}
                     </p>
                   )}

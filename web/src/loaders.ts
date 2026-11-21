@@ -150,17 +150,13 @@ export interface CompareLoaderData {
 export async function compareLoader({ params }: LoaderFunctionArgs): Promise<CompareLoaderData> {
   const oaId = params.oaId!
   // 결과가 아직 없음(result_not_ready)만 "없음"으로 받고, 다른 오류는 오류 화면으로
-  const notReady = <T,>(fallback: T) => (e: unknown): T => {
-    if (isNotReady(e)) return fallback
-    throw e
-  }
   const [units, comparisons, clarity, legal] = await Promise.all([
-    api.getUnits(oaId).catch(notReady(null)),
-    api.getComparisons(oaId).catch(notReady([])),
-    api.getClarityReviews(oaId).catch(notReady([])),
-    api.getLegalEvidence(oaId).catch(notReady([])),
+    api.getUnits(oaId).catch(notReadyAsNull),
+    api.getComparisons(oaId).catch(notReadyAsNull),
+    api.getClarityReviews(oaId).catch(notReadyAsNull),
+    api.getLegalEvidence(oaId).catch(notReadyAsNull),
   ])
-  return { units, comparisons, clarity, legal }
+  return { units, comparisons: comparisons ?? [], clarity: clarity ?? [], legal: legal ?? [] }
 }
 
 export interface DirectionsLoaderData {
@@ -179,14 +175,11 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
   const [units, directions, comparisons, caseCheck] = await Promise.all([
     api.getUnits(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
-    api.getComparisons(oaId).catch((e: unknown) => {
-      if (isNotReady(e)) return []
-      throw e
-    }),
+    api.getComparisons(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
   if (units === null || directions === null) return null
-  return { units, directions, comparisons, caseCheck }
+  return { units, directions, comparisons: comparisons ?? [], caseCheck }
 }
 
 export interface DraftsLoaderData {

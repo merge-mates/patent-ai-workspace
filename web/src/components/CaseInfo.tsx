@@ -3,7 +3,7 @@ import { useContext } from 'react'
 import { claimsText } from '../format'
 import { noticeKindLabel } from '../labels'
 import type { OAResult } from '../types/generated/OAResult'
-import { type Extracted, sourceName } from './extracted'
+import { type Extracted, candidatesText } from './extracted'
 import { AiResultMark, HumanCheckTag } from './Marks'
 import { SourceContext } from './sourceContext'
 import { StatusTag } from './StatusTag'
@@ -11,7 +11,7 @@ import { StatusTag } from './StatusTag'
 // 사건 정보 한 칸: 이름 · 값(원문 글자) · 상태 꼬리표(확인됨은 없음) · "통지서 N쪽"
 // 날짜·기한은 AI가 확정하지 않는다: 원문 글자 + "직접 확인"
 function InfoField({ label, value, v, human = false }: { label: string; value: string; v: Extracted; human?: boolean }) {
-  const { openPage: openSource } = useContext(SourceContext)
+  const { openPage } = useContext(SourceContext)
   const confirmed = v.status.value === 'confirmed'
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -24,15 +24,14 @@ function InfoField({ label, value, v, human = false }: { label: string; value: s
       {human && <HumanCheckTag />}
       {v.page !== null && (
         // 확인된 값만 "통지서 N쪽", 아니면 "후보 위치" (F5: 원문 링크는 확인된 값만)
-        <Button type="link" size="small" onClick={() => openSource(v.page, v.raw_text)}>
+        <Button type="link" size="small" onClick={() => openPage(v.page, v.raw_text)}>
           {confirmed ? `통지서 ${v.page}쪽` : `후보 위치 ${v.page}쪽`}
         </Button>
       )}
       {/* 충돌이면 두 후보를 나란히 보인다 (AI가 하나를 고르지 않음) */}
       {v.candidates.length > 0 && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          후보: {v.candidates
-            .map((c) => `${sourceName[c.source]} "${c.raw_text ?? String(c.value)}"${c.page ? ` (${c.page}쪽)` : ''}`).join(' / ')}
+          후보: {candidatesText(v)}
         </Typography.Text>
       )}
     </div>

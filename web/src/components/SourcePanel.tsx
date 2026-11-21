@@ -1,4 +1,5 @@
 import { Alert, Button } from 'antd'
+import { editionText, textKindText } from '../format'
 import { sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
 import type { PageText } from '../types/generated/PageText'
@@ -37,8 +38,8 @@ function EvidenceBody({ s, checkedOn }: { s: LegalSource; checkedOn: string }) {
   const meta = [
     sourceKindLabel[s.source_kind],
     // 판본은 법령·심사기준에만 의미가 있다. 모르면 "판본 모름"
-    s.source_kind === 'statute' || s.source_kind === 'guideline' ? (s.evidence.edition ?? '판본 모름') : null,
-    s.text_kind ? (s.text_kind === 'full' ? '전문' : '요지') : null,
+    editionText(s),
+    textKindText(s),
     // 판례·심결은 법원 판단인지 당사자 주장인지 가른다
     s.speaker ? speakerLabel[s.speaker] : null,
     [s.court, s.decided_on].filter(Boolean).join(' ') || null,

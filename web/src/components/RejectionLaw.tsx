@@ -1,7 +1,9 @@
-import { Button, Tag } from 'antd'
+import { Button } from 'antd'
+import { editionText, textKindText } from '../format'
 import { sourceKindLabel } from '../labels'
 import type { LegalEvidenceBundle, LegalSource } from '../types/generated/LegalEvidenceBundle'
 import { useContext } from 'react'
+import { AiTag } from './Marks'
 import { StatusLine } from './StatusLine'
 import { StatusTag } from './StatusTag'
 import { SourceContext } from './sourceContext'
@@ -9,14 +11,7 @@ import { SourceContext } from './sourceContext'
 // 근거 한 줄의 글자: 종류 · 식별자 · (법령·심사기준은 판본, 판례·심결은 전문/요지)
 // 판본을 모르면 "판본 모름"을 그대로 적는다 (현행으로 짐작하지 않음)
 function lineText(s: LegalSource): string {
-  const tail =
-    s.source_kind === 'statute' || s.source_kind === 'guideline'
-      ? (s.evidence.edition ?? '판본 모름')
-      : s.text_kind
-        ? s.text_kind === 'full'
-          ? '전문'
-          : '요지'
-        : null
+  const tail = editionText(s) ?? textKindText(s)
   return [sourceKindLabel[s.source_kind], s.identifier, tail].filter(Boolean).join(' · ')
 }
 
@@ -32,9 +27,7 @@ export function RejectionLaw({ rejection, legal }: { rejection: number; legal: L
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span className="label2 t3" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         이 거절이유의 법리
-        <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>
-          AI가 찾아 붙임
-        </Tag>
+        <AiTag>AI가 찾아 붙임</AiTag>
       </span>
       {bundles.map((b) => {
         const sources = b.claims.flatMap((c) => c.sources)

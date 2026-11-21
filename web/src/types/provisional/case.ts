@@ -20,6 +20,7 @@ export interface LatestRun {
 
 // GET /runs/{id}: 실행 상태 + "지금 하는 주요 작업" 한 줄 (current_step은 자유 글이라 파싱하지 않는다)
 export interface RunStatus extends LatestRun {
+  oa_id: string
   error?: string | null
 }
 

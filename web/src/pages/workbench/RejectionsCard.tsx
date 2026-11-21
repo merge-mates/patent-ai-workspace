@@ -294,9 +294,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                 tags={
                   <>
                     {!rej.supported && (
-                      <Tag color="warning" bordered={false}>
-                        직접 검토 필요
-                      </Tag>
+                      <HumanCheckTag>직접 검토 필요</HumanCheckTag>
                     )}
                     {rej.status.value !== 'confirmed' && <StatusTag status={rej.status} detail={false} />}
                   </>
@@ -337,7 +335,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                         : '거절이유 모름',
                     )
                     .join(' · ')}
-                  tags={warn && <Tag color="warning" bordered={false}>직접 검토 필요</Tag>}
+                  tags={warn && <HumanCheckTag>직접 검토 필요</HumanCheckTag>}
                   open={cur.open.includes(id)}
                   onToggle={() => toggle(id)}
                 >
