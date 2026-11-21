@@ -112,18 +112,18 @@ CLARIFY = {"claim": 2, "kind": "clarify"}
 def prediction(*, inventive_claims=(1, 2, 3), clarity_low=False, argue_first=False):
     """진보성 묶음: 1등이 청구항 1 부가 + 청구항 2 삭제 + 반박. 명확성 묶음: 1등이 명확화만.
 
-    argue_first면 진보성 묶음의 1등을 보정 없이 반박으로 바꾼다 (2등은 채점에 쓰지 않는다).
+    argue_first면 진보성 묶음의 1번 후보(목록 첫째)를 보정 없이 반박으로 바꾼다.
     """
     u1 = unit(1, "29-2", list(inventive_claims))
     u2 = unit(2, "42-4-2", [2], order=2)
     amend, argue = (2, 1) if argue_first else (1, 2)
-    g1 = group(
-        u1,
-        [
-            cand(u1, 1, amend, "amend_and_argue", [ADD, DELETE]),
-            cand(u1, 2, argue, "argue_only", []),
-        ],
-    )
+    cands = [
+        cand(u1, 1, amend, "amend_and_argue", [ADD, DELETE]),
+        cand(u1, 2, argue, "argue_only", []),
+    ]
+    if argue_first:
+        cands.reverse()  # 모델이 낸 순서: 반박만 후보가 목록 첫째 (1번 후보)
+    g1 = group(u1, cands)
     if clarity_low:
         g2 = group(u2, [cand(u2, 1, None, "amend_only", [CLARIFY])])
     else:
@@ -271,19 +271,119 @@ def test_어느_묶음에도_없는_거절이유_청구항_쌍을_누락으로_�
     assert "누락" in caplog.text
 
 
-# ---- 확신 낮음 (직접 판단 필요) ----
-def test_확신_낮은_묶음은_방향_채점에서_빼고_건수를_남긴다(env):
+# ---- 확신 낮음 (직접 판단 필요): 주 지표는 모델 1번 후보(목록 첫째)로 모든 묶음을 센다 ----
+def low_clarity(units, directions, *, wrong=False):
+    """명확성 묶음의 후보를 확신 낮음(rank 없음)으로 두고, wrong이면 방향이 정답과 달라지게 한다."""
+    if wrong:
+        c = directions[1]["candidates"][0]
+        c["coarse"], c["amendment_core"], c["rebuttal"] = (
+            "argue_only",
+            [],
+            {
+                "rejection_kind": "clarity",
+                "type": "obvious_error",
+                "summary": "만든 요지",
+            },
+        )
+    return units, directions
+
+
+def test_확신_낮은_묶음도_1번_후보가_맞으면_주_지표에서_맞음으로_센다(env):
     env.put_gold(gold())
     env.put_pred(*prediction(clarity_low=True))
     assert main(env.args) == 0
     s = env.scores()
-    assert s["failures"]["excluded_needs_human_judgment"] == 1
-    assert s["metrics"]["direction_top1"] == 1.0  # 보류 줄을 뺀 두 줄이 모두 맞음
-    # 보류를 늘려 주 점수를 올리지 못하게: 보류를 틀림으로 센 점수와 보류 비율을 같이 낸다
-    assert s["metrics"]["direction_top1_strict"] == pytest.approx(2 / 3)
-    assert s["metrics"]["needs_human_judgment_rate"] == pytest.approx(1 / 4)  # ② 대상 4줄 중 1줄
-    assert s["metrics"]["handled_accuracy"] == 1.0  # 직접 판단 필요도 다룬 것
+    m = s["metrics"]
+    assert m["direction_top1"] == 1.0  # 보류 묶음 줄도 빼지 않고 3/3
+    assert m["direction_top1_ranked_only"] == 1.0  # 보류 줄을 뺀 2/2 (비교용)
+    assert m["needs_human_judgment_rate"] == pytest.approx(1 / 4)  # ② 대상 4줄 중 1줄
+    assert s["failures"]["excluded_ranked_only_abstain"] == 1
+    assert s["failures"]["no_candidate"] == 0
+    assert "direction_top1_strict" not in m
+    assert m["handled_accuracy"] == 1.0
     assert s["failures"]["uncovered_pairs"] == 0
+
+
+def test_확신_낮은_묶음의_1번_후보가_틀리면_주_지표에서_틀림이다(env):
+    env.put_gold(gold())
+    env.put_pred(*low_clarity(*prediction(clarity_low=True), wrong=True))
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    assert m["direction_top1"] == pytest.approx(2 / 3)
+    assert m["direction_top1_ranked_only"] == 1.0  # 보류 줄을 빼므로 그대로
+
+
+def test_후보가_0개인_묶음은_틀림으로_세고_건수를_남긴다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    directions[1] = group(units[1], [])  # 명확성 묶음 후보 0개
+    env.put_pred(units, directions)
+    assert main(env.args) == 0
+    s = env.scores()
+    assert s["metrics"]["direction_top1"] == pytest.approx(2 / 3)  # 빼지 않고 틀림
+    assert s["metrics"]["direction_top1_ranked_only"] == 1.0
+    assert s["failures"]["no_candidate"] == 1
+    assert s["failures"]["excluded_ranked_only_abstain"] == 1
+    assert s["metrics"]["needs_human_judgment_rate"] == pytest.approx(1 / 4)
+    assert s["failures"]["uncovered_pairs"] == 0  # 묶음에는 있다
+
+
+def test_목록_첫째가_확신_낮음이고_순위_있는_후보가_둘째면_첫째로_센다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    u1 = units[0]
+    directions[0] = group(
+        u1,
+        [
+            cand(u1, 1, None, "argue_only", []),  # 첫째: 확신 낮음, 반박만
+            cand(u1, 2, 1, "amend_and_argue", [ADD, DELETE]),  # 둘째: rank 1
+        ],
+    )
+    env.put_pred(units, directions)
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    assert m["direction_top1"] == pytest.approx(1 / 3)  # 첫째(반박만) 기준: 진보성 두 줄 틀림
+    assert m["direction_top1_ranked_only"] == 1.0  # rank 1 후보 기준: 전부 맞음
+    assert m["direction_top1_with_inherited"] == pytest.approx(1 / 4)
+    assert m["needs_human_judgment_rate"] == 0.0  # rank 1 후보가 있으니 보류 아님
+
+
+def test_확신도별_일치율은_1번_후보의_확신도로_줄을_나눈다(env, caplog):
+    env.put_gold(gold())
+    # 진보성 묶음 1번 후보(rank 1) 확신 높음 -> 청구항 1·2 맞음. 명확성 1번 후보는 낮음+틀림
+    env.put_pred(*low_clarity(*prediction(clarity_low=True), wrong=True))
+    with caplog.at_level(logging.WARNING):
+        assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    assert m["direction_top1_conf_high"] == 1.0  # 진보성 2줄 맞음 (물려받은 줄 제외)
+    assert m["direction_top1_conf_low"] == 0.0  # 명확성 1줄 틀림
+    assert "direction_top1_conf_medium" not in m  # 줄 없는 단계는 0이 아니라 뺌
+    assert "direction_top1_conf_medium" in caplog.text  # 경고
+
+
+def test_확신도별_지표는_중간_단계도_가른다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    directions[1]["candidates"][0]["confidence"] = "medium"
+    env.put_pred(units, directions)
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    assert m["direction_top1_conf_medium"] == 1.0
+    assert m["direction_top1_conf_high"] == 1.0
+    assert "direction_top1_conf_low" not in m
+
+
+def test_줄_수는_scores에_넣지_않고_로그로_남긴다(env, caplog):
+    env.put_gold(gold())
+    env.put_pred(*prediction(clarity_low=True))
+    with caplog.at_level(logging.INFO):
+        assert main(env.args) == 0
+    check_scores(env.scores())  # 공통 스키마 통과 (새 최상위 칸 없음)
+    assert set(env.scores()) == {
+        "experiment", "commit", "goldset", "goldset_version", "gold_sha256", "impl",
+        "metric_name", "n", "metrics", "failures", "cost",
+    }  # fmt: skip
+    assert "확신도별 줄 수" in caplog.text
 
 
 # ---- 예측 없음 ----

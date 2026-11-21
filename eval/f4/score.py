@@ -3,15 +3,20 @@
 채점 단위는 정답 한 줄 = OA 시점 청구항 × 거절이유. 청구항 점수 -> OA 평균 -> 세트 평균.
 - ① 다뤘나: 정답 `handled`와, AI가 그 (거절이유, 청구항)을 묶음에 두고 그 묶음 결과
   (후보나 직접 판단 필요)를 냈는지가 같은가
-- ② 거친 방향 1등 일치율: 1등 후보의 청구항별 보정 종류에서 계산한 방향이 정답과 같은가
+- ② 모델 1번 후보 거친 방향 일치율 (주 지표 direction_top1): 모델이 낸 1번 후보 =
+  방향 후보 목록의 첫째(candidates[0])의 청구항별 보정 종류에서 계산한 방향이 정답과 같은가.
+  확신 낮음(보류) 묶음도 빼지 않고 센다. 후보가 0개인 묶음은 틀림으로 센다.
+  화면에서 순위를 숨기는 것(rank 없음)과 상관없이 목록 순서를 믿는다.
 - 누락: 정답 줄 가운데 AI의 어느 묶음에도 없는 (거절이유, 청구항) 쌍 수 (failures)
-③④층, 실제 방향의 순위, 확신도 단계별·독립항만 점수는 아직 내지 않는다.
+확신도별 일치율(direction_top1_conf_high/medium/low)은 1번 후보의 확신도로 줄을 나눈다.
+③④층, 실제 방향의 순위, 독립항만 점수는 아직 내지 않는다.
 scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건수와 비율만).
 
 명령: uv run python eval/run_eval.py --config <설정> --predictions <폴더>
 정답 폴더가 없으면 점수를 쓰지 않고 "정답 없음"으로 끝낸다 (종료 코드 EXIT_NO_GOLD).
-direction_top1은 보류(직접 판단 필요) 줄을 뺀 값이다. 보류가 늘면 오를 수 있으므로
-needs_human_judgment_rate·direction_top1_strict와 같이 본다.
+비교용 direction_top1_ranked_only는 순위 1 후보로 센 값이고 보류(순위 1 후보 없음) 줄을 뺀다.
+보류가 늘면 오를 수 있으므로 needs_human_judgment_rate와 같이 본다 (보류 비율은 ② 대상 줄 중
+순위 1 후보가 없는 묶음의 비율).
 """
 
 import argparse
@@ -34,21 +39,30 @@ from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 
 logger = logging.getLogger(__name__)
 
-METRIC_NAME = "거친 방향 1등 일치율"
+METRIC_NAME = "모델 1번 후보 거친 방향 일치율"
 EXIT_NO_GOLD = 3  # 정답 없음: 성공(0)도 채점 실패(1)도 argparse 사용법 오류(2)도 아니다
 FAILURE_KEYS = (
     "missing_prediction",  # 예측이 없는 OA (0점으로 셈)
     "uncovered_pairs",  # AI의 어느 묶음에도 없는 (거절이유, 청구항) 쌍
     "excluded_not_handled",  # 정답이 안 다룸이라 ② 채점에서 뺀 줄 (3절 13번)
-    "excluded_needs_human_judgment",  # 1등 후보가 없는 묶음(확신 낮음·후보 0개)이라 ②에서 뺀 줄
+    "no_candidate",  # 후보가 0개인 묶음이라 1번 후보가 없는 줄 (주 지표에서 틀림으로 셈)
+    "excluded_ranked_only_abstain",  # 순위 1 후보가 없는 묶음이라 ranked_only에서만 뺀 줄
     "excluded_branch_conflict",  # 같은 크기 묶음끼리 AI 값이 엇갈려 뺀 줄 (3절 5번)
 )
-_ABSTAIN = "abstain"  # 1등 후보가 없음 (직접 판단 필요)
+_ABSTAIN = "abstain"  # 순위 1 후보가 없음 (직접 판단 필요)
+_NO_CANDIDATE = "no_candidate"  # 묶음에 후보가 0개라 1번 후보가 없음
+CONFIDENCES = ("high", "medium", "low")
 _KEEPS_PARENT = (AmendmentKind.UNCHANGED, AmendmentKind.CORRECT_ERROR)
 
 
-def _top(result: DirectionCandidates) -> DirectionCandidate | None:
+def _rank1(result: DirectionCandidates) -> DirectionCandidate | None:
+    """순위 1 후보 (화면에서 미리 고르는 후보). 확신 낮음 묶음에는 없다."""
     return next((c for c in result.candidates if c.rank == 1), None)
+
+
+def _first(result: DirectionCandidates) -> DirectionCandidate | None:
+    """모델이 낸 1번 후보 = 목록의 첫째. 순위가 없어도 목록 순서가 모델이 낸 순서다."""
+    return result.candidates[0] if result.candidates else None
 
 
 def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> str:
@@ -72,8 +86,17 @@ def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> 
     return "amend_and_argue" if top.rebuttal is not None else "amend_only"
 
 
-def predicted(pred: F4Pred, row: GoldClaimRow) -> str | None:
-    """정답 한 줄에 대한 AI 값: 거친 방향 / _ABSTAIN / None(어느 묶음에도 없음) / "conflict".
+@dataclass
+class Reading:
+    """정답 한 줄에 대한 AI 값. 값은 거친 방향 / _NO_CANDIDATE / _ABSTAIN / "conflict"."""
+
+    first: str  # 모델 1번 후보(목록 첫째)로 센 값 (주 지표)
+    confidence: str | None  # 그 1번 후보의 확신도 (후보가 없으면 None)
+    ranked: str  # 순위 1 후보로 센 값 (보류면 _ABSTAIN)
+
+
+def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
+    """정답 한 줄에 대한 AI 읽기. 어느 묶음에도 없으면 None.
 
     그 청구항이 여러 묶음에 있으면 가장 작은 묶음에서 읽는다 (3절 5번).
     """
@@ -85,13 +108,21 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> str | None:
     if not units:
         return None
     smallest = min(len(u.claims) for u in units)
-    values = set()
+    firsts: set[tuple[str, str | None]] = set()
+    ranked: set[str] = set()
     for u in units:
         if len(u.claims) != smallest:
             continue
-        top = _top(pred.directions[u.unit_id])
-        values.add(_ABSTAIN if top is None else claim_direction(u, top, row.claim))
-    return values.pop() if len(values) == 1 else "conflict"
+        result = pred.directions[u.unit_id]
+        first, top = _first(result), _rank1(result)
+        if first is None:
+            firsts.add((_NO_CANDIDATE, None))
+        else:
+            firsts.add((claim_direction(u, first, row.claim), first.confidence))
+        ranked.add(_ABSTAIN if top is None else claim_direction(u, top, row.claim))
+    # 가지가 엇갈리면 그 줄은 conflict (3절 5번)
+    first_value, confidence = firsts.pop() if len(firsts) == 1 else ("conflict", None)
+    return Reading(first_value, confidence, ranked.pop() if len(ranked) == 1 else "conflict")
 
 
 @dataclass
@@ -99,39 +130,48 @@ class OAScore:
     """OA 한 통의 줄별 맞음/틀림. scores에는 합친 값만 싣는다."""
 
     handled: list[bool] = field(default_factory=list)  # ①
-    direction: list[bool] = field(default_factory=list)  # ② 주 점수 (물려받은 줄 제외)
+    direction: list[bool] = field(default_factory=list)  # ② 주 점수 (1번 후보, 물려받은 줄 제외)
     direction_all: list[bool] = field(default_factory=list)  # ② 물려받은 줄 포함
-    direction_strict: list[bool] = field(default_factory=list)  # ② 주 점수 + 보류를 틀림으로
+    direction_ranked_only: list[bool] = field(default_factory=list)  # 순위 1 후보, 보류 줄 뺌
     abstained: list[bool] = field(default_factory=list)  # ② 대상 줄(정답이 다룸)마다: 보류였나
+    by_confidence: dict[str, list[bool]] = field(
+        default_factory=lambda: {c: [] for c in CONFIDENCES}
+    )  # 주 점수를 1번 후보의 확신도로 나눈 것 (물려받은 줄 제외)
     failures: dict[str, int] = field(default_factory=lambda: dict.fromkeys(FAILURE_KEYS, 0))
 
 
 def score_oa(g: F4Gold, pred: F4Pred | None) -> OAScore:
     s = OAScore()
     for row in g.claim_rows:
-        value = predicted(pred, row) if pred is not None else None
-        if pred is not None and value is None:
+        reading = predicted(pred, row) if pred is not None else None
+        if pred is not None and reading is None:
             s.failures["uncovered_pairs"] += 1
         # ① 다뤘나: 묶음에 있고 결과(후보나 직접 판단 필요)가 있으면 AI는 다룬 것
-        s.handled.append(pred is not None and (value is not None) == row.handled)
+        s.handled.append(pred is not None and (reading is not None) == row.handled)
         # ② 거친 방향
         if not row.handled:
             s.failures["excluded_not_handled"] += 1
             continue
-        s.abstained.append(value == _ABSTAIN)
-        if value == "conflict":
+        s.abstained.append(reading is not None and reading.ranked == _ABSTAIN)
+        # 비교용: 순위 1 후보로 센 값. 보류·가지 충돌 줄은 뺀다
+        if reading is not None and reading.ranked == _ABSTAIN:
+            s.failures["excluded_ranked_only_abstain"] += 1
+        elif reading is None or reading.ranked != "conflict":
+            ok_ranked = reading is not None and reading.ranked == row.direction
+            if not row.inherited:
+                s.direction_ranked_only.append(ok_ranked)
+        # 주 점수: 모델 1번 후보로 센다. 보류 묶음도 뺀 채 두지 않는다
+        if reading is not None and reading.first == "conflict":
             s.failures["excluded_branch_conflict"] += 1
             continue
-        if value == _ABSTAIN:
-            s.failures["excluded_needs_human_judgment"] += 1
-            if not row.inherited:
-                s.direction_strict.append(False)
-            continue
-        ok = value == row.direction  # 묶음에 없는 줄(None)은 틀림
+        if reading is not None and reading.first == _NO_CANDIDATE:
+            s.failures["no_candidate"] += 1  # 1번 후보가 없으니 틀림으로 센다
+        ok = reading is not None and reading.first == row.direction  # 묶음에 없는 줄은 틀림
         s.direction_all.append(ok)
         if not row.inherited:
             s.direction.append(ok)
-            s.direction_strict.append(ok)
+            if reading is not None and reading.confidence in s.by_confidence:
+                s.by_confidence[reading.confidence].append(ok)
     return s
 
 
@@ -141,9 +181,11 @@ def _mean(xs: list[float]) -> float | None:
 
 def _set_mean(per_oa: list[OAScore], name: str) -> float | None:
     """OA마다 줄 평균 -> 채점한 줄이 있는 OA끼리 평균 (OA 한 통이 한 표)."""
-    return _mean(
-        [m for s in per_oa if (m := _mean([float(x) for x in getattr(s, name)])) is not None]
-    )
+    return _mean_of_oas([getattr(s, name) for s in per_oa])
+
+
+def _mean_of_oas(per_oa_values: list[list[bool]]) -> float | None:
+    return _mean([m for xs in per_oa_values if (m := _mean([float(x) for x in xs])) is not None])
 
 
 def score_f4(
@@ -184,7 +226,7 @@ def score_f4(
         ("handled_accuracy", "handled"),
         ("direction_top1", "direction"),
         ("direction_top1_with_inherited", "direction_all"),
-        ("direction_top1_strict", "direction_strict"),
+        ("direction_top1_ranked_only", "direction_ranked_only"),
         ("needs_human_judgment_rate", "abstained"),  # ② 대상 줄 가운데 보류로 빠진 비율
     ):
         value = _set_mean(per_oa, name)
@@ -192,6 +234,20 @@ def score_f4(
             logger.warning("F4 %s: 채점한 줄이 0개 (지표를 뺌)", metric)  # 0으로 쓰지 않는다
         else:
             metrics[metric] = value
+
+    # 확신도별: 1번 후보의 확신도로 줄을 나눈다. 줄이 없는 단계는 0이 아니라 뺀다
+    for conf in CONFIDENCES:
+        metric = f"direction_top1_conf_{conf}"
+        value = _mean_of_oas([s.by_confidence[conf] for s in per_oa])
+        if value is None:
+            logger.warning("F4 %s: 채점한 줄이 0개 (지표를 뺌)", metric)
+        else:
+            metrics[metric] = value
+    # scores 공통 스키마에는 줄 수를 넣을 칸이 없어 로그로만 남긴다
+    logger.info(
+        "F4 확신도별 줄 수 (물려받은 줄 제외): %s",
+        {c: sum(len(s.by_confidence[c]) for s in per_oa) for c in CONFIDENCES},
+    )
 
     if "handled_accuracy" not in metrics:
         # 정답 줄이 하나도 없으면 잰 것이 없다. 빈 점수로 성공하지 않는다
