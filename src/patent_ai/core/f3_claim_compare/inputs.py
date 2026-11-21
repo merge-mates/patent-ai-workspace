@@ -47,6 +47,14 @@ class ClaritySearchSettings(BaseModel):
     skip_headings: list[str]
 
 
+class EffectSearchSettings(BaseModel):
+    """효과 후보: 차이점마다 모델에 보여 줄 최초 명세서 조각 수 (config/f3.yaml effect_search)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    k: int = Field(ge=1)
+
+
 class F3Settings(BaseModel):
     """config/f3.yaml에서 읽는 값. 단계별 모델 설정(model·effort 등)은 core/llm이 따로 읽는다."""
 
@@ -60,8 +68,7 @@ class F3Settings(BaseModel):
     min_quote_chars: int = Field(ge=1)
     search: SearchSettings
     clarity_search: ClaritySearchSettings
-    # 효과 후보: 차이점마다 모델에 보여 줄 최초 명세서 조각 수 (config/f3.yaml effect.search_k)
-    effect_search_k: int = Field(ge=1)
+    effect_search: EffectSearchSettings
 
     @model_validator(mode="after")
     def _두_번째_검색은_더_깊어야_함(self) -> F3Settings:

@@ -1,13 +1,15 @@
 """진보성 요약 ③ 명세서 효과 반박 후보 (이슈 #30 C2).
 
 차이점 구성요소마다 최초 명세서에서 효과 문장을 모델이 뽑고, 코드가 그 문장이 명세서 쪽 글자에
-그대로 있는지 확인한다. 있으면 `[식별번호] 문장 (관련 차이점: 위치)`, 못 맞추면 위치 없이
-`(원문 위치 확인되지 않음)`으로 밝힌다. 명세서가 없으면 후보를 못 뽑고 본문 미확보 보류를 남긴다.
+그대로 있는지 확인한다. 있으면 `[식별번호] 문장 (관련 차이점: 위치)`, 명세서 어디에도 없으면
+후보에서 빼고 보류 `…:effect`로 건수만 남긴다. 명세서가 없으면 후보를 못 뽑고 본문 미확보 보류를
+남긴다(OA 단위 `f3_compare:<oa_id>:spec`와 진보성 단위 `f3_compare:<unit_id>:spec`).
 기대 모양은 이슈 #30 task C2와 design 3-2 기준이다.
 """
 
 import functools
 import json
+import logging
 
 from patent_ai.core.f3_claim_compare.compare import STEP, compare_unit, make_searcher
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
@@ -168,9 +170,12 @@ def test_쪽을_넘어_이어진_문장도_명세서_전체에서_찾는다():
     ]
 
 
-def test_효과_문장을_못_뽑으면_빈_목록이고_있지도_않은_후보를_만들지_않는다():
-    out, _ = _run({STEP: [_compare(SENSOR_OK, TANK_DIFF)], EFFECT: [_effects()]})
+def test_효과_문장을_못_뽑으면_빈_목록이고_있지도_않은_후보를_만들지_않고_경고한다(caplog):
+    with caplog.at_level(logging.WARNING):
+        out, _ = _run({STEP: [_compare(SENSOR_OK, TANK_DIFF)], EFFECT: [_effects()]})
     assert out.tables[0].summary.effect_candidates == []
+    # 빈 목록이 조용히 지나가지 않는다: 못 찾은 것이지 없다는 판단이 아님
+    assert any("효과 문장을 못 찾음" in r.getMessage() for r in caplog.records)
 
 
 def test_차이점이_없으면_효과를_뽑는_모델을_부르지_않는다():
@@ -185,6 +190,9 @@ def test_최초_명세서가_없으면_모델을_부르지_않고_본문_미확�
     assert _effect_calls(transport) == []
     held = next(h for h in out.held_tasks if h.task == "f3_compare:oa_1:spec")
     assert "최초 명세서" in held.waiting_for
+    # 진보성 단위 보류도 같이 남는다 (F4가 그 묶음 후보 확인 사항에 싣는다)
+    unit_held = next(h for h in out.held_tasks if h.task == "f3_compare:oa_1:29-2:c1:spec")
+    assert "최초 명세서" in unit_held.waiting_for
 
 
 def test_명세서_보류는_run_f3에서_본문_미확보로_센다():
@@ -194,6 +202,8 @@ def test_명세서_보류는_run_f3에서_본문_미확보로_센다():
     assert any(h.task == "f3_compare:oa_1:spec" for h in result.held_tasks)
     assert result.status.value.value == "unverified"
     assert result.status.reason == UnverifiedReason.BODY_MISSING
+    # 단위 보류(`…:c1:spec`)도 본문 미확보로 센다
+    assert any(h.task == "f3_compare:oa_1:29-2:c1:spec" for h in result.held_tasks)
 
 
 def test_효과_뽑기_호출이_실패해도_대비표는_남기고_효과_후보만_빈_목록으로_보류한다():
@@ -220,7 +230,7 @@ def test_효과_뽑기가_호출_상한에_닿아도_대비표는_남기고_limi
 def test_효과_단계에_호출_상한과_프롬프트_파일과_자기_조각_수_칸이_있다():
     cfg = load_step_config(EFFECT)
     assert cfg.max_model_calls is not None
-    assert load_f3_settings().effect_search_k == 5  # clarity_search.k를 빌려 쓰지 않는다
+    assert load_f3_settings().effect_search.k == 5  # clarity_search.k를 빌려 쓰지 않는다
     assert cfg.prompt == "prompts/f3/effect.md"
 
 

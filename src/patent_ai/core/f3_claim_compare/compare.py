@@ -939,7 +939,10 @@ def _effect_candidates(
             "compare %s: 최초 명세서 글자가 없어 효과 후보를 뽑지 못함 (확인되지 않음)",
             unit.unit_id,
         )
-        _hold(seen, f"f3_compare:{oa.oa_id}:spec", "최초 명세서 본문 (올려 주면 효과 후보 뽑기)")
+        waiting = "최초 명세서 본문 (올려 주면 효과 후보 뽑기)"
+        _hold(seen, f"f3_compare:{oa.oa_id}:spec", waiting)
+        # 진보성 단위마다도 남긴다: F4가 그 묶음 후보 확인 사항에 싣는다 (`<unit_id>` 접두로 찾음)
+        _hold(seen, f"f3_compare:{unit.unit_id}:spec", waiting)
         return []
     try:
         found = extract_effects(differences, index, config, ctx=ctx, who=f"effect {unit.unit_id}")
@@ -955,6 +958,15 @@ def _effect_candidates(
             seen,
             f"f3_compare:{unit.unit_id}:effect",
             f"효과 문장 {found.dropped}건이 최초 명세서 원문과 맞지 않아 뺌 (직접 확인)",
+        )
+    if not found.lines and not found.dropped:
+        # 모델이 고른 문장이 하나도 없다: 빈 목록이 조용히 지나가지 않게 알린다
+        logger.warning(
+            "compare %s: 차이점 %d개에서 효과 문장을 못 찾음 (조회 범위: 명세서 조각 상위 %d, "
+            "없다는 판단 아님)",
+            unit.unit_id,
+            len(differences),
+            config.settings.effect_search.k,
         )
     return found.lines
 
@@ -1055,16 +1067,14 @@ def _compare_unit(
         if later:
             lost_first = _lost_elements({c: views[c] for c in first})
             collapsed = _independent_collapsed(rows, lost_first, rep)
-            for claim in later:
-                # 독립항 줄이 하나도 없으면(대비 불가) 무너졌는지 모르므로 그대로 대비한다.
-                # 무너지지 않았어도 대표 청구항의 구성요소를 다 갖지 않았거나 대표에 없는
-                # 인용문헌이 더 붙은 종속항은 건너뛰지 않는다 (대표 대비로 그 구성요소·문헌이
-                # 가려지지 않음, 11/21 부모 구성요소 결정)
-                if collapsed is not False or not _covered_by_rep(claim, rep, cites_of, splits):
-                    rows += _compare_claim(
-                        unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
-                    )
-                    continue
+            # 독립항 줄이 하나도 없으면(대비 불가) 무너졌는지 모르므로 그대로 대비한다.
+            # 무너지지 않았어도 대표 청구항의 구성요소를 다 갖지 않았거나 대표에 없는
+            # 인용문헌이 더 붙은 종속항은 건너뛰지 않는다 (대표 대비로 그 구성요소·문헌이
+            # 가려지지 않음, 11/21 부모 구성요소 결정)
+            skip_claims = [
+                c for c in later if collapsed is False and _covered_by_rep(c, rep, cites_of, splits)
+            ]
+            for claim in skip_claims:
                 logger.warning(
                     "compare %s: 대표 청구항 %d에 차이점이 있어 청구항 %d는 대비하지 않음",
                     unit.unit_id,
@@ -1077,7 +1087,16 @@ def _compare_unit(
                     f"청구항 {claim}: 대표 청구항 {rep}에 차이 후보·불명 구성요소가"
                     " 있어 종속항을 대비하지 않음 (필요하면 직접 요청)",
                 )
-                views.pop(claim)
+            if skip_claims:
+                # 건너뛴 청구항은 대비되지 않았으니 다른 종속항이 부모로 "이미 대비됨"으로 보면
+                # 안 된다: 건너뛴 청구항을 빼고 남은 청구항의 대비 목록을 다시 만든다
+                compared = {c: labels for c, labels in compared.items() if c not in skip_claims}
+                views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
+            for claim in later:
+                if claim not in skip_claims:
+                    rows += _compare_claim(
+                        unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+                    )
         # 실제로 대비한 청구항만 아래에서 센다
         # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
         lost = _lost_elements(views)

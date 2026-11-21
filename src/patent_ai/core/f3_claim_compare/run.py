@@ -192,7 +192,9 @@ def _held_status(held: HeldTask, oa_id: str) -> Status | None:
     if error_status is not None:
         return error_status
     parts = held.task.split(":")
-    waits_for_body = parts[:2] == ["f3_compare", oa_id] and len(parts) == 3
+    waits_for_body = parts[:2] == ["f3_compare", oa_id] and (
+        len(parts) == 3 or held.task.endswith(":spec")  # 진보성 단위의 명세서 보류도 본문 미확보
+    )
     reason = UnverifiedReason.BODY_MISSING if waits_for_body else UnverifiedReason.NOT_EXTRACTED
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
 

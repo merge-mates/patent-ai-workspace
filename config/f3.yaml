@@ -24,13 +24,16 @@ split_elements:
 
 # 단계: 진보성 차이점의 효과 문장 뽑기 (최초 명세서만)
 effect:
-  search_k: 5           # 차이점마다 모델에 보여 줄 명세서 조각 수 (그 사건 출원서 메모리 BM25 상위)
   model: claude-haiku-5-5
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/effect.md
   max_model_calls: 80   # 실행 하나의 합계: 차이점이 있는 진보성 표마다 1번 + 검사 실패 때 1번 더
   max_retries: 2
+
+# 효과 후보 찾기: 그 사건 최초 명세서만, 메모리 BM25 (clarity_search와 같은 꼴)
+effect_search:
+  k: 5                  # 차이점마다 모델에 보여 줄 명세서 조각 수
 
 # 인용문헌 문단 검색 (retrieval.contract.get_searcher에 넘긴다).
 # tokenizer·pos_tags·bm25·hybrid는 experiments/m2-i2-cite-search-hybrid-rrf/config.yaml settings와 같은 값

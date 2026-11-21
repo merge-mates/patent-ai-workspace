@@ -134,7 +134,7 @@ def extract_effects(
 
     호출 실패(형식 두 번 틀림·전송 오류·상한)는 삼키지 않고 올린다: 부르는 쪽이 정한다.
     """
-    candidates = _candidates(differences, index, config.settings.effect_search_k)
+    candidates = _candidates(differences, index, config.settings.effect_search.k)
     if not candidates:
         logger.warning("%s: 명세서 후보 조각이 0개라 효과 후보를 뽑지 않음", who)
         return Effects([])

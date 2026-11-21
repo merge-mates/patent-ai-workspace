@@ -246,3 +246,23 @@ def test_종속항에만_문헌이_더_붙었으면_독립항에_차이가_있�
         "청구항 1 [구성 1-2]",
     ]
     assert not any(h.task.endswith(":dependent") for h in out.held_tasks)
+
+
+def test_건너뛴_청구항을_부모로_보지_않아_가지_종속항이_그_구성요소를_대비한다():
+    # 1은 안 무너짐, 2(1 인용)는 건너뜀, 3은 "제1항 또는 제2항"이라 가지: 건너뛰지 않는다.
+    # 건너뛴 2는 대비되지 않았으므로 3이 2의 구성요소를 대비된 것으로 보면 안 된다
+    splits = {
+        1: SPLITS[1],
+        2: split(2, [LID], [1]),
+        3: split(3, [HANDLE], [1, 2]),
+    }
+    claims = {**CLAIMS, 2: "제1항에 있어서, 뚜껑", 3: "제1항 또는 제2항에 있어서, 손잡이"}
+    result = oa([rejection(1, "29-2", [1, 2, 3], [citation("D1", D1)])])
+    two = _answer(1, (1, "disclosed", (P23, FULL23)), (2, "difference_candidate"))
+    out, calls, _ = _run_general(result, splits, claims, [two, _many(3, 1)])
+    assert len(calls) == 2  # 청구항 1, 3 (2는 건너뜀)
+    unit = "oa_1:29-2:c1"
+    tasks = [h.task for h in out.held_tasks]
+    assert f"f3_compare:{unit}:claim2:dependent" in tasks
+    # 3은 부모 2의 구성요소를 빌리지 못하는 가지라 가지 보류가 남는다 (조용히 빠지지 않음)
+    assert f"f3_compare:{unit}:claim3:branch" in tasks
