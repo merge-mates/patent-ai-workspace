@@ -189,15 +189,22 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):  #
     assert run["skipped_steps"] == [] and run["warnings"] == []
 
     def results() -> dict:
-        names = ("oa-result", "units", "comparisons", "clarity-reviews", "directions", "drafts")
+        names = (
+            "oa-result",
+            "units",
+            "comparisons",
+            "clarity-reviews",
+            "legal-evidence",
+            "directions",
+            "drafts",
+        )
         got = {n: client.get(f"/oas/{oa_id}/{n}") for n in names}
         assert {n: r.status_code for n, r in got.items()} == dict.fromkeys(names, 200)
         return {n: r.json() for n, r in got.items()}
 
     first = results()
-    # F2 법률 근거도 다시 열 수 있어야 한다 (저장·조회 API는 아직 없음)
-    legal = client.get(f"/oas/{oa_id}/legal-evidence")
-    assert legal.status_code == 200 and legal.json()
+    # F2 법률 근거 묶음도 저장되어 비지 않고 이유 없이 열린다 (아래 다시 열기 비교에도 들어감)
+    assert first["legal-evidence"]["result"] and first["legal-evidence"]["empty_reason"] is None
 
     # 다시 열기: 사건 → OA 목록 → latest_run → 같은 결과
     case = client.get(f"/cases/{case_id}").json()
