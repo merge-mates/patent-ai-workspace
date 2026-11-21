@@ -717,6 +717,26 @@ def _element_marks(rows: list[ComparisonRow], lost: set[_Key]) -> dict[_Key, tup
     return marks
 
 
+def _status_note(rows: list[ComparisonRow], key: _Key, mark: Judgment) -> str:
+    """차이점 글 뒤에 붙일 상태. 못 찾음 ≠ 없음이라, 근거 없는 차이 후보와 불명은 그대로 밝힌다.
+
+    근거 있는 차이 후보 줄이 하나라도 있으면 꾸밈 없이 둔다 (덮기 전 줄로 본다).
+    """
+    if mark == Judgment.UNCLEAR:
+        return " (불명)"
+    mine = [
+        r
+        for r in rows
+        if (r.claim, r.element_location) == key and r.judgment == Judgment.DIFFERENCE_CANDIDATE
+    ]
+    if any(r.evidence for r in mine):
+        return ""
+    # 찾아본 범위는 줄 status에 이미 있는 글을 그대로 쓴다 (문헌이 여럿이면 중복 없이 모은다)
+    scopes = list(dict.fromkeys(r.status.searched_scope for r in mine if r.status.searched_scope))
+    where = f": {'; '.join(scopes)}" if scopes else ""
+    return f" (조회 범위 내 없음{where}, 없다는 판단 아님)"
+
+
 def _inventive_summary(
     rows: list[ComparisonRow], lost: set[_Key], rej: Rejection, settings: F3Settings
 ) -> InventiveSummary:
@@ -725,6 +745,7 @@ def _inventive_summary(
     # 확인 못 한 구성요소는 글자를 싣지 않고 대비하지 않았다고만 적는다 (빠뜨리지 않는다)
     differences = [
         f"{location} {_LOST_NOTE if (claim, location) in lost else text}"
+        + ("" if (claim, location) in lost else _status_note(rows, (claim, location), mark))
         # 부모 청구항에서 온 구성요소는 어느 종속항 대비에서 왔는지 덧붙인다
         + ("" if location.startswith(f"청구항 {claim} ") else f" (청구항 {claim}에서 인용)")
         for (claim, location), (text, mark) in marks.items()
