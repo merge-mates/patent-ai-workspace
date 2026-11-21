@@ -1,5 +1,5 @@
 # 인용문헌 정답 변환 설정 (경로만. 문헌 이름·tune 내용은 여기에 쓰지 않는다)
-cases_root: data/raw/cases          # <출원번호>/<출원번호>_청구항이력.txt·_행정이력.txt
+cases_root: data/processed/cases    # <출원번호>/<발송번호>/<출원번호>_청구항이력.txt·_행정이력.txt (OA 시점으로 자른 입력)
 output: tune/retrieval/cite_gold.jsonl   # <goldsets_root> 기준
 report: work/cite_search/gold_convert_report.json
 # 정답 표기 -> doc_id 표 (git 밖, <goldsets_root> 기준). 한국 공보(KR...A/B)는 표기가 곧 doc_id라
