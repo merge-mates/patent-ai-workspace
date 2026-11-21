@@ -7,13 +7,12 @@
 from types import SimpleNamespace
 
 import anthropic
-import httpx
 import httpx2
 import pytest
 
 from patent_ai.core.llm.transport import AnthropicTransport, TransportError, TransportResponse
 
-_REQ = httpx.Request("POST", "https://example.invalid/v1/messages")
+_REQ = httpx2.Request("POST", "https://example.invalid/v1/messages")
 KW = dict(step="t.s", model="m", prompt="p", effort="medium", max_tokens=5)
 
 
@@ -91,7 +90,7 @@ def test_잘린_답이면_stop_reason이_max_tokens():
 
 def _status_error(code, error_type=None):
     body = {"type": "error", "error": {"type": error_type, "message": "x"}} if error_type else None
-    resp = httpx.Response(code, request=_REQ)
+    resp = httpx2.Response(code, request=_REQ)
     return anthropic.APIStatusError(f"에러 {code}", response=resp, body=body)
 
 
