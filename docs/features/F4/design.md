@@ -222,6 +222,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
   - 질문: 보정 프롬프트에 명세서 쪽 글자 전체를 넣는 방식을 줄일지 (3-1 F3 결과 넣기와 같이).
 - **프롬프트 파일:** `prompts/f4/direction.md`, `opinion.md`, `amendment.md`, `amendment_limit_final.md`.
 - **실험 설정(config):** `config/f4.yaml` — 맨 위 `final_rejection_limit`(기본 `true`, 커밋 14d26fb), `max_units`(20 [가정]), `min_basis_chars`(10 [가정]), `max_candidates`(3 [가정]), 단계 칸 `direction`·`opinion`·`amendment`(`model: claude-haiku-5-5`, `effort: medium`, `max_tokens: 64000`, `prompt`, `max_model_calls: 40` [가정], `max_retries: 2`). [가정] 값은 재 본 값이 아니다. 형이 틀리거나 키가 빠지면 조용히 기본값으로 가지 않고 멈춘다 (`f4/config.py:25-64`).
+- **`amendment_spec_excerpt`:** `{enabled: false, top_n: 5}` (기본 끔, 이슈 #42). 켜면 보정 프롬프트에 최초 명세서 쪽 글자 전체 대신 차이점 구성요소·묶음 청구항 글자와 겹치는 문단(청구범위 덩어리 제외) BM25 상위 `top_n`개를 원래 순서로 넣는다. 전체로 돌아가면 WARNING. 명세서 근거 위치 대조는 켜도 원문 전체 (`f4/spec_excerpt.py`). 칸이 없으면 끔, 값이 틀리면 멈춘다.
 - **`final_rejection_limit`:** 기본 켬 (11/21 재아 결정, 커밋 14d26fb). 켜면 통지 종류가 최후일 때 보정 프롬프트에 47조 3항 네 가지 제한을 넣고 `amendment_limit_applied = true`. 모르면 제한을 넣지 않고 후보마다 "통지 종류 확인 필요" + `needs_human_review`. 끄면 제한을 넣지 않고, 최후통지인 사건의 후보에 "보정 제한을 적용하지 않은 초안 (최후거절이유통지, 직접 검토 필요)" + `needs_human_review` + 경고 (`run.py:38-54`, `directions.py:344-349`, 커밋 e7b42e1·14d26fb). 끄는 것은 비교 실험 설정으로만 쓴다. 기준선 카드 `m3-f4-skeleton`은 끈 채 잰 실행이다 (카드 15줄). tune에 최후거절이유통지 사건이 아직 없다.
 
 ## 8. 이 기능 안의 결정

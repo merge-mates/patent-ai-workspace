@@ -1,0 +1,24 @@
+# F4 보정 프롬프트 명세서 발췌 실험 (이슈 #42, lane_extra C1). 기준선과 다른 줄은 하나: amendment_spec_excerpt.enabled
+# 실행은 config/f4.yaml을 읽는다. 켬 실행은 그 파일의 amendment_spec_excerpt를 아래 값으로 바꾼 워크트리에서 돌린다.
+experiment: m3-i1-f4-spec-excerpt
+feature: f4
+baseline: m3-i1-f4-first-score  # branch chore/39-f4-first-score, main 9eb8237 코드, 끔 3회. 이 브랜치는 #211 위라 코드 판이 다르다
+goldset: tune
+goldset_version: 2
+gold: f4                  # data/goldsets/tune/f4/ (채점기만 읽는다)
+impl: skeleton            # 묶음마다 방향 후보 → 의견서 초안 → 보정 청구항 초안 (뼈대 그대로)
+settings:                 # config/f4.yaml
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  max_candidates: 3
+  min_basis_chars: 10
+  final_rejection_limit: true    # config/f4.yaml 기본. 러너가 이 값으로 돈다 (기준선 first-score도 true)
+  amendment_spec_excerpt:
+    enabled: true         # changed (기준선 false)
+    top_n: 5
+runs: 2                   # 켬 2회 (재아 계획). 끔은 기준선 first-score 3회
+runner: work/overnight_1121/scripts/f4_run.py <out> --workers 4   # git 밖. config/f4.yaml 값을 바꿔 돌린다
+budget:
+  max_usd: 2.0
+  max_external_calls: 300

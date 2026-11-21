@@ -20,6 +20,9 @@ class F4Options:
     max_candidates: int  # 묶음 하나의 방향 후보 수 상한
     # 보정 근거 글자(띄어쓰기 뺀 길이) 하한. 설정 파일에서는 꼭 적는다 (기본값은 코드에서 만들 때만)
     min_basis_chars: int = 10
+    # 보정 프롬프트 명세서 글자를 겹치는 문단 상위 N개로 줄이는 스위치 (기본 끔 = 쪽 글자 전체)
+    spec_excerpt_enabled: bool = False
+    spec_excerpt_top_n: int = 5
 
 
 def load_f4_options(config_dir: Path | None = None) -> F4Options:
@@ -56,9 +59,33 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
             raise ModelConfigError(
                 f"f4.{step}의 max_model_calls {limit}가 2 × max_units({max_units})보다 작음"
             )
+    excerpt = _read_spec_excerpt(data.get("amendment_spec_excerpt"))
     return F4Options(
         final_rejection_limit=switch,
         max_units=max_units,
         max_candidates=positive("max_candidates"),
         min_basis_chars=positive("min_basis_chars"),
+        spec_excerpt_enabled=excerpt[0],
+        spec_excerpt_top_n=excerpt[1],
     )
+
+
+def _read_spec_excerpt(section) -> tuple[bool, int]:
+    """amendment_spec_excerpt 칸. 칸이 없으면 끔. 있으면 모양·값이 맞아야 하고 틀리면 멈춘다."""
+    if section is None:
+        return False, F4Options.spec_excerpt_top_n
+    if not isinstance(section, dict):
+        raise ModelConfigError(f"amendment_spec_excerpt는 enabled·top_n 칸이어야 함: {section!r}")
+    unknown = sorted(set(section) - {"enabled", "top_n"})
+    if unknown:
+        raise ModelConfigError(f"amendment_spec_excerpt에 모르는 키: {unknown}")
+    for key in ("enabled", "top_n"):
+        if key not in section:
+            raise ModelConfigError(f"amendment_spec_excerpt에 설정 키가 빠짐: {key}")
+    enabled, top_n = section["enabled"], section["top_n"]
+    if not isinstance(enabled, bool):
+        raise ModelConfigError(f"amendment_spec_excerpt.enabled는 true·false여야 함: {enabled!r}")
+    # bool은 int의 하위 형이라 따로 막는다. 끄더라도 값이 틀리면 멈춘다 (켤 때 처음 터지지 않게)
+    if isinstance(top_n, bool) or not isinstance(top_n, int) or top_n < 1:
+        raise ModelConfigError(f"amendment_spec_excerpt.top_n은 1 이상의 정수여야 함: {top_n!r}")
+    return enabled, top_n
