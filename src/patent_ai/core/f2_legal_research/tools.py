@@ -44,7 +44,7 @@ def _law_of(doc_id: str) -> str | None:
 
 
 def _scope(ref: ArticleRef, index_version: str, as_of: date) -> str:
-    return f"{index_version} 법령 조문 {ref.label}, 기준일 {as_of.isoformat()} 시행판"
+    return f"{index_version} 법령 조문 {ref.label}, 모든 판 (기준일 {as_of.isoformat()})"
 
 
 def get_article(
@@ -91,7 +91,14 @@ def get_article(
         return ArticleLookup(
             ref, as_of, None, Status(value=StatusValue.CONFLICT), log, tuple(in_force)
         )
-    if unknown:
+    if unknown or every:
+        # 판본 모름 조각만 있거나, 그 조문의 다른 판은 있는데 그날 판이 색인에 없음
+        # (예: 2017.9.22판보다 앞선 날). 그날 글을 모르니 "없음"이 아니라 확인되지 않음이다.
+        # 법령 API로 그 판을 조회하는 길은 다음 계획 (design 4절 ②)
+        if not unknown:
+            logger.warning(
+                "get_article: %s %s 시행판이 색인에 없음 (다른 판만 있음)", ref.label, as_of
+            )
         return ArticleLookup(
             ref,
             as_of,
@@ -99,7 +106,7 @@ def get_article(
             Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.EDITION_UNKNOWN),
             log,
         )
-    # 그날 판이 색인에 없음. 법령 API 조회는 다음 계획 (design 4절 ②)
+    # 어느 판에도 그 조문이 없음: 찾아본 범위 안에 없다
     return ArticleLookup(
         ref,
         as_of,

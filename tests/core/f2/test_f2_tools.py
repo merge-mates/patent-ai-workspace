@@ -33,16 +33,21 @@ def test_시행령_조각은_특허법_조회에_섞이지_않는다():
     assert got.log.hits == 1 and not got.chunk.doc_id.startswith("특허법_시행령")
 
 
-def test_그날_판이_색인에_없으면_조회_범위_내_없음():
+def test_다른_판만_있고_그날_판이_색인에_없으면_없음이_아니라_확인되지_않음(caplog):
+    # 가장 이른 판(2015)보다 앞선 날: 그날 글을 모를 뿐 조문이 없는 것이 아니다
     got = get_article(fakes.repo(), IV, R292, date(2010, 1, 1))
     assert got.chunk is None
-    assert got.status.value == StatusValue.NOT_FOUND_IN_SCOPE
-    assert "2010-01-01" in got.status.searched_scope
+    assert (got.status.value, got.status.reason) == (
+        StatusValue.UNVERIFIED,
+        UnverifiedReason.EDITION_UNKNOWN,
+    )
+    assert "색인에 없음" in caplog.text
 
 
-def test_없는_조문도_조회_범위_내_없음():
+def test_어느_판에도_없는_조문은_조회_범위_내_없음():
     got = get_article(fakes.repo(), IV, article_ref("30-1"), date(2020, 5, 4))
     assert got.chunk is None and got.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert "모든 판" in got.status.searched_scope and "2020-05-04" in got.status.searched_scope
 
 
 def test_판본_모름_조각만_걸리면_확인되지_않음_edition_unknown():

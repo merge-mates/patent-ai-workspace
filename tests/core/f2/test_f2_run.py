@@ -81,13 +81,14 @@ def test_발송일을_못_읽으면_조문을_찾지_않고_확인되지_않음(
     assert "발송일" in caplog.text
 
 
-def test_그날_판이_색인에_없으면_조회_범위_내_없음_묶음():
+def test_그날_판이_색인에_없으면_확인되지_않음_어느_판에도_없으면_조회_범위_내_없음():
     only_old = InMemoryChunkRepository({"law": fakes.chunks()[:1]})  # 29조 2항 구판만
-    out = run_f2(_input(), repo=only_old)
-    for b in out.bundles:
-        assert b.claims == [] and b.status.value == StatusValue.NOT_FOUND_IN_SCOPE
-        assert b.status.searched_scope
-    assert out.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    inventive, clarity = run_f2(_input(), repo=only_old).bundles
+    # 29조 2항: 구판만 있고 발송일(2099) 판이 없음 -> 판을 모름
+    assert inventive.claims == [] and inventive.status.reason == UnverifiedReason.EDITION_UNKNOWN
+    # 42조 4항: 어느 판에도 없음 -> 찾아본 범위 안에 없음
+    assert clarity.claims == [] and clarity.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert clarity.status.searched_scope
 
 
 def test_출처_확인에서_빠진_근거는_넣지_않는다(monkeypatch):
