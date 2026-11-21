@@ -16,9 +16,12 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 - 결과 상태(확인됨 / 확인되지 않음 / 조회 범위 내 없음 / 충돌)는 200 응답 안의 `status`로 준다. HTTP 오류 코드는 요청이 잘못됐을 때만 쓴다.
 - 응답 바깥 `status`는 `result.status.value`를 복사한다(기준은 result). `result.status`는 객체 `{value, reason, checked, searched_scope}`다.
 - `status`·`origin` 값은 [데이터 모델](../data-model.md) 3절의 영어 코드(`confirmed`·`ai_generated` 등)를 쓴다. 화면에서 한국어로 보여 준다.
-- 결과가 아직 없으면(실행 전·실행 중) 404 `{code: "result_not_ready"}`다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다.
+- 결과 엔드포인트는 `succeeded` 또는 `waiting_for_human`(사람 기다림) 실행이 낸 가장 최근 결과를 준다. 사람 기다림 중에도 그때까지의 정리를 볼 수 있다. 결과가 아직 없으면(실행 전·실행 중, 또는 가장 최근 실행이 failed·cancelled이고 앞에 보여 줄 실행이 없을 때) 404 `{code: "result_not_ready"}`다. 화면은 응답 `run_id`와 `latest_run`으로 이 경우들을 가른다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다.
 - 오류 본문은 한 형식이다: `{code, message}`. 오류에 따라 칸을 더 담을 수 있다 (예: 409 `document_already_exists`는 `case_id`·`oa_id`).
 - 오래 걸리는 AI 실행은 만들기 → 상태 보기(폴링) → 결과 받기 순서다.
+- 실행 취소(`POST /runs/{id}/cancel`): queued·waiting_for_human은 바로 `cancelled`로 답한다. running은 취소 표시만 하고 응답 `state`는 `running` 그대로이니, 화면은 폴링으로 `cancelled`를 확인한다.
+- 실행 관련 오류: 409 `run_in_progress`(같은 OA에 진행 중인 실행이 있음), 409 `run_already_finished`(이미 끝난 실행을 취소), 500 `launch_failed`(실행을 시작하지 못함. 그 실행은 failed로 남는다), 404 `run_not_found`.
+- 실행이 `failed`일 때 `error.code`는 `executor_not_connected`(지휘 에이전트 연결 전) · `server_restarted`(서버가 다시 켜져 중단) · `step_failed`(단계 예외) · `result_save_failed`(결과 저장 실패) · `executor_crashed`(실행기가 예상 밖으로 죽음) · `launch_failed`(시작 실패) 중 하나다.
 - 평가(평가 세트 채점)는 API를 거치지 않고 스크립트가 `core/`를 직접 부른다.
 
 ## 3. 엔드포인트
@@ -92,8 +95,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 
 실행 상태 (`GET /runs/{id}`):
 ```json
-{"run_id": "r_1", "oa_id": "oa_1", "state": "running", "current_step": "인용문헌 2건 조회 중", "error": null}
+{"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "인용문헌 조회", "reason": "인용문헌 자료 없음"}], "warnings": [{"code": "step_skipped", "message": "인용문헌 조회 단계를 건너뜀: 인용문헌 자료 없음"}]}
 ```
+`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
 
 결과 (`GET /oas/{oa_id}/oa-result`): 결과 스키마를 `result`에 그대로 담는다.
 ```json

@@ -5,13 +5,22 @@ from __future__ import annotations
 from collections.abc import Iterator
 from functools import lru_cache
 from pathlib import Path
-from typing import Protocol
+from typing import Annotated, Protocol
 
+from fastapi import Depends
 from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
+from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
+from patent_ai.core.cases.results import OAResultStore
+from patent_ai.core.cases.results_pg import PostgresOAResultStore
 from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
+from patent_ai.core.runs.cancel import CancelRegistry
+from patent_ai.core.runs.executor import NotConnectedExecutor, RunExecutor
+from patent_ai.core.runs.launcher import RunLauncher, ThreadLauncher
+from patent_ai.core.runs.store import RunStatusStore
+from patent_ai.core.runs.store_pg import PostgresRunStatusStore
 from patent_ai.settings import get_settings
 
 
@@ -49,3 +58,46 @@ def get_case_unit() -> Iterator[CaseUnit]:
 
 def get_upload_dir() -> Path:
     return Path(get_settings().upload_dir)
+
+
+# --- 실행 (이슈 #57) ---------------------------------------------------------------
+# 실행은 백그라운드 스레드에서 돈다. 요청 하나의 세션을 못 쓰니 메서드마다 새 세션을 여는
+# 상태 저장소를 앱 전체가 같이 쓴다. 테스트는 dependency_overrides로 메모리 fake를 끼운다.
+
+
+@lru_cache
+def get_run_status_store() -> RunStatusStore:
+    return PostgresRunStatusStore(sessionmaker(_engine()))
+
+
+@lru_cache
+def get_oa_result_store() -> OAResultStore:
+    """OA 정리 결과 저장소. 결과 받기 API가 읽고, 실행기의 결과 받는 곳(sink)도 이것을 쓴다."""
+    return PostgresOAResultStore(sessionmaker(_engine()))
+
+
+@lru_cache
+def get_case_materials_store() -> CaseMaterialsStore:
+    return PostgresCaseMaterialsStore(sessionmaker(_engine()))
+
+
+@lru_cache
+def get_cancel_registry() -> CancelRegistry:
+    """취소 표시는 메모리에 있어서 앱 하나에 하나만 둔다 (요청마다 새로 만들면 안 보인다)."""
+    return CancelRegistry()
+
+
+def get_run_executor(
+    store: Annotated[RunStatusStore, Depends(get_run_status_store)],
+) -> RunExecutor:
+    # 지휘 에이전트가 아직 안 붙었다: 바로 failed(executor_not_connected). 붙으면 여기만 바꾼다.
+    # 붙일 때: 결과 받는 곳(sink)은 get_oa_result_store()를, 취소 표시는 get_cancel_registry()를
+    # 같이 넘긴다 (취소 API가 쓰는 것과 같은 registry여야 취소가 실행기에 닿는다)
+    return NotConnectedExecutor(store)
+
+
+def get_run_launcher(
+    executor: Annotated[RunExecutor, Depends(get_run_executor)],
+    store: Annotated[RunStatusStore, Depends(get_run_status_store)],
+) -> RunLauncher:
+    return ThreadLauncher(executor, store)

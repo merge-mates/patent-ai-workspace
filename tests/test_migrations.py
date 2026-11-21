@@ -93,3 +93,47 @@ def test_offline_sql_adds_stop_reason_and_output_truncated_to_agent_steps():
     last_check = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\);", sql)[-1]
     assert "'output_truncated'" in last_check
     assert "'invalid_output'" in last_check
+
+
+# --- 이슈 #57 T5: 건너뛴 단계 ---
+
+
+def _values(check_sql: str) -> set[str]:
+    """CHECK 글자에서 따옴표 안 값만 모은다."""
+    return set(re.findall(r"'([^']+)'", check_sql))
+
+
+def test_offline_sql_agent_steps_outcome_check_matches_model():
+    # 마이그레이션(마지막 CHECK)과 모델의 값 집합이 같아야 한다.
+    # #181(output_truncated)과 합칠 때 한쪽에만 값을 넣는 실수를 잡는다.
+    from patent_ai.db.models import AgentStep
+
+    checks = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\)", _offline_sql())
+    assert checks, "ck_agent_steps_outcome을 다시 만드는 줄이 없다"
+    model = next(
+        c
+        for c in AgentStep.__table__.constraints
+        if getattr(c, "name", None) == "ck_agent_steps_outcome"
+    )
+    assert _values(checks[-1]) == _values(str(model.sqltext))
+    assert "skipped" in _values(checks[-1])
+
+
+def test_skipped_마이그레이션의_옛_CHECK는_앞_마이그레이션의_새_CHECK와_같다():
+    # downgrade가 앞 판(#181 c4a8f1e63b27)과 같은 CHECK를 다시 만들어야 한다 (#187 리뷰)
+    import importlib.util
+    from pathlib import Path
+
+    versions = Path(__file__).resolve().parents[1] / "src/patent_ai/db/migrations/versions"
+
+    def load(name: str):
+        spec = importlib.util.spec_from_file_location(name, versions / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    prev = load("20261121_c4a8f1e63b27_agent_steps_stop_reason")
+    skipped = load("20261121_e5d3a7b92c18_agent_steps_outcome_skipped")
+    assert skipped.down_revision == prev.revision
+    assert _values(skipped._OLD) == _values(prev._NEW)
+    assert _values(skipped._NEW) == _values(prev._NEW) | {"skipped"}

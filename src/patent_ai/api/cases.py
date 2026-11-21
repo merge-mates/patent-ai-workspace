@@ -10,15 +10,27 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, UploadFile
 from pydantic import BaseModel
 
-from patent_ai.api.deps import CaseUnit, get_case_unit, get_upload_dir
+from patent_ai.api.deps import (
+    CaseUnit,
+    get_case_materials_store,
+    get_case_unit,
+    get_run_launcher,
+    get_run_status_store,
+    get_upload_dir,
+)
 from patent_ai.api.errors import AppError
+from patent_ai.api.runs import launch_run
 from patent_ai.core.cases import upload
+from patent_ai.core.cases.materials import CaseMaterialsStore
 from patent_ai.core.cases.store import (
     DuplicateDocumentError,
     NewDocument,
     new_case_id,
     now_utc,
 )
+from patent_ai.core.runs.launcher import RunLauncher, mark_launch_failed
+from patent_ai.core.runs.store import RunStatusStore
+from patent_ai.core.schemas.case_materials import CaseMaterials
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -53,6 +65,12 @@ class CaseDetail(BaseModel):
     oas: list[OARefOut]
 
 
+class CaseMaterialsOut(BaseModel):
+    case_id: str
+    run_id: str | None  # 이 줄을 마지막으로 쓴 실행 (자료만 더했으면 null)
+    result: CaseMaterials  # 결과 스키마 ⑥ 그대로
+
+
 def read_pdf(file: UploadFile) -> tuple[bytes, str]:
     """올린 파일을 읽고 PDF인지 본다 (두 업로드 엔드포인트 공용). 실패는 422."""
     data = file.file.read()
@@ -69,6 +87,8 @@ def create_case(
     file: UploadFile,
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     upload_dir: Annotated[Path, Depends(get_upload_dir)],
+    launch: Annotated[RunLauncher, Depends(get_run_launcher)],
+    status_store: Annotated[RunStatusStore, Depends(get_run_status_store)],
 ) -> CreatedCase:
     data, sha256 = read_pdf(file)
 
@@ -94,6 +114,9 @@ def create_case(
             ),
             unit.commit,
             unit.rollback,
+            lambda c: mark_launch_failed(
+                status_store, c.run_id, "파일 저장을 마치지 못해 실행하지 않았습니다"
+            ),
         )
     except DuplicateDocumentError:
         # 새 사건이라 DB 제약에는 안 걸린다. 저장소가 중복이라 알려 온 경우만 409로 바꾼다
@@ -107,6 +130,7 @@ def create_case(
         ) from None
     except upload.UploadFailedError:
         raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None
+    launch_run(launch, status_store, created.run_id, created.oa_id)  # 커밋 뒤에 실행기에 넘긴다
     return CreatedCase(case_id=created.case_id, oa_id=created.oa_id, run_id=created.run_id)
 
 
@@ -138,3 +162,17 @@ def get_case(case_id: str, unit: Annotated[CaseUnit, Depends(get_case_unit)]) ->
         case_name=row.case_name,
         oas=[OARefOut(oa_id=o.oa_id, notice_kind=o.notice_kind) for o in row.oas],
     )
+
+
+@router.get("/cases/{case_id}/materials", response_model=CaseMaterialsOut)
+def get_case_materials(
+    case_id: str,
+    unit: Annotated[CaseUnit, Depends(get_case_unit)],
+    materials: Annotated[CaseMaterialsStore, Depends(get_case_materials_store)],
+) -> CaseMaterialsOut:
+    if unit.store.get_case(case_id) is None:
+        raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다")
+    saved = materials.latest_case_materials(case_id)
+    if saved is None:
+        raise AppError(404, "result_not_ready", "사건 자료가 아직 없습니다")
+    return CaseMaterialsOut(case_id=case_id, run_id=saved.run_id, result=saved.result)

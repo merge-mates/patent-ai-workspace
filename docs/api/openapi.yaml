@@ -79,6 +79,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /cases/{case_id}/materials:
+    get:
+      summary: Get Case Materials
+      operationId: get_case_materials_cases__case_id__materials_get
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseMaterialsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /cases/{case_id}/oas:
     post:
       summary: Add Oa
@@ -133,6 +157,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/oa-result:
+    get:
+      summary: Get Oa Result
+      operationId: get_oa_result_oas__oa_id__oa_result_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAResultOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/runs:
+    post:
+      summary: Create Run
+      operationId: create_run_oas__oa_id__runs_post
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunCreated'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /runs/{run_id}:
+    get:
+      summary: Get Run
+      operationId: get_run_runs__run_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatusOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /runs/{run_id}/cancel:
+    post:
+      summary: Cancel Run
+      operationId: cancel_run_runs__run_id__cancel_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatusOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Body_add_oa_cases__case_id__oas_post:
@@ -155,6 +275,121 @@ components:
       required:
       - file
       title: Body_create_case_cases_post
+    Candidate_NoticeKind_:
+      properties:
+        value:
+          anyOf:
+          - $ref: '#/components/schemas/NoticeKind'
+          - type: 'null'
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        source:
+          type: string
+          enum:
+          - rule
+          - model
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: Candidate[NoticeKind]
+    Candidate_list_int__:
+      properties:
+        value:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        source:
+          type: string
+          enum:
+          - rule
+          - model
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: Candidate[list[int]]
+    Candidate_list_str__:
+      properties:
+        value:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        source:
+          type: string
+          enum:
+          - rule
+          - model
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: Candidate[list[str]]
+    Candidate_str_:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        source:
+          type: string
+          enum:
+          - rule
+          - model
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: Candidate[str]
     CaseDetail:
       properties:
         case_id:
@@ -174,6 +409,75 @@ components:
       - case_name
       - oas
       title: CaseDetail
+    CaseDocument:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        kind:
+          type: string
+          title: Kind
+        source:
+          type: string
+          title: Source
+        status:
+          $ref: '#/components/schemas/Status'
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - kind
+      - source
+      - status
+      title: CaseDocument
+    CaseMaterials:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        documents:
+          items:
+            $ref: '#/components/schemas/CaseDocument'
+          type: array
+          title: Documents
+        missing:
+          items:
+            $ref: '#/components/schemas/MissingMaterial'
+          type: array
+          title: Missing
+        held_tasks:
+          items:
+            $ref: '#/components/schemas/HeldTask'
+          type: array
+          title: Held Tasks
+        review_items_count:
+          type: integer
+          minimum: 0.0
+          title: Review Items Count
+          default: 0
+      additionalProperties: false
+      type: object
+      required:
+      - case_id
+      title: CaseMaterials
+    CaseMaterialsOut:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        run_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Run Id
+        result:
+          $ref: '#/components/schemas/CaseMaterials'
+      type: object
+      required:
+      - case_id
+      - run_id
+      - result
+      title: CaseMaterialsOut
     CaseSummary:
       properties:
         case_id:
@@ -221,6 +525,107 @@ components:
       - review_items_count
       - updated_at
       title: CaseSummary
+    Citation:
+      properties:
+        label:
+          type: string
+          title: Label
+        number:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        country:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        country_supported:
+          type: boolean
+          title: Country Supported
+        cited_paragraphs:
+          $ref: '#/components/schemas/ExtractedValue_list_str__'
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+      additionalProperties: false
+      type: object
+      required:
+      - label
+      - number
+      - country
+      - country_supported
+      - cited_paragraphs
+      title: Citation
+    ClaimRow:
+      properties:
+        claim:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Claim
+        rejection:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rejection
+        citations:
+          items:
+            type: string
+          type: array
+          title: Citations
+        locations:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          type: object
+          title: Locations
+        same_as:
+          items:
+            type: string
+          type: array
+          title: Same As
+        clarity_terms:
+          items:
+            type: string
+          type: array
+          title: Clarity Terms
+        clarity_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Clarity Reason
+        clarity_reason_origin:
+          anyOf:
+          - $ref: '#/components/schemas/Origin'
+          - type: 'null'
+        no_location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: No Location
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+      additionalProperties: false
+      type: object
+      required:
+      - claim
+      - rejection
+      - status
+      title: ClaimRow
+      description: '청구항 줄 하나 = 청구항 x 거절이유 (정답 형식 2.4, 채점 단위).
+
+
+        값은 원문 대조를 통과했을 때만 둔다. 대조에 떨어지면 status가 unverified이고 값은 비어 있다
+
+        (청구항·거절이유 번호만 어느 줄인지 알리려고 남길 수 있음).'
     CreatedCase:
       properties:
         case_id:
@@ -251,6 +656,193 @@ components:
       - oa_id
       - run_id
       title: CreatedOA
+    Evidence:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        edition:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Edition
+        checked_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Checked On
+        chunk_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Chunk Id
+        index_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Index Version
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      title: Evidence
+      description: '근거 위치. 화면이 그 쪽 text에서 raw_text를 찾아 강조한다.
+
+
+        document_id: 원문을 여는 문서 ID. 올린 문서면 DB 문서 ID, 색인 조각이면 색인 doc_id(+ chunk_id).'
+    ExaminerHints:
+      properties:
+        allowable_claims:
+          $ref: '#/components/schemas/ExtractedValue_list_int__'
+        amendment_note:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+      additionalProperties: false
+      type: object
+      required:
+      - allowable_claims
+      - amendment_note
+      title: ExaminerHints
+    ExtractedValue_NoticeKind_:
+      properties:
+        value:
+          anyOf:
+          - $ref: '#/components/schemas/NoticeKind'
+          - type: 'null'
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+        candidates:
+          items:
+            $ref: '#/components/schemas/Candidate_NoticeKind_'
+          type: array
+          title: Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: ExtractedValue[NoticeKind]
+    ExtractedValue_list_int__:
+      properties:
+        value:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+        candidates:
+          items:
+            $ref: '#/components/schemas/Candidate_list_int__'
+          type: array
+          title: Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: ExtractedValue[list[int]]
+    ExtractedValue_list_str__:
+      properties:
+        value:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+        candidates:
+          items:
+            $ref: '#/components/schemas/Candidate_list_str__'
+          type: array
+          title: Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: ExtractedValue[list[str]]
+    ExtractedValue_str_:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+        candidates:
+          items:
+            $ref: '#/components/schemas/Candidate_str_'
+          type: array
+          title: Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: ExtractedValue[str]
+    Flag:
+      type: string
+      enum:
+      - needs_human_judgment
+      - needs_human_review
+      title: Flag
     HTTPValidationError:
       properties:
         detail:
@@ -260,6 +852,20 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HeldTask:
+      properties:
+        task:
+          type: string
+          title: Task
+        waiting_for:
+          type: string
+          title: Waiting For
+      additionalProperties: false
+      type: object
+      required:
+      - task
+      - waiting_for
+      title: HeldTask
     LatestRun:
       properties:
         run_id:
@@ -279,6 +885,44 @@ components:
       - state
       - current_step
       title: LatestRun
+    LookupResult:
+      type: string
+      enum:
+      - lookup_failed
+      - body_missing
+      - unsupported_country
+      title: LookupResult
+      description: 빠진 자료를 조회한 결과.
+    MissingMaterial:
+      properties:
+        what:
+          type: string
+          title: What
+        depends_on_tasks:
+          items:
+            type: string
+          type: array
+          title: Depends On Tasks
+        lookup_result:
+          $ref: '#/components/schemas/LookupResult'
+        ask_upload:
+          type: boolean
+          title: Ask Upload
+      additionalProperties: false
+      type: object
+      required:
+      - what
+      - lookup_result
+      - ask_upload
+      title: MissingMaterial
+    NoticeKind:
+      type: string
+      enum:
+      - initial
+      - final
+      - unknown
+      title: NoticeKind
+      description: 통지 종류. 정답 형식(f1-oa-gold.md)과 같은 코드.
     OADetail:
       properties:
         oa_id:
@@ -328,6 +972,309 @@ components:
       - oa_id
       - notice_kind
       title: OARefOut
+    OAResult:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        oa_id:
+          type: string
+          title: Oa Id
+        application_number:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        dispatch_number:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        notice_date:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        response_due:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        notice_kind:
+          $ref: '#/components/schemas/ExtractedValue_NoticeKind_'
+        examined_claims:
+          $ref: '#/components/schemas/ExtractedValue_list_int__'
+        examined_claim_version:
+          anyOf:
+          - $ref: '#/components/schemas/ExtractedValue_str_'
+          - type: 'null'
+        examiner_hints:
+          $ref: '#/components/schemas/ExaminerHints'
+        rejections:
+          items:
+            $ref: '#/components/schemas/Rejection'
+          type: array
+          title: Rejections
+        claim_rows:
+          items:
+            $ref: '#/components/schemas/ClaimRow'
+          type: array
+          title: Claim Rows
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - oa_id
+      - application_number
+      - dispatch_number
+      - notice_date
+      - response_due
+      - notice_kind
+      - examined_claims
+      - examiner_hints
+      title: OAResult
+    OAResultOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        status:
+          type: string
+          title: Status
+        result:
+          $ref: '#/components/schemas/OAResult'
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - status
+      - result
+      title: OAResultOut
+    Origin:
+      type: string
+      enum:
+      - ai_generated
+      - ai_default
+      - human_selected
+      - human_edited
+      title: Origin
+    Rejection:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        'no':
+          type: integer
+          title: 'No'
+        kind:
+          $ref: '#/components/schemas/RejectionKind'
+        article:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+        supported:
+          type: boolean
+          title: Supported
+        claims:
+          $ref: '#/components/schemas/ExtractedValue_list_int__'
+        citations:
+          items:
+            $ref: '#/components/schemas/Citation'
+          type: array
+          title: Citations
+        examiner_reasoning:
+          $ref: '#/components/schemas/ExtractedValue_str_'
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - 'no'
+      - kind
+      - article
+      - supported
+      - claims
+      - examiner_reasoning
+      title: Rejection
+      description: 거절이유 하나. 청구항은 거절이유마다 따로 둔다 (합치지 않음).
+    RejectionKind:
+      type: string
+      enum:
+      - novelty
+      - inventive_step
+      - clarity
+      - other
+      title: RejectionKind
+      description: 거절이유 종류. 정답 형식(f1-oa-gold.md 4절 `kind`)과 같은 코드.
+    RunCreated:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - run_id
+      title: RunCreated
+    RunErrorOut:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: RunErrorOut
+    RunStatusOut:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        oa_id:
+          type: string
+          title: Oa Id
+        state:
+          type: string
+          title: State
+        current_step:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Step
+        waiting_for:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Waiting For
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/RunErrorOut'
+          - type: 'null'
+        skipped_steps:
+          items:
+            $ref: '#/components/schemas/SkippedStepOut'
+          type: array
+          title: Skipped Steps
+          default: []
+        warnings:
+          items:
+            $ref: '#/components/schemas/RunWarningOut'
+          type: array
+          title: Warnings
+          default: []
+      type: object
+      required:
+      - run_id
+      - oa_id
+      - state
+      - current_step
+      - error
+      title: RunStatusOut
+    RunWarningOut:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: RunWarningOut
+    SkippedStepOut:
+      properties:
+        step:
+          type: string
+          title: Step
+        reason:
+          type: string
+          title: Reason
+      type: object
+      required:
+      - step
+      - reason
+      title: SkippedStepOut
+    Status:
+      properties:
+        value:
+          $ref: '#/components/schemas/StatusValue'
+        reason:
+          anyOf:
+          - $ref: '#/components/schemas/UnverifiedReason'
+          - type: 'null'
+        checked:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Checked
+        searched_scope:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Searched Scope
+      additionalProperties: false
+      type: object
+      required:
+      - value
+      title: Status
+      description: 상태 객체. 직렬화하면 늘 네 키(없는 키는 null).
+    StatusValue:
+      type: string
+      enum:
+      - confirmed
+      - unverified
+      - not_found_in_scope
+      - conflict
+      title: StatusValue
+      description: 상태 네 값. 이 밖의 값은 저장 전에 거부한다.
+    UnverifiedReason:
+      type: string
+      enum:
+      - lookup_failed
+      - body_missing
+      - edition_unknown
+      - not_extracted
+      - ambiguous
+      - input_unverified
+      - evidence_rejected
+      - limit_reached
+      title: UnverifiedReason
+      description: '`unverified`일 때 왜 확인되지 않았나.'
     ValidationError:
       properties:
         loc:

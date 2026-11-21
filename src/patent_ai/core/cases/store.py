@@ -13,8 +13,9 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -22,6 +23,8 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     DEFAULT_USER_ID,
     DuplicateDocumentError,
 )
+from patent_ai.core.runs.state import UNFINISHED_STATES, RunError, RunState, check_transition
+from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
 from patent_ai.db.ids import new_id
 
 __all__ = [
@@ -191,6 +194,10 @@ class CaseAppStore(Protocol):
 
     def get_oa(self, oa_id: str) -> OADetailRow | None: ...
 
+    def create_run(self, oa_id: str) -> RunRow:
+        """있는 OA에 queued 실행을 하나 더 만든다 (POST /oas/{id}/runs). OA 확인은 부르는 쪽."""
+        ...
+
     def find_document_by_sha256(
         self, sha256: str, case_id: str | None = None
     ) -> ExistingDocument | None:
@@ -217,15 +224,92 @@ class InMemoryRunStore:
         self._clock = clock
         self._id_maker = id_maker
         self._rows: list[RunRow] = []
+        # 상태 칸 전체 (RunRow에 없는 waiting_for·error 포함). 실행은 백그라운드 스레드라 잠근다
+        self._status: dict[str, RunStatus] = {}
+        self._skipped: dict[str, list[SkippedStep]] = {}  # 실행별 넘긴 단계 (기록 순서)
+        self._lock = threading.Lock()
 
     def create_queued(self, oa_id: str) -> RunRow:
         row = RunRow(self._id_maker(), oa_id, "queued", None, self._clock())
-        self._rows.append(row)
+        with self._lock:
+            self._rows.append(row)
+            self._status[row.id] = RunStatus(run_id=row.id, oa_id=oa_id, state=RunState.QUEUED)
         return row
 
     def latest_for_oa(self, oa_id: str) -> RunRow | None:
-        mine = [r for r in self._rows if r.oa_id == oa_id]
-        return max(mine, key=lambda r: (r.created_at, r.id), default=None)
+        with self._lock:  # 백그라운드 스레드가 _rows를 바꾸는 중에 읽지 않게 잠근다
+            mine = [r for r in self._rows if r.oa_id == oa_id]
+            return max(mine, key=lambda r: (r.created_at, r.id), default=None)
+
+    def get_row(self, run_id: str) -> RunRow | None:
+        with self._lock:
+            return next((r for r in self._rows if r.id == run_id), None)
+
+    # --- RunStatusStore (실행 상태 바꾸기, #57) ---
+
+    def _put(self, status: RunStatus) -> None:
+        """상태 칸과 RunRow(state·current_step)를 같이 맞춘다. 잠근 채로 부른다."""
+        self._status[status.run_id] = status
+        self._rows = [
+            replace(r, state=status.state.value, current_step=status.current_step)
+            if r.id == status.run_id
+            else r
+            for r in self._rows
+        ]
+
+    def get_status(self, run_id: str) -> RunStatus | None:
+        with self._lock:
+            return self._status.get(run_id)
+
+    def transition(
+        self,
+        run_id: str,
+        new: RunState,
+        *,
+        current_step: str | None = None,
+        waiting_for: str | None = None,
+        error: RunError | None = None,
+        expected: RunState | None = None,
+    ) -> RunStatus:
+        with self._lock:
+            cur = self._status.get(run_id)
+            if cur is None:
+                raise RunNotFound(run_id)
+            # 지금 값을 읽어 전이 규칙을 꼭 거친다 (규칙은 state.py 한 곳)
+            check_transition(
+                cur.state, new, error=error, waiting_for=waiting_for, expected=expected
+            )
+            updated = cur.model_copy(
+                update={
+                    "state": new,
+                    "current_step": current_step if current_step is not None else cur.current_step,
+                    "waiting_for": waiting_for,
+                    "error": error.to_dict() if error else None,
+                }
+            )
+            self._put(updated)
+            return updated
+
+    def set_current_step(self, run_id: str, step: str) -> None:
+        with self._lock:
+            cur = self._status.get(run_id)
+            if cur is None:
+                raise RunNotFound(run_id)
+            self._put(cur.model_copy(update={"current_step": step}))
+
+    def record_skipped(self, run_id: str, step: str, reason: str) -> None:
+        with self._lock:
+            if run_id not in self._status:
+                raise RunNotFound(run_id)
+            self._skipped.setdefault(run_id, []).append(SkippedStep(step, reason))
+
+    def skipped_steps(self, run_id: str) -> list[SkippedStep]:
+        with self._lock:
+            return list(self._skipped.get(run_id, []))
+
+    def unfinished_run_ids(self) -> list[str]:
+        with self._lock:
+            return [r.id for r in self._rows if self._status[r.id].state in UNFINISHED_STATES]
 
 
 @dataclass
@@ -291,6 +375,9 @@ class InMemoryCaseAppStore:
         if case is None:
             raise CaseNotFoundError(case_id)
         return self._add_oa(case, file)
+
+    def create_run(self, oa_id: str) -> RunRow:
+        return self._runs.create_queued(oa_id)
 
     def _refs(self, case: _Case) -> list[OARef]:
         return [OARef(oa_id) for oa_id in case.oa_ids]

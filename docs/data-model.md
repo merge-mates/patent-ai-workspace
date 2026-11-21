@@ -85,9 +85,9 @@ erDiagram
 - 묶는 칸: 출원번호는 `cases.application_number`(출원번호를 읽기 전 임시 사건은 비어 있음), 발송번호(OA)·접수번호(보정서)는 `case_events.doc_number` 한 곳에 둔다. `oas`는 `case_events` 한 줄과 1:1이다. 날짜 칸은 표시용이고 어떤 unique에도 넣지 않는다.
 - 청구항 판: `claim_versions.source_kind`(`application` 출원서 / `amendment` 보정서 / `publication` 공개공보 / `registration` 등록공보)와 `source_doc_number`(보정서면 접수번호가 꼭 있음, 공보면 공개·등록번호)로 어느 서류의 판인지 가른다. `oas.examined_claim_version_id`가 비어 있으면 심사 대상 판은 "확인되지 않음"이다.
 - 결과 표: 결과 스키마마다 표 하나. **원본은 결과 표의 본문(`jsonb`)이다.** `status`·`origin`·`run_id`·`oa_id`는 거르기용 보통 컬럼. M1은 `oa_results`와 `case_materials`(⑥, 사건마다 최신 한 줄). ⑥은 지휘가 실행이 끝날 때·자료가 더해질 때 다시 써서 저장하고, 사건을 다시 열면 저장본을 읽는다. 스키마 검증은 Pydantic이 한다. 거절이유 엔티티 표 4개(`rejections`·`cited_references`·`rejection_claims`·`rejection_citations`)는 M1에서 비어 있고, M2에서 F3가 청구항·인용문헌으로 찾아야 할 때 결과에서 채운다.
-- 같은 OA를 여러 번 돌리면 API는 판단 단위마다 가장 최근에 성공한 실행(`succeeded`)의 결과를 준다. 판단 단위가 없는 결과(①, 사건 전체 검사)는 OA마다, ⑥은 사건마다 가장 최근 것을 준다. 앞 결과는 지우지 않고 남긴다 (이력·채점용). 고르는 코드는 #56 (`oa_results`의 `(oa_id, created_at)` 인덱스 + `runs.state`).
+- 같은 OA를 여러 번 돌리면 API는 판단 단위마다 가장 최근에 성공한 실행(`succeeded`) 또는 사람을 기다리는 실행(`waiting_for_human`)의 결과를 준다. 판단 단위가 없는 결과(①, 사건 전체 검사)는 OA마다, ⑥은 사건마다 가장 최근 것을 준다. 앞 결과는 지우지 않고 남긴다 (이력·채점용). 고르는 코드는 #57 (`oa_results`의 `(oa_id, created_at)` 인덱스 + `runs.state`).
 - 실행 기록: `runs`(API 실행 상태 겸, `state` 6값) · `agent_steps`(지휘 단계 `StepRecord`와 모델 호출 `CallRecord`를 한 표에. 모델 호출은 `step_kind = model_call`. 모델·토큰·비용·시간·만든 결과 ID).
-  - 넘긴 단계(도구 없음·입력 없음): `agent_steps`에 `step_kind = code_tool`, `outcome = waiting`, `result_status = unverified`, `reason = "넘김: <이유>"`로 남긴다. 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다. 임시 표기이고 이슈 #57에서 `skipped` 값으로 바꾼다.
+  - 넘긴 단계(도구 없음·입력 없음) = `agent_steps.outcome = skipped` + `reason`. 실행은 계속 돌고, `GET /runs/{id}`의 `skipped_steps`·`warnings`로 보인다 (#57). 지휘(#180)는 아직 임시 표기(`step_kind = code_tool`, `outcome = waiting`, `result_status = unverified`, `reason = "넘김: <이유>"`)로 남기고, 지휘를 서버 실행기에 이을 때 `skipped`로 바꾼다. 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다.
 - `result_inputs`(뒤 결과 → 기댄 앞 결과 `result` 또는 자료 `document`): 상태 전파와 "다시 확인 필요"에 쓴다. 가리키는 표가 여럿이라 외래 키는 걸지 않는다.
 - `api_cache`: 외부 API 응답. 외부 API 호출은 이 캐시와 호출 상한을 거친다.
 - 원본 파일은 디스크에 두고 DB에는 경로만 둔다. 위치: `data/raw/cases/<출원번호>/`(평가 사건, 자동 조회, 사용자 업로드가 같은 자리) → 가공본 `data/processed/cases/<출원번호>/`, 법령은 `data/raw/legal/`. 파일 이름 규칙은 자동 조회 이슈(#54)에서 정한다.

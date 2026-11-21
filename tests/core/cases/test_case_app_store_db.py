@@ -123,6 +123,25 @@ def test_succeeded_정리만_거절이유와_status로_나온다(session):
     assert row.status == "conflict"
 
 
+def test_사람_기다림_실행의_정리도_목록에_나온다(session):
+    # 결과 엔드포인트와 같은 규칙(RESULT_VISIBLE_STATES): 사람 기다림 중에도 거절이유를 보인다
+    store = PostgresCaseAppStore(session)
+    created = store.create_case(_file("db_result_" + "w" * 20))
+    waiting = Run(
+        oa_id=created.oa_id,
+        state="waiting_for_human",
+        waiting_for="direction_selection",
+        created_at=T0,
+    )
+    session.add(waiting)
+    session.flush()
+    _result(session, created.oa_id, waiting.id, "confirmed", ["clarity"], T0)
+
+    row = next(r for r in store.list_cases() if r.case_id == created.case_id)
+    assert row.rejection_kinds == ["clarity"]
+    assert row.status == "confirmed"
+
+
 def test_OA2를_올린_직후_OA1_거절이유가_안_보인다(session):
     store = PostgresCaseAppStore(session)
     created = store.create_case(_file("db_next_oa_" + "f" * 20))
