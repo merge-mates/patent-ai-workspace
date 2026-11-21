@@ -220,7 +220,9 @@ impl: fake
 k: [1, 3, 5, 10]
 gold: retrieval/gold.jsonl          # <goldsets_root>/<goldset>/ 기준 상대 경로 (기본이면 data/goldsets/tune/retrieval/gold.jsonl)
 law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7-4)
+noise_scope: retrieval/cite_noise_b.jsonl  # 인용문헌만. 둘째 점수(#178). 생략하면 주 점수
 ```
+- `noise_scope` (#178 둘째 점수): 줄마다 검색 범위 doc_id 목록 파일 `{"row_id", "scope_doc_ids"}` (git 밖, `gold`와 같은 기준). 있으면 `search`의 `doc_ids`와 N을 그 범위로 바꾸고, 맞음 판정은 그대로 정답 줄 `doc_ids` 안만 본다 (노이즈 조각은 늘 틀림). 범위에 줄이 없거나 정답 문헌이 빠지면 멈춘다. 정답 문헌 조각이 0개면 노이즈가 있어도 `excluded_body_missing`. `metrics`에 `doc_hit@k`(상위 k'에 정답 문헌 조각이 있나)와 `random_doc_hit@k`(정답 문헌 조각 수로 위 무작위 Hit 식)를 더하고, `scores.json`에 `scope: {kind: "noise", file, sha256, docs_per_row_mean}`을 남긴다. 범위 파일은 `eval/retrieval/noise_scope.py`가 풀 표 `cite_pool.yaml`에서 만든다 (규칙은 [search-gold.md](../../evaluation/search-gold.md) 5절).
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
   - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `excluded_gold_items_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`.

@@ -11,12 +11,14 @@ from sqlalchemy.orm import Session
 from patent_ai.core.f1_oa_reader.case_grouping import AS_FILED_VERSION
 from patent_ai.core.f1_oa_reader.case_repository import (
     CaseStoreError,
+    DuplicateDocumentError,
+    upload_missing_material,
 )
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.schemas.common import StatusValue
-from patent_ai.db.models import OA, ClaimVersion, Document, OAResultRow, Run
+from patent_ai.db.models import OA, CaseMaterialsRow, ClaimVersion, Document, OAResultRow, Run
 from patent_ai.settings import get_settings
-from tests.core.f1.test_case_repository import CASE_ID, OA1, OA2, _oa, _record
+from tests.core.f1.test_case_repository import CASE_ID, OA1, OA2, _file, _oa, _record
 
 pytestmark = pytest.mark.db
 
@@ -109,3 +111,55 @@ def test_보정서_판인데_이력_줄이_없으면_CHECK가_거부(session):
     )
     with pytest.raises(IntegrityError, match="ck_claim_versions_amendment_event"):
         session.flush()
+
+
+# --- 빠진 자료 올리기·사건 보기 (T7) -----------------------------------------------
+
+
+def test_빠진_자료를_올리면_DB에서_다시_읽어도_그대로(session):
+    repo = PostgresCaseRepository(session)
+    repo.save_case(_record())
+    what = repo.load_case_materials(CASE_ID).missing[0].what
+    got = upload_missing_material(repo, CASE_ID, what, _file("up"), document_id="doc_up")
+    session.expire_all()
+
+    assert repo.load_case_materials(CASE_ID) == got
+    doc = session.get(Document, "doc_up")
+    assert (doc.case_id, doc.case_event_id, doc.kind, doc.source) == (
+        CASE_ID,
+        None,
+        "citation",
+        "uploaded",
+    )
+    assert session.get(CaseMaterialsRow, CASE_ID).run_id is None  # 자료만 더함
+
+
+def test_같은_사건에_같은_파일을_올리면_중복_오류이고_자료는_안_바뀜(session):
+    repo = PostgresCaseRepository(session)
+    repo.save_case(_record())
+    before = repo.load_case_materials(CASE_ID)
+    with pytest.raises(DuplicateDocumentError):
+        upload_missing_material(
+            repo, CASE_ID, before.missing[0].what, _file("x", sha="sha-doc_oa1")
+        )
+    session.expire_all()
+    assert repo.load_case_materials(CASE_ID) == before
+
+
+def test_사건_보기_이력과_OA별_판(session):
+    repo = PostgresCaseRepository(session)
+    repo.save_case(_record())
+    session.expire_all()
+    seq = [(e.kind, e.doc_number, e.seq) for e in repo.events(CASE_ID)][:3]
+    assert seq == [
+        ("oa", "952099000000001", 1),
+        ("amendment", "112099000000112", 2),
+        ("oa", "952099000000002", 3),
+    ]
+    versions = [
+        (v.dispatch_number, v.examined_claim_version.value) for v in repo.oa_versions(CASE_ID)
+    ]
+    assert versions == [
+        ("952099000000001", AS_FILED_VERSION),
+        ("952099000000002", "112099000000112"),
+    ]

@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from patent_ai.api.deps import (
+    get_case_repository_unit,
     get_case_unit,
     get_run_launcher,
     get_run_status_store,
@@ -15,6 +16,7 @@ from patent_ai.api.deps import (
 )
 from patent_ai.api.main import create_app
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
+from tests.api.repo_fake import FakeRepoUnit
 
 PDF_A = b"%PDF-1.7\nA"
 PDF_B = b"%PDF-1.7\nB"
@@ -49,6 +51,7 @@ def env(tmp_path):
     app = create_app()
     app.dependency_overrides[get_case_unit] = lambda: unit
     app.dependency_overrides[get_upload_dir] = lambda: tmp_path
+    app.dependency_overrides[get_case_repository_unit] = lambda: FakeRepoUnit()
     # 실행기를 안 돌리는 launcher: 실행이 queued로 남아 업로드 동작만 본다 (#57 이후 기본은 실행기)
     app.dependency_overrides[get_run_status_store] = lambda: runs
     app.dependency_overrides[get_run_launcher] = lambda: lambda run_id, oa_id: None

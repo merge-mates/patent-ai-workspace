@@ -1,0 +1,24 @@
+# 인용문헌 BM25 둘째 점수 (#178 B안): m2-i1 기준선과 같은 설정에서 검색 범위만 tune 인용문헌 전체(우선일 전 공개, 비특허 뺌)로 넓힌다
+experiment: m2-i3-cite-search-bm25-noise-b
+feature: retrieval
+baseline: m2-i1-cite-search-bm25-baseline   # 같은 설정·같은 색인, 범위만 넓힘
+goldset: tune
+goldset_version: 2   # 11/19 같은이유 고침으로 2
+corpus: cite
+index_version: cite-idx-v1
+mode: bm25
+impl: bm25
+k: [1, 3, 5, 10]
+gold: retrieval/cite_gold.jsonl
+# 둘째 점수 (#178 B안): tune 인용문헌 전체를 한 풀로. eval/retrieval/noise_scope.py가 만든다 (git 밖)
+noise_scope: retrieval/cite_noise_b.jsonl
+settings:
+  tokenizer: kiwi        # kiwipiepy 0.24.1
+  pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
+  bm25:                  # bm25s 0.3.16
+    method: lucene
+    k1: 1.5
+    b: 0.75
+budget:
+  max_usd: 0
+  max_external_calls: 0
