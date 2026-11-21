@@ -7,10 +7,11 @@ import pytest
 from patent_ai.core.cases.texts_source import build_texts
 from patent_ai.core.f1_oa_reader.case_repository import ClaimVersionRow
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
-from patent_ai.core.schemas.common import Status, StatusValue
+from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import Page, PageText
 
 OK = Status(value=StatusValue.CONFIRMED, checked="테스트")
+BLANK = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING)
 APP = (
     "【발명의 설명】\n【0001】 화분.\n"
     "【청구범위】\n【청구항 1】\n화분.\n【청구항 2】\n제1항의 화분."
@@ -32,7 +33,11 @@ PATHS = {"d_app": "app.pdf", "d_amend": "amend.pdf", "d_pub": "pub.pdf"}
 def _read(path: Path, document_id: str) -> PageText:
     if path.name not in FILES:
         raise PdfReadError(path.name)
-    pages = [Page(page=i, status=OK, text=t) for i, t in enumerate(FILES[path.name], start=1)]
+    # 빈 쪽은 extract_pages처럼 글자 층 없음(unverified, body_missing)으로 둔다
+    pages = [
+        Page(page=i, status=OK if t else BLANK, text=t)
+        for i, t in enumerate(FILES[path.name], start=1)
+    ]
     return PageText(document_id=document_id, status=OK, pages=pages)
 
 
@@ -88,7 +93,37 @@ def test_texts_source_번호를_못_뽑으면_글자는_넘기되_unverified():
     assert got.claims_status.value == StatusValue.UNVERIFIED
 
 
+def test_texts_source_청구항_사이에_글자_층_없는_쪽이_끼면_unverified():
+    # 리뷰 #215 막음: 그림 쪽 글자가 빠진 채 confirmed가 되지 않게 한다
+    FILES["a.pdf"] = [
+        "【청구범위】\n【청구항 1】\n물통과",
+        "",  # 글자 층 없는 쪽
+        "센서를 포함하는 화분.\n【청구항 2】\n제1항의 화분.\n【요약서】\n요약.",
+    ]
+    got = _build(V0, versions=(V0,), paths={"d_app": "a.pdf"})
+    assert got.claims_status.value == StatusValue.UNVERIFIED
+    assert got.claims_status.reason == UnverifiedReason.BODY_MISSING
+
+
+def test_texts_source_청구항_범위_밖의_그림_쪽은_상관없다():
+    FILES["a.pdf"] = ["【청구범위】\n【청구항 1】\n화분.\n【요약서】\n요약.", ""]
+    got = _build(V0, versions=(V0,), paths={"d_app": "a.pdf"})
+    assert got.claims_status.value == StatusValue.CONFIRMED
+
+
+def test_texts_source_보정서_청구항_항목에_글자_층_없는_쪽이_끼면_unverified():
+    FILES["m.pdf"] = [
+        "【보정대상항목】 청구항 1\n【보정방법】 정정\n【보정내용】\n【청구항 1】\n센서",
+        "",
+        "화분.\n【보정대상항목】 청구항 2\n【보정방법】 삭제",
+    ]
+    got = _build(V1, versions=(V0, V1), paths={"d_app": "app.pdf", "d_amend": "m.pdf"})
+    assert got.claims_status.value == StatusValue.UNVERIFIED
+    assert got.claims_status.reason == UnverifiedReason.BODY_MISSING
+
+
 @pytest.fixture(autouse=True)
 def _clean_files():
     yield
-    FILES.pop("broken.pdf", None)
+    for name in ("broken.pdf", "a.pdf", "m.pdf"):
+        FILES.pop(name, None)

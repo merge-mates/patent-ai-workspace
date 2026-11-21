@@ -17,10 +17,11 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from patent_ai.core.cases.claim_texts import claims_at_version
+from patent_ai.core.cases.claim_texts import claim_region, claims_at_version
 from patent_ai.core.f1_oa_reader.case_repository import AI_INPUT_KINDS, ClaimVersionRow
 from patent_ai.core.f1_oa_reader.pages import PdfReadError, extract_pages
 from patent_ai.core.f3_claim_compare.inputs import F3Inputs
+from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.document import PageText
 from patent_ai.db.models import OA, ClaimVersion, Document
 
@@ -32,6 +33,25 @@ ReadPages = Callable[[Path, str], PageText]
 def _joined(pages: PageText) -> str:
     """쪽 글자를 줄바꿈으로 잇는다 (청구항이 다음 쪽으로 이어진다)."""
     return "\n".join(p.text for p in pages.pages)
+
+
+def _blank_page_in_claims(pages: PageText, *, first: bool) -> int | None:
+    """청구항으로 읽는 글자 범위에 글자 층 없는 쪽(스캔·그림)이 끼었으면 그 쪽 번호.
+
+    그런 쪽은 글자가 ""라 이어 붙이면 티 없이 빠진다. 쪽마다 이은 글자 안 시작 위치를 기억해
+    청구항 범위와 겹치는지 본다 (리뷰 #215). 범위 밖(문서 끝 도면 쪽 등)은 상관없다.
+    """
+    region = claim_region(_joined(pages), first=first)
+    if region is None:
+        return None  # 청구항을 못 찾으면 claims_at_version이 따로 unverified로 둔다
+    begin, end = region
+    start = 0
+    for p in pages.pages:
+        stop = start + len(p.text)
+        if p.status.value != StatusValue.CONFIRMED and start <= end and stop >= begin:
+            return p.page
+        start = stop + 1  # 쪽 사이 줄바꿈 한 글자
+    return None
 
 
 def build_texts(
@@ -67,9 +87,18 @@ def build_texts(
             logger.warning("texts_source: 판 %d 문서를 못 읽음 (%s)", v.version, e)
             return None
     claims = claims_at_version([_joined(p) for p in read])
+    status = claims.status
+    for i, pages in enumerate(read):
+        blank = _blank_page_in_claims(pages, first=i == 0)
+        if blank is not None:
+            logger.warning(
+                "texts_source: 판 %d 문서 %d쪽에 글자 층이 없음", chain[i].version, blank
+            )
+            status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING)
+            break
     return F3Inputs(
         claims_at_oa=claims.claims,
-        claims_status=claims.status,
+        claims_status=status,
         claims_document_id=examined.document_id,
         spec=read[0],  # 최초 명세서 = 출원서
     )
