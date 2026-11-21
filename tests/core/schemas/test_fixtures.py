@@ -165,3 +165,26 @@ def test_네_값_사건의_review_items가_마무리_결과와_같다(all_oa, al
     assert all_materials.review_items_count == len(expected.review_items) > 0
     kinds = {r.kind for r in all_materials.review_items}
     assert {"missing_material", "conflict", "unverified", "needs_human_review"} <= kinds
+
+
+def _raw_text_places(node):
+    """JSON 안에서 raw_text와 page가 같이 있는 곳(값·후보·근거)을 모두 모은다."""
+    if isinstance(node, dict):
+        if node.get("raw_text") and node.get("page") is not None:
+            yield node["page"], node["raw_text"]
+        for v in node.values():
+            yield from _raw_text_places(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _raw_text_places(v)
+
+
+def test_네_값_사건의_근거_raw_text가_그_쪽_글자_안에_있다():
+    # 화면이 쪽 글자에서 raw_text를 찾아 강조하므로 없으면 강조가 안 된다
+    oa = json.loads((ALL_STATUSES_DIR / "oa_result.json").read_text("utf-8"))
+    pages = json.loads((ALL_STATUSES_DIR / "pages.json").read_text("utf-8"))
+    text_of = {p["page"]: p["text"] for p in pages["pages"]}
+    places = list(_raw_text_places(oa))
+    assert places
+    missing = [(pg, raw) for pg, raw in places if raw not in text_of.get(pg, "")]
+    assert missing == []

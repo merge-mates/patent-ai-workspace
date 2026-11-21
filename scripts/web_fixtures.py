@@ -99,7 +99,8 @@ def _from_fixture_dir(c: dict) -> dict:
     oa = OAResult.model_validate_json((d / "oa_result.json").read_text("utf-8"))
     materials = CaseMaterials.model_validate_json((d / "case_materials.json").read_text("utf-8"))
     pages = PageText.model_validate_json((d / "pages.json").read_text("utf-8"))
-    review = materials.review_items or []
+    # None(마무리 안 한 ⑥)은 빈 목록으로 바꾸지 않는다: "0건"처럼 보이면 안 된다
+    review = materials.review_items
     return {
         "case_id": c["case_id"],
         "case_name": c["case_name"],
@@ -108,7 +109,7 @@ def _from_fixture_dir(c: dict) -> dict:
         "run_id": f"r_{c['oa_id']}_{c['case_id']}",
         "oa_result": oa.model_dump(mode="json"),
         "materials": materials.model_dump(mode="json"),
-        "review_items": [r.model_dump(mode="json") for r in review],
+        "review_items": None if review is None else [r.model_dump(mode="json") for r in review],
         "document": pages.model_dump(mode="json"),
     }
 
