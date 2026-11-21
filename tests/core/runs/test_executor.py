@@ -64,7 +64,9 @@ def test_단계에서_예외가_나면_failed와_이유가_남고_저장_안_된
     assert st.state == RunState.FAILED
     assert st.error["code"] == "step_failed"
     assert "OA 읽는 중" in st.error["message"]
-    assert "깨진 PDF" in st.error["message"]
+    # 예외 원문은 로그에만 (모델·DB 예외 글에 OA 원문이 섞일 수 있다). 응답에는 예외 종류만
+    assert "ValueError" in st.error["message"]
+    assert "깨진 PDF" not in st.error["message"]
     assert sink.saved == []
     assert log == []
 

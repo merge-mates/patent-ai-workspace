@@ -137,7 +137,8 @@ def test_실패하면_failed와_이유가_응답에_있다(env):
     body = env.client.get(f"/runs/{created['run_id']}").json()
     assert body["state"] == "failed"
     assert body["error"]["code"] == "step_failed"
-    assert "PDF가 깨짐" in body["error"]["message"]
+    assert "RuntimeError" in body["error"]["message"]
+    assert "PDF가 깨짐" not in body["error"]["message"]  # 예외 원문은 로그에만
     assert env.sink.saved == []  # 조용히 성공으로 끝나지 않는다
 
 

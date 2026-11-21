@@ -9,7 +9,7 @@ import logging
 import threading
 from collections.abc import Callable
 
-from patent_ai.core.runs.executor import RunExecutor
+from patent_ai.core.runs.executor import RunExecutor, safe_message
 from patent_ai.core.runs.state import InvalidRunTransition, RunError, RunState
 from patent_ai.core.runs.store import RunNotFound, RunStatusStore
 
@@ -39,7 +39,7 @@ class ThreadLauncher:
                 self._store.transition(
                     run_id,
                     RunState.FAILED,
-                    error=RunError("executor_crashed", f"실행 중 오류: {exc}"),
+                    error=RunError("executor_crashed", safe_message("실행", exc)),
                 )
             except InvalidRunTransition, RunNotFound:
                 logger.warning("실행 %s는 이미 끝나 있어 failed로 바꾸지 않는다", run_id)
@@ -64,5 +64,5 @@ def launch_or_fail(launch: RunLauncher, store: RunStatusStore, run_id: str, oa_i
         launch(run_id, oa_id)
     except Exception as exc:
         logger.exception("실행 %s를 실행기에 넘기지 못함", run_id)
-        mark_launch_failed(store, run_id, f"실행을 시작하지 못했습니다: {exc}")
+        mark_launch_failed(store, run_id, safe_message("실행 시작", exc))
         raise LaunchFailedError(run_id) from exc

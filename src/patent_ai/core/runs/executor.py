@@ -16,6 +16,15 @@ from patent_ai.core.schemas.oa_result import OAResult
 logger = logging.getLogger(__name__)
 
 
+def safe_message(what: str, exc: BaseException) -> str:
+    """실패 이유 한 줄: 어디서 실패했는지 + 예외 종류만. 예외 원문은 넣지 않는다.
+
+    모델 SDK·DB·검사 예외 글에는 요청 본문(OA 원문)이나 연결 정보가 섞일 수 있다.
+    원문은 logger.exception으로 서버 로그에만 남긴다 (#187 리뷰).
+    """
+    return f"{what}: 실패 ({type(exc).__name__})"
+
+
 class RunExecutor(Protocol):
     def execute(self, run_id: str, oa_id: str) -> None:
         """실행 하나를 끝까지(또는 사람 기다림·취소까지) 돌린다. 결과는 저장소에 남긴다."""
@@ -108,7 +117,7 @@ class StepRunExecutor:
                 outcome = step.run()
             except Exception as exc:  # 예외를 삼키지 않고 기록한 뒤 failed로 남긴다
                 logger.exception("실행 %s의 단계 '%s' 실패", run_id, step.name)
-                error = RunError("step_failed", f"{step.name}: {exc}")
+                error = RunError("step_failed", safe_message(step.name, exc))
                 self._finish(run_id, RunState.FAILED, error=error)
                 return
             if isinstance(outcome, WaitForHuman):
@@ -132,7 +141,7 @@ class StepRunExecutor:
             self._finish(
                 run_id,
                 RunState.FAILED,
-                error=RunError("result_save_failed", f"결과 저장 실패: {exc}"),
+                error=RunError("result_save_failed", safe_message("결과 저장", exc)),
             )
             return
         self._finish(run_id, RunState.SUCCEEDED)
