@@ -69,7 +69,7 @@ export function MaterialRows({
               </span>
             </Tooltip>
           )}
-          {x.ask_upload && <UploadMaterialButton caseId={caseId} />}
+          {x.ask_upload && <UploadMaterialButton caseId={caseId} what={x.what} />}
         </div>
       ))}
       {m.documents.length + m.missing.length === 0 && (

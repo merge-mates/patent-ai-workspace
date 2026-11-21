@@ -1,6 +1,7 @@
 // 임시 타입: 사건 목록·사건 보기·OA 보기·사건 만들기 응답.
 // 서버 응답 스키마(#56·#57)가 생기면 OpenAPI에서 뽑은 타입으로 바꿈. 손으로 오래 두지 않는다.
 // 결과 본문(OAResult·CaseMaterials·ReviewItem)은 types/generated/ 의 뽑은 타입을 쓴다.
+import type { CaseMaterials } from '../generated/CaseMaterials'
 import type { LegalEvidenceBundle } from '../generated/LegalEvidenceBundle'
 import type { NoticeKind, OAResult, RejectionKind, StatusValue } from '../generated/OAResult'
 
@@ -83,9 +84,13 @@ export interface CreatedOA {
   run_id: string
 }
 
-// POST /cases/{id}/documents: 조회하지 못한 자료 올리기. 응답 모양이 명세에 없다 (임시: 서버 응답 스키마 #56·#57 전에 정함).
-// 화면은 응답 안의 값을 읽지 않고 성공 여부만 쓴다.
-export type UploadedDocument = Record<string, unknown>
+// POST /cases/{id}/documents: 조회하지 못한 자료 올리기 (docs/api/README.md 3절, #16 T7).
+// result = 고친 사건 자료 (결과 스키마 ⑥ 그대로). 화면은 올린 뒤 loader를 다시 불러 목록을 새로 받는다
+export interface UploadedDocument {
+  case_id: string
+  document_id: string // 올린 자료의 문서 ID
+  result: CaseMaterials
+}
 
 // 법률 질문 답: 이어 묻기가 되도록 대화 ID(chat_id)와 같이 돌려준다 (임시: F2 설계 때 정함)
 export interface LegalAnswer {
