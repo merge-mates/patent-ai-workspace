@@ -190,7 +190,7 @@ export const mockApi = {
   async askLegal(q: LegalQuestion): Promise<LegalEvidenceBundle> {
     return exampleLegalAnswer(q)
   },
-  // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 이 탭 메모리에만 둔다 (새로고침하면 처음으로)
+  // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<DirectionCandidates[]> {
     gate(await byOA(oaId), PHASE.directions)
     return directions[oaId] ?? []
@@ -203,6 +203,7 @@ export const mockApi = {
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
     found.selection = { candidate_id: candidateId, origin: 'human_selected' }
+    saveSelection(unitId, candidateId)
     // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
     return found
   },
@@ -236,8 +237,8 @@ export const mockApi = {
       c.origin = c.human_text === null ? 'ai_generated' : 'human_edited'
     }
     // 초안 전체도 고친 곳이 하나라도 있으면 사람이 고친 것
-    const edited = d.opinion.some((x) => x.origin === 'human_edited') || d.claims.some((x) => x.origin === 'human_edited')
-    d.origin = edited ? 'human_edited' : 'ai_generated'
+    recomputeDraftOrigin(d)
+    saveDraft(d)
     return { ...d }
   },
   // 실행 상태: 시작 시각과 흐른 시간으로 만든다 (D5). 표에 없는 OA는 늘 끝남
@@ -337,6 +338,139 @@ function gate(b: Bundle, need: number) {
 // mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)
 const directions: Record<string, DirectionCandidates[]> = structuredClone(exampleDirections)
 const drafts: Record<string, DraftsWithCheck> = structuredClone(exampleDrafts)
+
+// ---- 사람이 고른 것·고친 것을 브라우저 localStorage에 남긴다 (D6). 화면 부품은 이 저장을 모른다 ----
+// 예시 복사본 위에 "사람이 바꾼 것만" 덮는다. 서버가 오면 PUT selection · PATCH drafts 로 바뀐다.
+// 저장하는 ID는 커밋된 예시(exampleDirections·exampleDrafts)의 것뿐이다. VITE_DEMO 결과에는
+// 방향·초안이 없어(directions[oa] 없음) selectDirection·patchDraft가 404로 막혀 저장되지 않는다.
+const STORE_PREFIX = 'patent_ai:mock:v1:'
+const selectionKey = (unitId: string) => `${STORE_PREFIX}selection:${unitId}`
+const draftKey = (draftId: string) => `${STORE_PREFIX}draft:${draftId}`
+
+// 칸 값 null = "AI 원문으로 되돌림" (예시에 이미 고친 글이 있던 칸을 되돌린 경우)
+interface SavedDraft {
+  opinion: Record<string, string | null>
+  claims: Record<string, string | null>
+}
+
+// 사생활 창 등에서는 저장소 접근이 throw한다: 조용히 넘기지 않고 알리되 화면은 메모리로 계속 돈다
+function storeWrite(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch (e) {
+    console.warn(`[mock] 브라우저 저장소에 쓰지 못함 (${key}): 새로고침하면 사라져요`, e)
+  }
+}
+
+function saveSelection(unitId: string, candidateId: string) {
+  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, origin: 'human_selected' }))
+}
+
+// 예시와 human_text가 달라진 칸(= 사람이 바꾼 칸)만 모아 저장. 하나도 없으면 키를 지운다
+function saveDraft(d: DraftsWithCheck) {
+  const base = Object.values(exampleDrafts).find((x) => x.draft_id === d.draft_id)
+  const saved: SavedDraft = { opinion: {}, claims: {} }
+  for (const sec of d.opinion) {
+    const was = base?.opinion.find((x) => x.key === sec.key)?.human_text ?? null
+    if (sec.human_text !== was) saved.opinion[sec.key] = sec.human_text
+  }
+  for (const c of d.claims) {
+    const was = base?.claims.find((x) => x.claim === c.claim)?.human_text ?? null
+    if (c.human_text !== was) saved.claims[String(c.claim)] = c.human_text
+  }
+  const empty = Object.keys(saved.opinion).length === 0 && Object.keys(saved.claims).length === 0
+  storeWrite(draftKey(d.draft_id), empty ? null : JSON.stringify(saved))
+}
+
+// 칸 origin과 초안 전체 origin을 human_text로부터 다시 계산한다 (patchDraft와 불러올 때가 같은 규칙)
+function recomputeDraftOrigin(d: DraftsWithCheck) {
+  for (const sec of d.opinion) sec.origin = sec.human_text === null ? 'ai_generated' : 'human_edited'
+  for (const c of d.claims) c.origin = c.human_text === null ? 'ai_generated' : 'human_edited'
+  const edited = d.opinion.some((x) => x.origin === 'human_edited') || d.claims.some((x) => x.origin === 'human_edited')
+  d.origin = edited ? 'human_edited' : 'ai_generated'
+}
+
+// 모듈을 불러올 때 한 번: 저장된 것을 예시 위에 덮는다. 덮을 곳이 없으면 그 키(또는 칸)를 지우고 알린다
+function applySaved() {
+  let keys: string[] = []
+  try {
+    keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '')
+  } catch (e) {
+    console.warn('[mock] 브라우저 저장소를 읽지 못함: 고른 것·고친 것을 불러오지 않아요', e)
+    return
+  }
+  const allDirections = Object.values(directions).flat()
+  const allDrafts = Object.values(drafts)
+  const drop = (key: string, why: string) => {
+    console.warn(`[mock] 저장된 ${key} 를 지움: ${why}`)
+    storeWrite(key, null)
+  }
+  const readJson = (key: string): unknown => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? 'null')
+    } catch {
+      return undefined // 읽거나 해석하지 못함
+    }
+  }
+
+  for (const key of keys) {
+    if (key.startsWith(`${STORE_PREFIX}selection:`)) {
+      const unitId = key.slice(`${STORE_PREFIX}selection:`.length)
+      const saved = readJson(key) as { candidate_id?: unknown } | null | undefined
+      const unit = allDirections.find((d) => d.unit_id === unitId)
+      if (!unit) drop(key, '판단 단위가 예시에 없음')
+      else if (!saved || typeof saved.candidate_id !== 'string') drop(key, '저장된 값을 읽을 수 없음')
+      else if (!unit.candidates.some((c) => c.candidate_id === saved.candidate_id)) drop(key, '후보가 예시에 없음')
+      else unit.selection = { candidate_id: saved.candidate_id, origin: 'human_selected' }
+    } else if (key.startsWith(`${STORE_PREFIX}draft:`)) {
+      const draftId = key.slice(`${STORE_PREFIX}draft:`.length)
+      const saved = readJson(key) as Partial<SavedDraft> | null | undefined
+      const d = allDrafts.find((x) => x.draft_id === draftId)
+      if (!d) drop(key, '초안이 예시에 없음')
+      else if (!saved || typeof saved !== 'object') drop(key, '저장된 값을 읽을 수 없음')
+      else {
+        let bad = 0
+        for (const [k, text] of Object.entries(saved.opinion ?? {})) {
+          const sec = d.opinion.find((x) => x.key === k)
+          if (sec && (typeof text === 'string' || text === null)) sec.human_text = text === sec.ai_text ? null : text
+          else bad++
+        }
+        for (const [n, text] of Object.entries(saved.claims ?? {})) {
+          const c = d.claims.find((x) => String(x.claim) === n)
+          // 보류한 청구항(초안 없음)은 고칠 수 없다
+          if (c && c.ai_text !== null && (typeof text === 'string' || text === null)) c.human_text = text === c.ai_text ? null : text
+          else bad++
+        }
+        recomputeDraftOrigin(d)
+        if (bad > 0) {
+          console.warn(`[mock] 저장된 ${key} 에서 예시에 없는 칸 ${bad}개를 지움`)
+          saveDraft(d) // 덮은 것만 다시 저장 (빈 칸이면 키 삭제)
+        }
+      }
+    }
+  }
+}
+applySaved()
+
+// patent_ai:mock: 로 시작하는 localStorage·sessionStorage 키를 모두 지운다
+// ("mock 처음으로" 버튼, 그리고 서버 모드에서 옛 mock 값이 남지 않게 api/index.ts가 부른다)
+export function clearMockKeys() {
+  for (const store of ['localStorage', 'sessionStorage'] as const) {
+    try {
+      const area = window[store]
+      const keys = Array.from({ length: area.length }, (_, i) => area.key(i) ?? '')
+      for (const k of keys) if (k.startsWith('patent_ai:mock:')) area.removeItem(k)
+    } catch (e) {
+      console.warn(`[mock] ${store}를 지우지 못함`, e)
+    }
+  }
+}
+
+export function resetMockStorage() {
+  clearMockKeys()
+  window.location.reload()
+}
 
 // 지금 단계(mock 짐작): 결과가 있는 가장 뒤 단계
 function stageOf(oaId: string): CaseStage {
