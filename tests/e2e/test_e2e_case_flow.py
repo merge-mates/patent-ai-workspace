@@ -90,7 +90,7 @@ def test_e2e_한_사건이_F1부터_F4까지_돌고_F2는_넘긴_이유가_남�
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
         ("run_f3", "ok"),
-        ("run_f2", "waiting"),
+        ("run_f2", "skipped"),
         ("run_f4", "ok"),
     ]
     # F2는 결과 없이 넘긴 이유만 (성공으로 숨기지 않는다)
