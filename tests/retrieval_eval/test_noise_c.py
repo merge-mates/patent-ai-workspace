@@ -226,3 +226,28 @@ def test_응답의_명칭과_요약을_글로_남긴다():
         "<astrtCont>MR 신호</astrtCont></item>"
     )
     assert parse_search_xml(body)[0].text == "혈류 영상 MR 신호"
+
+
+# --- T3: C안 공보 PDF 주소 읽기 (KIPRIS Plus 공개·공고 전문 응답) ---
+
+from eval.retrieval.noise_c import fulltext_kind, parse_fulltext_path  # noqa: E402
+
+
+def test_전문_응답에서_PDF_주소를_읽는다():
+    body = xml(
+        "<item><docName>9920990000001.pdf</docName>"
+        "<path>http://plus.kipris.or.kr/kiprisplusws/fileToss.jsp?arg=abc</path></item>"
+    )
+    assert parse_fulltext_path(body) == "http://plus.kipris.or.kr/kiprisplusws/fileToss.jsp?arg=abc"
+
+
+def test_전문_응답에_주소가_없으면_멈춘다():
+    with pytest.raises(RetrievalEvalError, match="주소"):
+        parse_fulltext_path(xml())
+
+
+def test_공개공보는_공개전문_등록공보는_공고전문을_부른다():
+    assert fulltext_kind("KR20990000001A") == "pub"
+    assert fulltext_kind("KR991234567B1") == "ann"
+    with pytest.raises(RetrievalEvalError):
+        fulltext_kind("US20990000003A1")
