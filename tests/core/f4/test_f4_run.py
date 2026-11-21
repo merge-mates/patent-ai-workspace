@@ -45,6 +45,11 @@ def _confirmed_legal(unit_id: str, rejection: int) -> dict:
         "no": 1,
         "text": "만든 주장",
         "sources": [source],
+        # review 없는 주장은 needs_human_review가 필수라 넣는다
+        "review": {
+            "verdict": "supported",
+            "reason": "만든 검토 이유",
+        },
         "status": {"value": "confirmed", "checked": "모든 근거 원문 대조"},
     }
     return {

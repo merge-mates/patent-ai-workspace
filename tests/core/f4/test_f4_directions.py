@@ -304,7 +304,9 @@ def test_후보_근거는_F3_결과의_근거만_담는다():
     expected = [e for row in table.rows for e in row.evidence]
     for c in results[0].candidates:
         assert c.evidence == expected  # 대비표 줄의 근거 (같은 근거는 한 번)
-    assert results[1].candidates[0].evidence == list(inp.clarity[0].evidence)
+    # 명확성 결과의 근거는 spec_definition(명세서 정의 위치) 한 곳이다
+    assert inp.clarity[0].spec_definition is not None
+    assert results[1].candidates[0].evidence == [inp.clarity[0].spec_definition]
 
 
 def test_모델이_근거를_지어내_붙이면_받지_않는다():

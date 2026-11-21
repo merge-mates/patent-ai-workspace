@@ -141,12 +141,15 @@ def _status_of(f3: list, bundle: LegalEvidenceBundle, unit: JudgmentUnit) -> Sta
 
 
 def _evidence_of(f3: list) -> list[Evidence]:
-    """F3 결과에 붙은 근거만 모은다 (결과 칸 + 대비표 줄). 같은 근거는 한 번만."""
+    """F3 결과에 붙은 근거만 모은다 (대비표 줄 + 명확성 결과의 명세서 정의). 같은 근거는 한 번만."""
     found: list[Evidence] = []
     for result in f3:
+        # 명확성 결과는 evidence가 비고 근거가 spec_definition에 있다: 같이 모아야 안 빠진다
+        spec_definition = getattr(result, "spec_definition", None)
         for e in [
             *result.evidence,
             *(e for row in getattr(result, "rows", []) for e in row.evidence),
+            *([spec_definition] if spec_definition is not None else []),
         ]:
             if e not in found:
                 found.append(e)
