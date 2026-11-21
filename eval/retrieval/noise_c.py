@@ -118,6 +118,22 @@ _STOP = {
     "것",
     "위한",
     "의해",
+    # 어느 청구항에나 나와 검색을 좁히지 못하는 말
+    "단계",
+    "장치",
+    "방법",
+    "시스템",
+    "복수",
+    "하나",
+    "적어도",
+    "이상",
+    "각각",
+    "서로",
+    "내에",
+    "개의",
+    "대한",
+    "통해",
+    "이용하여",
 }
 # 낱말 끝에서 떼는 조사 (긴 것부터)
 _JOSA = ("에서", "으로", "을", "를", "은", "는", "이", "가", "의", "에", "로", "와", "과")
@@ -134,8 +150,10 @@ def suggest_words(claim: str, n: int = 5) -> list[str]:
             if tok.endswith(j) and len(tok) - len(j) >= 2:
                 tok = tok[: -len(j)]
                 break
-        if len(tok) < 2 or tok in _STOP or tok.endswith("는"):
-            continue  # 조사를 못 뗀 '받는'·'찾는' 같은 꾸밈말
+        if tok.endswith("들") and len(tok) >= 3:
+            tok = tok[:-1]  # 신호들 → 신호
+        if len(tok) < 2 or tok in _STOP or tok.endswith(("는", "된")):
+            continue  # 조사를 못 뗀 '받는'·'포함된' 같은 꾸밈말
         counts[tok] += 1
         first.setdefault(tok, len(first))
     return sorted(counts, key=lambda w: (-counts[w], first[w]))[:n]
@@ -160,13 +178,14 @@ def claim1_text(history: str) -> str:
     return ones[-1].strip()
 
 
+_IPC = re.compile(r"^[A-H]\d{2}[A-Z]\s*\d+/\d+$")
+_CV = ("G06T", "G06V", "H04N")  # 컴퓨터 비전 분류 (oa-eval-cases.md ⑨)
+
+
 def _first_ipc(row: dict[str, str]) -> str:
-    # 컴퓨터 비전 IPC(CV_IPC)가 있으면 그 첫째, 없으면 전체 IPC 첫째
-    for col in ("CV_IPC", "IPC"):
-        first = (row.get(col) or "").split(";")[0].strip()
-        if first:
-            return first
-    return ""
+    """IPC 칸(;로 나눔)의 컴퓨터 비전 분류 첫째, 없으면 첫째. CV_IPC 칸은 Y/N 표시라 안 씀."""
+    codes = [c.strip() for c in (row.get("IPC") or "").split(";") if _IPC.match(c.strip())]
+    return next((c for c in codes if c.startswith(_CV)), codes[0] if codes else "")
 
 
 def draft_queries(

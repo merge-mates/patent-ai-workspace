@@ -99,7 +99,7 @@ def test_청구항_낱말을_자주_나온_순으로_고른다():
         "영상을 촬영하는 카메라부; 상기 영상에서 객체를 검출하는 검출부; "
         "상기 객체의 위치를 상기 영상에 표시하는 표시부를 포함하는 영상 처리 장치."
     )
-    # '상기'·'포함하는' 같은 말은 빼고, 조사(을·에서·의·를)를 뗀 낱말을 센다
+    # '상기'·'포함하는'·'장치' 같은 말은 빼고, 조사(을·에서·의·를)를 뗀 낱말을 센다
     assert suggest_words(claim, n=3) == ["영상", "객체", "카메라부"]
 
 
@@ -186,7 +186,7 @@ def test_청구항_이력에서_마지막_1항을_읽는다():
     assert claim1_text(h) == "새 영상 장치"
 
 
-def test_질의_표_초안은_CV_IPC를_먼저_쓰고_낱말을_뽑는다(tmp_path):
+def test_질의_표_초안은_컴퓨터_비전_IPC를_먼저_쓰고_낱말을_뽑는다(tmp_path):
     case = tmp_path / "cases" / "PA" / "OA1"
     case.mkdir(parents=True)
     (case / "PA_청구항이력.txt").write_text(
@@ -194,9 +194,14 @@ def test_질의_표_초안은_CV_IPC를_먼저_쓰고_낱말을_뽑는다(tmp_pa
     )
     csv = tmp_path / "list.csv"
     csv.write_text(
-        "﻿출원번호,OA발송번호,IPC,CV_IPC\nPA,OA1,B60R 1/00;G06T 7/11,G06T 7/11;G06V 10/00\n",
+        "﻿출원번호,OA발송번호,IPC,CV_IPC\nPA,OA1,B60R 1/00;G06T 7/11;G06V 10/00,Y\n",
         encoding="utf-8",
     )
     oas = {"OA1": PoolOa(app_no="PA", priority_date=date(2015, 1, 1))}
     q = draft_queries(oas, tmp_path / "cases", csv, n_words=2)
     assert q == {"OA1": {"ipc": "G06T 7/11", "words": ["영상", "카메라"]}}
+
+
+def test_어디에나_나오는_말과_꾸밈말은_낱말에서_뺀다():
+    claim = "복수의 신호들을 수신하는 단계; 수신된 신호들에서 혈류 영역을 찾는 단계를 포함하는 방법"
+    assert suggest_words(claim, n=3) == ["신호", "혈류", "영역"]
