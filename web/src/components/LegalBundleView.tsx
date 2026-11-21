@@ -1,6 +1,7 @@
 import { Card, Descriptions, List, Space, Tag, Typography } from 'antd'
-import { sourceKindLabel } from '../labels'
-import type { LegalEvidenceBundle, LegalSource } from '../types/provisional/analysis'
+import { furtherReviewWhyLabel, reviewVerdictLabel, sourceKindLabel, speakerLabel } from '../labels'
+import type { LegalEvidenceBundle, LegalSource } from '../types/generated/LegalEvidenceBundle'
+import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
 
 // 근거 하나: 자료 종류·식별자·판본·원문 위치 + 전문/요지 + 법원 판단/당사자 주장
@@ -10,18 +11,20 @@ function SourceItem({ s }: { s: LegalSource }) {
       <Space size={4} wrap>
         <Tag color="geekblue">{sourceKindLabel[s.source_kind]}</Tag>
         <Typography.Text strong>{s.identifier}</Typography.Text>
-        <Tag>{s.text_kind === 'full' ? (s.source_kind === 'precedent' ? '판례 전문' : '원문') : '요지'}</Tag>
-        {s.speaker && <Tag>{s.speaker === 'court' ? '법원 판단' : '당사자 주장'}</Tag>}
+        {s.text_kind && <Tag>{s.text_kind === 'full' ? '전문' : '요지'}</Tag>}
+        {s.speaker && <Tag>{speakerLabel[s.speaker]}</Tag>}
         <StatusTag status={s.status} />
       </Space>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {/* 판본은 법령·심사기준에만 있다 (판례·심결은 원문 위치만) */}
-        {s.source_kind === 'statute' || s.source_kind === 'exam_guideline' ? `판본: ${s.edition ?? '모름'} · ` : ''}
-        원문 위치: {s.location}
+        {s.source_kind === 'statute' || s.source_kind === 'guideline' ? `판본: ${s.evidence.edition ?? '모름'} · ` : ''}
+        원문 위치: {s.evidence.location ?? '—'}
+        {/* 판례·심결의 법원·선고일(심결일)은 알 때만 한 줄 */}
+        {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
       </Typography.Text>
-      {s.excerpt !== '—' && (
+      {s.evidence.raw_text && (
         <Typography.Text style={{ fontSize: 13 }}>
-          “{s.excerpt}”
+          “{s.evidence.raw_text}”
         </Typography.Text>
       )}
     </Space>
@@ -33,8 +36,8 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <Descriptions size="small" column={1} bordered>
-        <Descriptions.Item label="질문">{b.question}</Descriptions.Item>
-        <Descriptions.Item label="기준 시점">{b.as_of ?? '현행'}</Descriptions.Item>
+        <Descriptions.Item label="질문">{b.question.text}</Descriptions.Item>
+        <Descriptions.Item label="기준 시점">{b.question.as_of ?? '현행'}</Descriptions.Item>
         <Descriptions.Item label="확인 기준일">{b.checked_on}</Descriptions.Item>
         <Descriptions.Item label="상태">
           <StatusTag status={b.status} />
@@ -49,6 +52,24 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
           extra={<StatusTag status={c.status} />}
         >
           <Typography.Paragraph style={{ marginBottom: 8 }}>{c.text}</Typography.Paragraph>
+          {c.flags.includes('needs_human_review') && (
+            <div style={{ marginBottom: 8 }}>
+              <HumanCheckTag>직접 검토 필요</HumanCheckTag>
+            </div>
+          )}
+          {c.review ? (
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
+              <Tag>{reviewVerdictLabel[c.review.verdict]}</Tag>
+              {c.review.reason}
+            </Typography.Paragraph>
+          ) : (
+            // 근거는 있는데 검토 결과가 없으면 "검토 안 함"을 드러낸다 (조용히 확인됨으로 보이지 않게)
+            c.sources.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <Tag>검토 안 함</Tag>
+              </div>
+            )
+          )}
           <List
             size="small"
             dataSource={c.sources}
@@ -71,7 +92,11 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: 18 }}>
             {b.further_review.map((x) => (
-              <li key={x}>{x}</li>
+              <li key={x.chunk_id}>
+                <Tag>{furtherReviewWhyLabel[x.why]}</Tag>
+                {x.chunk_id}
+                {x.note && ` — ${x.note}`}
+              </li>
             ))}
           </ul>
         )}

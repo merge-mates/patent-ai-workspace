@@ -8,15 +8,22 @@ import { ConfidenceTag, OriginTag } from '../../components/DirectionTags'
 import { ExampleDataMark, HumanCheckTag } from '../../components/Marks'
 import { StatusTag } from '../../components/StatusTag'
 import { claimRange } from '../../format'
-import { rejectionKindLabel } from '../../labels'
+import { EvidenceText } from '../../components/EvidenceText'
+import {
+  addedSourceLabel,
+  amendmentKindLabel,
+  amendmentLimitLabel,
+  rebuttalTypeLabel,
+  rejectionKindLabel,
+} from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
-import type { JudgmentUnit } from '../../types/provisional/analysis'
 import type {
   CoarseDirection,
   DirectionCandidate,
   DirectionCandidates,
   DirectionSelection,
-} from '../../types/provisional/direction'
+} from '../../types/generated/DirectionCandidates'
+import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 
 const coarseLabel: Record<CoarseDirection, string> = {
   argue_only: '반박만',
@@ -32,8 +39,8 @@ function Detail({ c }: { c: DirectionCandidate }) {
       <ul style={{ margin: '4px 0 8px', paddingInlineStart: 18 }}>
         {c.evidence.length === 0 && <li>없음</li>}
         {c.evidence.map((e) => (
-          <li key={e.location + e.text}>
-            “{e.text}” <Typography.Text type="secondary">({e.location})</Typography.Text>
+          <li key={`${e.document_id}-${e.location}-${e.raw_text}`}>
+            <EvidenceText e={e} />
           </li>
         ))}
       </ul>
@@ -89,14 +96,16 @@ function Chosen({ c }: { c: DirectionCandidate }) {
           ? '보정 없음'
           : c.amendment_core.map((a) => (
               <div key={`${a.claim}-${a.kind}`}>
-                청구항 {a.claim}: {a.kind}
-                {a.source && <Typography.Text type="secondary"> (출처: {a.source})</Typography.Text>}
+                청구항 {a.claim}: {amendmentKindLabel[a.kind]}
+                {a.source && (
+                  <Typography.Text type="secondary"> (출처: {addedSourceLabel[a.source]})</Typography.Text>
+                )}
               </div>
             ))}
       </Descriptions.Item>
       {c.rebuttal && (
         <Descriptions.Item label="반박 논리">
-          {c.rebuttal.type} — {c.rebuttal.summary}
+          {rebuttalTypeLabel[c.rebuttal.type]} — {c.rebuttal.summary}
         </Descriptions.Item>
       )}
       <Descriptions.Item label="확인 사항">
@@ -164,6 +173,21 @@ export function DirectionsPage() {
                 {unitTitle(
                   units.find((u) => u.unit_id === d.unit_id),
                   d.unit_id,
+                )}
+                {/* 보정 제한: 최초/최후. 모르면 값 없이 상태만 (없음으로 읽히지 않게) */}
+                {d.amendment_limit.value ? (
+                  <Space size={2}>
+                    <Tag>보정 제한: {amendmentLimitLabel[d.amendment_limit.value]}</Tag>
+                    {/* 값이 있어도 확인되지 않았으면(애매 등) 상태를 같이 보인다 */}
+                    {d.amendment_limit.status.value !== 'confirmed' && (
+                      <StatusTag status={d.amendment_limit.status} />
+                    )}
+                  </Space>
+                ) : (
+                  <Space size={2}>
+                    <Tag>보정 제한</Tag>
+                    <StatusTag status={d.amendment_limit.status} />
+                  </Space>
                 )}
                 <ExampleDataMark />
               </Space>

@@ -15,275 +15,392 @@
       {
         "document_id": "d_1",
         "page": 1,
+        "location": null,
         "raw_text": "10-2099-0000002",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 1,
+        "location": null,
         "raw_text": "9-5-2099-000000002",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 1,
+        "location": null,
         "raw_text": "2099.02.10.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 1,
+        "location": null,
         "raw_text": "2099.04.10.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 1,
+        "location": null,
         "raw_text": "제1항 내지 제13항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "특허법 제29조제1항제1호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "제1항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "청구항 제1항은 인용발명 1과 동일합니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000011호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000011호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "식별번호 [0014], [0056], 도 4b",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "특허법 제29조제2항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "제1항 내지 제13항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "인용발명 1에 인용발명 2를 결합하면 쉽게 발명할 수 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000011호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000011호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "식별번호 [0020], [0069]",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000012호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "공개특허공보 제10-2099-0000012호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 2,
+        "location": null,
         "raw_text": "식별번호 [0043], [0050]",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "특허법 제42조제4항제2호",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "제6항, 제7항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "청구항의 표현이 불명확합니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "특허법 제42조제3항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "제13항",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "발명의 설명 뒷받침이 부족합니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 제1항은 인용발명 1의 [0014], [0056] 및 도 4b에 개시되어 있어 신규성이 없습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 제1항은 1-1에서 본 바와 같이 인용발명 1에 의해 쉽게 발명할 수 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 제2항은 인용발명 1 내지 2의 결합으로 쉽게 발명할 수 있고, 인용발명 1의 [0020]에 개시되어 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 제3항은 제1항과 동일한 취지의 거절이유가 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 3,
+        "location": null,
         "raw_text": "청구항 제4항은 거절이유 1과 같고, 한편 인용발명 2의 [0043]에도 개시되어 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제8항은 인용발명 1에 비추어 단순 부가에 해당합니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제9항 내지 제10항은 청구항 제1항 내지 제2항과 같습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제9항 내지 제10항은 청구항 제1항 내지 제2항과 같습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제11항은 인용발명 1의 [16, 38, 78]에 개시되어 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제12항은 인용발명 2의 폐곡선(310, 320)에 개시되어 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제13항은 인용발명 2의 [0050]에 개시되어 있습니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제6항의 '상기 프리뷰 이미지'는 앞에 정의가 없어 불명확합니다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       },
       {
         "document_id": "d_1",
         "page": 4,
+        "location": null,
         "raw_text": "청구항 제7항의 모듈들은 장치 구성을 특정할 수 없다.",
         "edition": null,
-        "checked_on": null
+        "checked_on": null,
+        "chunk_id": null,
+        "index_version": null
       }
     ],
     "origin": "ai_generated",
@@ -416,44 +533,62 @@
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "특허법 제29조제1항제1호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "제1항",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "청구항 제1항은 인용발명 1과 동일합니다.",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000011호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000011호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "식별번호 [0014], [0056], 도 4b",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           }
         ],
         "origin": "ai_generated",
@@ -560,65 +695,92 @@
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "특허법 제29조제2항",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "제1항 내지 제13항",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "인용발명 1에 인용발명 2를 결합하면 쉽게 발명할 수 있습니다.",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000011호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000011호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "식별번호 [0020], [0069]",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000012호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "공개특허공보 제10-2099-0000012호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 2,
+            "location": null,
             "raw_text": "식별번호 [0043], [0050]",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           }
         ],
         "origin": "ai_generated",
@@ -780,23 +942,32 @@
           {
             "document_id": "d_1",
             "page": 3,
+            "location": null,
             "raw_text": "특허법 제42조제4항제2호",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 3,
+            "location": null,
             "raw_text": "제6항, 제7항",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 3,
+            "location": null,
             "raw_text": "청구항의 표현이 불명확합니다.",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           }
         ],
         "origin": "ai_generated",
@@ -858,23 +1029,32 @@
           {
             "document_id": "d_1",
             "page": 3,
+            "location": null,
             "raw_text": "특허법 제42조제3항",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 3,
+            "location": null,
             "raw_text": "제13항",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           },
           {
             "document_id": "d_1",
             "page": 3,
+            "location": null,
             "raw_text": "발명의 설명 뒷받침이 부족합니다.",
             "edition": null,
-            "checked_on": null
+            "checked_on": null,
+            "chunk_id": null,
+            "index_version": null
           }
         ],
         "origin": "ai_generated",

@@ -1,6 +1,6 @@
 import { RobotOutlined, UserOutlined } from '@ant-design/icons'
 import { Tag } from 'antd'
-import type { Confidence, DirectionSelection } from '../types/provisional/direction'
+import type { Confidence, DirectionSelection } from '../types/generated/DirectionCandidates'
 import { HumanCheckTag } from './Marks'
 
 // 사람이 손대는 곳의 표시: [AI 기본값] 점선 꼬리표 / [사람이 고름] 파란 채운 꼬리표

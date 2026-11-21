@@ -5,9 +5,9 @@ import { api } from '../../api'
 import { LegalBundleView } from '../../components/LegalBundleView'
 import { sourceKindLabel } from '../../labels'
 import { AiResultMark, ExampleDataMark } from '../../components/Marks'
-import type { LegalEvidenceBundle, LegalSourceKind } from '../../types/provisional/analysis'
+import type { LegalEvidenceBundle, LegalSourceKind } from '../../types/generated/LegalEvidenceBundle'
 
-const KINDS: LegalSourceKind[] = ['statute', 'exam_guideline', 'precedent', 'trial_decision']
+const KINDS: LegalSourceKind[] = ['statute', 'guideline', 'precedent', 'trial']
 const EXAMPLES = ['진보성 판단에서 결합 동기는 어디서 찾나', '특허법 제42조제4항제2호', "청구항 '상기' 표현이 앞에 없을 때"]
 
 // 법률 질문 (사건 없이): 입력창 하나 + 선택 칩(시점, 자료 유형) → 주장마다 근거
