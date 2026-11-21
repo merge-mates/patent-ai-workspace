@@ -1,7 +1,7 @@
 // 서버가 주는 영어 코드 → 화면에 보이는 한국어 (docs/api/README.md 2절: 화면에서 한국어로 보여 준다)
 import type { LookupResult } from './types/generated/CaseMaterials'
 import type { NoticeKind, RejectionKind, UnverifiedReason } from './types/generated/OAResult'
-import type { AddedSource, AmendmentKind, AmendmentLimit, RebuttalType } from './types/generated/DirectionCandidates'
+import type { AddedSource, AmendmentKind, AmendmentLimit, Confidence, RebuttalType } from './types/generated/DirectionCandidates'
 import type { FurtherReviewWhy, LegalSourceKind, ReviewVerdict, Speaker } from './types/generated/LegalEvidenceBundle'
 import type { RunState } from './types/provisional/case'
 
@@ -132,3 +132,6 @@ export const rebuttalTypeLabel: Record<RebuttalType, string> = {
   clear_from_description: '설명으로 명확',
   other: '그 밖',
 }
+
+// 확신도 3단계 (% 숫자를 쓰지 않는다)
+export const confidenceLabel: Record<Confidence, string> = { high: '높음', medium: '중간', low: '낮음' }
