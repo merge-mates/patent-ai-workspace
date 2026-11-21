@@ -163,7 +163,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 - 데이터: 인용문헌 색인 `cite-idx-v2` (tune 8건 인용문헌 16개 [`experiments/m2-i2-cite-search-hybrid-rrf/card.md:74`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md), 미국 문헌 0건 [cite-search requirements](../cite-search/requirements.md) 46줄), OA 당시 청구항(청구항 이력으로 복원), 최초 명세서(출원서. 출원서가 없는 사건은 명세서 없음 → 명확성 정의는 본문 미확보).
 - 예측 만들기: tune 사건마다 `run_f3`를 돌려 `F3Result` 폴더를 만드는 명령은 지금 git 밖 스크립트뿐이다. 질문: 예측 만드는 스크립트를 `scripts/`(또는 `eval/f3/`)로 들일지, 누가 (새 질문)
 - 채점 스크립트: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml --predictions <F3 결과 폴더>` (`feature: f3`, 색인 DB 또는 `--chunks`).
-- 실행 상한(비용·시간): `config/f3.yaml`의 `split_elements.max_model_calls`, `compare.max_model_calls`, `clarity.max_model_calls`, `embed.max_model_calls`, 단계마다 `max_retries`. 시간·비용 상한 키는 없다. 대비·명확성 상한에 닿으면 그 묶음부터 `limit_reached` 보류, 청구항 나누기 상한은 예외 (#211).
+- 실행 상한(비용·시간): `config/f3.yaml`의 `split_elements.max_model_calls`, `compare.max_model_calls`, `clarity.max_model_calls`, `effect.max_model_calls`, `embed.max_model_calls`, 단계마다 `max_retries`. 시간·비용 상한 키는 없다. 대비·명확성 상한에 닿으면 그 묶음부터 `limit_reached` 보류(효과 단계 상한은 대비표를 남기고 효과 후보만 `…:effect:limit_reached`), 청구항 나누기 상한은 예외 (#211).
 - 결과에 남길 것: 모델 이름·effort·프롬프트 판·설정 파일 판은 호출 기록과 `scores.json`(`commit`, `index_version`, `impl`, `goldset_version`, `gold_sha256`). 1회 실행 비용 약 $0.28 ([가정] 단가, 모델 호출 190 + 질의 임베딩 176, [`experiments/m2-f3-skeleton/card.md`](../../../experiments/m2-f3-skeleton/card.md)).
 - 원인 모름 (기준선 카드 `남은 것`): selected_recall 0.186이 search_recall 0.584의 약 1/3이다 (검색은 덮었는데 모델이 근거로 고르지 않음). 정답 줄인데 F3가 찾지 않은 줄 6. 같은 설정 반복 실행 흔들림은 안 쟀다. 부모 구성요소 넣기(911410e·c093221) 뒤 판으로는 다시 재지 않았다.
 
