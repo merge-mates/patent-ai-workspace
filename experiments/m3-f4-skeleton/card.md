@@ -62,10 +62,11 @@
 
 ## 남은 것
 - 정답(`data/goldsets/tune/f4/`)이 생기면 첫 점수: `direction_top1`(모델 1번 후보 = 후보 목록 첫째로 보류 묶음도 셈; 확신도별 `direction_top1_conf_*`), `needs_human_judgment_rate`, 누락 쌍. ①층 다룸 지표는 정답 문서에서 정의를 정한 뒤 다시 넣음 (지금 채점기는 내지 않는다).
+- 첫 점수를 내기 전에, 지금 판(후보 순서 999759a, 판단 단위 e5e83b4 뒤)으로 다시 실행한다. 지금 기록된 결과는 그 앞 판이다.
 - 보정 프롬프트에 명세서 전체를 넣는 방식(입력 토큰의 58%)을 줄일지.
 - 같은 설정 2회 이상 돌려 흔들림 재기. `final_rejection_limit` 켬 실행은 하지 않았다 (최후거절이유통지 tune 사건도 없음).
 - F4 입력에 `claims_status`(OA 당시 청구항 판 확인 여부)를 실을 칸이 없다.
 
 ## 다시 내는 법
-- 실행: `uv run python ~/Desktop/project/patent_ai/repo/work/overnight_1120/f4_run.py <out> --workers 4` (git 밖. 스트리밍 전송층이 있는 판에서. F3 결과 폴더 필요)
+- 실행: `uv run python <데이터 폴더>/overnight_1120/f4_run.py <out> --workers 4` (git 밖. 스트리밍 전송층이 있는 판에서. F3 결과 폴더 필요)
 - 채점: `uv run python eval/run_eval.py --config experiments/m3-f4-skeleton/config.yaml --predictions <out>` (정답 폴더가 없으면 "정답 없음", 종료 코드 3)
