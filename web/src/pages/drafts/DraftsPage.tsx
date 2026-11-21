@@ -306,7 +306,7 @@ export function DraftsPage() {
                         lineHeight: '28px',
                         margin: 0,
                         cursor: 'text',
-                        ...(mism.length > 0 ? { textDecoration: 'underline wavy var(--fg-negative-primary)', textUnderlineOffset: 5 } : {}),
+                        ...(mism.length > 0 ? { textDecoration: 'underline wavy var(--fg-negative-text)', textUnderlineOffset: 5 } : {}),
                       }}
                     >
                       {edited && !showAi ? (
@@ -322,7 +322,7 @@ export function DraftsPage() {
                     </p>
                   )}
                   {mism.map((m) => (
-                    <span key={m.detail} className="label2" style={{ color: 'var(--fg-negative-primary)' }}>
+                    <span key={m.detail} className="label2" style={{ color: 'var(--fg-negative-text)' }}>
                       검사에 걸림 · {m.detail}
                     </span>
                   ))}

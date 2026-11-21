@@ -2,6 +2,7 @@ import { Button, Tag } from 'antd'
 import { sourceKindLabel } from '../labels'
 import type { LegalEvidenceBundle, LegalSource } from '../types/generated/LegalEvidenceBundle'
 import { useContext } from 'react'
+import { StatusLine } from './StatusLine'
 import { StatusTag } from './StatusTag'
 import { SourceContext } from './sourceContext'
 
@@ -40,7 +41,7 @@ export function RejectionLaw({ rejection, legal }: { rejection: number; legal: L
         if (sources.length === 0) {
           return (
             <div key={b.bundle_id}>
-              <StatusTag status={b.status} />
+              <StatusLine status={b.status} />
             </div>
           )
         }

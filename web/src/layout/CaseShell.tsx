@@ -182,7 +182,7 @@ export function CaseShell() {
               <RunNotice oaId={data.oa.oa_id} snap={snap} />
             </div>
             {data.warnings.map((w) => (
-              <div key={w} className="label2" style={{ marginTop: 8, color: 'var(--fg-status-warning, #ff9200)' }}>
+              <div key={w} className="label2" style={{ marginTop: 8, color: 'var(--fg-cautionary-text)' }}>
                 {w}
               </div>
             ))}

@@ -112,7 +112,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
             <span className="label1 t2">
               인용발명 {c.label} {c.number}는 대비하지 않았어요{c.skipped_reason ? ` · ${c.skipped_reason}` : ''}
             </span>
-            {c.skipped_status && <StatusTag status={c.skipped_status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
+            {c.skipped_status && c.skipped_status.value !== 'confirmed' && <StatusTag status={c.skipped_status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
           </div>
         ))}
       </div>

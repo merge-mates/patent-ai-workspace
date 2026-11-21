@@ -2,6 +2,7 @@ import { Alert, Button } from 'antd'
 import { sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
 import type { PageText } from '../types/generated/PageText'
+import { StatusLine } from './StatusLine'
 import { StatusTag } from './StatusTag'
 import type { CiteRef } from './sourceContext'
 
@@ -46,15 +47,9 @@ function EvidenceBody({ s, checkedOn }: { s: LegalSource; checkedOn: string }) {
   return (
     <>
       <span className="label2 t3">{meta.join(' · ')}</span>
-      {s.status.value === 'confirmed' ? (
-        <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
-          확인됨{s.status.checked ? ` · ${s.status.checked}` : ''}
-        </span>
-      ) : (
-        <div>
-          <StatusTag status={s.status} />
-        </div>
-      )}
+      <div>
+        <StatusLine status={s.status} />
+      </div>
       {s.evidence.raw_text ? (
         <p
           className="body2r"
@@ -77,15 +72,9 @@ function EvidenceBody({ s, checkedOn }: { s: LegalSource; checkedOn: string }) {
 function CiteBody({ r }: { r: CiteRef }) {
   return (
     <>
-      {r.status.value === 'confirmed' ? (
-        <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
-          확인됨{r.status.checked ? ` · ${r.status.checked}` : ''}
-        </span>
-      ) : (
-        <div>
-          <StatusTag status={r.status} unverifiedText={r.unverifiedText} />
-        </div>
-      )}
+      <div>
+        <StatusLine status={r.status} unverifiedText={r.unverifiedText} />
+      </div>
       {r.items.map((e, i) => (
         <div key={`${e.document_id}-${e.location}-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {e.raw_text ? (

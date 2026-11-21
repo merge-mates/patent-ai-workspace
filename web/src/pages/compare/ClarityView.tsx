@@ -72,7 +72,10 @@ export function ClarityView({ c, unit }: { c: ClarityReview; unit: JudgmentUnit 
           {def ? (
             <>{def.raw_text ? `“${def.raw_text}”` : '정의가 있는 위치만 알아요.'}</>
           ) : (
-            <>명세서에서 정의를 찾지 못했어요 <StatusTag status={c.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} /></>
+            <>
+              명세서에서 정의를 찾지 못했어요{' '}
+              {c.status.value !== 'confirmed' && <StatusTag status={c.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
+            </>
           )}
         </Row>
       </div>

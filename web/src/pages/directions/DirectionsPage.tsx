@@ -6,6 +6,7 @@ import { AmendmentLimitAlert } from '../../components/CaseAlerts'
 import { OriginTag } from '../../components/DirectionTags'
 import { HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
+import { StatusLine } from '../../components/StatusLine'
 import { StatusTag } from '../../components/StatusTag'
 import { claimRange, claimsText, sentence } from '../../format'
 import {
@@ -230,7 +231,7 @@ export function DirectionsPage() {
               {sel ? (
                 <OriginTag origin={sel.origin} />
               ) : d.candidates.length === 0 ? (
-                <StatusTag status={d.status} />
+                <StatusLine status={d.status} />
               ) : (
                 <HumanCheckTag>{LOW_CONFIDENCE_TEXT} · 고를 때까지 초안 없음</HumanCheckTag>
               )}

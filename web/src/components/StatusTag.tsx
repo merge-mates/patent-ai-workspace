@@ -21,7 +21,7 @@ interface Props {
 }
 
 // 상태 네 가지를 늘 같은 모양으로: 아이콘 + 한국어 글자 (색만으로 구분하지 않음)
-// - 확인됨: 파란 꼬리표 + 체크
+// - 확인됨: 꼬리표 없음. 칸에서는 체크 아이콘, 범례처럼 글자가 필요하면 체크 + 초록 글자
 // - 확인되지 않음: 흰 바탕 점선 테두리 + 물음표 (+ 이유)
 // - 조회 범위 내 없음: 회색 꼬리표 + 돋보기 (+ 찾아본 범위)
 // - 충돌: 자주 꼬리표 + 경고 세모
@@ -36,17 +36,17 @@ export function StatusTag({ status, detail = true, compact = false, unverifiedTe
     if (compact) {
       return (
         <Tooltip title={s.checked ? `확인됨 · ${s.checked}` : '확인됨'}>
-          <CheckCircleOutlined aria-label="확인됨" role="img" style={{ color: '#1677ff', fontSize: 12 }} />
+          <CheckCircleOutlined aria-label="확인됨" role="img" style={{ color: '#0066ff', fontSize: 12 }} />
         </Tooltip>
       )
     }
-    const tag = (
-      <Tag color="blue" icon={<CheckCircleOutlined />}>
-        확인됨
-      </Tag>
+    // 꼬리표를 씌우지 않고 초록 글자로만 (확인됨이 화면을 덮지 않게). 무엇을 확인했나는 마우스를 올리면 보인다
+    const text = (
+      <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
+        <CheckCircleOutlined /> 확인됨
+      </span>
     )
-    // 무엇을 확인했나는 마우스를 올리면 보인다
-    return s.checked ? <Tooltip title={s.checked}>{tag}</Tooltip> : tag
+    return s.checked ? <Tooltip title={s.checked}>{text}</Tooltip> : text
   }
   if (s.value === 'unverified') {
     const reason = s.reason ? unverifiedReasonLabel[s.reason] : null

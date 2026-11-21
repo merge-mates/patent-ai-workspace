@@ -56,7 +56,7 @@ const rowColumns = (clarity: boolean): ColumnsType<ClaimRow> => [
     title: '같은 취지',
     render: (_, row) => (row.same_as.length ? row.same_as.map(sameAsText).join(', ') : '—'),
   },
-  { title: '상태', render: (_, row) => <StatusTag status={row.status} /> },
+  { title: '상태', render: (_, row) => <StatusTag status={row.status} compact /> },
   {
     title: '원문',
     // 확인된 줄만 "원문", 아니면 "후보 위치" (F5)

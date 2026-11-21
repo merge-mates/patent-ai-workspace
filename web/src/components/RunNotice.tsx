@@ -20,7 +20,7 @@ export function RunNotice({ oaId, snap }: { oaId: string; snap: RunSnapshot }) {
     }
   }
   return (
-    <div className="label2" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: state === 'failed' ? 'var(--fg-status-negative, #ff4242)' : undefined }}>
+    <div className="label2" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: state === 'failed' ? 'var(--fg-negative-text)' : undefined }}>
       <span className={state === 'failed' ? undefined : 't3'}>
         {state === 'failed'
           ? `실행이 실패했어요 · ${snap.reason ?? snap.run.current_step ?? '이유를 받지 못했어요'}`

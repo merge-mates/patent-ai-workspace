@@ -2,21 +2,8 @@ import { Button, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import { furtherReviewWhyLabel, reviewVerdictLabel, sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalEvidenceBundle, LegalSource } from '../types/generated/LegalEvidenceBundle'
-import type { Status } from '../types/generated/OAResult'
 import { HumanCheckTag } from './Marks'
-import { StatusTag } from './StatusTag'
-
-// 상태 글자: 확인됨은 꼬리표 없이 초록 글자("확인됨 · 무엇을 확인했나"), 나머지(확인되지 않음·충돌 등)만 꼬리표
-function StatusText({ status }: { status: Status }) {
-  if (status.value === 'confirmed') {
-    return (
-      <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
-        확인됨{status.checked ? ` · ${status.checked}` : ''}
-      </span>
-    )
-  }
-  return <StatusTag status={status} />
-}
+import { StatusLine } from './StatusLine'
 
 // 근거 한 줄: 제목 + (확인됨 아니면 꼬리표) + "자세히". 펼치면 원문 위치·원문 일부
 function SourceRow({ s }: { s: LegalSource }) {
@@ -38,12 +25,12 @@ function SourceRow({ s }: { s: LegalSource }) {
           {/* 판본은 법령·심사기준에만 있다. 제목 줄에 바로 보인다 */}
           {(s.source_kind === 'statute' || s.source_kind === 'guideline') && ` · ${s.evidence.edition ?? '판본 모름'}`}
         </span>
-        {s.status.value !== 'confirmed' && <StatusText status={s.status} />}
+        {s.status.value !== 'confirmed' && <StatusLine status={s.status} />}
         <Button type="text" size="small" onClick={() => setOpen(!open)}>
           {open ? '접기' : '자세히'}
         </Button>
       </div>
-      {s.status.value === 'confirmed' && !open && <StatusText status={s.status} />}
+      {s.status.value === 'confirmed' && !open && <StatusLine status={s.status} />}
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 2 }}>
           {s.evidence.raw_text && <span className="body2r t2">“{s.evidence.raw_text}”</span>}
@@ -52,7 +39,7 @@ function SourceRow({ s }: { s: LegalSource }) {
             {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
             {s.speaker && ` · ${speakerLabel[s.speaker]}`}
           </span>
-          {s.status.value === 'confirmed' && <StatusText status={s.status} />}
+          {s.status.value === 'confirmed' && <StatusLine status={s.status} />}
         </div>
       )}
     </div>
@@ -85,7 +72,7 @@ export function LegalBundleView({
           <span className="label2 t3">
             {b.question.as_of ?? '현행'} · 확인 기준일 {b.checked_on}
           </span>
-          <StatusText status={b.status} />
+          <StatusLine status={b.status} />
         </div>
       </div>
       {b.claims.map((c) => (
@@ -94,7 +81,7 @@ export function LegalBundleView({
             {c.text}
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <StatusText status={c.status} />
+            <StatusLine status={c.status} />
             {c.flags.includes('needs_human_review') && <HumanCheckTag>직접 검토 필요</HumanCheckTag>}
           </div>
           {c.review && (
