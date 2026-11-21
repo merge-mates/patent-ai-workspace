@@ -4,13 +4,15 @@
 OA 한 통마다 정확도를 내고 그 평균이 주 점수다. score_f1은 파일을 쓰지 않는다 (쓰기는 main).
 scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건수와 비율만).
 
-명령: uv run python eval/run_eval.py --config <설정> --predictions <폴더> [--pages <폴더>]
+명령: uv run python eval/run_eval.py --config <설정> --predictions <폴더>
+      [--pages <폴더>] [--calls <호출 기록 JSON>]
 - 예측: <폴더>/<출원번호>_<발송번호>.json (read_oa가 낸 OAResult JSON)
 - 쪽 글자: <폴더>/<출원번호>_<발송번호>.pages.json (extract_pages가 낸 PageText JSON)
 """
 
 import argparse
 import hashlib
+import json
 import logging
 import sys
 import time
@@ -248,6 +250,37 @@ def _mean(xs: list[float]) -> float | None:
     return sum(xs) / len(xs) if xs else None
 
 
+RESPONDED_OUTCOMES = ("ok", "invalid_output", "output_truncated")  # 응답을 받은 결과
+
+
+def sum_calls(calls: list[dict] | None) -> dict:
+    """read_oa 실행 호출 기록을 cost 칸(usd·토큰·호출 수)으로 합친다. 모르는 키는 안 본다."""
+    if calls is None:
+        logger.warning("실행 호출 기록(--calls)이 없어 cost에 채점기 비용만 씀")
+        return {"usd": 0, "input_tokens": 0, "output_tokens": 0, "external_calls": 0}
+    if not calls:
+        logger.warning("실행 호출 기록이 0줄 (cost를 0으로 씀)")
+    # 실제로 외부에 부른 기록: 캐시 적중과, 전송층 앞에서 막힌 limit_exceeded는 뺀다
+    real = [c for c in calls if not c["from_cache"] and c["outcome"] != "limit_exceeded"]
+    # 응답을 받았는데 가격이 비어 있으면 합이 틀리므로 usd를 비운다 (응답 없는 줄의 None은 0)
+    unpriced = sum(
+        1
+        for c in real
+        if c["cost"] is None
+        and (c["input_tokens"] > 0 or c["output_tokens"] > 0 or c["outcome"] in RESPONDED_OUTCOMES)
+    )
+    usd: float | None = sum(c["cost"] or 0.0 for c in calls)
+    if unpriced:
+        logger.warning("가격 설정이 없어 usd를 비움 (가격 없는 호출 기록 %d줄)", unpriced)
+        usd = None
+    return {
+        "usd": usd,
+        "input_tokens": sum(c["input_tokens"] for c in calls),
+        "output_tokens": sum(c["output_tokens"] for c in calls),
+        "external_calls": len(real),
+    }
+
+
 def score_f1(
     cfg: F1EvalConfig,
     golds: list[F1Gold],
@@ -256,6 +289,7 @@ def score_f1(
     *,
     commit: str,
     gold_sha256: str,
+    calls: list[dict] | None = None,
 ) -> dict:
     """정답 OA마다 예측과 맞춰 scores dict를 만든다. preds·pages의 키는 oa_key(정답)."""
     started = time.monotonic()
@@ -324,13 +358,9 @@ def score_f1(
         "n": len(golds),
         "metrics": metrics,
         "failures": failures,
-        "cost": {  # 채점은 모델을 부르지 않는다. 읽기 비용은 예측을 만든 실행 쪽에서 (task 5)
-            "usd": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "external_calls": 0,
-            "seconds": round(time.monotonic() - started, 3),
-        },
+        # 채점은 모델을 부르지 않는다. 읽기 비용은 예측을 만든 실행의 호출 기록(--calls)에서 온다.
+        # seconds는 채점기 시간만 (실행 시간은 합치지 않는다)
+        "cost": {**sum_calls(calls), "seconds": round(time.monotonic() - started, 3)},
     }
 
 
@@ -389,6 +419,40 @@ def load_pages(folder: Path) -> dict[str, PageText]:
     return pages
 
 
+def load_calls(path: Path) -> list[dict]:
+    """호출 기록 JSON(리스트)을 읽는다. 틀리면 파일 이름과 줄 순번만 말하고 멈춘다."""
+    name = path.name
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        raise EvalError(f"호출 기록 파일({name})을 읽을 수 없다 (없거나 JSON이 아님)") from None
+    if not isinstance(data, list):
+        raise EvalError(f"호출 기록 파일({name})이 리스트가 아니다")
+    # 필요한 키만 본다. stop_reason·case 같은 모르는 키는 무시
+    types: dict[str, tuple[type, ...]] = {
+        "input_tokens": (int,),
+        "output_tokens": (int,),
+        "cost": (int, float, type(None)),
+        "from_cache": (bool,),
+        "outcome": (str,),
+    }
+    for i, c in enumerate(data, start=1):
+        if not isinstance(c, dict):
+            raise EvalError(f"호출 기록 파일({name}) {i}번째 줄이 객체가 아니다")
+        for key, ok_types in types.items():
+            v = c.get(key, KeyError)  # 키가 없는 것과 None을 가른다
+            # bool은 int의 하위 타입이라 토큰·비용 칸에서는 따로 막는다
+            if (
+                v is KeyError
+                or not isinstance(v, ok_types)
+                or (isinstance(v, bool) and bool not in ok_types)
+            ):
+                raise EvalError(
+                    f"호출 기록 파일({name}) {i}번째 줄의 {key} 칸이 없거나 타입이 틀리다"
+                )
+    return data
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="eval.f1.score")
     ap.add_argument("--config", required=True)
@@ -400,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="기본: 진짜 정답이면 experiments/<실험>/, 아니면 work/f1/<실험>/",
     )
+    ap.add_argument(
+        "--calls",
+        default=None,
+        help="read_oa 실행 호출 기록 JSON 파일 (git 밖). 없으면 cost는 채점기 비용만",
+    )
     args = ap.parse_args(argv)
 
     try:
@@ -407,11 +476,14 @@ def main(argv: list[str] | None = None) -> int:
         check_experiment_name(cfg.experiment)
         pred_dir = Path(args.predictions)
         pages_dir = Path(args.pages) if args.pages else None
-        # 예측·쪽 글자에는 OA 원문 글자가 있어 git에 들어갈 수 있는 경로면 멈춘다
-        for d in (pred_dir, pages_dir):
+        calls_path = Path(args.calls) if args.calls else None
+        # 예측·쪽 글자에는 OA 원문 글자, 호출 기록에는 사건 이름(case)이 있어
+        # git에 들어갈 수 있는 경로면 멈춘다
+        for d in (pred_dir, pages_dir, calls_path):
             if d is not None and not is_git_ignored(d):
-                msg = "예측·쪽 글자 폴더가 git에 들어갈 수 있는 경로다"
+                msg = "예측·쪽 글자 폴더·호출 기록이 git에 들어갈 수 있는 경로다"
                 raise EvalError(msg + " (저장소 밖이나 무시되는 경로만)")
+        calls = load_calls(calls_path) if calls_path is not None else None
         root = Path(args.goldsets_root)
         check_goldset_version(root, cfg.goldset_version)
         folder = gold_path(root, cfg.goldset, cfg.gold)
@@ -427,7 +499,13 @@ def main(argv: list[str] | None = None) -> int:
                 " (이름: <출원번호>_<발송번호>.pages.json)"
             )
         scores = score_f1(
-            cfg, golds, preds, pages, commit=git_commit(), gold_sha256=_gold_sha256(folder)
+            cfg,
+            golds,
+            preds,
+            pages,
+            commit=git_commit(),
+            gold_sha256=_gold_sha256(folder),
+            calls=calls,
         )
         scores_dir = (
             Path(args.scores_dir) if args.scores_dir else default_scores_dir(root, cfg.experiment)

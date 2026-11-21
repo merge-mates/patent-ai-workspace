@@ -309,3 +309,117 @@ def test_OA_평균과_전체_합산이_갈린다():
     s = _score([g1, g2], {oa_key(g1): _pred(_pred_dict()), oa_key(g2): _pred(p2)})
     assert s["metrics"]["field_accuracy"] == pytest.approx((1 + 14 / 15) / 2)
     assert s["metrics"]["field_accuracy_micro"] == pytest.approx((37 + 14) / (37 + 15))
+
+
+# ---- cost: read_oa 실행 호출 기록 합치기 (이슈 #156)
+
+
+def _rec(**kw) -> dict:
+    """호출 기록 한 줄 (CallRecord 꼴 + case). 기본은 가격 있는 정상 호출."""
+    base = {
+        "run_id": "r1",
+        "step": "read",
+        "model": "m",
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "cost": 0.5,
+        "elapsed_ms": 5,
+        "from_cache": False,
+        "attempt": 1,
+        "outcome": "ok",
+        "transport_try": 1,
+        "case": "x",
+    }
+    return base | kw
+
+
+def _cost(calls):
+    g = _gold()
+    return score_f1(
+        CFG,
+        [g],
+        {oa_key(g): _pred(_pred_dict())},
+        None,
+        commit="abc",
+        gold_sha256="0" * 64,
+        calls=calls,
+    )["cost"]
+
+
+def test_호출_기록이_있으면_토큰_호출수_usd를_합친다():
+    calls = [
+        _rec(),
+        _rec(input_tokens=200, output_tokens=20, cost=0.25, stop_reason="end_turn"),
+        _rec(from_cache=True, outcome="cache_hit", cost=0.0),  # 캐시 적중: 호출 수에서 뺌
+        _rec(input_tokens=0, output_tokens=0, cost=None, outcome="limit_exceeded"),  # 막힘: 뺌
+        _rec(input_tokens=0, output_tokens=0, cost=None, outcome="transport_error"),  # 셈
+    ]
+    c = _cost(calls)
+    assert c["external_calls"] == 3
+    assert c["input_tokens"] == 400  # 100 + 200 + 캐시 적중 100 (기록 합)
+    assert c["output_tokens"] == 40
+    assert c["usd"] == 0.75
+
+
+def test_호출_기록이_없으면_0과_경고(caplog):
+    c = _cost(None)
+    assert (c["usd"], c["input_tokens"], c["output_tokens"], c["external_calls"]) == (0, 0, 0, 0)
+    assert "--calls" in caplog.text
+
+
+def test_호출_기록이_빈_목록이면_0과_경고(caplog):
+    c = _cost([])
+    assert c["external_calls"] == 0
+    assert "호출 기록" in caplog.text
+
+
+def test_가격이_없으면_usd를_비우고_경고(caplog):
+    c = _cost([_rec(), _rec(cost=None), _rec(cost=None)])
+    assert c["usd"] is None
+    assert c["external_calls"] == 3
+    assert "usd를 비움" in caplog.text
+    assert "2줄" in caplog.text
+
+
+def test_응답이_없는_전송_오류의_None은_usd를_비우지_않는다(caplog):
+    c = _cost([_rec(), _rec(input_tokens=0, output_tokens=0, cost=None, outcome="transport_error")])
+    assert c["usd"] == 0.5
+    assert "usd를 비움" not in caplog.text
+
+
+def _load(tmp_path, data):
+    from eval.f1.score import load_calls
+
+    f = tmp_path / "calls.json"
+    f.write_text(data if isinstance(data, str) else json.dumps(data), encoding="utf-8")
+    return load_calls(f)
+
+
+def test_호출_기록_파일을_읽으면_모르는_키는_무시한다(tmp_path):
+    assert len(_load(tmp_path, [_rec(stop_reason="end_turn", extra=1)])) == 1
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "not json",
+        '{"a": 1}',
+        "[1]",
+        json.dumps([{k: v for k, v in _rec().items() if k != "from_cache"}]),
+        json.dumps([_rec(input_tokens="100")]),
+        json.dumps([_rec(cost="0.5")]),
+        json.dumps([_rec(from_cache=1)]),
+    ],
+)
+def test_호출_기록_파일이_틀리면_파일_이름만_말하고_멈춘다(tmp_path, bad):
+    with pytest.raises(EvalError) as e:
+        _load(tmp_path, bad)
+    assert "calls.json" in str(e.value)
+    assert "not json" not in str(e.value)
+
+
+def test_호출_기록_파일이_없으면_멈춘다(tmp_path):
+    from eval.f1.score import load_calls
+
+    with pytest.raises(EvalError):
+        load_calls(tmp_path / "nope.json")

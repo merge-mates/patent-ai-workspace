@@ -164,3 +164,54 @@ def test_쪽_글자_파일이_정답_OA와_하나도_안_맞으면_실패(setup,
     err = capsys.readouterr().err
     assert "쪽 글자 파일이 정답 OA와 하나도 맞지 않는다" in err
     assert KEY not in err
+
+
+def _calls(tmp: Path) -> Path:
+    rec = {
+        "run_id": "r",
+        "step": "read",
+        "model": "m",
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "cost": 0.5,
+        "elapsed_ms": 5,
+        "from_cache": False,
+        "attempt": 1,
+        "outcome": "ok",
+        "transport_try": 1,
+        "case": KEY,
+    }
+    f = tmp / "calls.json"
+    f.write_text(json.dumps([rec, rec]), encoding="utf-8")
+    return f
+
+
+def test_calls를_주면_scores_cost에_합쳐진다(setup):
+    assert main(setup["args"] + ["--calls", str(_calls(setup["tmp"]))]) == 0
+    s = _scores(setup["out"])
+    c = s["cost"]
+    assert (c["usd"], c["input_tokens"], c["output_tokens"], c["external_calls"]) == (
+        1.0,
+        200,
+        20,
+        2,
+    )
+    assert KEY not in json.dumps(s)
+
+
+def test_calls를_안_주면_0과_경고(setup, caplog):
+    assert main(setup["args"]) == 0
+    assert _scores(setup["out"])["cost"]["external_calls"] == 0
+    assert "--calls" in caplog.text
+
+
+def test_calls_파일이_틀리면_실패(setup, capsys):
+    f = setup["tmp"] / "calls.json"
+    f.write_text("[1]", encoding="utf-8")
+    assert main(setup["args"] + ["--calls", str(f)]) == 1
+    assert "calls.json" in capsys.readouterr().err
+
+
+def test_calls_파일이_git에_들어갈_수_있으면_실패(setup, capsys):
+    assert main(setup["args"] + ["--calls", str(REPO_ROOT / "docs" / "calls-x.json")]) == 1
+    assert "git" in capsys.readouterr().err
