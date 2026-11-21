@@ -161,7 +161,7 @@ flowchart LR
 
 ## 5. 저장
 - 읽는 테이블: `documents` (OA PDF 경로). 쓰는 테이블: `documents`(쪽 텍스트 가공본 경로), `oa_results`(jsonb + `status`·`origin`·`run_id`·`oa_id` 컬럼), `agent_steps`, `result_inputs`(OAResult → OA Document). 테이블은 #55.
-- 파일: 올린 OA는 출원번호를 읽기 전에 `case_id` 자리의 임시 폴더(제안 `data/raw/uploads/<case_id>/`)에 두고, 출원번호를 읽으면 `data/raw/cases/<출원번호>/`로 옮긴다. 정확한 경로·파일 이름 규칙은 #54. 같은 파일 판정은 `documents`의 해시로 한다 (409). 쪽 텍스트는 `data/processed/cases/<출원번호>/`.
+- 파일: 올린 OA는 설정 `upload_dir`(기본 `work/uploads/<case_id>/<sha256>.pdf`)에 둔다. 출원번호를 읽은 뒤 옮길지와 정확한 경로·파일 이름 규칙은 #54. 같은 파일 판정은 `documents`의 해시로 한다 (409). 쪽 텍스트는 `data/processed/pages/` (평가 입력 `data/processed/cases/<출원번호>/<발송번호>/`와 다른 트리, [data-model.md](../../data-model.md) 5절, #159).
 - 검색: 해당 없음.
 - 외부 API에서 받는 자료: F1 자체는 없음 (자동 조회는 #54, `api_cache` 거침).
 - 외부 모델로 보내는 자료: 통지서(OA) 원문 → [architecture.md](../../architecture.md) 7절 표 "보냄". 그 밖의 자료는 F1 모델 호출에 넣지 않는다.

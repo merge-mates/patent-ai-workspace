@@ -8,7 +8,7 @@
 - 정답을 드러내는 서류(그 OA에 낸 의견서·보정서, 등록공보, 결정서·결정본문 등 대상 OA 뒤 서류)는 AI 입력 폴더에 두지 않는다. 입력 폴더에 섞이면 AI가 정답을 보게 된다. "AI 입력으로 쓰지 않는다"는 문장만으로 막지 않고 폴더로 가른다 (#150 1번, 11/20).
   - 받은 사건 묶음 전체(위 서류, 이력 전체 판)는 정답 쪽 `data/goldsets/<세트>/case_full/<출원번호>/`에 그대로 둔다. F4 정답을 뽑는 재료도 여기서 읽는다.
   - AI 입력은 스크립트가 OA 시점까지 잘라 `data/processed/cases/<출원번호>/<발송번호>/`에 만든다 (#148, `scripts/split_cases_at_oa.py`). 청구항이력은 OA 앞 판만 남는다.
-- 옛 `data/raw/cases/`(이력 두 파일만 있는 8건)는 검색 정답 변환이 읽어서 남아 있다. 새 입력 폴더로 옮길지는 #148 "남은 것"에서 정한다. 그 전까지는 [cited-patents.md](../docs/data/cited-patents.md) 3절대로 질의 재료로만 쓴다.
+  - 검색 정답 변환(`eval/retrieval/cite_gold.yaml`의 `cases_root`)도 이 입력 폴더에서 질의를 만든다 (#159).
 
 ```
 data/goldsets/
