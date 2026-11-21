@@ -120,6 +120,11 @@ def _locations(c: RowCitationExtraction, pages: PageText) -> list[str]:
     return out
 
 
+def _inside(item: Item, judgment: str) -> bool:
+    """원문 글자가 그 줄 판단 원문 안에 있나 (공백 무시)."""
+    return _squash(item.raw_text or "") in _squash(judgment)
+
+
 def _unique(items: list[str]) -> list[str]:
     return list(dict.fromkeys(items))
 
@@ -212,6 +217,10 @@ def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageT
             raise _Fail()
         if has_location and not mentioned and len(allowed) > 1:
             # 언급 없이 인용이 여럿: 모델 라벨 아래 위치를 남기되 원문으로 못 정했으니 애매
+            location_ambiguous = True
+        if c.location is not None and not _inside(c.location, judgment):
+            # 위치 글자가 이 줄 판단 원문 밖 (예: 묶은 결론 문장 + 다른 항 문단의 위치):
+            # 통지서가 이 항에 짚은 위치인지 원문으로 못 정함 -> 값은 남기되 애매 (이슈 #161)
             location_ambiguous = True
         found = _locations(c, pages)
         if found:
