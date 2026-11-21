@@ -90,12 +90,29 @@ def _not_ready(res):
     assert res.json() == {"code": "result_not_ready", "message": res.json()["message"]}
 
 
-@pytest.mark.parametrize("state", [RunState.QUEUED, RunState.RUNNING])
-def test_실행_전과_실행_중에는_result_not_ready(env, state):
+def test_실행_전에는_결과_줄이_없어_result_not_ready(env):
     env.launch_enabled = False  # 아무것도 안 해서 queued로 남는다
     created = env.upload()
-    if state == RunState.RUNNING:
-        env.runs.transition(created["run_id"], RunState.RUNNING)
+    _not_ready(env.get_result(created["oa_id"]))
+
+
+@pytest.mark.parametrize(
+    "state", [RunState.QUEUED, RunState.RUNNING, RunState.WAITING_FOR_HUMAN, RunState.CANCELLED]
+)
+def test_succeeded가_아닌_실행이_결과를_저장해_둬도_안_준다(env, state):
+    # 실제 실행기는 결과를 먼저 저장하고 succeeded로 바꾸므로, 결과 줄이 있는데 아직
+    # succeeded가 아닌 순간이 생긴다. 그때 결과를 내주면 안 된다
+    env.launch_enabled = False
+    created = env.upload()
+    run_id = created["run_id"]
+    if state != RunState.QUEUED:
+        env.runs.transition(run_id, RunState.RUNNING)
+    if state == RunState.WAITING_FOR_HUMAN:
+        env.runs.transition(run_id, state, waiting_for="reviewer")
+    if state == RunState.CANCELLED:
+        env.runs.transition(run_id, state)
+    assert env.runs.get_status(run_id).state == state
+    env.results.save_oa_result(created["oa_id"], run_id, load_oa_result())
     _not_ready(env.get_result(created["oa_id"]))
 
 
@@ -114,6 +131,7 @@ def test_끝나면_결과가_result에_담겨_온다(env):
 def test_실패한_실행의_결과는_안_준다(env):
     env.steps = [raising_step("OA 읽는 중", RuntimeError("PDF가 깨짐"))]
     created = env.upload()
+    assert env.runs.get_status(created["run_id"]).state == RunState.FAILED
     # 실패한 실행이 결과를 저장해 두었더라도 succeeded가 아니면 안 준다
     env.results.save_oa_result(created["oa_id"], created["run_id"], load_oa_result())
     _not_ready(env.get_result(created["oa_id"]))
@@ -129,7 +147,8 @@ def test_두_번_돌리면_나중_succeeded_결과를_준다(env):
 def test_나중_실행이_실패하면_앞_succeeded_결과가_남는다(env):
     created = env.upload()
     env.steps = [raising_step("OA 읽는 중", RuntimeError("x"))]
-    env.rerun(created["oa_id"])
+    failed = env.rerun(created["oa_id"])
+    assert env.runs.get_status(failed["run_id"]).state == RunState.FAILED
     assert env.get_result(created["oa_id"]).json()["run_id"] == created["run_id"]
 
 
