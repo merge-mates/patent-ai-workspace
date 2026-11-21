@@ -4,23 +4,19 @@ import subprocess
 from pathlib import Path
 
 from eval.common.errors import EvalError
+from patent_ai.git_paths import REPO_ROOT
+from patent_ai.git_paths import is_git_ignored as _is_git_ignored
 
-# 저장소 뿌리 (eval/common/paths.py 기준 두 단계 위)
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# 저장소 뿌리와 git 제외 검사는 patent_ai/git_paths.py 하나를 쓴다 (앱 색인 스크립트와 같은 검사)
+__all__ = ["REPO_ROOT", "check_experiment_name", "git_commit", "is_git_ignored"]
 
 
 def is_git_ignored(path: Path) -> bool:
-    """저장소 밖이면 통과. 안이면 git check-ignore로 무시되는 경로여야 통과."""
-    p = Path(path).resolve()
-    try:
-        p.relative_to(REPO_ROOT)
-    except ValueError:
-        return True
-    r = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", "--", str(p)],
-        capture_output=True,
-    )
-    return r.returncode == 0
+    """저장소 밖이면 통과 (채점기 테스트가 tmp에 씀).
+
+    안이면 git check-ignore로 무시되는 경로여야 통과.
+    """
+    return _is_git_ignored(path, outside_ok=True)
 
 
 def check_experiment_name(experiment: str) -> None:

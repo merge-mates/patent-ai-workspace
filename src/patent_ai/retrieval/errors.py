@@ -10,7 +10,7 @@ class UnknownImplError(RetrievalError):
 
 
 class ModeNotSupportedError(RetrievalError):
-    """지원하지 않는 검색 방식 (지금은 hybrid)."""
+    """그 구현이 하지 않는 검색 방식 (예: bm25 구현에 mode="vector")."""
 
 
 class UnknownIndexVersionError(RetrievalError):
