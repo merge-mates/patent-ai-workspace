@@ -6,9 +6,11 @@ import { api, API_MODE } from '../../api'
 import { UnsupportedAlert } from '../../components/CaseAlerts'
 import { HumanEditedTag } from '../../components/DirectionTags'
 import { ExampleDataMark, HumanCheckTag } from '../../components/Marks'
+import { EvidenceText } from '../../components/EvidenceText'
 import { TrackedText } from '../../components/TrackedText'
 import type { DraftsLoaderData, OALoaderData } from '../../loaders'
-import type { AmendedClaim, DraftCheck, DraftPatch, Drafts } from '../../types/provisional/direction'
+import type { AmendedClaim } from '../../types/generated/Drafts'
+import type { DraftCheck, DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
 
 // 고치는 중인 곳: 의견서 칸 하나 또는 보정 청구항 하나 (보낼 요청과 같은 모양)
 type Editing = DraftPatch | null
@@ -35,7 +37,7 @@ function ClaimItem({
   note: BasisNote
   onEdit: () => void
 }) {
-  if (c.after === null && note === 'picked') {
+  if (c.ai_text === null && note === 'picked') {
     return (
       <Card size="small" type="inner" title={`청구항 ${c.claim}`}>
         <Alert
@@ -47,7 +49,7 @@ function ClaimItem({
       </Card>
     )
   }
-  if (c.after === null) {
+  if (c.ai_text === null) {
     // 확신 낮은 묶음: 사람이 방향을 고를 때까지 초안을 만들지 않는다
     return (
       <Card size="small" type="inner" title={`청구항 ${c.claim}`}>
@@ -91,7 +93,7 @@ function ClaimItem({
             바뀐 부분 (OA 당시 청구항 → 보정 초안)
           </Typography.Text>
           <div>
-            <TrackedText before={c.before} after={c.after} mode="amend" />
+            <TrackedText before={c.before} after={c.ai_text} mode="amend" />
           </div>
         </div>
         {c.human_text !== null && !showAi && (
@@ -100,7 +102,7 @@ function ClaimItem({
               사람이 고친 곳 (AI 초안 → 고친 글)
             </Typography.Text>
             <div>
-              <TrackedText before={c.after} after={c.human_text} mode="human" />
+              <TrackedText before={c.ai_text} after={c.human_text} mode="human" />
             </div>
           </div>
         )}
@@ -111,8 +113,8 @@ function ClaimItem({
           <ul style={{ margin: 0, paddingInlineStart: 18 }}>
             {c.spec_basis.length === 0 && <li>찾지 못함</li>}
             {c.spec_basis.map((b) => (
-              <li key={b.location}>
-                “{b.text}” <Typography.Text type="secondary">({b.location})</Typography.Text>
+              <li key={`${b.document_id}-${b.location}-${b.raw_text}`}>
+                <EvidenceText e={b} />
               </li>
             ))}
           </ul>
@@ -173,7 +175,7 @@ export function DraftsPage() {
   const { drafts: initial, directions, caseCheck } = useLoaderData() as DraftsLoaderData
   const { oaResult } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
-  const [drafts, setDrafts] = useState<Drafts | null>(initial)
+  const [drafts, setDrafts] = useState<DraftsWithCheck | null>(initial)
   const [showAi, setShowAi] = useState(false)
   const [editing, setEditing] = useState<Editing>(null)
 
@@ -221,8 +223,9 @@ export function DraftsPage() {
   )
 
   // 사람이 고친 곳 수는 판마다 따로 센다 (의견서 / 보정 청구항)
-  const opinionEdited = drafts.opinion.filter((x) => x.human_text !== null).length
-  const claimsEdited = drafts.claims.filter((x) => x.human_text !== null).length
+  // 사람이 고친 곳은 origin(human_edited)으로 센다
+  const opinionEdited = drafts.opinion.filter((x) => x.origin === 'human_edited').length
+  const claimsEdited = drafts.claims.filter((x) => x.origin === 'human_edited').length
   // 묶음마다 지금 선택과 초안의 바탕 선택을 견준다
   const noteOf = (unitId: string): BasisNote => {
     const now = directions.find((d) => d.unit_id === unitId)?.selection?.candidate_id ?? null
@@ -295,7 +298,7 @@ export function DraftsPage() {
                 c={c}
                 showAi={showAi}
                 note={noteOf(c.unit_id)}
-                onEdit={() => setEditing({ claim: c.claim, text: c.human_text ?? c.after ?? '' })}
+                onEdit={() => setEditing({ claim: c.claim, text: c.human_text ?? c.ai_text ?? '' })}
               />
             ),
           )}

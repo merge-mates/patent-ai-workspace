@@ -1,6 +1,7 @@
 import { Descriptions, Typography } from 'antd'
 import { StatusTag } from '../../components/StatusTag'
-import type { ClarityReview } from '../../types/provisional/analysis'
+import { EvidenceText } from '../../components/EvidenceText'
+import type { ClarityReview } from '../../types/generated/ClarityReview'
 
 // 명확성: 짚은 문구 · 청구항 위치 · 명세서 정의
 export function ClarityView({ c }: { c: ClarityReview }) {
@@ -12,10 +13,7 @@ export function ClarityView({ c }: { c: ClarityReview }) {
       <Descriptions.Item label="청구항 위치">{c.claim_location}</Descriptions.Item>
       <Descriptions.Item label="명세서 정의">
         {c.spec_definition ? (
-          <>
-            “{c.spec_definition.text}”{' '}
-            <Typography.Text type="secondary">({c.spec_definition.location})</Typography.Text>
-          </>
+          <EvidenceText e={c.spec_definition} />
         ) : (
           <StatusTag status={c.status} />
         )}

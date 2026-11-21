@@ -159,14 +159,14 @@ class Searcher(Protocol):
 def get_searcher(impl: str, repo: ChunkRepository, settings: dict, embed: Callable[[str], list[float]] | None = None) -> Searcher  # 없는 이름 → UnknownImplError(이름 규칙 + 쓸 수 있는 이름 목록)
 ```
 - `get_searcher`는 등록된 구현을 공통 검사 래퍼 `CheckedSearcher`로 감싸 돌려준다. 어느 구현이든 아래 검사를 래퍼가 하므로 #66·#67은 구현에서 다시 하지 않아도 된다.
-  - 부르기 전: `k ≥ 1`(아니면 `ValueError`), `corpus`·`mode` 값(아니면 `ValueError`), `mode == "hybrid"`면 `ModeNotSupportedError`, `settings["index_version"]`이 그 말뭉치에 없으면 `UnknownIndexVersionError`.
+  - 부르기 전: `k ≥ 1`(아니면 `ValueError`), `corpus`·`mode` 값(아니면 `ValueError`), `settings["index_version"]`이 그 말뭉치에 없으면 `UnknownIndexVersionError`.
   - 받은 뒤: `result.corpus`·`result.mode`·`result.scope.k`가 요청과 같음(아니면 `SearchContractViolationError`), 결과 조각 수 ≤ k, 모든 `hit.index_version == settings["index_version"]`(아니면 `IndexVersionMismatchError`), 점수 내림차순·같은 점수는 `chunk_id` 오름차순.
 - 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.
 - `get_searcher`는 설정 `impl` 이름으로 구현 모듈 `patent_ai.retrieval.<impl>`을 그때 import한다 (등록표에 이미 있으면 import하지 않음). 그래서 구현 파일 이름 = `impl` 이름이고(예 `impl: fake` → `retrieval/fake.py`), 그 모듈이 `@register_impl("<impl>")`로 자기를 등록한다. 모듈이 없거나 import 뒤에도 이름이 없으면 `UnknownImplError` (11/19 결정).
 - `embed`(글 → 벡터)는 부르는 쪽(채점기, F2·F3)이 `core/llm`의 `embed()`를 넘기고, 구현은 `(repo, settings, embed)`로 만들어진다. `retrieval`은 `core`를 import하지 않으므로 모델 호출을 직접 하지 않는다 (11/19 리뷰). fake는 녹화 파일을 읽는 `recorded_embed(path)`를 받는다 (`settings["query_vectors"]`만 있어도 같은 녹화를 읽는다).
-- `hybrid`를 넣기로 하면 인터페이스는 그대로 두고, 구현과 래퍼의 막는 줄만 바꾼다.
+- `hybrid`는 인터페이스를 그대로 두고 래퍼의 막는 줄만 풀었다 (11/20, #67 m2-i2). 구현은 `retrieval/hybrid.py`(RRF, [인용문헌 design 7-4](../cite-search/design.md)). `hybrid` impl이 아닌 구현은 `mode="hybrid"`를 받으면 스스로 `ModeNotSupportedError`.
 - 같은 점수의 순서는 `chunk_id` 오름차순이다 (다시 돌려도 같은 순서).
 
 **맞음 판정 인터페이스** (`eval/retrieval/matchers.py`)
@@ -299,7 +299,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 |---|---|---|---|---|
 | 말뭉치마다 표 (`law_chunks`, `cite_chunks`), DB 하나 | 표 하나 + 행 단위 덤프 / 검색용 DB 따로 / 색인 판마다 표 | `index-load`(`pg_restore --clean`)가 표를 통째로 바꾸는데, 말뭉치마다 만드는 사람이 한 명이라 잃는 게 없고 기존 명령을 그대로 씀. DB 하나는 ADR 0003 확정 | 설계 (11/18 인터뷰) | Makefile 49줄, PostgreSQL 공식 문서 pg_restore |
 | 벡터 칸 길이 안 정함, 인덱스 없음 | 길이 고정 + HNSW / 임베딩 별도 표 | 임베딩 모델 비교 실험 동안 길이가 다른 색인 판이 한 표에 같이 있음. 우리 양에선 다 비교해도 됨 [가정 5] | 설계 | pgvector README (오픈소스) |
-| `hybrid`는 이름 자리만 | 공통 RRF 구현 / 빼기 | PRD·#66·#67 합격 기준에 없음. CQ는 BM25·벡터 각각 결과로 정해짐. 자리가 있으면 나중에 넣어도 인터페이스 안 바뀜 | 설계 | product.md 126줄 |
+| `hybrid`는 이름 자리만 → 11/20 `hybrid` impl(RRF)로 래퍼 막음을 풂 | 공통 RRF 구현 / 빼기 | 처음엔 PRD·#66·#67 합격 기준에 없어 자리만 둠. 11/20 #67 m2-i2에서 BM25·벡터와 같은 68줄로 비교하려고 넣음, 인터페이스는 그대로 | 설계 (11/20 /interview) | [인용문헌 design 7-4](../cite-search/design.md), product.md 126줄 |
 | 정답 파일 모양을 #65가 정함 | 은진 님 파일 그대로 / 둘이 새로 | 가짜 fixture로 바로 테스트, 변환은 스크립트 하나 | 설계 | |
 | 공통 계산 + 말뭉치별 `Matcher` | 판정 규칙 하나 | 인용문헌(문단·도면·공보)과 법령(판본·조항)의 "맞음"이 다름. 계산은 같음 | 설계 (11/18 사용자 지적) | #9 B-3 |
 | 인용문헌 질의 = OA 당시 청구항 전문 | 구성요소별 / OA 문단에서 번호 가림 | 지금 있고 정답이 새지 않음 | 설계 | product.md 6절 F3 |
@@ -319,13 +319,14 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
 | 법령 `doc_id` = 원본 파일 이름 (`특허법_212229_20200311`, `특허법_시행령_…`) | 법령 이름만 | 같은 번호(MST)에 시행일이 둘인 판이 있음. 정답 적용판본과 같은 모양 | 설계 (#66) | |
 | 법령 질의 = OA `[구체적인 거절이유]` 본문을 순번별로 자르고 조문 표기를 `[조문]`으로 가림. 끝은 `[첨 부]`·`<< 안내 >>`·심사관 서명 줄 | 본문 전체 하나 / 사람이 자름 | 줄마다 다른 거절이유. 순번이 정답과 안 맞으면 사건째 빼고 셈. 서명 이름을 질의에 넣지 않음 | 설계 + 구현 중 문제 (#66) | |
 | 법령 정답 파일 `retrieval/law_gold.jsonl` (인용문헌과 따로) | `gold.jsonl` 하나 | 채점기가 다른 말뭉치 줄이 섞이면 멈춤 | 구현 중 문제 (#66) | |
-| `law_bm25`: Okapi BM25, 두 글자 낱말, 통계는 그 검색 범위(기준일 판) 안에서 | 공백 낱말 / 형태소 분석기 / 전체 판 통계 | 조사·줄바꿈에 덜 흔들리고 의존성 없음. 옛 판이 idf를 흔들지 않음 | 설계 (#66) | experiments/m2-i1-law-bm25-baseline |
-| 넣기는 `retrieval/law_index_db.py` (이번 판 줄만 한 트랜잭션으로 다시 씀). 그 판이 DB에 있으면 내용 해시가 같을 때만 | `db/`에 / `make index-load` / 있으면 무조건 멈춤 | `db`는 `retrieval`을 import하지 않음. 공유 DB라 다른 판·표는 안 건드림. 같은 판 이름에 다른 내용이면 덤프 받은 쪽과 어긋나서 새 판으로 | 구현 중 문제 (#66, 리뷰 11/19) | |
+| (아래 줄로 대체, PR #186) `law_bm25`: Okapi BM25, 두 글자 낱말, 통계는 그 검색 범위(기준일 판) 안에서 | 공백 낱말 / 형태소 분석기 / 전체 판 통계 | 조사·줄바꿈에 덜 흔들리고 의존성 없음. 옛 판이 idf를 흔들지 않음 | 설계 (#66) | experiments/m2-i1-law-bm25-baseline |
+| BM25 구현은 `bm25`(bm25s lucene) 하나. 낱말 자르기 `settings.tokenizer` = `kiwi`·`char_bigram`·`whitespace`, 질의 낱말 한 번씩 세기 `bm25.unique_query_terms`(기본 false). `law_bm25`는 뺌 | 말뭉치마다 구현 | 두 말뭉치 CQ를 같은 코드로 봄. bm25s는 질의 낱말을 나온 만큼 세서 긴 법령 질의가 흔들림(Hit@1 0.632 → 0.211), 한 번씩 세면 law_bm25와 같음 | 리뷰 (PR #117, 11/20) | experiments/m2-i2-law-bm25-char-bigram |
+| 넣기는 `retrieval/law_index_db.py` (이번 판 줄만 한 트랜잭션으로 다시 씀. 11/20 `--corpus law|cite`로 인용문헌도, #67). 그 판이 DB에 있으면 내용 해시가 같을 때만 | `db/`에 / `make index-load` / 있으면 무조건 멈춤 | `db`는 `retrieval`을 import하지 않음. 공유 DB라 다른 판·표는 안 건드림. 같은 판 이름에 다른 내용이면 덤프 받은 쪽과 어긋나서 새 판으로 | 구현 중 문제 (#66, 리뷰 11/19) | |
 | 법령 벡터 색인 = 새 판 `law-idx-v2` (v1 조각 그대로 + `embedding`). 심사기준은 `law-idx-v3` | v1에 벡터만 채움 / 벡터를 DB 밖 파일로 | v1 덤프를 이미 공유했고 "설정을 바꾸면 새 판" 규칙. v2에서 BM25를 다시 돌려 v1과 점수가 같음을 확인 | 설계 (#66, 11/19) | experiments/m2-i2-law-vector-baseline |
 | 임베딩 모델 = OpenAI `text-embedding-3-small` (기준선), 설정 `config/law_search.yaml` | 3-large / 로컬 모델 | 싸고(고유 글 1,142개 + 질의 19개 $0.0046) 비교는 설정만 바꿔서. 로컬 모델은 torch 같은 의존성 | 설계 (#66, 11/19) | |
 | 같은 글은 한 번만 임베딩 (`core/index_embed`) | 조각마다 | 법령은 판마다 같은 조문이 많아 조각 10,649개에 고유 글 1,142개 | 구현 중 문제 (#66) | |
 | `vector` 검색기는 말뭉치를 안 가리고, 질의 벡터는 `settings.query_vectors` 파일로 받아 채점기를 안 고침 | 채점기에 embed 넘기기 | 공용 채점기를 바꾸지 않고 fake와 같은 길. 질의 벡터는 `eval/retrieval/embed_queries`로 미리 만들어 git 밖에 (정답 파일은 채점기 쪽만 읽음) | 설계 (#66) | |
-| `vector`는 점수 문턱 없이 범위 안 조각을 다 순위 매김 (`fake`·`law_bm25`는 점수 0 이하를 뺌) | 코사인 문턱 | 문턱은 기준선을 잰 뒤 정하기로 함 (이 문서 2절). 그래서 범위 안 조각이 있으면 `not_found_in_scope`가 사실상 안 나옴: F2가 쓸 때 "못 찾음 ≠ 없음"을 문턱으로 다시 볼 것 | 리뷰 (#66, 11/19) | |
+| `vector`는 점수 문턱 없이 범위 안 조각을 다 순위 매김 (`fake`·`bm25`는 점수 0 이하를 뺌) | 코사인 문턱 | 문턱은 기준선을 잰 뒤 정하기로 함 (이 문서 2절). 그래서 범위 안 조각이 있으면 `not_found_in_scope`가 사실상 안 나옴: F2가 쓸 때 "못 찾음 ≠ 없음"을 문턱으로 다시 볼 것. `hybrid`도 같음 (안쪽 vector가 범위 안 조각을 다 순위 매김, 11/20 #67) | 리뷰 (#66, 11/19; #163 리뷰 11/20) | |
 
 - ADR 세 조건을 다 맞는 결정은 없다고 본다. 표 나누기는 되돌릴 때 마이그레이션 하나와 덤프 다시 뽑기라 "되돌리기 어렵다"가 약하다.
 
@@ -344,7 +345,7 @@ law_location_rule: overlap_or_label   # 법령만. 생략하면 이 기본값 (7
   - `not_found_in_scope`
   - `unverified(body_missing)`
   - 기준일 거르기와 `skipped_unverified_edition`
-  - `hybrid` → `ModeNotSupportedError`
+  - 래퍼가 `mode="hybrid"`를 받음 (hybrid가 아닌 impl에 `hybrid` → 그 impl의 `ModeNotSupportedError`)
   - 없는 `impl` → `UnknownImplError`
   - 색인 판 없음·섞임 → 실패
   - 정답 0줄 → 실패, 남은 줄 0개 → 실패 (종료 코드 1)

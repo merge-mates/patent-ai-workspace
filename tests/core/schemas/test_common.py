@@ -29,7 +29,7 @@ def test_status_네_값_각각_바른_칸이면_통과():
     assert Status(value="conflict").value == StatusValue.CONFLICT
 
 
-def test_unverified_이유_여섯_값():
+def test_unverified_이유_여덟_값():
     assert {r.value for r in UnverifiedReason} == {
         "lookup_failed",
         "body_missing",
@@ -37,6 +37,8 @@ def test_unverified_이유_여섯_값():
         "not_extracted",
         "ambiguous",
         "input_unverified",
+        "evidence_rejected",
+        "limit_reached",
     }
 
 
@@ -75,6 +77,12 @@ def test_evidence_칸():
     ev = Evidence(document_id="d_1", page=2, raw_text="제1항 내지 제4항", checked_on="2026-11-18")
     assert ev.edition is None
     assert ev.model_dump(mode="json")["checked_on"] == "2026-11-18"
+
+
+def test_evidence_location은_사람이_읽는_위치_기본_null():
+    assert Evidence(document_id="d_1").location is None
+    ev = Evidence(document_id="d_2", location="[0016]")
+    assert ev.model_dump(mode="json")["location"] == "[0016]"
 
 
 # ---------- ExtractedValue ----------
@@ -281,3 +289,15 @@ def test_만든_뒤_칸을_바꾸면_거부():
         base.needs_recheck = True
     # 새 값은 model_copy로 만든다
     assert base.model_copy(update={"needs_recheck": True}).needs_recheck is True
+
+
+def test_Evidence_chunk_id가_있으면_index_version도_있어야_함():
+    with pytest.raises(ValidationError, match="index_version"):
+        Evidence(document_id="doc_1", chunk_id="doc_1#3")
+    ev = Evidence(document_id="doc_1", chunk_id="doc_1#3", index_version="law-idx-v2")
+    assert (ev.chunk_id, ev.index_version) == ("doc_1#3", "law-idx-v2")
+    # 올린 문서 근거는 둘 다 null
+    assert Evidence(document_id="d_1").chunk_id is None
+    assert Evidence(document_id="d_1").index_version is None
+    # index_version만 있는 것은 허용
+    assert Evidence(document_id="doc_1", index_version="v1").chunk_id is None

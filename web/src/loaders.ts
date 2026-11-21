@@ -5,14 +5,13 @@ import { ApiError, isNotReady } from './api/errors'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { PageText } from './types/generated/PageText'
 import type { ReviewItem } from './types/generated/ReviewItem'
-import type {
-  ClarityReview,
-  ComparisonTable,
-  JudgmentUnit,
-  LegalEvidenceBundle,
-} from './types/provisional/analysis'
+import type { ClarityReview } from './types/generated/ClarityReview'
+import type { ComparisonTable } from './types/generated/ComparisonTable'
+import type { DirectionCandidates } from './types/generated/DirectionCandidates'
+import type { JudgmentUnit } from './types/generated/JudgmentUnit'
+import type { LegalEvidenceBundle } from './types/generated/LegalEvidenceBundle'
 import type { CaseSummary, OADetail, OAResultResponse } from './types/provisional/case'
-import type { CaseCheck, DirectionCandidates, Drafts } from './types/provisional/direction'
+import type { CaseCheck, DraftsWithCheck } from './types/provisional/pending'
 
 export async function casesLoader(): Promise<CaseSummary[]> {
   return api.listCases()
@@ -112,7 +111,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
 
 export interface DraftsLoaderData {
   // 초안이 아직 없으면 null (404 result_not_ready)
-  drafts: Drafts | null
+  drafts: DraftsWithCheck | null
   // 지금 선택: 초안이 바탕으로 삼은 선택과 다른지 본다
   directions: DirectionCandidates[]
   caseCheck: CaseCheck | null
