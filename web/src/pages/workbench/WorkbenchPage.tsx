@@ -86,7 +86,7 @@ export function WorkbenchPage() {
 
       <RejectionsCard r={r} legal={data.legal} />
       {materials ? (
-        <MaterialsCard m={materials} r={r} />
+        <MaterialsCard m={materials} r={r} caseId={oa.case_id} />
       ) : (
         <div id="materials" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <h2 className="heading2">사건 자료 (모름)</h2>

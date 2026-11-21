@@ -1,9 +1,9 @@
-import { UploadOutlined } from '@ant-design/icons'
-import { Button, Tooltip } from 'antd'
+import { Button } from 'antd'
 import { useState } from 'react'
 import { useLocation } from 'react-router'
 import { HumanCheckTag } from '../../components/Marks'
 import { StatusTag } from '../../components/StatusTag'
+import { UploadMaterialButton } from '../../components/UploadMaterialButton'
 import { lookupResultLabel, materialKindLabel, sourceLabel } from '../../labels'
 import type { CaseMaterials } from '../../types/generated/CaseMaterials'
 import type { OAResult } from '../../types/generated/OAResult'
@@ -19,7 +19,7 @@ const lineStyle = {
 
 // 사건 자료: "사건 자료 N건" 제목 줄. 찾아온 자료(documents) · 못 가져온 자료(missing) · 보류한 작업(held_tasks)을 줄로.
 // 빠진 자료가 있으면 펼쳐서 보이고, 없으면 접고 "자세히". 직접 누른 것이 그 뒤를 이긴다
-export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
+export function MaterialsCard({ m, r, caseId }: { m: CaseMaterials; r: OAResult; caseId: string }) {
   // 펼침: 누른 것은 그때의 주소 key와 묶는다. 새 주소(#materials, 직접 할 일 "자료 보기")로 오면 펼쳐서 보인다 (effect 없이 계산)
   const location = useLocation()
   const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
@@ -67,16 +67,7 @@ export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
               ) : (
                 <StatusTag status={{ value: 'unverified', reason: x.lookup_result, checked: null, searched_scope: null }} />
               )}
-              {x.ask_upload && (
-                // 올리기 API(POST /cases/{id}/documents)가 web/src/api에 아직 없어 누를 수 없다
-                <Tooltip title="서버가 오면 올릴 수 있어요">
-                  <span>
-                    <Button size="small" icon={<UploadOutlined />} disabled>
-                      올려 주세요
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
+              {x.ask_upload && <UploadMaterialButton caseId={caseId} />}
             </div>
           ))}
           {m.documents.length + m.missing.length === 0 && (

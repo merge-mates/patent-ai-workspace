@@ -66,3 +66,16 @@ export interface CreatedCase {
   oa_id: string
   run_id: string
 }
+
+// POST /cases/{id}/oas: 다음 OA 올리기 (docs/api/README.md 3절)
+export interface CreatedOA {
+  oa_id: string
+  run_id: string
+}
+
+// POST /cases/{id}/documents: 조회하지 못한 자료 올리기. 응답 모양이 명세에 없다 (임시: 서버 응답 스키마 #56·#57 전에 정함).
+// 화면은 응답 안의 값을 읽지 않고 성공 여부만 쓴다.
+export type UploadedDocument = Record<string, unknown>
+
+// GET /legal-chats/{id}: 대화 보기. 응답 모양이 명세에 없다 (임시: F2 설계 때 정함).
+export type LegalChatView = { chat_id?: string } & Record<string, unknown>

@@ -1,10 +1,11 @@
-import { InboxOutlined, UploadOutlined } from '@ant-design/icons'
+import { InboxOutlined } from '@ant-design/icons'
 import { App, Button, Steps, Tooltip, Upload } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import { api, API_MODE } from '../api'
 import { StatusTag } from '../components/StatusTag'
 import { HumanCheckTag } from '../components/Marks'
+import { UploadMaterialButton } from '../components/UploadMaterialButton'
 import { lookupResultLabel, materialKindLabel, sourceLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
 import { isRunEnded, refreshRun } from '../runPoll'
@@ -174,17 +175,17 @@ function UploadProgress({ data }: { data: OALoaderData }) {
                     <StatusTag status={{ value: 'unverified', reason: x.lookup_result, checked: null, searched_scope: null }} />
                   )}
                   {x.ask_upload && (
-                    // 다시 조회·올리기 API가 web/src/api에 아직 없어 누를 수 없다
-                    <Tooltip title="서버가 오면 올릴 수 있어요">
-                      <span style={{ display: 'inline-flex', gap: 8 }}>
-                        <Button size="small" disabled>
-                          다시 조회
-                        </Button>
-                        <Button size="small" icon={<UploadOutlined />} disabled>
-                          올려 주세요
-                        </Button>
-                      </span>
-                    </Tooltip>
+                    <span style={{ display: 'inline-flex', gap: 8 }}>
+                      {/* 다시 조회 API는 명세에 없어 누를 수 없다. 올리기는 서버 모드에서만 눌린다 */}
+                      <Tooltip title="서버가 오면 다시 조회할 수 있어요">
+                        <span>
+                          <Button size="small" disabled>
+                            다시 조회
+                          </Button>
+                        </span>
+                      </Tooltip>
+                      <UploadMaterialButton caseId={oa.case_id} />
+                    </span>
                   )}
                 </div>
               ))}

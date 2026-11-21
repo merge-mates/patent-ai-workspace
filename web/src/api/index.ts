@@ -14,15 +14,21 @@ import type {
   CaseDetail,
   CaseSummary,
   CreatedCase,
+  CreatedOA,
+  LegalChatView,
+  UploadedDocument,
   OADetail,
   OAResultResponse,
   RunStatus,
 } from '../types/provisional/case'
 import { ApiError } from './errors'
 import { getJson, postForm, postJson, sendJson } from './http'
-import { mockApi } from './mock'
+import { clearMockKeys, mockApi } from './mock'
 
 export const API_MODE = import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'server'
+
+// 서버 모드면 옛 mock 값(고른 방향·고친 초안·실행 흉내)이 브라우저에 남아 있지 않게 모듈을 불러올 때 지운다 (D6)
+if (API_MODE === 'server') clearMockKeys()
 
 const httpApi: typeof mockApi = {
   listCases: () => getJson<CaseSummary[]>('/cases'),
@@ -62,6 +68,23 @@ const httpApi: typeof mockApi = {
     form.append('file', file)
     return postForm<CreatedCase>('/cases', form)
   },
+  // POST /cases/{id}/oas: 같은 사건의 다음 OA를 올리고 실행을 시작한다
+  createOA: (caseId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return postForm<CreatedOA>(`/cases/${encodeURIComponent(caseId)}/oas`, form)
+  },
+  // POST /cases/{id}/documents: 조회하지 못한 자료를 올린다 ("올려 주세요"). 응답 모양은 명세에 없다
+  uploadDocument: (caseId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return postForm<UploadedDocument>(`/cases/${encodeURIComponent(caseId)}/documents`, form)
+  },
+  // POST /oas/{oa_id}/runs: 다시 돌리기. 명세에는 "다시 확인 필요가 붙은 판단 단위만" 고르는 말이 있으나
+  // 요청 필드가 없어 빈 본문으로 보낸다(전체 실행). 필드가 정해지면 인자를 더한다
+  rerunOA: (oaId) => postJson<RunStatus>(`/oas/${encodeURIComponent(oaId)}/runs`, {}),
+  // GET /legal-chats/{id}: 대화 보기 (응답 모양 미정)
+  getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }
 
 export const api = API_MODE === 'mock' ? mockApi : httpApi

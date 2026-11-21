@@ -9,10 +9,13 @@ import type {
   CaseDetail,
   CaseSummary,
   CreatedCase,
+  CreatedOA,
   LatestRun,
+  LegalChatView,
   OADetail,
   OAResultResponse,
   RunStatus,
+  UploadedDocument,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
 import type { ComparisonTable } from '../types/generated/ComparisonTable'
@@ -264,6 +267,25 @@ export const mockApi = {
     startRun(b.oa_id)
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: b.run_id }
   },
+  // 다음 OA 올리기: 파일은 읽지 않고, 그 사건의 예시 OA 실행이 새로 시작한 것으로 흉내만 낸다
+  async createOA(caseId: string, _file: File): Promise<CreatedOA> {
+    const b = await byCase(caseId)
+    startRun(b.oa_id)
+    return { oa_id: b.oa_id, run_id: b.run_id }
+  },
+  // 파일을 읽어 자료로 만들 수 없어서 지어내지 않고 오류로 (화면은 mock에서 이 버튼을 막아 둔다)
+  async uploadDocument(_caseId: string, _file: File): Promise<UploadedDocument> {
+    throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
+  },
+  // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
+  async rerunOA(oaId: string): Promise<RunStatus> {
+    const b = await byOA(oaId)
+    startRun(b.oa_id)
+    return { ...runOf(b), oa_id: b.oa_id, error: null } as RunStatus
+  },
+  async getLegalChat(_chatId: string): Promise<LegalChatView> {
+    throw new ApiError('not_in_mock', 'mock에는 법률 질문 대화 보기가 없습니다', 0)
+  },
 }
 
 // ---- mock 실행 흉내 (D5): 통지서를 올리면 첫 fixture 사건의 실행이 새로 시작한 것으로 친다 ----
@@ -451,7 +473,8 @@ function applySaved() {
     }
   }
 }
-applySaved()
+// 서버 모드에서는 읽지 않는다 (api/index.ts가 오히려 지운다)
+if (import.meta.env.VITE_API_MODE === 'mock') applySaved()
 
 // patent_ai:mock: 로 시작하는 localStorage·sessionStorage 키를 모두 지운다
 // ("mock 처음으로" 버튼, 그리고 서버 모드에서 옛 mock 값이 남지 않게 api/index.ts가 부른다)
