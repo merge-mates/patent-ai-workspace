@@ -1,0 +1,23 @@
+# unique_query_terms=false 근거 (PR #186 리뷰): bm25s 기본 셈(질의 낱말을 나온 만큼)으로 법령을 채점
+experiment: m2-i2-law-bm25-char-bigram-count-repeats
+feature: retrieval
+baseline: m2-i2-law-bm25-char-bigram   # unique_query_terms만 true → false
+goldset: tune
+goldset_version: 2
+corpus: law
+index_version: law-idx-v2
+mode: bm25
+impl: bm25
+k: [1, 3, 5, 10]
+gold: retrieval/law_gold.jsonl
+law_location_rule: overlap_or_label
+settings:
+  tokenizer: char_bigram
+  bm25:                  # bm25s 0.3.16
+    method: lucene
+    k1: 1.5
+    b: 0.75
+    unique_query_terms: false  # bm25s 기본: 질의 낱말을 나온 만큼 센다
+budget:
+  max_usd: 0
+  max_external_calls: 0

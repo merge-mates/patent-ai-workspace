@@ -1,0 +1,23 @@
+# 법령 BM25를 합친 bm25 구현(bm25s)으로 (#117 후속). 낱말 자르기는 기준선과 같은 두 글자
+experiment: m2-i2-law-bm25-char-bigram
+feature: retrieval
+baseline: m2-i2-law-bm25-v2   # 같은 색인·낱말 자르기, impl만 law_bm25 → bm25
+goldset: tune
+goldset_version: 2
+corpus: law
+index_version: law-idx-v2
+mode: bm25
+impl: bm25
+k: [1, 3, 5, 10]
+gold: retrieval/law_gold.jsonl
+law_location_rule: overlap_or_label
+settings:
+  tokenizer: char_bigram
+  bm25:                  # bm25s 0.3.16
+    method: lucene
+    k1: 1.5
+    b: 0.75
+    unique_query_terms: true   # 긴 질의의 흔한 낱말이 여러 번 세지지 않게 (law_bm25와 같은 셈)
+budget:
+  max_usd: 0
+  max_external_calls: 0
