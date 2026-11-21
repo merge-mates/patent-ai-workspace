@@ -79,6 +79,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /cases/{case_id}/materials:
+    get:
+      summary: Get Case Materials
+      operationId: get_case_materials_cases__case_id__materials_get
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseMaterialsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /cases/{case_id}/oas:
     post:
       summary: Add Oa
@@ -385,6 +409,75 @@ components:
       - case_name
       - oas
       title: CaseDetail
+    CaseDocument:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        kind:
+          type: string
+          title: Kind
+        source:
+          type: string
+          title: Source
+        status:
+          $ref: '#/components/schemas/Status'
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - kind
+      - source
+      - status
+      title: CaseDocument
+    CaseMaterials:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        documents:
+          items:
+            $ref: '#/components/schemas/CaseDocument'
+          type: array
+          title: Documents
+        missing:
+          items:
+            $ref: '#/components/schemas/MissingMaterial'
+          type: array
+          title: Missing
+        held_tasks:
+          items:
+            $ref: '#/components/schemas/HeldTask'
+          type: array
+          title: Held Tasks
+        review_items_count:
+          type: integer
+          minimum: 0.0
+          title: Review Items Count
+          default: 0
+      additionalProperties: false
+      type: object
+      required:
+      - case_id
+      title: CaseMaterials
+    CaseMaterialsOut:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        run_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Run Id
+        result:
+          $ref: '#/components/schemas/CaseMaterials'
+      type: object
+      required:
+      - case_id
+      - run_id
+      - result
+      title: CaseMaterialsOut
     CaseSummary:
       properties:
         case_id:
@@ -741,6 +834,20 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HeldTask:
+      properties:
+        task:
+          type: string
+          title: Task
+        waiting_for:
+          type: string
+          title: Waiting For
+      additionalProperties: false
+      type: object
+      required:
+      - task
+      - waiting_for
+      title: HeldTask
     LatestRun:
       properties:
         run_id:
@@ -760,6 +867,36 @@ components:
       - state
       - current_step
       title: LatestRun
+    LookupResult:
+      type: string
+      enum:
+      - lookup_failed
+      - body_missing
+      - unsupported_country
+      title: LookupResult
+      description: 빠진 자료를 조회한 결과.
+    MissingMaterial:
+      properties:
+        what:
+          type: string
+          title: What
+        depends_on_tasks:
+          items:
+            type: string
+          type: array
+          title: Depends On Tasks
+        lookup_result:
+          $ref: '#/components/schemas/LookupResult'
+        ask_upload:
+          type: boolean
+          title: Ask Upload
+      additionalProperties: false
+      type: object
+      required:
+      - what
+      - lookup_result
+      - ask_upload
+      title: MissingMaterial
     NoticeKind:
       type: string
       enum:

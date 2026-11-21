@@ -11,6 +11,7 @@ from fastapi import Depends
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
 from patent_ai.core.cases.store import CaseAppStore
@@ -73,6 +74,11 @@ def get_run_status_store() -> RunStatusStore:
 def get_oa_result_store() -> OAResultStore:
     """OA 정리 결과 저장소. 결과 받기 API가 읽고, 실행기의 결과 받는 곳(sink)도 이것을 쓴다."""
     return PostgresOAResultStore(sessionmaker(_engine()))
+
+
+@lru_cache
+def get_case_materials_store() -> CaseMaterialsStore:
+    return PostgresCaseMaterialsStore(sessionmaker(_engine()))
 
 
 @lru_cache

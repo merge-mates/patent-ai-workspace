@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from patent_ai.api.deps import (
     CaseUnit,
+    get_case_materials_store,
     get_case_unit,
     get_run_launcher,
     get_run_status_store,
@@ -20,6 +21,7 @@ from patent_ai.api.deps import (
 from patent_ai.api.errors import AppError
 from patent_ai.api.runs import launch_run
 from patent_ai.core.cases import upload
+from patent_ai.core.cases.materials import CaseMaterialsStore
 from patent_ai.core.cases.store import (
     DuplicateDocumentError,
     NewDocument,
@@ -28,6 +30,7 @@ from patent_ai.core.cases.store import (
 )
 from patent_ai.core.runs.launcher import RunLauncher, mark_launch_failed
 from patent_ai.core.runs.store import RunStatusStore
+from patent_ai.core.schemas.case_materials import CaseMaterials
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,6 +63,12 @@ class CaseDetail(BaseModel):
     case_id: str
     case_name: str
     oas: list[OARefOut]
+
+
+class CaseMaterialsOut(BaseModel):
+    case_id: str
+    run_id: str | None  # 이 줄을 마지막으로 쓴 실행 (자료만 더했으면 null)
+    result: CaseMaterials  # 결과 스키마 ⑥ 그대로
 
 
 def read_pdf(file: UploadFile) -> tuple[bytes, str]:
@@ -153,3 +162,17 @@ def get_case(case_id: str, unit: Annotated[CaseUnit, Depends(get_case_unit)]) ->
         case_name=row.case_name,
         oas=[OARefOut(oa_id=o.oa_id, notice_kind=o.notice_kind) for o in row.oas],
     )
+
+
+@router.get("/cases/{case_id}/materials", response_model=CaseMaterialsOut)
+def get_case_materials(
+    case_id: str,
+    unit: Annotated[CaseUnit, Depends(get_case_unit)],
+    materials: Annotated[CaseMaterialsStore, Depends(get_case_materials_store)],
+) -> CaseMaterialsOut:
+    if unit.store.get_case(case_id) is None:
+        raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다")
+    saved = materials.latest_case_materials(case_id)
+    if saved is None:
+        raise AppError(404, "result_not_ready", "사건 자료가 아직 없습니다")
+    return CaseMaterialsOut(case_id=case_id, run_id=saved.run_id, result=saved.result)
