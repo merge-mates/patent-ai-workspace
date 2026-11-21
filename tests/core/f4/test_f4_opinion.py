@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from patent_ai.core.f4_response_draft.amendment import STEP as AMENDMENT_STEP
-from patent_ai.core.f4_response_draft.amendment import build_amendments
+from patent_ai.core.f4_response_draft.amendment import assemble_drafts, build_amendments
 from patent_ai.core.f4_response_draft.directions import STEP as DIRECTION_STEP
 from patent_ai.core.f4_response_draft.directions import build_directions
 from patent_ai.core.f4_response_draft.inputs import F4Input
@@ -138,8 +138,15 @@ def test_보류_묶음에서_사람이_고른_후보로_의견서와_보정이_�
     assert (UNIT_CLARITY, picked.candidate_id) in [
         (b.unit_id, b.candidate_id) for b in opinion.based_on
     ]
-    # (3) 사람 선택은 selection.origin에 남는다
-    assert found[1].selection.origin == Origin.HUMAN_SELECTED
+    # (3) 보정 초안이 고른 후보의 보정 청구항(2항)으로 만들어진다
+    claim2 = next(c for c in amendment.claims if c.claim == 2)
+    assert claim2.ai_text == _answer("amendment_clarity")["claims"][0]["text"]
+    assert claim2.held_reason is None
+    # (3') 의견서·보정을 묶은 초안에도 그 묶음·후보가 남는다
+    drafts = assemble_drafts(inp.oa.oa_id, opinion, amendment)
+    assert (UNIT_CLARITY, picked.candidate_id) in [
+        (b.unit_id, b.candidate_id) for b in drafts.based_on
+    ]
     # (4) 보류가 아니다
     assert opinion.held_units == [] and amendment.held_units == []
     assert len(opinion.based_on) == 2
