@@ -44,7 +44,8 @@ data/goldsets/
 | F4 대응 방향 | `<세트>/f4/<출원번호>_<발송번호>.json` | OA 한 통 (안에 청구항 줄) | [f4-direction-gold.md](../docs/evaluation/f4-direction-gold.md) 4절 (초안) | `eval/f4/gold.py` (①②층 채점은 `eval/f4/score.py`) |
 
 - 대비(F3) 판정 단위는 `cite_gold` 줄(거절이유 × 청구항 × 인용문헌)이고, F3 대비 정답은 이것을 쓴다 (#35).
-- F2 파일의 `gold_version`은 그때 VERSION과 같아야 한다. VERSION이 오르면 `eval/f2/make_cases.py`(T2)로 다시 만든다 (같은 입력이면 같은 바이트).
+- F2 파일의 `gold_version`은 그때 VERSION과 같아야 한다. VERSION이 오르면 `eval/f2/make_cases.py`로 다시 만든다 (같은 입력이면 같은 바이트).
+- 심사기준·판례 검색 정답은 M3에 만들지 않는다 (11/22, [f2-evidence-gold.md](../docs/evaluation/f2-evidence-gold.md) 7절).
 - F4 채점의 예측 폴더(git 밖)는 정답과 같은 이름 `<출원번호>_<발송번호>.json`(`run_f4` 결과 또는 `DirectionCandidates` 목록)을 둔다. 판단 단위는 결과 안의 `units` 칸을 쓰고, 없을 때만(옛 결과·목록만 둔 파일) `<출원번호>_<발송번호>.units.json`을 읽는다 (둘 다 없으면 채점 실패). 이름이 `<숫자>_<숫자>` 꼴이 아닌 `.json`(실행 요약 `summary.json` 등)은 건너뛰고 경고한다. 정답 폴더가 없으면 채점기는 점수를 쓰지 않고 "정답 없음"(종료 코드 3)으로 끝난다. `direction_top1`은 모델 1번 후보(후보 목록 첫째)로 보류 묶음도 세고(후보 0개 묶음은 틀림), 순위 1 후보로 보류 줄을 뺀 값은 `direction_top1_ranked_only`로 따로 낸다. 확신도별 `direction_top1_conf_*`와 `needs_human_judgment_rate`를 같이 본다. ①층 다룸 지표(`handled_accuracy`)는 정답 문서에서 정의를 정한 뒤 다시 넣는다 (지금은 출력에 없음).
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
@@ -70,5 +71,4 @@ data/goldsets/
 
 ## 6. 아직 없는 것
 - F4 대응 방향 정답 파일, ③④층 채점 (M3 전. 형식 검사와 ①②층 채점은 `eval/f4/`. 규칙은 [f4-direction-gold.md](../docs/evaluation/f4-direction-gold.md)).
-- F2 근거 검토 정답 파일 `f2/evidence_cases.jsonl`: 형식과 검사(`eval/f2/gold.py`)는 있고, 파일은 T2 스크립트 `eval/f2/make_cases.py`가 만든다 (#35). 심사기준·판례 검색 정답은 만들지 않는다 ([f2-evidence-gold.md](../docs/evaluation/f2-evidence-gold.md) 7절).
 - F3 명확성·신규성 대비 정답 (M2 설계 때, [f3-compare-gold.md](../docs/evaluation/f3-compare-gold.md)).

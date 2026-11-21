@@ -20,7 +20,7 @@
 
 ### 3-1. 실제 질문 `kind: "real"`
 ```json
-{"kind": "real", "gold_version": 2, "case_id": "real-0001",
+{"kind": "real", "gold_version": 2, "case_id": "real:900000000000001:r1",
  "reviewed": {"by": null, "date": null},
  "oa_id": "9-9-9999-000001", "rejection": 1,
  "question": {"text": "가짜 질문: 가짜 요건은 무엇인가", "source": "oa_rejection",
@@ -35,9 +35,9 @@
 
 ### 3-2. 오류 주입 `kind: "injected"`
 ```json
-{"kind": "injected", "gold_version": 2, "case_id": "inj-0001",
+{"kind": "injected", "gold_version": 2, "case_id": "inject:other_edition_asserted:1",
  "reviewed": {"by": null, "date": null},
- "error": "other_edition_asserted", "base_case_id": "real-0001",
+ "error": "other_edition_asserted", "base_case_id": "real:900000000000001:r1",
  "bundle": {"...": "검토 전 LegalEvidenceBundle (review 없음, 주장에 needs_human_review)"},
  "target_claim": 1, "target_source": 0,
  "fix": {"document_id": "가짜법_000001_20180101"}}
@@ -56,10 +56,10 @@
 | `other_edition_asserted` | `fix.document_id`가 있고 target 근거의 `evidence.document_id`와 다름 |
 
 ## 4. 만드는 법
-- 외부 모델 호출 없이 T2 스크립트 `eval/f2/make_cases.py`가 tune 세트의 `law_gold`와 법령·판례 원문에서 만든다. 같은 입력이면 같은 바이트가 나온다.
+- 외부 모델 호출 없이 `eval/f2/make_cases.py`가 tune 세트의 `law_gold`와 법령·판례 원문에서 만든다. 같은 입력이면 같은 바이트가 나온다.
 - 실제 질문: `law_gold`의 거절이유 줄 중 판본이 확인된 조문 줄만.
 - 오류 주입 5종: 실제 질문의 맞는 근거를 코드로 망가뜨린다. 종류마다 4개.
-- 기한 정답(`old_deadline_as_current`)은 공식 법령 원문의 판별 글에서만 뽑는다. 글에서 판별되지 않으면 사례를 만들지 않는다.
+- 기한 정답(`old_deadline_as_current`)은 공식 법령 원문의 판별 글에서만 뽑는다. 글에서 판별되지 않으면 그 사례를 빼지 않고 스크립트 전체가 멈춘다 (종류마다 정확히 4개).
 - VERSION이 오르면 스크립트로 다시 만든다. 사람 검수(`reviewed`)는 은진이 일부 줄에 남긴다.
 
 ## 5. 채점 정의 (채점기는 #29)
