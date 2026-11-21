@@ -62,7 +62,7 @@ def config(claims_status=OK) -> F3Config:
     inputs = F3Inputs(
         claims_at_oa=CLAIMS, claims_status=claims_status, claims_document_id="d_claims", spec=SPEC
     )
-    # 녹화 응답 개수는 한 번만 찾기 기준이라 끔으로 고정한다
+    # 가짜 응답 개수는 한 번만 찾기 기준이라 끔으로 고정한다
     # (한 번 더 찾기는 test_f3_second_search.py가 본다)
     settings = load_f3_settings().model_copy(update={"second_search": False})
     return F3Config(settings=settings, inputs=inputs)

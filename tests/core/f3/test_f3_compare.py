@@ -66,7 +66,7 @@ def _config(*, use_examiner=True, k=1, claims_status=OK) -> F3Config:
     settings = settings.model_copy(
         update={
             "use_examiner_paragraphs": use_examiner,
-            # 녹화 응답 개수는 한 번만 찾기 기준 (한 번 더 찾기는 test_f3_second_search.py가 본다)
+            # 가짜 응답 개수는 한 번만 찾기 기준 (한 번 더 찾기는 test_f3_second_search.py가 본다)
             "second_search": False,
             "search": settings.search.model_copy(update={"k": k}),
         }
