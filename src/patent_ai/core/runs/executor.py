@@ -35,6 +35,11 @@ class Skip:
 
     reason: str
 
+    def __post_init__(self) -> None:
+        # 이유 없이 넘기면 경고가 "…건너뜀: "로 끝나 무엇 때문인지 모른다
+        if not self.reason.strip():
+            raise ValueError("Skip에는 넘긴 이유가 꼭 필요하다")
+
 
 @dataclass(frozen=True)
 class Step:

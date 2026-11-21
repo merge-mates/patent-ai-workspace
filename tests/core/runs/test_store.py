@@ -131,3 +131,8 @@ def test_record_skipped와_skipped_steps는_기록한_순서로_돌려준다(sto
         SkippedStep("법령 조회", "도구 없음"),
     ]
     assert store.skipped_steps("r_없음") == []
+
+
+def test_없는_실행에_record_skipped하면_RunNotFound(store):
+    with pytest.raises(RunNotFound):
+        store.record_skipped("r_없음", "인용문헌 조회", "자료 없음")

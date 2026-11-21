@@ -89,10 +89,22 @@ def test_offline_sql_inserts_one_default_user():
 # --- 이슈 #57 T5: 건너뛴 단계 ---
 
 
-def test_offline_sql_agent_steps_outcome_check_allows_skipped():
-    # 오프라인 SQL에서 새 CHECK가 skipped를 허용하는지 (옛 CHECK는 지워진다)
-    sql = _offline_sql()
-    checks = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\)", sql)
+def _values(check_sql: str) -> set[str]:
+    """CHECK 글자에서 따옴표 안 값만 모은다."""
+    return set(re.findall(r"'([^']+)'", check_sql))
+
+
+def test_offline_sql_agent_steps_outcome_check_matches_model():
+    # 마이그레이션(마지막 CHECK)과 모델의 값 집합이 같아야 한다.
+    # #181(output_truncated)과 합칠 때 한쪽에만 값을 넣는 실수를 잡는다.
+    from patent_ai.db.models import AgentStep
+
+    checks = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\)", _offline_sql())
     assert checks, "ck_agent_steps_outcome을 다시 만드는 줄이 없다"
-    assert "'skipped'" in checks[-1]
-    assert "'waiting'" in checks[-1]
+    model = next(
+        c
+        for c in AgentStep.__table__.constraints
+        if getattr(c, "name", None) == "ck_agent_steps_outcome"
+    )
+    assert _values(checks[-1]) == _values(str(model.sqltext))
+    assert "skipped" in _values(checks[-1])

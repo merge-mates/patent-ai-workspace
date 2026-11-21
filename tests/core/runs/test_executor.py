@@ -3,7 +3,7 @@
 import pytest
 
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
-from patent_ai.core.runs.executor import NotConnectedExecutor, Step
+from patent_ai.core.runs.executor import NotConnectedExecutor, Skip, Step
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunNotFound, SkippedStep
 from tests.core.runs.fake_executor import (
@@ -190,3 +190,8 @@ def test_넘긴_단계가_있어도_다음_단계가_돌고_succeeded(store, reg
 def test_넘긴_단계가_없으면_skipped_steps는_빈_목록(store, registry, sink):
     make_fake_executor(store, registry, sink).execute(RID, "oa_1")
     assert store.skipped_steps(RID) == []
+
+
+def test_빈_이유의_Skip은_만들_수_없다():
+    with pytest.raises(ValueError):
+        Skip("")
