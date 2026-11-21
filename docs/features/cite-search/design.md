@@ -134,18 +134,18 @@ flowchart LR
 - 상태: 두 쪽 모두 `body_missing`이면 그대로, 섞은 hit가 0개면 `not_found_in_scope`. `skipped_unverified_edition`은 두 쪽 중 큰 값 (인용문헌은 판본 칸이 `not_applicable`이라 0).
 - 모델 호출: 없음 (질의 벡터는 7-3 녹화 파일).
 
-### 7-6. 2단계·가중합 (이슈 #212, 11/22 밤 실험용)
-- 새 impl 둘. 둘 다 7-4처럼 안쪽 검색기를 `get_searcher`로 만들고, 결과 `mode = "hybrid"` (Mode에 다른 값이 없음), 정렬 `(-점수, chunk_id)`.
-- `two_stage` (`retrieval/two_stage.py`): BM25가 범위 안 위 N개를 후보로 고르고, 그 후보만 벡터 점수로 다시 줄세운다. 점수 = 벡터 점수. 설정 `two_stage: {candidates: N}` (1 이상의 정수, 아니면 `ValueError`). BM25 후보가 0개면 순수 벡터로 되돌아가지 않고 `not_found_in_scope`.
-- `weighted_sum` (`retrieval/weighted_sum.py`): 방식마다 돌려준 조각의 점수를 min-max로 [0, 1]에 맞추고(전부 같으면 1.0, 안 돌려준 조각은 0) `w_bm25·bm25 + w_vector·vector`. 설정 `weighted_sum: {weights: {bm25: w, vector: 1-w}}` (검사는 `hybrid.weights`와 같음).
-- 기본 impl은 그대로 `hybrid`(RRF)다. 기본을 바꿀지는 재아가 실험 결과를 보고 정한다.
-
 ### 7-5. 비교 카드
 - 같은 지문에서 비교: 채점기는 "지문이 다른 실험끼리는 점수를 비교하지 않는다"(`eval/retrieval/score.py` 지문 주석). v1과 v2는 `chunk_id` 앞말이 달라 지문이 다르므로, BM25도 `cite-idx-v2`로 다시 채점한다 (법령 `m2-i2-law-bm25-v2`와 같은 방식). v2 BM25 점수가 v1 기준선과 같은지도 카드에 한 줄.
 - 실험 폴더 셋: `experiments/m2-i2-cite-search-bm25-v2/`(기준선), `experiments/m2-i2-cite-search-vector/`, `experiments/m2-i2-cite-search-hybrid-rrf/`.
 - 줄별 결과: `eval.retrieval.score`에 `--rows-out <git 밖 경로>`를 더해 줄마다 `row_id`·`doc_ids`·처음 맞힌 순위 `first_hit_rank`(1부터, 없으면 null)·채점 때 가장 큰 k `k_max`를 JSONL로 쓴다. `compare.py`는 `k_max`가 없거나 `--k`가 `k_max`보다 크면 종료 1 (조용히 틀린 Hit@k를 막음, 구현 중 리뷰 11/20) (`RowResult`는 지금 메모리에만 있음). scores.json 모양은 안 바꾼다. 경로가 git에 들어갈 수 있으면 종료 1 (`cite_index --jsonl`과 같은 검사).
 - 비교 도구: 새 `eval/retrieval/compare.py --rows bm25=<p> vector=<p> hybrid=<p> --k 10` → 표(마크다운): 방식별 Hit@1·3·5·10 전체 / 한국 공보(`doc_id`가 `KR`로 시작) / 논문(`NPL-`로 시작), 방식별 CQ 수(상위 10에 없음), "상위 10 안에서 한 방식만 찾은 줄" 수. 세 파일의 `row_id` 집합이 다르면 종료 1 (같은 정답 줄인지 검사). 표는 하이브리드 카드에 붙인다.
 - 다음 칸에 남길 것: 다른 섞는 법(점수 맞춘 가중합, 가중치, 상위 N개만) 조사는 결과를 본 뒤 (11/20 재아).
+
+### 7-6. 2단계·가중합 (이슈 #212, 11/22 밤 실험용)
+- 새 impl 둘. 둘 다 7-4처럼 안쪽 검색기를 `get_searcher`로 만들고, 결과 `mode = "hybrid"` (Mode에 다른 값이 없음), 정렬 `(-점수, chunk_id)`.
+- `two_stage` (`retrieval/two_stage.py`): BM25가 범위 안 위 N개를 후보로 고르고, 그 후보만 벡터 점수로 다시 줄세운다. 점수 = 벡터 점수. 설정 `two_stage: {candidates: N}` (1 이상의 정수, 아니면 `ValueError`). BM25 후보가 0개면 순수 벡터로 되돌아가지 않고 `not_found_in_scope`.
+- `weighted_sum` (`retrieval/weighted_sum.py`): 방식마다 돌려준 조각의 점수를 min-max로 [0, 1]에 맞추고(전부 같으면 1.0, 안 돌려준 조각은 0) `w_bm25·bm25 + w_vector·vector`. 설정 `weighted_sum: {weights: {bm25: w, vector: 1-w}}` (검사는 `hybrid.weights`와 같음).
+- 기본 impl은 그대로 `hybrid`(RRF)다. 기본을 바꿀지는 재아가 실험 결과를 보고 정한다.
 
 ## 8. 이 기능 안의 결정
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |

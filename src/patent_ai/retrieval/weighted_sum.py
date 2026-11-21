@@ -5,15 +5,13 @@ BM25와 벡터 점수를 각각 min-max로 [0, 1]에 맞춘 뒤 가중합으로 
 core를 import하지 않는다. 모델 호출 없음.
 """
 
-import math
 from datetime import date
 
 from patent_ai.retrieval.contract import Embed, get_searcher, register_impl
 from patent_ai.retrieval.errors import ModeNotSupportedError
+from patent_ai.retrieval.hybrid import read_weights
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
-
-_METHODS = {"bm25", "vector"}
 
 
 def min_max(scores: dict[str, float]) -> dict[str, float]:
@@ -31,17 +29,7 @@ def _read_weighted_sum_settings(settings: dict) -> dict[str, float]:
     cfg = settings.get("weighted_sum")
     if not isinstance(cfg, dict):
         raise ValueError("settings에 weighted_sum 칸(weights)이 없다")
-    weights = cfg.get("weights")
-    if not isinstance(weights, dict) or set(weights) != _METHODS:
-        raise ValueError(f"weighted_sum.weights 키는 bm25, vector여야 한다: {weights!r}")
-    if any(
-        isinstance(w, bool) or not isinstance(w, int | float) or not math.isfinite(w) or w < 0
-        for w in weights.values()
-    ):
-        raise ValueError(f"weighted_sum.weights는 0 이상의 유한한 숫자여야 한다: {weights!r}")
-    if sum(weights.values()) == 0:
-        raise ValueError("weighted_sum.weights가 둘 다 0이다")
-    return {m: float(w) for m, w in weights.items()}
+    return read_weights(cfg.get("weights"), "weighted_sum")
 
 
 @register_impl("weighted_sum")
