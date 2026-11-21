@@ -1,7 +1,7 @@
 import { createBrowserRouter, redirect } from 'react-router'
 import { AppShell } from './layout/AppShell'
 import { CaseShell } from './layout/CaseShell'
-import { caseLoader, casesLoader, compareLoader, directionsLoader, draftsLoader, oaLoader } from './loaders'
+import { caseLoader, casesLoader, compareLoader, directionsLoader, draftsLoader, oaLoader, uploadLoader } from './loaders'
 import { CaseListPage } from './pages/CaseListPage'
 import { ComparePage } from './pages/compare/ComparePage'
 import { DirectionsPage } from './pages/directions/DirectionsPage'
@@ -20,7 +20,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, loader: () => redirect('/cases') },
       { path: 'cases', loader: casesLoader, element: <CaseListPage />, errorElement: <RouteError /> },
-      { path: 'cases/new', element: <UploadPage /> },
+      { path: 'cases/new', loader: uploadLoader, element: <UploadPage />, errorElement: <RouteError /> },
       { path: 'legal', element: <LegalPage /> },
       { path: 'cases/:caseId', loader: caseLoader, errorElement: <RouteError /> },
       {
