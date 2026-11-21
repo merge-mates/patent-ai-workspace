@@ -255,3 +255,15 @@ def test_unique_query_terms면_질의_낱말을_한_번씩만_센다():
 def test_unique_query_terms는_참거짓만():
     with pytest.raises(ValueError, match="unique_query_terms"):
         _ws_searcher(unique_query_terms="yes")
+
+
+def test_bm25_설정에_모르는_키는_막는다():
+    # 오타(unique_query_term)가 조용히 버려져 기본값으로 채점되지 않게 (PR #186 리뷰)
+    with pytest.raises(ValueError, match="unique_query_term"):
+        _ws_searcher(unique_query_term=True)
+
+
+def test_옛_law_bm25_모양의_최상위_k1_b는_막는다(repo):
+    # 옛 법령 config를 복사해 impl만 바꾸면 k1·b가 settings 바로 아래에 남는다
+    with pytest.raises(ValueError, match="bm25.k1"):
+        get_searcher("bm25", repo, {**SETTINGS, "k1": 1.2})

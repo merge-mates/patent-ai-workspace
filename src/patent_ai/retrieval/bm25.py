@@ -30,7 +30,20 @@ class Bm25Searcher:
         self._tokenizer = make_tokenizer(
             settings.get("tokenizer", "kiwi"), settings.get("pos_tags")
         )
-        self._bm25 = {**_DEFAULTS, **(settings.get("bm25") or {})}
+        bm25 = settings.get("bm25") or {}
+        # 모르는 키(오타)를 조용히 버리면 기본값으로 채점된다. 막는다
+        unknown = sorted(set(bm25) - set(_DEFAULTS))
+        if unknown:
+            raise ValueError(
+                f"settings.bm25에 모르는 키 {unknown}. 쓸 수 있는 키: {list(_DEFAULTS)}"
+            )
+        # 옛 law_bm25 config는 k1·b를 settings 바로 아래에 뒀다. bm25 아래로 옮기라고 알린다
+        for old in ("k1", "b"):
+            if old in settings:
+                raise ValueError(
+                    f"settings.{old}는 옛 law_bm25 모양이다. settings.bm25.{old}로 옮긴다"
+                )
+        self._bm25 = {**_DEFAULTS, **bm25}
         if not isinstance(self._bm25["unique_query_terms"], bool):
             raise ValueError("bm25.unique_query_terms는 true/false만 쓴다")
         # 조각 글을 질의마다 다시 분석하지 않게 chunk_id별로 기억한다
