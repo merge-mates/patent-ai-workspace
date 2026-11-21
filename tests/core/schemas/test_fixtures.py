@@ -95,7 +95,7 @@ def test_보류와_빠진_자료가_서로_맞는다(materials):
     missing = materials.missing[0]
     assert missing.ask_upload is True
     assert materials.held_tasks == [
-        HeldTask(task="F3 대비: D2 US20990000001A1", waiting_for="D2 US20990000001A1 본문")
+        HeldTask(task="f3_compare:oa_1:D2", waiting_for="D2 US20990000001A1 본문")
     ]
     assert materials.held_tasks[0].task in missing.depends_on_tasks
 

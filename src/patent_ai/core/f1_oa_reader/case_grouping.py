@@ -342,47 +342,61 @@ def _missing_reason(
 def build_case_materials(
     case_id: str,
     grouped: list[GroupedMaterial],
-    oa: OAResult,
+    oas: list[OAResult],
     received_citations: set[str],
     lookup_failures: dict[str, LookupResult] | None = None,
+    text_status: dict[str, Status] | None = None,
 ) -> CaseMaterials:
-    """묶은 자료와 OA 인용문헌으로 사건 자료·빠진 자료·보류 작업을 채운다 (합격 기준 4).
+    """묶은 자료와 사건의 OA 전부로 사건 자료·빠진 자료·보류 작업을 채운다 (합격 기준 4).
 
+    - oas: 그 사건의 OA 전부(올라온 순서). 검토할 사항은 사건마다 한 줄이라 전부를 마무리에 넘긴다.
     - received_citations: 본문을 받은 인용문헌 번호(키 꼴). lookup_failures: 못 받은 번호 → 이유.
-    - 빠진 인용문헌마다 missing 한 줄 + 그 인용문헌의 F3 대비만 held_tasks. 나머지는 진행.
+    - 빠진 인용문헌마다 missing 한 줄(OA 둘이 같은 문헌을 인용하면 한 줄로 합침)과, OA마다 그
+      인용문헌의 F3 대비만 held_tasks (`f3_compare:<oa_id>:<라벨>`). 나머지는 진행.
     - 지원 안 하는 나라는 ask_upload=False ("직접 확인"), 그 밖은 "올려 주세요".
+    - text_status: 문서 id → 글자 추출 상태. 없는 문서는 None (묶기 status와 합치지 않음).
     - documents: 같은 열쇠(같은 문서)는 하나만, 올린 것 우선. 나머지는 경고 로그.
       confirmed가 아닌 자료(다른 출원번호·번호 못 읽음)도 빼지 않는다 (빼는 것은 cut_to_oa).
     - review_items·review_items_count는 끝에서 finalize_case_materials가 채운다.
     """
     lookup_failures = lookup_failures or {}
+    text_status = text_status or {}
     # 저장된 인용문헌 문서(올린 것 포함)에 키가 있으면 본문을 받은 것으로 친다 (#201).
     # 그래서 올린 뒤 다시 만들어도 같은 빠진 자료가 다시 생기지 않는다
     received_citations = received_citations | {
         g.citation_key for g in grouped if g.kind == "citation" and g.citation_key is not None
     }
-    citations = _oa_citations(oa)
-    if not citations:
-        logger.warning("build_case_materials: OA 인용문헌이 0건 (빠진 자료 검사 없음)")
 
-    missing: list[MissingMaterial] = []
+    missing: dict[str, MissingMaterial] = {}  # 이름(what)마다 한 줄
     held: list[HeldTask] = []
-    for c in citations:
-        reason = _missing_reason(c, received_citations, lookup_failures)
-        if reason is None:
-            continue
-        what = f"{_citation_name(c)} 본문"
-        task = f"F3 대비: {_citation_name(c)}"
-        missing.append(
-            MissingMaterial(
-                what=what,
-                depends_on_tasks=[task],
-                lookup_result=reason,
-                ask_upload=reason != LookupResult.UNSUPPORTED_COUNTRY,
-                citation_key=c.number.value,  # 번호를 못 읽었으면 None
+    for oa in oas:
+        citations = _oa_citations(oa)
+        if not citations:
+            logger.warning(
+                "build_case_materials: OA %s 인용문헌이 0건 (빠진 자료 검사 없음)", oa.oa_id
             )
-        )
-        held.append(HeldTask(task=task, waiting_for=what))
+        for c in citations:
+            reason = _missing_reason(c, received_citations, lookup_failures)
+            if reason is None:
+                continue
+            what = f"{_citation_name(c)} 본문"
+            # 보류 작업 이름은 OA마다 다르다 (design 3-2절)
+            task = f"f3_compare:{oa.oa_id}:{c.label}"
+            prev = missing.get(what)
+            if prev is None:
+                missing[what] = MissingMaterial(
+                    what=what,
+                    depends_on_tasks=[task],
+                    lookup_result=reason,
+                    ask_upload=reason != LookupResult.UNSUPPORTED_COUNTRY,
+                    citation_key=c.number.value,  # 번호를 못 읽었으면 None
+                )
+            else:
+                # 다른 OA가 같은 문헌을 인용: 빠진 자료는 그대로 한 줄, 기다리는 작업만 더한다
+                missing[what] = prev.model_copy(
+                    update={"depends_on_tasks": [*prev.depends_on_tasks, task]}
+                )
+            held.append(HeldTask(task=task, waiting_for=what))
 
     materials = CaseMaterials(
         case_id=case_id,
@@ -392,16 +406,16 @@ def build_case_materials(
                 kind=g.kind,
                 source=g.source,
                 status=g.status,
+                text_status=text_status.get(g.document_id),
                 citation_key=g.citation_key,
             )
             for g in _one_per_key(grouped)
         ],
-        missing=missing,
+        missing=list(missing.values()),
         held_tasks=held,
     )
-    # 끝에서 F5 마무리를 거쳐 검토할 사항 목록·개수를 채운다 (마무리 안 한 ⑥이 저장되지 않게).
-    # OA 전부를 넘기는 것은 task-3 (지금은 OA 하나)
-    return finalize_case_materials([oa], materials)
+    # 끝에서 F5 마무리를 거쳐 검토할 사항 목록·개수를 채운다 (마무리 안 한 ⑥이 저장되지 않게)
+    return finalize_case_materials(oas, materials)
 
 
 def _one_per_key(grouped: list[GroupedMaterial]) -> list[GroupedMaterial]:

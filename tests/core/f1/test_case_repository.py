@@ -94,7 +94,7 @@ def _oa() -> OAResult:
 
 def _record(materials=MATERIALS, history=HISTORY, claims=CLAIM_INPUTS, files=None) -> CaseRecord:
     grouped = group_materials(materials, APP)
-    built = build_case_materials(CASE_ID, grouped, _oa(), received_citations=set())
+    built = build_case_materials(CASE_ID, grouped, [_oa()], received_citations=set())
     return CaseRecord(
         case_id=CASE_ID,
         application_number=APP,
@@ -183,7 +183,7 @@ def test_빈_사건도_저장됨():
         files={},
         history=[],
         claim_versions=[],
-        materials=build_case_materials(CASE_ID, [], _oa(), received_citations=set()),
+        materials=build_case_materials(CASE_ID, [], [_oa()], received_citations=set()),
     )
     repo.save_case(empty)
     assert repo.load_case_materials(CASE_ID).documents == []

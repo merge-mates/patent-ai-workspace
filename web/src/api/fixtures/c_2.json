@@ -799,7 +799,7 @@
       {
         "what": "D2 JP2099000001A 본문",
         "depends_on_tasks": [
-          "F3 대비: D2 JP2099000001A"
+          "f3_compare:oa_2:D2"
         ],
         "lookup_result": "unsupported_country",
         "ask_upload": false,
@@ -808,7 +808,7 @@
     ],
     "held_tasks": [
       {
-        "task": "F3 대비: D2 JP2099000001A",
+        "task": "f3_compare:oa_2:D2",
         "waiting_for": "D2 JP2099000001A 본문"
       }
     ],

@@ -108,7 +108,7 @@ def _run_one(c: dict) -> dict:
         )
     ]
     materials = build_case_materials(
-        c["case_id"], grouped, oa, c["received"], lookup_failures=c["failures"]
+        c["case_id"], grouped, [oa], c["received"], lookup_failures=c["failures"]
     )
     # ⑥에 이미 담긴 목록을 그대로 쓴다 (따로 모으지 않는다)
     review = materials.review_items or []

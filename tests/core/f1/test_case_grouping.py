@@ -26,7 +26,7 @@ from patent_ai.core.schemas.case_materials import (
     MissingMaterial,
     ReviewItem,
 )
-from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import Flag, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.core.schemas.propagation import finalize_case_materials
 
@@ -457,7 +457,7 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같다():
     got = build_case_materials(
         "c_1",
         _fixture_grouped(oa),
-        oa,
+        [oa],
         received_citations={KR_D1},
         lookup_failures={US_D2: LookupResult.BODY_MISSING},
     )
@@ -469,7 +469,7 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같다():
     assert (m.lookup_result, m.ask_upload) == (LookupResult.BODY_MISSING, True)
     # 보류는 없는 인용문헌의 F3 대비만, 그 작업은 빠진 자료를 기다린다
     (h,) = got.held_tasks
-    assert (h.task, h.waiting_for) == ("F3 대비: D2 US20990000001A1", m.what)
+    assert (h.task, h.waiting_for) == ("f3_compare:oa_1:D2", m.what)
     assert m.depends_on_tasks == [h.task]
 
 
@@ -478,7 +478,7 @@ def test_materials_빠진_것이_없으면_missing_held_비어_있음():
     got = build_case_materials(
         "c_1",
         _fixture_grouped(oa),
-        oa,
+        [oa],
         received_citations={KR_D1, US_D2},
     )
     assert got.missing == [] and got.held_tasks == []
@@ -486,7 +486,7 @@ def test_materials_빠진_것이_없으면_missing_held_비어_있음():
 
 def test_materials_이유가_없으면_lookup_failed():
     oa = _fixture_oa()
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     assert [m.lookup_result for m in got.missing] == [LookupResult.LOOKUP_FAILED]
 
 
@@ -506,7 +506,7 @@ def test_materials_지원_안_하는_나라는_올려_달라고_안_함():
         country_supported=False,
         flags=[Flag.NEEDS_HUMAN_REVIEW],
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     assert (m.lookup_result, m.ask_upload) == (LookupResult.UNSUPPORTED_COUNTRY, False)
     assert len(got.held_tasks) == 1
@@ -527,7 +527,7 @@ def test_materials_번호를_못_읽은_인용문헌은_lookup_failed_올려_달
         }
     )
     oa = _oa_with_citation(number=unread)
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
     # 번호 값이 없으면 원문 글자로 이름을 만든다
@@ -541,7 +541,7 @@ def test_materials_같은_인용문헌이_여러_거절이유에_있어도_한_�
     rej1 = oa.rejections[0]
     rej2 = oa.rejections[1].model_copy(update={"citations": [rej1.citations[1]]})
     oa = oa.model_copy(update={"rejections": [rej1, rej2, *oa.rejections[2:]]})
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     assert len(got.missing) == 1 and len(got.held_tasks) == 1
 
 
@@ -550,7 +550,7 @@ def test_materials_인용문헌이_0건이면_경고(caplog):
     oa = oa.model_copy(
         update={"rejections": [r.model_copy(update={"citations": []}) for r in oa.rejections]}
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations=set())
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations=set())
     assert got.missing == []
     assert "인용문헌이 0건" in caplog.text
 
@@ -572,7 +572,7 @@ def test_materials_나라를_못_읽은_인용문헌은_지원_안_함이_아니
     oa = _oa_with_citation(
         country=unknown_country, country_supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW]
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     # 나라 모름 ≠ 지원 안 함: 조회 못 한 것으로 보고 올려 달라고 한다
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
@@ -588,14 +588,14 @@ def test_materials_같은_열쇠_문서는_하나만_올린_것_우선(caplog):
         ],
         oa.application_number.value,
     )
-    got = build_case_materials("c_1", grouped, oa, received_citations={KR_D1, US_D2})
+    got = build_case_materials("c_1", grouped, [oa], received_citations={KR_D1, US_D2})
     assert [d.document_id for d in got.documents] == ["d_up"]
     assert "d_api" in caplog.text
 
 
 def test_materials_개수는_목록_줄_수와_같다():
     oa = _fixture_oa()
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations=set())
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations=set())
     assert got.review_items is not None
     assert got.review_items_count == len(got.review_items) > 0
     assert any(i.kind == "missing_material" for i in got.review_items)
@@ -603,13 +603,15 @@ def test_materials_개수는_목록_줄_수와_같다():
 
 def test_materials_확인_안_된_자료는_목록에_두고_문서_줄로_검토할_사항에_센다():
     oa = _fixture_oa()
-    base = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1, US_D2})
+    base = build_case_materials(
+        "c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1, US_D2}
+    )
     other = group_materials(
         [_m("d_other", "oa", app="10-2099-0009999", number="9-5-2099-012345678")],
         oa.application_number.value,
     )
     got = build_case_materials(
-        "c_1", _fixture_grouped(oa) + other, oa, received_citations={KR_D1, US_D2}
+        "c_1", _fixture_grouped(oa) + other, [oa], received_citations={KR_D1, US_D2}
     )
     docs = [d.document_id for d in got.documents]
     assert "d_other" in docs
@@ -624,7 +626,7 @@ def test_materials_끝에서_마무리를_거쳐_빠진_자료가_맨_위():
     got = build_case_materials(
         "c_1",
         _fixture_grouped(oa),
-        oa,
+        [oa],
         received_citations={KR_D1},
         lookup_failures={US_D2: LookupResult.BODY_MISSING},
     )
@@ -712,7 +714,7 @@ def test_upload_목록이_없는_옛_6번은_조용히_넘기지_않고_거부()
 
 def test_upload_다른_보류_작업은_남는다():
     before = _fixture_materials()
-    other = HeldTask(task="F3 대비: D3 X", waiting_for="D3 X 본문")
+    other = HeldTask(task="f3_compare:oa_1:D3", waiting_for="D3 X 본문")
     before = before.model_copy(update={"held_tasks": [*before.held_tasks, other]})
     after = answer_missing(before, "D2 US20990000001A1 본문", _uploaded_citation())
     assert after.held_tasks == [other]
@@ -740,7 +742,7 @@ def test_upload_올려_달라고_하지_않은_자료면_오류():
 
 def test_key_빠진_자료_줄에_인용문헌_키가_남는다():
     oa = _fixture_oa()
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     assert m.citation_key == US_D2
 
@@ -760,7 +762,7 @@ def test_key_키가_있는_인용문헌_자료는_다시_만들어도_빠진_자
     )
     # 받은 번호(received_citations)에 US_D2가 없어도, 저장된 문서의 키로 받은 것으로 친다
     got = build_case_materials(
-        "c_1", _fixture_grouped(oa) + uploaded, oa, received_citations={KR_D1}
+        "c_1", _fixture_grouped(oa) + uploaded, [oa], received_citations={KR_D1}
     )
     assert got.missing == [] and got.held_tasks == []
     doc = next(d for d in got.documents if d.document_id == "doc_up_1")
@@ -794,3 +796,74 @@ def test_upload_확인_안_된_문서_줄의_순서가_마무리를_다시_돌�
     assert g.status.value == StatusValue.UNVERIFIED
     after = answer_missing(before, "D2 US20990000001A1 본문", g)
     assert after.review_items == finalize_case_materials([oa], after).review_items
+
+
+# --- OA 전부·글자 추출 상태·보류 작업 이름 (#140 task-3) --------------------------------
+
+
+def _second_oa(oa: OAResult) -> OAResult:
+    # 두 번째 OA: 같은 내용에 oa_id만 다른 지어낸 값
+    return oa.model_copy(update={"oa_id": "oa_2"})
+
+
+def test_oas_두_OA의_같은_빠진_자료는_한_줄이고_보류는_OA마다_남는다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
+    # 같은 인용문헌 본문은 사건에서 한 번만 올리면 되니 빠진 자료는 한 줄
+    (m,) = got.missing
+    assert m.what == "D2 US20990000001A1 본문"
+    assert m.depends_on_tasks == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D2"]
+    assert [h.task for h in got.held_tasks] == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D2"]
+    assert all(h.waiting_for == m.what for h in got.held_tasks)
+
+
+def test_oas_두_OA의_결과_줄이_다_남는다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    got = build_case_materials(
+        "c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1, US_D2}
+    )
+    targets = [i.target for i in got.review_items]
+    assert any(t.startswith("oa_result[oa_1]") for t in targets)
+    assert any(t.startswith("oa_result[oa_2]") for t in targets)
+    assert got.review_items_count == len(got.review_items)
+
+
+def test_oas_올리면_두_OA의_보류가_다_사라진다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
+    after = answer_missing(got, "D2 US20990000001A1 본문", _uploaded_citation())
+    assert after.missing == [] and after.held_tasks == []
+
+
+def test_text_status_스캔본은_문서의_text_status만_정하고_묶기_status는_그대로():
+    oa = _fixture_oa()
+    scanned = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING)
+    got = build_case_materials(
+        "c_1",
+        _fixture_grouped(oa),
+        [oa],
+        received_citations={KR_D1},
+        text_status={"doc_oa_1": scanned},
+    )
+    by_id = {d.document_id: d for d in got.documents}
+    assert by_id["doc_oa_1"].text_status == scanned
+    assert by_id["doc_oa_1"].status.value == StatusValue.CONFIRMED
+    # 글자 상태를 안 준 문서는 None (합치지 않음)
+    assert by_id["doc_cit_kr_1"].text_status is None
+    # 원인 줄이 생긴다
+    assert any(
+        i.target == "materials.documents[0]" and i.reason == "body_missing"
+        for i in got.review_items
+    )
+
+
+def test_oas_인용문헌이_없는_OA만_있으면_경고하고_빠진_자료_없음(caplog):
+    oa = _fixture_oa()
+    empty = oa.model_copy(update={"rejections": []})
+    with caplog.at_level("WARNING"):
+        got = build_case_materials("c_1", [], [empty], received_citations=set())
+    assert got.missing == [] and got.held_tasks == []
+    assert "인용문헌이 0건" in caplog.text
