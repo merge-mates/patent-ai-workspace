@@ -14,8 +14,10 @@
 **종류**: 재측정 (바꾼 것 없음)
 - 코드·설정은 main 4687037: 스트리밍 + `max_tokens` 64000 + 프롬프트 모양 규칙(sha256 앞 12자 `d680efd54818`), effort medium. 기준선 폴더와 같은 판이다.
 - 기준선과 다른 점: 이번에는 10건 OA PDF가 다 있었다 (기준선은 case10 PDF가 없어 9건, case10 0점). 그래서 주 지표를 기준선과 바로 견주지 않는다. 기준선 평균 0.626에 case10 몫(약 +0.1)을 더하면 이번 평균과 비슷하다 (짐작).
-- 순서: 1 → 2 → 3 (11/22 새벽, 캐시 끔, 은진 맥). scores.json은 1회차, 2·3회차는 git 밖 `work/f1_m1/run<N>/score/scores.json`.
-- #209(스트림 끊김 토큰 셈)는 머지 전이다. 이번 31회 호출은 모두 `end_turn`이라 끊긴 호출이 없어 영향이 없다.
+- 순서: 1 → 2 → 3 (11/22 새벽, 캐시 끔, 은진 맥).
+- 채점 (회차마다): `uv run python -m eval.f1.score --config experiments/m1-i3-f1-m1-remeasure/config.yaml --predictions work/f1_m1/run<N>/pred --pages work/f1_m1/run<N>/pages --calls work/f1_m1/run<N>/calls.json --scores-dir <1회차는 이 폴더, 2·3회차는 work/f1_m1/run<N>/score>`
+- scores.json은 1회차, 2·3회차는 git 밖 `work/f1_m1/run<N>/score/scores.json`.
+- #209(스트림 끊김 토큰 셈)는 머지 전이다. 이번 32회 호출(10 + 11 + 11)은 모두 `end_turn`이라 끊긴 호출이 없어 영향이 없다.
 
 ## 결과
 | 지표 | 1회 | 2회 | 3회 | 3회 평균 | 폭 (최대−최소) |
@@ -63,6 +65,6 @@
 - F1 정확도 문턱: **tune 3회 평균 field_accuracy ≥ 0.70** (3회 평균 0.742에서 흔들림 폭 약 0.1의 절반쯤을 뺀 값). 지어낸 값·확인 안 한 원문 위치는 문턱과 상관없이 0건. → `docs/product.md` 6절, F1 requirements 9번.
 
 ## 남은 것
-- case1 출력 검사 실패의 오류 종류를 호출 기록에 남기기 (지금은 outcome만 있음).
+- case1 출력 검사 실패의 오류 종류를 호출 기록에 남기기 (지금은 outcome만 있음): #228.
 - case4·case7 청구항 줄이 늘 낮은 원인.
 - tune 30건(#168)이 되면 같은 방식(3회 평균)으로 다시 잰다. 지금 F1 세트는 10건으로, product.md 6절의 "OA 20건 이상"에 아직 못 미친다.
