@@ -41,6 +41,7 @@ from eval.f3.pred import F3Pred
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import CiteMatcher
+from eval.retrieval.metrics import random_hit, random_recall
 from patent_ai.core.f3_claim_compare.textmatch import find_all_spans
 from patent_ai.retrieval.repository import (
     ChunkRepository,
@@ -167,7 +168,7 @@ def _score_cite(
         if not kept:
             failures["excluded_gold_not_in_scope"] += 1
             continue
-        marks = per_oa.setdefault(dispatch, {k: [] for k in ("sh", "sr", "lh", "lr")})
+        marks = per_oa.setdefault(dispatch, {k: [] for k in ("sh", "sr", "lh", "lr", "rr", "rh")})
         pred = by_dispatch.get(dispatch)
         if pred is None:
             missing.add(dispatch)
@@ -182,6 +183,15 @@ def _score_cite(
         marks["sr"].append(found_search / len(kept))
         marks["lh"].append(float(found_selected > 0))
         marks["lr"].append(found_selected / len(kept))
+        # 무작위 기준선: 같은 범위(N개)에서 검색이 가져온 만큼(k)을 아무렇게나 뽑았을 때의 기대값.
+        # 가져온 조각이 0개면 무작위도 0 (함수가 k=0을 막는다)
+        if searched:
+            n_scope, k_got = len(scope), len(searched)
+            marks["rr"].append(random_recall(n_scope, [len(m) for m in kept], k_got))
+            marks["rh"].append(random_hit(n_scope, len(set().union(*kept)), k_got))
+        else:
+            marks["rr"].append(0.0)
+            marks["rh"].append(0.0)
         if pred is not None and found_search == 0:
             # 못 찾은 질문: 검색 단계가 정답 위치를 하나도 못 덮음
             # (질의·정답 위치가 있어 git 밖에만 쓴다)
@@ -217,12 +227,18 @@ def _score_cite(
         "sr": "search_recall",
         "lh": "selected_hit",
         "lr": "selected_recall",
+        "rr": "random_search_recall",
+        "rh": "random_search_hit",
     }
     metrics = {
         name: _mean([m for oa in per_oa.values() if (m := _mean(oa[k])) is not None])
         for k, name in names.items()
     }
-    return {k: v for k, v in metrics.items() if v is not None}, set(per_oa), cq
+    metrics = {k: v for k, v in metrics.items() if v is not None}
+    # 검색이 무작위보다 몇 배 나은가 (세트 평균끼리 나눔). 분모가 0이면 score_f3가 뺀다
+    if metrics.get("random_search_recall"):
+        metrics["search_recall_ratio"] = metrics["search_recall"] / metrics["random_search_recall"]
+    return metrics, set(per_oa), cq
 
 
 def _check_not_contaminated(preds: dict[str, F3Pred]) -> None:
@@ -354,13 +370,23 @@ def score_f3(
     missing: set[str] = set()  # 정답은 있는데 예측이 없는 OA (발송번호). 0점으로 센다
 
     if cite_rows is None:
-        for name in ("search_hit", "search_recall", "selected_hit", "selected_recall"):
+        for name in (
+            "search_hit",
+            "search_recall",
+            "selected_hit",
+            "selected_recall",
+            "random_search_recall",
+            "random_search_hit",
+            "search_recall_ratio",
+        ):
             skipped[name] = NO_GOLD
     else:
         cite_metrics, oas, cq = _score_cite(
             cfg, cite_rows, run.preds, repo, failures, stamp, missing
         )
         metrics.update(cite_metrics)
+        if "search_recall_ratio" not in cite_metrics:
+            skipped["search_recall_ratio"] = "무작위 기준선이 0이라 나눌 수 없음"
         scored |= oas
         failures["cq_candidates"] = len(cq)
 

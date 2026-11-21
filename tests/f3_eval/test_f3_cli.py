@@ -83,6 +83,26 @@ def test_검색_재현율과_고른_문단_재현율을_따로_낸다(run):
     assert scores["failures"]["excluded_no_location"] == 1  # 위치 없음 줄은 뺀다
 
 
+def test_무작위_기준선과_비율을_같이_낸다(run):
+    # 범위 조각 N=4 (14, 20, 80, 81), 맞는 조각 수 [1, 2],
+    # 검색이 가져온 조각 k=2 ({14, 20}).
+    # 항목별 확률: 1 - C(3,2)/C(4,2) = 1/2, 1 - C(2,2)/C(4,2) = 5/6 -> 평균 2/3.
+    # Hit: 합집합 3개 -> 1 - C(1,2)/C(4,2) = 1. search_recall 0.5 / (2/3) = 0.75
+    _, scores, _ = run()
+    m = scores["metrics"]
+    assert m["random_search_recall"] == pytest.approx(2 / 3)
+    assert m["random_search_hit"] == pytest.approx(1.0)
+    assert m["search_recall_ratio"] == pytest.approx(0.75)
+
+
+def test_가져온_조각이_없으면_무작위도_0이고_비율은_빼고_이유를_남긴다(run):
+    _, scores, _ = run(prediction(searched=(), selected=()))
+    m = scores["metrics"]
+    assert m["random_search_recall"] == 0.0 and m["random_search_hit"] == 0.0
+    assert "search_recall_ratio" not in m
+    assert "search_recall_ratio" in scores["skipped_metrics"]
+
+
 def test_범위_정답은_그_안_문단_하나라도_가져오면_맞음(run):
     pred = prediction(searched=((1, [81]),), selected=(14, 81))
     _, scores, _ = run(pred)
