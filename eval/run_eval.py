@@ -16,12 +16,14 @@ import yaml  # noqa: E402
 
 from eval.f1.score import main as f1_main  # noqa: E402
 from eval.f3.score import main as f3_main  # noqa: E402
+from eval.f4.score import main as f4_main  # noqa: E402
 from eval.retrieval.score import main as retrieval_main  # noqa: E402
 
 # feature 이름 -> 채점기 main(argv) -> 종료 코드
 SCORERS = {
     "f1": f1_main,
     "f3": f3_main,
+    "f4": f4_main,
     "retrieval": retrieval_main,
 }
 

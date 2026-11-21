@@ -1,0 +1,15 @@
+{
+  "candidates": [
+    {
+      "rank": 1,
+      "coarse": "amend_only",
+      "name": "'적당한 간격'을 명세서의 범위로 명확화",
+      "confidence": "medium",
+      "reason": "명세서 [0012]에 간격 범위가 적혀 있음",
+      "checks": ["범위를 적으면 권리범위가 그 범위로 줄어듦"],
+      "per_rejection": [{"rejection": 2, "response": "'적당한 간격'을 수치 범위로 고쳐 적음"}],
+      "amendment_core": [{"claim": 2, "kind": "clarify"}],
+      "rebuttal": null
+    }
+  ]
+}
