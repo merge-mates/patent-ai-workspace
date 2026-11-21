@@ -1,4 +1,5 @@
 import { App, Alert, Button, Radio } from 'antd'
+import { EmptyReason } from '../../components/EmptyReason'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useNavigate, useRevalidator, useRouteLoaderData } from 'react-router'
 import { api } from '../../api'
@@ -166,7 +167,7 @@ const unitHead = (u: JudgmentUnit | undefined, unitId: string) =>
 // 4 대응 방향: 묶음마다 고른 후보(AI 기본값 또는 직접 고름)를 크게, 근거·칸을 줄로, 다른 후보로 바꾸기.
 // 최종 선택은 사람이 한다 (AI는 기본값만)
 export function DirectionsPage() {
-  const { units, directions, comparisons, caseCheck } = useLoaderData() as DirectionsLoaderData
+  const { units, directions, comparisons, caseCheck, directionsEmptyReason } = useLoaderData() as DirectionsLoaderData
   const { oa, oaResult, legal } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
   const revalidator = useRevalidator()
@@ -212,7 +213,13 @@ export function DirectionsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
-      {directions.length === 0 && <span className="body2 t3">대응 방향 후보가 아직 없습니다</span>}
+      {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
+      {directions.length === 0 &&
+        (directionsEmptyReason ? (
+          <EmptyReason what="대응 방향" reason={directionsEmptyReason} />
+        ) : (
+          <span className="body2 t3">대응 방향 후보가 아직 없습니다</span>
+        ))}
       {directions.map((d, idx) => {
         const sel = chosen[d.unit_id]
         const picked = d.candidates.find((c) => c.candidate_id === sel?.candidate_id)

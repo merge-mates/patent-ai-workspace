@@ -2,6 +2,7 @@
 import { redirect, type LoaderFunctionArgs } from 'react-router'
 import { api } from './api'
 import { ApiError, isNotReady } from './api/errors'
+import type { ResultList } from './api/resultList'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { PageText } from './types/generated/PageText'
 import type { ReviewItem } from './types/generated/ReviewItem'
@@ -91,11 +92,11 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     // 원문 쪽 글자는 어떤 오류든 null (원문 보기에서 "받지 못함"으로 알린다)
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
     // 방향 결과가 아직 없으면 null: 0개로 보이지 않게 직접 할 일 개수는 모름
-    probe(api.getDirections(oa.oa_id)),
+    probe(api.getDirections(oa.oa_id).then(itemsOf)),
     // 법률 근거: 결과가 아직 없으면 빈 목록
-    probe(api.getLegalEvidence(oa.oa_id)),
+    probe(api.getLegalEvidence(oa.oa_id).then(itemsOf)),
     // 대비·초안 단계에 결과가 있는지만 알려고 부른다 (값은 쓰지 않고, 없는 것을 지어내지 않는다)
-    probe(api.getUnits(oa.oa_id)),
+    probe(api.getUnits(oa.oa_id).then(itemsOf)),
     probe(api.getDrafts(oa.oa_id)),
   ])
   // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
@@ -117,6 +118,12 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   }
   return { oa, oaResult, materials, reviewItems, document, directions, legal, ready, warnings }
 }
+
+// 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)
+const itemsOf = <T,>(r: ResultList<T>): T[] => r.items
+
+// 빈 이유: 목록이 있거나 결과가 아직 없으면(null) 이유도 없다
+const reasonOf = <T,>(r: ResultList<T> | null): string | null => (r && r.items.length === 0 ? r.emptyReason : null)
 
 // 결과 유무 확인용 호출: 결과 없음(result_not_ready)은 value null, 그 밖의 오류는 unknown(모름)
 interface Probe<T> {
@@ -153,6 +160,8 @@ export interface CompareLoaderData {
   comparisons: ComparisonTable[]
   clarity: ClarityReview[]
   legal: LegalEvidenceBundle[]
+  // 실행이 끝났는데 목록이 빈 이유 (서버 empty_reason: 넘김·보류·확인되지 않음 등). 목록이 있거나 결과가 아직 없으면 null
+  emptyReasons: { units: string | null; comparisons: string | null; clarity: string | null; legal: string | null }
 }
 
 // 3 대비와 근거: 판단 단위 · 대비표 · 명확성 문구 검토 · 법률 근거
@@ -165,7 +174,18 @@ export async function compareLoader({ params }: LoaderFunctionArgs): Promise<Com
     api.getClarityReviews(oaId).catch(notReadyAsNull),
     api.getLegalEvidence(oaId).catch(notReadyAsNull),
   ])
-  return { units, comparisons: comparisons ?? [], clarity: clarity ?? [], legal: legal ?? [] }
+  return {
+    units: units?.items ?? null,
+    comparisons: comparisons?.items ?? [],
+    clarity: clarity?.items ?? [],
+    legal: legal?.items ?? [],
+    emptyReasons: {
+      units: reasonOf(units),
+      comparisons: reasonOf(comparisons),
+      clarity: reasonOf(clarity),
+      legal: reasonOf(legal),
+    },
+  }
 }
 
 export interface DirectionsLoaderData {
@@ -175,6 +195,8 @@ export interface DirectionsLoaderData {
   comparisons: ComparisonTable[]
   // 아직 없으면 null (확인되지 않음으로 보인다)
   caseCheck: CaseCheck | null
+  // 대응 방향 목록이 빈 이유 (서버 empty_reason). 목록이 있으면 null
+  directionsEmptyReason: string | null
 }
 
 // 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
@@ -188,7 +210,13 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
     api.getCaseCheck(oaId).catch(missingAsNull),
   ])
   if (units === null || directions === null) return null
-  return { units, directions, comparisons: comparisons ?? [], caseCheck }
+  return {
+    units: units.items,
+    directions: directions.items,
+    comparisons: comparisons?.items ?? [],
+    caseCheck,
+    directionsEmptyReason: reasonOf(directions),
+  }
 }
 
 export interface DraftsLoaderData {
@@ -197,17 +225,24 @@ export interface DraftsLoaderData {
   // 지금 선택: 초안이 바탕으로 삼은 선택과 다른지 본다
   directions: DirectionCandidates[]
   caseCheck: CaseCheck | null
+  // 초안이 없는 이유 (서버가 result: null과 함께 준 empty_reason: 모든 묶음 보류·F4 넘김 등). 모르면 null
+  draftsEmptyReason: string | null
 }
 
 // 5 의견서·보정 초안
 export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData | null> {
   const oaId = params.oaId!
+  let draftsEmptyReason: string | null = null
   const [drafts, directions, caseCheck] = await Promise.all([
-    api.getDrafts(oaId).catch(notReadyAsNull),
+    api.getDrafts(oaId).catch((e: unknown) => {
+      // 실행이 끝났는데 초안이 없으면 서버는 200 + empty_reason을 준다 (api가 result_not_ready·httpStatus 200으로 바꿔 던짐)
+      if (isNotReady(e) && e instanceof ApiError && e.httpStatus === 200) draftsEmptyReason = e.message
+      return notReadyAsNull(e)
+    }),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(missingAsNull),
   ])
   // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
   if (directions === null) return null
-  return { drafts, directions, caseCheck }
+  return { drafts, directions: directions.items, caseCheck, draftsEmptyReason }
 }

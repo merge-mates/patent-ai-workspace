@@ -1,6 +1,7 @@
 import { Button, Empty, Result, Segmented } from 'antd'
 import { useLoaderData, useNavigate, useRouteLoaderData, useSearchParams, Link } from 'react-router'
 import { API_MODE } from '../../api'
+import { EmptyReason } from '../../components/EmptyReason'
 import { HumanCheckTag } from '../../components/Marks'
 import { isRunEnded } from '../../runPoll'
 import { useRunSnapshot } from '../../useRunSnapshot'
@@ -20,7 +21,7 @@ const unitLabel = (u: JudgmentUnit, all: JudgmentUnit[]) =>
 
 // 3 인용발명 대비: 묶음을 고르면 그 묶음의 핵심(AI 제안) → 구성요소 표(또는 명확성 줄) → 대응 방향으로
 export function ComparePage() {
-  const { units, comparisons, clarity, legal } = useLoaderData() as CompareLoaderData
+  const { units, comparisons, clarity, legal, emptyReasons } = useLoaderData() as CompareLoaderData
   const { oa, oaResult, ready } = useRouteLoaderData('oa') as OALoaderData
   const navigate = useNavigate()
   // 실행 중이면 대응 방향 결과가 아직 없을 수 있다 (없는 화면을 열면 result_not_ready 오류가 뜨던 곳)
@@ -47,13 +48,18 @@ export function ComparePage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {unsupportedRows}
-        <Empty
-          description={
-            API_MODE === 'mock'
-              ? '판단 단위가 없습니다 (예시 데이터는 fixture 사건 셋에만 있음)'
-              : '판단 단위가 없습니다 (AI가 다루는 거절이유가 없음)'
-          }
-        />
+        {/* 서버가 빈 이유를 주면 그 이유를 (넘김·보류·확인되지 않음), 없으면 지금 글자 */}
+        {emptyReasons.units ? (
+          <EmptyReason what="판단 단위" reason={emptyReasons.units} />
+        ) : (
+          <Empty
+            description={
+              API_MODE === 'mock'
+                ? '판단 단위가 없습니다 (예시 데이터는 fixture 사건 셋에만 있음)'
+                : '판단 단위가 없습니다 (AI가 다루는 거절이유가 없음)'
+            }
+          />
+        )}
       </div>
     )
   }
@@ -61,6 +67,7 @@ export function ComparePage() {
   const review = clarity.find((c) => c.unit_id === unit.unit_id)
   // 법리는 정리 단계 거절이유 줄 안에 있다. 그 거절이유에 법률 근거 묶음이 있을 때만 링크
   const hasLaw = legal.some((b) => b.rejection === unit.rejection)
+  const unitReason = unit.rejection_kind === 'clarity' ? emptyReasons.clarity : emptyReasons.comparisons
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -83,7 +90,15 @@ export function ComparePage() {
 
       {table && <ComparisonView t={table} />}
       {review && <ClarityView c={review} unit={unit} />}
-      {!table && !review && <Empty description="이 묶음의 대비 결과가 아직 없습니다" />}
+      {/* 이 묶음에 맞는 목록(명확성 묶음은 명확성 문구 검토, 그 밖은 인용발명 대비)이 통째로 비었으면 서버가 준 이유를,
+          목록은 있는데 이 묶음 줄만 없으면 지금 글자 */}
+      {!table && !review && (unitReason ? (
+        <EmptyReason what={unit.rejection_kind === 'clarity' ? '명확성 문구 검토' : '인용발명 대비'} reason={unitReason} />
+      ) : (
+        <Empty description="이 묶음의 대비 결과가 아직 없습니다" />
+      ))}
+      {/* 법률 근거 목록이 비었으면 이유를 (예: F2 넘김) */}
+      {emptyReasons.legal && <EmptyReason what="법률 근거" reason={emptyReasons.legal} />}
 
       {hasLaw && (
         <Link to={`/oas/${oa.oa_id}#rejection-${unit.rejection}`} className="label1">
