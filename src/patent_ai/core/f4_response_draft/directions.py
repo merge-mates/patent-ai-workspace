@@ -168,10 +168,11 @@ def _build(
         raise ValueError(f"후보가 {len(out.candidates)}개로 상한 {max_candidates}개를 넘음")
     known_rejections = {r.no for r in oa.rejections}
     allowed_claims = {*unit.claims, *unit.read_with}
-    # 순위 있는 후보를 순위대로 앞에, 확신 낮은 후보(순위 없음)는 모델이 준 순서로 뒤에
-    ordered = sorted(out.candidates, key=lambda c: (c.rank is None, c.rank or 0))
+    # 후보 목록은 모델이 낸 순서 그대로 둔다 (다시 줄 세우지 않음). candidate_id 번호도 그 순서다.
+    # 확신 낮은 후보는 rank가 없어, "모델이 먼저 낸 후보"는 이 순서로만 알 수 있다 (채점이 읽는다).
+    # 화면에 보일 순위는 rank 칸이고, 확신 낮음이면 여전히 순위 없음·미리 고르지 않음이다
     candidates: list[DirectionCandidate] = []
-    for n, c in enumerate(ordered, start=1):
+    for n, c in enumerate(out.candidates, start=1):
         if not c.name.strip():
             raise ValueError("name이 비어 있음")
         answered = [p.rejection for p in c.per_rejection]

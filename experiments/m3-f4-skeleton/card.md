@@ -6,7 +6,7 @@
 기준선: experiments/m3-f4-skeleton/
 평가 세트: tune 10건 (VERSION 2). F4 정답(data/goldsets/tune/f4/)은 아직 없음
 바꾼 것: 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음)
-주 지표: direction_top1
+주 지표: direction_top1 (모델 1번 후보 거친 방향 일치율, 보류 묶음 포함)
 ---
 # F4 뼈대 첫 tune 실행 (이슈 #39·#41·#42)
 
@@ -61,7 +61,7 @@
 - 후보의 절반(45/91)이 확신 낮음이다. 대부분은 2·3등 후보이고 1등이 낮음인 단위는 2개다. F2 근거가 없는 것이 확신도에 영향을 줬는지는 모른다 (짐작).
 
 ## 남은 것
-- 정답(`data/goldsets/tune/f4/`)이 생기면 첫 점수: `direction_top1`, `handled_accuracy`, `needs_human_judgment_rate`, 누락 쌍.
+- 정답(`data/goldsets/tune/f4/`)이 생기면 첫 점수: `direction_top1`(모델 1번 후보 = 후보 목록 첫째로 보류 묶음도 셈; 확신도별 `direction_top1_conf_*`), `handled_accuracy`, `needs_human_judgment_rate`, 누락 쌍.
 - 보정 프롬프트에 명세서 전체를 넣는 방식(입력 토큰의 58%)을 줄일지.
 - 같은 설정 2회 이상 돌려 흔들림 재기. `final_rejection_limit` 켬 실행은 하지 않았다 (최후거절이유통지 tune 사건도 없음).
 - F4 입력에 `claims_status`(OA 당시 청구항 판 확인 여부)를 실을 칸이 없다.
