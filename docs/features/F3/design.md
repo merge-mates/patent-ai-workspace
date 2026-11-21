@@ -7,7 +7,7 @@ requirements: ./requirements.md
 ---
 # F3 청구항–인용문헌 대비 세부 설계
 <!-- 이슈 #45. requirements에 쓴 것(무엇, 합격 기준, 사람이 고르는 곳)은 다시 쓰지 않고 번호로 가리킨다.
-     코드 출처 `파일:줄 (c093221)` = 브랜치 feat/25-f3-skeleton 커밋 c093221 기준. 경로 앞 `src/patent_ai/core/f3_claim_compare/`는 `f3/`로 줄인다.
+     코드 출처 `파일:줄 (c093221)` = 커밋 c093221 기준 (PR #182로 main에 머지됨. 그 뒤 main에서 바뀐 동작은 커밋을 붙여 적는다). 경로 앞 `src/patent_ai/core/f3_claim_compare/`는 `f3/`로 줄인다.
      검색 계약(Searcher·조각 표·채점기)은 features/retrieval/design.md, 인용문헌 조각·색인은 features/cite-search/design.md를 그대로 쓰고 여기서는 F3가 그 위에 얹는 것만 쓴다.
      안 정해진 곳은 `질문:` 줄로 남기고 10절에 모은다. -->
 
@@ -49,26 +49,26 @@ flowchart LR
    - 후보: 검색 상위 k ∪ (설정 `use_examiner_paragraphs`가 켜졌을 때만) 심사관 지정 조각. 어느 쪽인지 표시 없이 모델에 준다. 줄의 출처(심사관 지정 / AI가 찾음)는 코드가 붙인다 (`f3/examiner.py`, `f3/compare.py:497-555`).
    - 판정: 모델 1회가 청구항 하나의 구성요소 × 문헌마다 `disclosed`/`difference_candidate`/`unclear` + 근거(chunk_id + 옮긴 글자) (`prompts/f3/compare.md`).
    - 출처 대조 (코드, 늘 돎): 근거 글자가 그 후보 조각에 그대로 있고 `min_quote_chars`(10자) 이상인가. 떨어지면 한 번 다시, 그래도 틀린 근거는 버린다 (`f3/compare.py:370-421`). 근거 없이 "개시됨"이면 불명 + `evidence_rejected`. 근거를 못 고르면 `not_found_in_scope` + 찾아본 범위 "D1 조각 N개 중 hybrid 상위 10 (cite-idx-v2)" (`:138-141`, `:537-540`).
-   - 한 번 더 찾기 (`second_search`, 기본 끔): 1차에서 근거를 못 고른 구성요소만 같은 질의로 상위 `second_search_depth`(20)까지 + 도면 설명 조각을 받아 1차 조각을 빼고 다시 판정 (`f3/compare.py:557-642`).
+   - 한 번 더 찾기 (`second_search`, 기본 켬으로 바꿈: 11/21 재아 결정, 설정 한 줄 PR 전까지 main은 끔): 1차에서 근거를 못 고른 구성요소만 같은 질의로 상위 `second_search_depth`(20)까지 + 도면 설명 조각을 받아 1차 조각을 빼고 다시 판정 (`f3/compare.py:557-642`).
    - 요약 (코드가 줄을 모음, 새 글을 만들지 않음): 진보성 = 어느 문헌에도 "개시됨"이 없는 구성요소(부모에서 온 것은 "(청구항 N에서 인용)") + 심사관 결합 논리 원문 + 효과 후보 빈 목록 (`:716-744`). 신규성 = 대표 청구항 줄로 세 값을 정하고 reason에 "AI 정리, 판정 아님" (`:755-790`). 모든 대비표에 "직접 검토 필요" (`:899-906`, 커밋 010bb1a).
 5. **명확성** (`f3/clarity.py`, 대비 방식과 따로): OA가 짚은 문구(F1 `clarity_terms`)의 청구항 위치는 코드가 찾는다. 같은 문구가 여러 번이면 몇 곳인지 적는다. 정의 후보는 그 사건 출원서만 메모리 BM25 상위 5 (청구범위·요약서·도면 머리 줄 구간은 뺌, `config/f3.yaml:67-78`). 모델 1회가 문구마다 문제 유형 4개 중 하나 + 정의 근거. 근거는 명세서 조각과 대조 (`f3/clarity.py:1-8`, `:360-396`).
 6. **모으기** (`f3/run.py:135-162`): 결과 status = 단위·대비표·명확성 검토·보류의 가장 나쁜 값. 보류가 있으면(본문 기다림 `body_missing`, 그 밖 `not_extracted`) 확인됨으로 모으지 않는다 (커밋 010bb1a). 결과가 없는 단위도 `not_extracted`로 센다.
 - 실패하면: 단계 예외(형식 검사 두 번 실패, 호출 상한 `ModelCallLimitExceeded`, DB 연결 오류)는 삼키지 않고 올린다 → 지휘가 실행을 failed로 남긴다 (`f3/run.py:6`). 이것이 이슈 #166·PRD F5 3번과 어떻게 맞는지는 10절 질문.
 - 비면: 판단 단위 0개, 대비 줄 0개, 명세서 조각 0개는 경고를 남기고 보류 또는 확인되지 않음 (성공으로 숨기지 않음).
-- 느리면: 지금 순서대로 1건씩 돈다 (tune 9건 합 1,386초, 사건 4개 병렬, `experiments/m2-f3-skeleton/card.md`). 시간 상한 키는 없다 (호출 수 상한만).
+- 느리면: 지금 순서대로 1건씩 돈다 (tune 9건 합 1,386초, 사건 4개 병렬, [`experiments/m2-f3-skeleton/card.md`](../../../experiments/m2-f3-skeleton/card.md)). 시간 상한 키는 없다 (호출 수 상한만).
 
 ### 2-1. 흐름 방식
 - **코드 흐름**이다. 지휘는 `run_f3`를 코드 도구 하나로 부른다 (`core/agents/tools_f3.py:32-34 (c093221)`, 도구 종류 `code_tool`). 안에서 모델은 단계마다 정해진 횟수만 부르고 검색어를 모델이 정하지 않는다. 이유: M2 뼈대는 가장 단순한 구현으로 끝에서 끝까지 먼저 잇는다 (product.md 9절).
-- ADR 0003 폴더 이름은 "F3 서브에이전트와 도구"지만 지금은 루프가 없다. 질문: 모델이 검색어를 바꿔 다시 찾는 루프를 `impl` 하나로 비교할지 (Q-F3-10)
+- ADR 0003 폴더 이름은 "F3 서브에이전트와 도구"지만 지금은 루프가 없다. 질문: 모델이 검색어를 바꿔 다시 찾는 루프를 `impl` 하나로 비교할지
 - 단계 기록: 모델 호출·질의 임베딩은 `core/llm`이 `RunContext`로 호출 기록(`agent_steps`, `step_kind = model_call`)에 남긴다. 검색 한 번마다의 기록은 `F3Result.search_log`(구성요소 원문 대신 해시, 걸린 조각 ID 순서)에 둔다 (`f3/result.py:17-32`).
 
 ## 3. 데이터 모양
 ### 3-1. 앞 기능에서 받는 것
 - F1 ① `OAResult` (거절이유, `claim_rows`의 인용 라벨·심사관 지정 위치·`same_as`·`clarity_terms`), ⑥ `CaseMaterials`(문서 ID 목록, 청구항 문서가 목록에 있는지 확인만).
 - 글자 입력 `F3Config.inputs: F3Inputs` = `claims_at_oa`(번호 → OA 당시 청구항 글자), `claims_status`(그 판이 맞는지), `claims_document_id`, `spec`(최초 명세서 쪽 글자, 없으면 null) (`f3/inputs.py:72-90`). 도구 입력은 model_dump → model_validate로 왕복하므로 검색기 같은 객체는 싣지 않는다.
-- OA 당시 판을 고르는 일은 부르는 쪽이 한다 (`f3/inputs.py:1-4`). 앱 쪽에 판을 복원하는 코드는 아직 없고, 지휘 실행 입력이 이 글자를 받는다 (이슈 #166·#57). 질문: OA 당시 청구항 복원을 앱 코드 어디에 둘지 (번호 없음, 새 질문)
-- F2 ④는 받지 않는다 (11/21 재아 결정, 10절 X2).
-- 받은 결과가 "확인되지 않음"·"충돌"이면: requirements "근거" 절의 전파 규칙 (Q-F3-8).
+- OA 당시 판을 고르는 일은 부르는 쪽이 한다 (`f3/inputs.py:1-4`). 앱 쪽에 판을 복원하는 코드는 아직 없고, 지휘 실행 입력이 이 글자를 받는다 (이슈 #166·#57). 질문: OA 당시 청구항 복원을 앱 코드 어디에 둘지 (새 질문)
+- F2 ④는 받지 않는다 (11/21 재아 결정, 10절 1번).
+- 받은 결과가 "확인되지 않음"·"충돌"이면: requirements "근거" 절의 전파 규칙.
 
 ### 3-2. 다음 기능에 주는 것
 F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴더 밖 내부 모델). 안의 ②③은 결과 스키마 (`core/schemas/judgment_unit.py`, `comparison.py`, PR #176).
@@ -98,8 +98,8 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 ```
 - 공통 속성(`status`·`evidence`·`origin`)은 [data-model.md](../../data-model.md) 3절. PR #176에서 공통 `Evidence`에 `location`·`chunk_id`·`index_version`이, `unverified` 이유에 `evidence_rejected`·`limit_reached`가 더해졌다 (커밋 851546f·`core/schemas/common.py`). main의 data-model.md 3절은 아직 이유 여섯 개다 (PR #176에서 맞춤).
 - 이 기능에서 더하는 칸:
-  - 줄 `claim` = 대비 대상 청구항(OA 시점 번호), `element_location` = 구성요소가 실제로 있는 청구항의 위치 글자. `element_location` 꼴은 `청구항 <N> [구성 <N>-<순번>]`로 고정이다 (`f3/elements.py:72-74`). 비교할 정수 칸은 없어서, 앞의 `청구항 <N>`을 줄 `claim`과 비교해 다르면 "청구항 N에서 인용"으로 보인다 (요약도 같은 방식, `f3/compare.py:725`. 11/21 재아 결정). 질문: `ComparisonRow`에 `element_claim: int`를 더할지 (스키마 PR, Q-F3-6과 같이)
-  - 대비하지 않은 구성요소(원문에서 글자를 확인 못 함)의 줄도 `paragraph_source=ai_found` + why "…확인하지 못해 찾지 않음"으로 나간다 (`f3/compare.py:525-527`). 화면에서 "AI가 찾음"처럼 보인다. 질문: 이런 줄의 출처 값을 따로 둘지(예: 찾지 않음), 화면이 why로 가릴지 (번호 없음, 새 질문)
+  - 줄 `claim` = 대비 대상 청구항(OA 시점 번호), `element_location` = 구성요소가 실제로 있는 청구항의 위치 글자. `element_location` 꼴은 `청구항 <N> [구성 <N>-<순번>]`로 고정이다 (`f3/elements.py:72-74`). 비교할 정수 칸은 없어서, 앞의 `청구항 <N>`을 줄 `claim`과 비교해 다르면 "청구항 N에서 인용"으로 보인다 (요약도 같은 방식, `f3/compare.py:725`. 11/21 재아 결정). 질문: `ComparisonRow`에 `element_claim: int`를 더할지 (스키마 PR, requirements 열린 질문 9 "또는"형 종속항과 같이)
+  - 대비하지 않은 구성요소(원문에서 글자를 확인 못 함)의 줄도 `paragraph_source=ai_found` + why "…확인하지 못해 찾지 않음"으로 나간다 (`f3/compare.py:525-527`). 화면에서 "AI가 찾음"처럼 보인다. 질문: 이런 줄의 출처 값을 따로 둘지(예: 찾지 않음), 화면이 why로 가릴지 (새 질문)
   - 대비 안 한 문헌은 `citations[].compared=false` + 이유·상태로 남고 status를 나쁘게 하지 않고 flags로만 알린다 (`comparison.py:136-140`).
   - 신규성 표는 `compared=true` 문헌이 정확히 하나 (`comparison.py:130-135`).
   - `held_tasks` (`HeldTask{task, waiting_for}`, ⑥과 같은 모양). 화면 글자는 모두 "원문 확인 필요" (11/21 재아 결정, 코드에 글자는 아직 없음). 이름 꼴:
@@ -115,9 +115,9 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
     | `f3_units:<oa_id>:r<N>:c<N>` | 같은 unit_id가 또 나옴 | `같은 단위 <unit_id>가 이미 있음 (직접 확인)` | `f3/units.py:138-141` |
     | `f3_clarity:<unit_id>` | 명확성 줄에 짚은 문구가 없음 | `OA가 짚은 문구 확인 (직접 확인)` | `f3/clarity.py:320-322` |
     - 결과 status에 주는 값: 콜론으로 나눠 세 조각이고 앞이 `f3_compare:<oa_id>`이면 본문 기다림(`body_missing`), 그 밖은 `not_extracted` (`f3/run.py:165-174`). `unit_id` 안에 콜론이 있어 `f3_compare:<unit_id>…`는 세 조각이 넘으므로 본문 기다림으로 세지 않는다.
-- 다음 기능으로 가는 길: F4는 `F3Result` 중 `units`·`comparisons`·`clarity_reviews`만 받는다 (F4 design 3-1 `F4Input`). `held_tasks`와 `F3Result.status`는 지휘가 ⑥ `CaseMaterials.held_tasks`로 옮긴다 (지금 코드 없음, 이슈 #166). 또 표 status는 rows만 모으므로(`comparison.py:136-143`), 대비하지 않은 문헌(`compared=false`, `body_missing`)이 있어도 표는 확인됨일 수 있다. 예: 신규성에서 D2 본문이 없어도 D1 표는 confirmed이고, F4 후보도 confirmed가 될 수 있다. 질문: 대비 못 한 인용문헌(`body_missing`)이 있는 표의 status를 내릴지, F4가 `citations[].compared=false`를 보고 후보 status를 내릴지 (번호 없음) [사람 판단]
-- 앞 기능 결과가 바뀌면 "다시 확인 필요"를 붙이나: 붙인다 (data-model 3절 규칙 2, 빠진 인용문헌을 올리면 그 문헌 대비만 다시). 지금 코드에는 없다. 질문: `result_inputs` 기록과 "다시 확인 필요"를 F3 저장과 같이 만들지 (번호 없음, 5절 저장 질문과 같이)
-- 인터페이스 변경: 있음. ②③ 스키마는 PR #176, `run_f3` 서명에 `ctx` 키워드가 더해졌고 받는 쪽(지휘 #166, F4 #39)에 알림 (커밋 1f9bc68). 스키마 칸 더하기(문제 유형·신규성 청구항별·시점·가지)는 공유 자원 PR로 (Q-F3-4·Q-F3-5·Q-F3-2·Q-F3-6).
+- 다음 기능으로 가는 길: F4는 `F3Result` 중 `units`·`comparisons`·`clarity_reviews`만 받는다 (F4 design 3-1 `F4Input`). `held_tasks`와 `F3Result.status`는 지휘가 ⑥ `CaseMaterials.held_tasks`로 옮긴다 (지금 코드 없음, 이슈 #166). 또 표 status는 rows만 모으므로(`comparison.py:136-143`), 대비하지 않은 문헌(`compared=false`, `body_missing`)이 있어도 표는 확인됨일 수 있다. 예: 신규성에서 D2 본문이 없어도 D1 표는 confirmed이고, F4 후보도 confirmed가 될 수 있다. 단위 안 청구항 보류(`f3_compare:<unit_id>:claim<N>`)도 그 청구항이 단위 `claims`에 남아 F4 누락 검사에 안 걸린다. 정함 (11/21 재아 결정): F3 표 status는 그대로 두고 F4가 `compared=false` 문헌 status와 표의 `needs_human_review`를 후보 status·flags로 옮긴다 (F4 design 3-1, F2 연결 전에 고침).
+- 앞 기능 결과가 바뀌면 "다시 확인 필요"를 붙이나: 붙인다 (data-model 3절 규칙 2, 빠진 인용문헌을 올리면 그 문헌 대비만 다시). 지금 코드에는 없다. 질문: `result_inputs` 기록과 "다시 확인 필요"를 F3 저장과 같이 만들지 (5절 저장 질문과 같이)
+- 인터페이스 변경: 있음. ②③ 스키마는 PR #176, `run_f3` 서명에 `ctx` 키워드가 더해졌고 받는 쪽(지휘 #166, F4 #39)에 알림 (커밋 1f9bc68). 스키마 칸 더하기(문제 유형·신규성 청구항별·시점·가지)는 공유 자원 PR로.
 
 ### 3-3. ③ 대비 판단 값과 PRD F3-6 신규성 분류 맞추기 (이슈 #45 doc-review 줄)
 | 층 | 값 (코드) | PRD F3-6과의 관계 |
@@ -125,7 +125,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 | 줄 (구성요소 × 문헌) `ComparisonRow.judgment` | `disclosed` 개시됨 / `difference_candidate` 차이 후보 / `unclear` 불명 (`comparison.py:25-28`) | 진보성·신규성 공통 |
 | 표 (단위 × 문헌 하나) `NoveltySummary.verdict` | `no_difference` 차이 없음 / `substantially_same_candidate` 실질적 동일 후보 / `different` 차이 있음 (`comparison.py:36-39`) | PRD F3-6 세 값과 같은 이름 |
 - 지금 모으는 규칙 (`f3/compare.py:775-782`): 대표 청구항 줄이 모두 개시됨 → 차이 없음, 차이 후보가 하나라도 → 차이 있음, 그 밖(불명만 남음) → 실질적 동일 후보 + reason "가리기 어려운 구성요소만 있음, 실질적 동일 판단 아님". 즉 "실질적 동일 후보"가 모델이 실질적 동일을 본 것이 아니라 남는 값으로 쓰인다 (11/21 재아 확인, 그대로).
-- 어긋나는 곳: 지표 제안은 구성요소마다 `차이 있음`/`실질적 동일 후보`를 보고(f3-compare-gold.md 2절), ADR 0001은 신규성 결과를 청구항마다 남기라 하는데, 코드는 표 하나에 값 하나다. 질문: (a) 줄 값에 신규성용 값을 더하고 청구항별 결론 칸 / (b) 줄 값은 그대로 두고 청구항마다 `NoveltySummary`, 지표 문서에 대응표 (Q-F3-5, S2·S3)
+- 어긋나는 곳: 지표 제안은 구성요소마다 `차이 있음`/`실질적 동일 후보`를 보고(f3-compare-gold.md 2절), ADR 0001은 신규성 결과를 청구항마다 남기라 하는데, 코드는 표 하나에 값 하나다. 질문: (a) 줄 값에 신규성용 값을 더하고 청구항별 결론 칸 / (b) 줄 값은 그대로 두고 청구항마다 `NoveltySummary`, 지표 문서에 대응표
 
 ## 4. 판과 근거
 - 쓰는 청구항 판: OA 당시 청구항 판 하나. 부르는 쪽이 출원번호 + 발송번호와 행정 이력 순서로 고른다(날짜로 자르지 않음, [cite-search design](../cite-search/design.md) 3-1절과 같은 규칙). 그 판을 확인하지 못하면 2절 3단계.
@@ -134,9 +134,9 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 - 근거 위치 적는 법: `Evidence{document_id = 색인 doc_id, location = "[0023]"·"도 3"·"청구항 9"·"요약", raw_text = 조각 안 옮긴 글자, chunk_id, index_version}` (`f3/compare.py:469-477`). 명확성 정의는 메모리 색인이라 `chunk_id`·색인 판을 싣지 않고 명세서 문서 ID + 식별번호 위치 (`f3/clarity.py` `_SPEC_INDEX` 주석). 화면은 `raw_text`를 그 쪽 글에서 찾아 강조한다.
 
 ## 5. 저장
-- 읽는 테이블: `cite_chunks` (색인 판 `cite-idx-v2`, 조각 1,998개, `experiments/m2-i2-cite-search-hybrid-rrf/card.md:30`). 명확성은 DB를 읽지 않는다(그 사건 출원서를 메모리 색인).
-- 쓰는 테이블: 없음. F3는 `F3Result`를 돌려주기만 한다. ②③ 결과 표(data-model 5절 "결과 스키마마다 표 하나")는 아직 마이그레이션이 없다. 질문: ②③ 결과 표와 `result_inputs` 마이그레이션을 언제 누가 (번호 없음, 서버 이슈 #57과 같이)
-- 검색: 하이브리드(BM25 + 벡터, RRF `rrf_k`=60, 가중치 0.5/0.5), 질의 임베딩 `text-embedding-3-small` (색인과 같은 모델) (`config/f3.yaml:27-56`). 채택 근거는 `experiments/m2-i2-cite-search-hybrid-rrf/` (모든 k에서 BM25·벡터 이상. 다만 상위 10에서 갈린 줄은 하이브리드 대 BM25가 8 대 2(부호 검정 p≈0.11), 하이브리드 대 벡터는 4 대 3(p=1.0)이라 tune에서 단정 못 함, 같은 카드 73줄). 질문: 하이브리드·벡터에서 "조회 범위 내 없음"을 점수 문턱으로도 정할지 (X6)
+- 읽는 테이블: `cite_chunks` (색인 판 `cite-idx-v2`, 조각 1,998개, [`experiments/m2-i2-cite-search-hybrid-rrf/card.md:30`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md)). 명확성은 DB를 읽지 않는다(그 사건 출원서를 메모리 색인).
+- 쓰는 테이블: 없음. F3는 `F3Result`를 돌려주기만 한다. ②③ 결과 표(data-model 5절 "결과 스키마마다 표 하나")는 아직 마이그레이션이 없다. 질문: ②③ 결과 표와 `result_inputs` 마이그레이션을 언제 누가 (서버 이슈 #57과 같이)
+- 검색: 하이브리드(BM25 + 벡터, RRF `rrf_k`=60, 가중치 0.5/0.5), 질의 임베딩 `text-embedding-3-small` (색인과 같은 모델) (`config/f3.yaml:27-56`). 채택 근거는 [`experiments/m2-i2-cite-search-hybrid-rrf/`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md) (모든 k에서 BM25·벡터 이상. 다만 상위 10에서 갈린 줄은 하이브리드 대 BM25가 8 대 2(부호 검정 p≈0.11), 하이브리드 대 벡터는 4 대 3(p=1.0)이라 tune에서 단정 못 함, 같은 카드 73줄). 질문: 하이브리드·벡터에서 "조회 범위 내 없음"을 점수 문턱으로도 정할지 (10절 6번)
 - 외부 API에서 받는 자료: 인용문헌 PDF는 색인 스크립트가 미리 받아 둔 것만 쓴다 (실행 중 조회 없음). 질의 임베딩은 `core/llm`이 캐시·호출 상한을 거친다.
 - 외부 모델로 보내는 자료: 청구항 글자, 인용문헌 조각, 최초 명세서 조각, OA의 심사관 논리 (architecture.md 7절 "공보·인용문헌 원문", "통지서(OA) 원문" = 보냄). 평가 정답은 앱 실행에서 보내지 않는다 (`use_examiner_paragraphs=false` 채점 실행에서는 심사관 지정 위치도 보내지 않음).
 
@@ -152,41 +152,41 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
   - 신규성 한 문헌 위반 수 (0이어야 함), 명확성 문구 위치 일치.
   - 사람 검수 정답이 필요한 지표(정의 회수, 문제 유형, 신규성 차이 회수·시점, 구성요소 판정 정확도)는 `skipped_metrics`에 "정답 없음".
   - 멈춤: 예측에 "심사관 지정" 줄이나 심사관 위치 기록이 있으면(지정 번호를 준 실행) 채점을 멈춘다. 예측을 만든 색인 판이 설정과 다르면 멈춘다.
-  - 지금 기준선: requirements E1 숫자. 문턱은 질문 (Q-F3-7).
-  - 검색 단독 점수(질의 = 청구항 전문, cite-search)와 F3 전체 점수(질의 = 구성요소)는 질의가 달라 바로 비교하지 않는다. 카드에 두 이름으로 나눠 적는다. 질문: 이렇게 둘로 나눠 보는 것을 그대로 둘지 (Q-F3-11)
-- 데이터: 인용문헌 색인 `cite-idx-v2` (tune 8건 인용문헌 16개 `experiments/m2-i2-cite-search-hybrid-rrf/card.md:74`, 미국 문헌 0건 [cite-search requirements](../cite-search/requirements.md) 46줄), OA 당시 청구항(청구항 이력으로 복원), 최초 명세서(출원서. 출원서가 없는 사건은 명세서 없음 → 명확성 정의는 본문 미확보).
-- 예측 만들기: tune 사건마다 `run_f3`를 돌려 `F3Result` 폴더를 만드는 명령은 지금 git 밖 스크립트뿐이다. 질문: 예측 만드는 스크립트를 `scripts/`(또는 `eval/f3/`)로 들일지, 누가 (번호 없음, 새 질문)
+  - 지금 기준선: requirements E1 숫자. 문턱은 질문.
+  - 검색 단독 점수(질의 = 청구항 전문, cite-search)와 F3 전체 점수(질의 = 구성요소)는 질의가 달라 바로 비교하지 않는다. 카드에 두 이름으로 나눠 적는다. 질문: 이렇게 둘로 나눠 보는 것을 그대로 둘지
+- 데이터: 인용문헌 색인 `cite-idx-v2` (tune 8건 인용문헌 16개 [`experiments/m2-i2-cite-search-hybrid-rrf/card.md:74`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md), 미국 문헌 0건 [cite-search requirements](../cite-search/requirements.md) 46줄), OA 당시 청구항(청구항 이력으로 복원), 최초 명세서(출원서. 출원서가 없는 사건은 명세서 없음 → 명확성 정의는 본문 미확보).
+- 예측 만들기: tune 사건마다 `run_f3`를 돌려 `F3Result` 폴더를 만드는 명령은 지금 git 밖 스크립트뿐이다. 질문: 예측 만드는 스크립트를 `scripts/`(또는 `eval/f3/`)로 들일지, 누가 (새 질문)
 - 채점 스크립트: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml --predictions <F3 결과 폴더>` (`feature: f3`, 색인 DB 또는 `--chunks`).
 - 실행 상한(비용·시간): `config/f3.yaml`의 `split_elements.max_model_calls`, `compare.max_model_calls`, `clarity.max_model_calls`, `embed.max_model_calls`, 단계마다 `max_retries`. 시간·비용 상한 키는 없다. 상한에 닿으면 지금은 예외다 (10절 질문).
-- 결과에 남길 것: 모델 이름·effort·프롬프트 판·설정 파일 판은 호출 기록과 `scores.json`(`commit`, `index_version`, `impl`, `goldset_version`, `gold_sha256`). 1회 실행 비용 약 $0.28 ([가정] 단가, 모델 호출 190 + 질의 임베딩 176, `experiments/m2-f3-skeleton/card.md`).
+- 결과에 남길 것: 모델 이름·effort·프롬프트 판·설정 파일 판은 호출 기록과 `scores.json`(`commit`, `index_version`, `impl`, `goldset_version`, `gold_sha256`). 1회 실행 비용 약 $0.28 ([가정] 단가, 모델 호출 190 + 질의 임베딩 176, [`experiments/m2-f3-skeleton/card.md`](../../../experiments/m2-f3-skeleton/card.md)).
 - 원인 모름 (기준선 카드 `남은 것`): selected_recall 0.186이 search_recall 0.584의 약 1/3이다 (검색은 덮었는데 모델이 근거로 고르지 않음). 정답 줄인데 F3가 찾지 않은 줄 6. 같은 설정 반복 실행 흔들림은 안 쟀다. 부모 구성요소 넣기(911410e·c093221) 뒤 판으로는 다시 재지 않았다.
 
 ### 7-2. 각자 칸
-- 재아 (`impl: split_search`): 모델이 청구항을 구성요소로 나누고 → 구성요소마다 인용문헌 하나 안을 하이브리드 검색 상위 10 → 모델 1회가 청구항 하나의 구성요소 × 문헌을 판정 → 코드가 근거 글자 대조. 명확성은 출원서 메모리 BM25 + 모델 1회. → `experiments/m2-f3-skeleton/`
+- 재아 (`impl: split_search`): 모델이 청구항을 구성요소로 나누고 → 구성요소마다 인용문헌 하나 안을 하이브리드 검색 상위 10 → 모델 1회가 청구항 하나의 구성요소 × 문헌을 판정 → 코드가 근거 글자 대조. 명확성은 출원서 메모리 BM25 + 모델 1회. → [`experiments/m2-f3-skeleton/`](../../../experiments/m2-f3-skeleton/card.md)
 - 모델: `claude-haiku-5-5`, effort medium, max_tokens 64000 (세 단계 같음, `config/f3.yaml:17-65`). 64000은 스트리밍 전송층(이슈 #172) 위에서만 돈다.
 - 모델 호출 (실행 하나): 나누기 = 청구항마다 1번(+ 검사 실패 1번), 대비 = 판단 단위 × 청구항마다 1번(신규성은 × 인용문헌, 한 번 더 찾기를 켜면 최대 두 배), 명확성 = 명확성 청구항마다 1번, 질의 임베딩 = 구성요소 글자마다 1번(같은 글은 한 번). 모두 `core/llm` 한 곳.
 - 프롬프트 파일: `prompts/f3/split_elements.md`, `compare.md`, `clarity.md`.
 - 실험 설정(config): `config/f3.yaml`의 `impl`, `second_search`, `second_search_depth`, `use_examiner_paragraphs`, `min_quote_chars`, `search.*`, 단계별 `model`·`effort`.
 
-### 7-3. 비교 실험 후보 (축은 질문 Q-F3-3)
+### 7-3. 비교 실험 후보 (축은 질문, requirements 열린 질문 10)
 | 후보 | 바꾸는 것 | 출처 |
 |---|---|---|
-| `split_search` vs 문헌 통째로 모델에 주기 | `impl` (PRD "대비 방식") | Q-F3-3 추천(판단) |
+| `split_search` vs 문헌 통째로 모델에 주기 | `impl` (PRD "대비 방식") | 추천 (판단) |
 | 한 번 더 찾기 켬/끔 | `second_search` | `config/f3.yaml:6` 주석 "M3에서 켬/끔 비교" |
-| 검색어를 모델이 바꾸는 루프 | `impl` | Q-F3-10 |
+| 검색어를 모델이 바꾸는 루프 | `impl` | 10절 8번 |
 | 심사관 지정 조각을 후보에 넣음/안 넣음 | `use_examiner_paragraphs` (시연 동작과 채점 동작 차이 확인) | 판단 |
 | 검색 방식·가중치 | `search.impl`·`hybrid.weights` | cite-search 실험 카드 "다음" |
-- 임베딩 모델은 지금 `text-embedding-3-small` 하나다 (색인 `cite-idx-v2`와 같아야 함). 질문: F3 쪽 임베딩 모델 비교 목록을 둘지, 둔다면 무엇 (번호 없음, F2 requirements 열린 질문 1이 F3 PR로 넘긴 것)
+- 임베딩 모델은 지금 `text-embedding-3-small` 하나다 (색인 `cite-idx-v2`와 같아야 함). 질문: F3 쪽 임베딩 모델 비교 목록을 둘지, 둔다면 무엇 (F2 requirements 열린 질문 1이 F3 PR로 넘긴 것)
 
 ### 7-4. CQ 모으기와 11/24 그래프 판단
 - 어디에: 채점 실행만 CQ를 만든다. 앱은 정답을 모르므로 `search_log`만 남긴다 (`f3/result.py:1-5`). 채점기가 검색 단계가 정답 위치를 하나도 못 덮은 (청구항, 인용문헌) 질문을 git 밖 CQ 파일에 한 줄씩 쓰고, 0건이면 경고한다. CQ 폴더가 git에 들어갈 수 있는 경로면 멈춘다 (`eval/f3/score.py:186-200`, `:472-478`, `:516-518 (c093221)`).
 - 무엇을: 검색 계약 CQ 줄(`row_id`, 정답 판·해시, 색인 판, `impl`, `k`, 질의, 정답 항목, 찾은 조각, `why` 빈칸, [retrieval design](../retrieval/design.md) 7-1절) + F3 칸 `claim`·`doc_id`·`element_nos`. `why`는 사람이 채운다.
 - 여러 실험 모으기: 검색 계약 `eval.retrieval.cq_merge` (교집합, 정답 판이 다르면 멈춤, retrieval design 7-5절).
-- 지금 숫자: 검색 단독 상위 10 밖 BM25 26 / 벡터 21 / 하이브리드 20 (세 방식 공통 15, 68줄 중), F3 전체 20 (`experiments/m2-i2-cite-search-hybrid-rrf/card.md`, `experiments/m2-f3-skeleton/`).
+- 지금 숫자: 검색 단독 상위 10 밖 BM25 26 / 벡터 21 / 하이브리드 20 (세 방식 공통 15, 68줄 중), F3 전체 14 (검색 기록이 없는 줄 6은 `not_searched_rows`로만 셈) ([cite-search 카드](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md), [F3 카드](../../../experiments/m2-f3-skeleton/card.md)).
 - 11/24 판단 기준: 정해지지 않았다.
-  - 질문: 그래프를 M3에 넣을지 기준. 예: "모든 검색 방식이 못 찾은 CQ 중 관계(같은 인용·같은 분류·같은 거절이유)로 풀 수 있어 보이는 것이 몇 건 이상" — 손으로 몇 건 나눠 본 뒤 숫자를 정할지, 강사님 조언대로 ADR 0002를 "넣지 않음"으로 보완할지 (G1, F2 requirements 열린 질문 1)
-  - 질문: CQ에 원인 칸(질의 문제 / 청킹 / 어휘 차이 / 도면에만 있음 / 관계로만 찾음 / 정답 문제)을 더하고 나누는 이슈를 11/24 전에 만들지 (G2)
-  - 질문: 그래프 없이 코드로 되는 관계(같은 인용문헌의 다른 문단·도면 따라가기)를 `second_search`로 먼저 할지 (G3)
+  - 질문: 그래프를 M3에 넣을지 기준. 예: "모든 검색 방식이 못 찾은 CQ 중 관계(같은 인용·같은 분류·같은 거절이유)로 풀 수 있어 보이는 것이 몇 건 이상" — 손으로 몇 건 나눠 본 뒤 숫자를 정할지, 강사님 조언대로 ADR 0002를 "넣지 않음"으로 보완할지 (F2 requirements 열린 질문 1. F2 requirements 132줄이 "F3 PR에서 채운다"고 한 것인데 아직 질문이라 11/22 interview 첫 안건)
+  - 질문: CQ에 원인 칸(질의 문제 / 청킹 / 어휘 차이 / 도면에만 있음 / 관계로만 찾음 / 정답 문제)을 더하고 나누는 이슈를 11/24 전에 만들지
+  - 질문: 그래프 없이 코드로 되는 관계(같은 인용문헌의 다른 문단·도면 따라가기)를 `second_search`로 먼저 할지
 
 ## 8. 이 기능 안의 결정
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |
@@ -203,38 +203,39 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 | 심사관 지정 조각을 표시 없이 후보에 섞고 출처는 코드가 붙임, 채점 실행은 `use_examiner_paragraphs=false` | 표시해서 줌 / 늘 줌 | 모델이 심사관 표시에 끌리지 않게, 평가 누출 막기 | 설계 | 커밋 3ec845d·f865f66 |
 | CQ는 채점기가 만듦, 앱은 `search_log`만 | 앱이 CQ를 만듦 | CQ는 정답이 있어야 정해짐 | 설계 | 커밋 f4dba41, retrieval design 7-1 |
 | 대비 방식은 `impl` 전략 패턴, 공통 단계는 `run_f3`에 | 방식마다 전체 흐름 | 방식이 공통 단계를 빠뜨리지 않게 | 리뷰 | 커밋 8ca79e7·ed8c9d8 |
-| 검색 기본 하이브리드 RRF k=10 | BM25 / 벡터 | 모든 k에서 둘 이상 (단정은 못 함) | 실험 | `experiments/m2-i2-cite-search-hybrid-rrf/`. 채택 확정은 tune 30건(#168) 뒤 |
+| 검색 기본 하이브리드 RRF k=10 | BM25 / 벡터 | 모든 k에서 둘 이상 (단정은 못 함) | 실험 | [`experiments/m2-i2-cite-search-hybrid-rrf/`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md). 채택 확정은 tune 30건(#168) 뒤 |
+| `second_search` 기본 켬, 끔은 비교 실험 설정으로만 | 기본 끔 (M3에 켬/끔 비교) | PRD F3 3번이 필수라 기본 실행이 지켜야 함. 켜면 못 찾은 청구항마다 대비 모델 호출이 한 번 더(유료) | PR #184 리뷰 [사람 판단], 11/21 재아 결정 | 설정 한 줄 PR (기준선 카드 `m2-f3-skeleton`은 끔으로 잰 값) |
 | 구성요소 나누는 규칙은 프롬프트에 판단으로 둠 | 이슈 #25 "eval/GUIDE.md와 같게" | GUIDE에 그 규칙이 없음 | 구현 중 | `prompts/f3/split_elements.md`, 출처 없음·판단 |
 
 ## 9. 테스트 방법
 - 어디서 테스트하나: `run_f3` 입력 → `F3Result` (`tests/core/f3/test_f3_run.py`), 단계마다 함수 경계(나누기·단위·대비·명확성·한 번 더 찾기·부모 구성요소), 채점기 CLI (`tests/f3_eval/test_f3_cli.py`).
-- 가짜 응답 / 녹화 응답: 모델 응답은 기록된 응답(지어낸 청구항·조각용), 검색은 메모리 조각 저장소 + 가짜 질의 임베딩 (`tests/core/f3/fakes.py`·`scenario.py`). 네트워크·API 키·DB 없이 돈다. 실제 원문이 든 fixture는 git에 넣지 않는다.
+- 가짜 응답 / 녹화 응답: 모델 응답은 기록된 응답(지어낸 청구항·조각용), 검색은 메모리 조각 저장소 + 가짜 질의 임베딩 (`tests/core/f3/fakes.py`·`scenario.py`). 네트워크·API 키·DB 없이 돈다. 실제 원문 fixture는 넣지 않는다 (CLAUDE.md).
 - 상태마다 나오는 경우:
   - 확인됨: 근거 글자가 조각에 그대로 (`test_f3_compare.py::test_다시_불러_고쳐_오면_통과한다`)
   - 조회 범위 내 없음: 근거를 못 고름 + 찾아본 범위 (`::test_근거를_못_고르면_조회_범위_내_없음과_찾아본_범위를_남긴다`, 명확성 `test_f3_clarity.py::test_정의를_못_고르면_…`)
   - 확인되지 않음: `input_unverified`(청구항 판), `evidence_rejected`(근거 대조 탈락), `body_missing`(본문 미확보·명세서 없음), `not_extracted`(판정 빠짐·문구 못 찾음), `ambiguous`(번호 모름·같은 문구 여러 번)
   - 보류: 본문 미확보 문헌, 청구항 글자 없음, 짚은 문구 없음 (`test_f3_run.py::test_신규성_단일_인용이_본문_미확보면_결과가_확인됨이_아니다`, `::test_짚은_문구가_없는_명확성_줄만_있으면_결과가_확인됨이_아니다`)
   - 충돌: F3는 내지 않는다 (해당 없음).
-- 지금 2023 passed (c093221, 브랜치 전체 `uv run pytest`).
+- 문서를 쓸 때 2023 passed (c093221, 그 브랜치 전체 `uv run pytest`). 지금 숫자는 CI를 본다.
 
 ## 10. 열린 질문 (design)
-1. 질문: PRD 3.1 F3 줄 "OA 쟁점의 법률 근거 찾기(O5, F2 호출)"와 4절 시연 순서가 11/21 결정(지휘가 F2를 부름)과 어긋난다. data-model.md도 같다: 70줄 ④ "F2 → F3·F4"(F3는 ④를 받지 않음), 68줄 ② "판단 단위 나누기 도구·지휘 → F3·F4"(실제는 `run_f3` 안 `build_units`가 만듦). product.md 3.1 F3 줄과 data-model 두 줄을 "지휘가 부름"으로 고치는 PR을 PRD 주인에게 낼지 (X2)
-2. 질문: 이슈 #166 합격 기준 "단계 하나가 실패하면 실행이 failed로 끝나고 이유가 남는다"와 PRD F5 3번 "빠진 자료가 있어도 할 수 있는 작업은 끝까지"가 부딪힌다. 지금 F3는 단계 예외를 삼키지 않아 F3 안 판단 단위 하나의 모델 실패도 실행 전체 failed가 된다. 경계를 "단계(F3 전체)가 못 돌면 failed, 단위·청구항 하나는 그것만 확인되지 않음"으로 둘지 (F-4, 이슈 #166에서 정하는 중)
-3. 질문: 호출 상한(`max_model_calls`)에 닿으면 지금은 예외(`ModelCallLimitExceeded`)로 실행이 끝난다. ADR 0003 "상한에 닿으면 확인되지 않음과 찾아본 범위를 남기고 끝낸다"와 이유 코드 `limit_reached`에 맞춰, 남은 단위를 `unverified(limit_reached)`로 두고 끝낼지 (F-4와 같이)
-4. 질문: ADR 0003 "판단 단위 나누기는 F1 결과와 청구항 판(독립/종속, 인용하는 앞 청구항)만 보고 규칙대로, LLM은 OA 읽기와 더 나누기에만"과 달리, 인용 관계를 F3 나누기 모델이 읽고 코드가 원문 대조한다. 이대로 두고 ADR 0003 문장을 고칠지, 청구항 판 쪽에서 인용 관계를 받을지 (번호 없음, 새 질문)
-5. 질문: 공통 근거 검토 에이전트(ADR 0003)를 F3 대비 판정("개시됨")에도 붙일지, M3까지 코드 출처 대조만 둘지 (X4)
-6. 질문: 하이브리드·벡터는 범위 안 조각을 다 순위 매겨 "조회 범위 내 없음"이 검색에서 거의 안 나온다. 지금처럼 모델이 근거를 못 고르면 조회 범위 내 없음으로 둘지, 점수 문턱도 같이 둘지 (X6)
-7. 질문: "왜 가져왔나"를 F3 글 한 줄(`why_retrieved`)과 F2 목록(`search_log`) 중 한 모양으로 맞출지 (X7)
-8. 질문: 모델이 검색어를 바꿔 다시 찾는 루프를 `impl` 하나로 비교할지 (Q-F3-10)
-9. 질문: 검색 단독 점수와 F3 전체 점수를 이름으로 나눠 보는 지금 방식을 그대로 둘지 (Q-F3-11)
-10. 질문: OA 당시 청구항 판 복원을 앱 코드 어디에 둘지 (지금은 부르는 쪽이 글자를 만들어 줌) (번호 없음, 새 질문)
-11. 질문: ②③ 결과 표·`result_inputs` 마이그레이션과 "다시 확인 필요"를 언제 누가 (번호 없음, 이슈 #57과 같이)
-12. 질문: F3 쪽 임베딩 모델 비교 목록을 둘지, 둔다면 무엇 (번호 없음, F2 requirements 열린 질문 1)
-13. 질문: 11/24 그래프를 M3에 넣을지 판단 기준 (G1)
-14. 질문: CQ 원인 칸과 나누는 이슈 (G2)
-15. 질문: 같은 문헌 다른 문단·도면 따라가기를 그래프 없이 `second_search`로 먼저 할지 (G3)
-16. 질문: 대비 못 한 인용문헌(`body_missing`)이 있는 표의 status를 내릴지, F4가 `citations[].compared=false`를 보고 후보 status를 내릴지 (번호 없음) [사람 판단]
-17. 질문: `ComparisonRow`에 `element_claim: int`를 더할지 (스키마 PR, Q-F3-6과 같이)
-18. 질문: 대비하지 않은 구성요소 줄이 `ai_found`로 나가 "AI가 찾음"처럼 보이는 것을 출처 값으로 가를지, 화면이 why로 가릴지 (번호 없음, 새 질문)
-19. 질문: 예측(`F3Result` 폴더) 만드는 스크립트를 `scripts/`(또는 `eval/f3/`)로 들일지, 누가 (번호 없음, 새 질문)
-- requirements 열린 질문 1~11도 같이 본다.
+1. 질문: 11/21 결정(OA 흐름에서 F2는 지휘가 부름)과 [product.md](../../product.md) 4절 4단계·5절 F2 8번은 이미 같다(순서 F3 → F2 → F4). 어긋나는 곳은 넷: product.md 3.1 표 F3 줄 "OA 쟁점의 법률 근거 찾기(O5, F2 호출)", [data-model.md](../../data-model.md) 4절 ② 줄 "판단 단위 나누기 도구·지휘 → F3·F4"(실제는 `run_f3` 안 `build_units`가 만듦)·④ 줄 "F2 → F3·F4"(F3는 ④를 받지 않음), F2 design 51·66줄 "F3·F4가 받음"(은진 님이 이슈 #29 PR에서 고침). product.md·data-model.md를 고치는 PR을 낼지
+2. 질문: 이슈 #166 합격 기준 "단계 하나가 실패하면 실행이 failed로 끝나고 이유가 남는다"와 PRD F5 3번 "빠진 자료가 있어도 할 수 있는 작업은 끝까지"가 부딪힌다. 지금 F3는 단계 예외를 삼키지 않아 F3 안 판단 단위 하나의 모델 실패도 실행 전체 failed가 된다. 경계를 "단계(F3 전체)가 못 돌면 failed, 단위·청구항 하나는 그것만 확인되지 않음"으로 둘지 (이슈 #166에서 정하는 중)
+3. 질문: 호출 상한(`max_model_calls`)에 닿으면 지금은 예외(`ModelCallLimitExceeded`)로 실행이 끝난다. ADR 0003 "상한에 닿으면 확인되지 않음과 찾아본 범위를 남기고 끝낸다"와 이유 코드 `limit_reached`에 맞춰, 남은 단위를 `unverified(limit_reached)`로 두고 끝낼지 (2번과 같이)
+4. 질문: ADR 0003 "판단 단위 나누기는 F1 결과와 청구항 판(독립/종속, 인용하는 앞 청구항)만 보고 규칙대로, LLM은 OA 읽기와 더 나누기에만"과 달리, 인용 관계를 F3 나누기 모델이 읽고 코드가 원문 대조한다. 이대로 두고 ADR 0003 문장을 고칠지, 청구항 판 쪽에서 인용 관계를 받을지 (새 질문)
+5. 질문: 공통 근거 검토 에이전트(ADR 0003)를 F3 대비 판정("개시됨")에도 붙일지, M3까지 코드 출처 대조만 둘지
+6. 질문: 하이브리드·벡터는 범위 안 조각을 다 순위 매겨 "조회 범위 내 없음"이 검색에서 거의 안 나온다. 지금처럼 모델이 근거를 못 고르면 조회 범위 내 없음으로 둘지, 점수 문턱도 같이 둘지
+7. 질문: "왜 가져왔나"를 F3 글 한 줄(`why_retrieved`)과 F2 목록(`search_log`) 중 한 모양으로 맞출지
+8. 질문: 모델이 검색어를 바꿔 다시 찾는 루프를 `impl` 하나로 비교할지
+9. 질문: 검색 단독 점수와 F3 전체 점수를 이름으로 나눠 보는 지금 방식을 그대로 둘지
+10. 질문: OA 당시 청구항 판 복원을 앱 코드 어디에 둘지 (지금은 부르는 쪽이 글자를 만들어 줌) (새 질문)
+11. 질문: ②③ 결과 표·`result_inputs` 마이그레이션과 "다시 확인 필요"를 언제 누가 (이슈 #57과 같이)
+12. 질문: F3 쪽 임베딩 모델 비교 목록을 둘지, 둔다면 무엇 (F2 requirements 열린 질문 1)
+13. 질문: 11/24 그래프를 M3에 넣을지 판단 기준 (11/22 interview 첫 안건)
+14. 질문: CQ 원인 칸과 나누는 이슈
+15. 질문: 같은 문헌 다른 문단·도면 따라가기를 그래프 없이 `second_search`로 먼저 할지
+16. 정함 (11/21 재아 결정): 대비 못 한 인용문헌(`compared=false`)과 단위 안 청구항 보류는 F3 표 status를 바꾸지 않고 F4가 후보 status·flags로 옮긴다 (F4 design 3-1). F2 연결 전에 고친다.
+17. 질문: `ComparisonRow`에 `element_claim: int`를 더할지 (스키마 PR, requirements 열린 질문 9 "또는"형 종속항과 같이)
+18. 질문: 대비하지 않은 구성요소 줄이 `ai_found`로 나가 "AI가 찾음"처럼 보이는 것을 출처 값으로 가를지, 화면이 why로 가릴지 (새 질문)
+19. 질문: 예측(`F3Result` 폴더) 만드는 스크립트를 `scripts/`(또는 `eval/f3/`)로 들일지, 누가 (새 질문)
+- requirements 열린 질문 1~10도 같이 본다.
