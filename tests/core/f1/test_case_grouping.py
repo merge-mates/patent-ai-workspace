@@ -530,6 +530,8 @@ def test_materials_번호를_못_읽은_인용문헌은_lookup_failed_올려_달
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
     # 번호 값이 없으면 원문 글자로 이름을 만든다
     assert m.what == "D2 US 2099/0000001 A1 본문"
+    # 번호를 못 읽었으니 어느 인용문헌 키인지도 모른다 (#201)
+    assert m.citation_key is None
 
 
 def test_materials_같은_인용문헌이_여러_거절이유에_있어도_한_번():
@@ -651,3 +653,49 @@ def test_upload_올려_달라고_하지_않은_자료면_오류():
     before = before.model_copy(update={"missing": [jp]})
     with pytest.raises(UploadNotAskedError):
         answer_missing(before, jp.what, _uploaded_citation())
+
+
+# --- 올린 인용문헌에 어느 인용문헌 답인지 남기기 (#201) ---------------------------------
+
+
+def test_key_빠진_자료_줄에_인용문헌_키가_남는다():
+    oa = _fixture_oa()
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    (m,) = got.missing
+    assert m.citation_key == US_D2
+
+
+def test_key_올린_문서에_그_빠진_자료의_키가_남는다():
+    before = _fixture_materials()
+    (hit,) = before.missing
+    after = answer_missing(before, hit.what, _uploaded_citation())
+    assert after.documents[-1].citation_key == hit.citation_key == US_D2
+
+
+def test_key_키가_있는_인용문헌_자료는_다시_만들어도_빠진_자료가_아니다():
+    oa = _fixture_oa()
+    uploaded = group_materials(
+        [_citation_input("doc_up_1", US_D2)],
+        CASE,
+    )
+    # 받은 번호(received_citations)에 US_D2가 없어도, 저장된 문서의 키로 받은 것으로 친다
+    got = build_case_materials(
+        "c_1", _fixture_grouped(oa) + uploaded, oa, received_citations={KR_D1}
+    )
+    assert got.missing == [] and got.held_tasks == []
+    doc = next(d for d in got.documents if d.document_id == "doc_up_1")
+    assert doc.citation_key == US_D2
+
+
+def _citation_input(doc_id: str, key: str | None) -> MaterialInput:
+    return MaterialInput(document_id=doc_id, kind="citation", source="uploaded", citation_key=key)
+
+
+def test_key_묶기는_인용문헌_키를_그대로_둔다():
+    (g,) = group_materials([_citation_input("d1", KR_D1)], CASE)
+    assert g.citation_key == KR_D1
+
+
+def test_key_인용문헌이_아닌_자료에_키가_있으면_거부():
+    with pytest.raises(ValidationError):
+        MaterialInput(document_id="d1", kind="oa", source="uploaded", citation_key=KR_D1)

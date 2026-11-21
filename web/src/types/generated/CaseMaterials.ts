@@ -22,6 +22,7 @@ export type UnverifiedReason =
   | 'limit_reached'
 export type Checked = string | null
 export type SearchedScope = string | null
+export type CitationKey = string | null
 export type Documents = CaseDocument[]
 export type What = string
 export type DependsOnTasks = string[]
@@ -30,6 +31,7 @@ export type DependsOnTasks = string[]
  */
 export type LookupResult = 'lookup_failed' | 'body_missing' | 'unsupported_country'
 export type AskUpload = boolean
+export type CitationKey1 = string | null
 export type Missing = MissingMaterial[]
 export type Task = string
 export type WaitingFor = string
@@ -48,6 +50,7 @@ export interface CaseDocument {
   kind: Kind
   source: Source
   status: Status
+  citation_key: CitationKey
 }
 /**
  * 상태 객체. 직렬화하면 늘 네 키(없는 키는 null).
@@ -63,6 +66,7 @@ export interface MissingMaterial {
   depends_on_tasks: DependsOnTasks
   lookup_result: LookupResult
   ask_upload: AskUpload
+  citation_key: CitationKey1
 }
 export interface HeldTask {
   task: Task

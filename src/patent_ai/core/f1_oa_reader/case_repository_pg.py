@@ -16,6 +16,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     CaseRecord,
     CaseStoreError,
     ClaimVersionRow,
+    DocumentRow,
     DuplicateDocumentError,
     EventRow,
     OAVersionRow,
@@ -23,6 +24,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     UnknownCaseError,
     examined_from_version,
     oa_result_row,
+    pick_citation_document,
     plan_case_rows,
     sorted_events,
     uploaded_document_row,
@@ -111,6 +113,28 @@ class PostgresCaseRepository:
         row.body = materials.model_dump(mode="json")
         row.run_id = None
         self._s.flush()
+
+    def citation_document(self, case_id: str, citation_key: str) -> DocumentRow | None:
+        q = select(Document).where(
+            Document.case_id == case_id,
+            Document.kind == "citation",
+            Document.citation_key == citation_key,
+        )
+        rows = [
+            DocumentRow(
+                id=d.id,
+                case_id=d.case_id,
+                case_event_id=d.case_event_id,
+                kind=d.kind,
+                path=d.path,
+                sha256=d.sha256,
+                source=d.source,
+                received_at=d.received_at,
+                citation_key=d.citation_key,
+            )
+            for d in self._s.scalars(q)
+        ]
+        return pick_citation_document(rows, citation_key)
 
     def events(self, case_id: str) -> list[EventRow]:
         q = select(CaseEvent).where(CaseEvent.case_id == case_id)

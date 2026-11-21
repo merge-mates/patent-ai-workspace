@@ -27,6 +27,9 @@ class CaseDocument(BaseModel):
     # 묶기 상태 (#16 GroupedMaterial.status). 다른 출원번호(conflict)·번호 못 읽음(unverified)
     # 자료가 어느 문서인지 다시 열어도 남게 한다. 빼는 것은 cut_to_oa(#54)
     status: Status
+    # 인용문헌 본문이면 어느 인용문헌인지: OA 인용문헌 번호 값(Citation.number.value, 예
+    # "US20990000001A1"). F3가 이 키로 본문 문서를 찾는다 (#201). 다른 종류이거나 모르면 None
+    citation_key: str | None = None
 
 
 class MissingMaterial(BaseModel):
@@ -36,6 +39,9 @@ class MissingMaterial(BaseModel):
     depends_on_tasks: list[str] = Field(default_factory=list)
     lookup_result: LookupResult
     ask_upload: bool
+    # 빠진 인용문헌의 번호 키 (CaseDocument.citation_key와 같은 꼴). 번호를 못 읽었으면 None.
+    # 올린 문서가 이 키를 받아 다시 열어도 어느 인용문헌 답인지 남는다 (#201)
+    citation_key: str | None = None
 
     @model_validator(mode="after")
     def _지원_안_하는_나라는_올려_달라고_안_함(self) -> MissingMaterial:

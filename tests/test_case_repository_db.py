@@ -134,6 +134,21 @@ def test_빠진_자료를_올리면_DB에서_다시_읽어도_그대로(session)
     assert session.get(CaseMaterialsRow, CASE_ID).run_id is None  # 자료만 더함
 
 
+def test_올린_인용문헌은_DB_문서_줄에_키가_남고_키로_찾는다(session):
+    # #201: 다시 읽어도 어느 인용문헌 답인지 남고, F3가 키로 본문 문서를 찾는다
+    repo = PostgresCaseRepository(session)
+    repo.save_case(_record())
+    hit = repo.load_case_materials(CASE_ID).missing[0]
+    upload_missing_material(repo, CASE_ID, hit.what, _file("up"), document_id="doc_up")
+    session.expire_all()
+
+    assert session.get(Document, "doc_up").citation_key == hit.citation_key
+    assert repo.load_case_materials(CASE_ID).documents[-1].citation_key == hit.citation_key
+    found = repo.citation_document(CASE_ID, hit.citation_key)
+    assert found is not None and found.id == "doc_up"
+    assert repo.citation_document(CASE_ID, "KR20990009999A") is None
+
+
 def test_같은_사건에_같은_파일을_올리면_중복_오류이고_자료는_안_바뀜(session):
     repo = PostgresCaseRepository(session)
     repo.save_case(_record())

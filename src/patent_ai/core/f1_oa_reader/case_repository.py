@@ -26,6 +26,7 @@ from patent_ai.core.f1_oa_reader.case_grouping import (
     MaterialInput,
     answer_missing,
     group_materials,
+    missing_to_answer,
     read_number,
     select_examined_version,
 )
@@ -133,6 +134,8 @@ class DocumentRow:
     sha256: str
     source: str
     received_at: datetime
+    # 인용문헌 본문이면 어느 인용문헌인지 (CaseDocument.citation_key와 같은 값, #201)
+    citation_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -253,6 +256,7 @@ def _plan_documents(record: CaseRecord, case_id: str, events: list[EventRow]) ->
                 sha256=f.sha256,
                 source=g.source,
                 received_at=f.received_at,
+                citation_key=g.citation_key,
             )
         )
     return rows
@@ -444,7 +448,20 @@ def uploaded_document_row(case_id: str, document: GroupedMaterial, file: StoredF
         sha256=file.sha256,
         source=document.source,
         received_at=file.received_at,
+        citation_key=document.citation_key,
     )
+
+
+def pick_citation_document(documents: list[DocumentRow], key: str) -> DocumentRow | None:
+    """인용문헌 키(#201)로 본문 문서 하나를 고른다. 없으면 None.
+
+    같은 키 문서가 여럿이면(자동 조회 + 올린 것) 사용자가 올린 것, 그다음 늦게 받은 것.
+    build_case_materials가 같은 문서는 올린 것을 우선하는 규칙과 같다.
+    """
+    hits = [d for d in documents if d.kind == "citation" and d.citation_key == key]
+    if len(hits) > 1:
+        logger.warning("pick_citation_document: 키 %s 문서가 %d건, 올린 것을 고름", key, len(hits))
+    return max(hits, key=lambda d: (d.source == "uploaded", d.received_at), default=None)
 
 
 def sorted_events(events: list[EventRow]) -> list[EventRow]:
@@ -462,14 +479,19 @@ def upload_missing_material(
     """빠진 자료 `what`에 올린 파일로 답한다: 묶기 → 사건 자료 고치기 → 저장 (T7).
 
     지금 빠진 자료는 인용문헌 본문만 만든다 (build_case_materials). 그래서 올린 자료 종류는
-    citation으로 둔다. 커밋은 부르는 쪽(API)이 한다.
+    citation으로 두고, 그 빠진 자료의 인용문헌 키를 문서 줄에 남긴다 (#201).
+    커밋은 부르는 쪽(API)이 한다.
     """
     application_number = repo.case_application_number(case_id)
     materials = repo.load_case_materials(case_id)
     if application_number is None or materials is None:
         raise UnknownCaseError(f"저장된 사건이 없음: {case_id}")
+    hit = missing_to_answer(materials, what)  # 빠진 자료가 아니면 여기서 오류
     material = MaterialInput(
-        document_id=document_id or new_id("doc"), kind="citation", source="uploaded"
+        document_id=document_id or new_id("doc"),
+        kind="citation",
+        source="uploaded",
+        citation_key=hit.citation_key,
     )
     (grouped,) = group_materials([material], application_number)
     updated = answer_missing(materials, what, grouped)
@@ -545,6 +567,11 @@ class CaseRepository(Protocol):
         """
         ...
 
+    def citation_document(self, case_id: str, citation_key: str) -> DocumentRow | None:
+        """그 인용문헌 키(#201)의 본문 문서 (F3가 찾음). 없으면 None. 고르는 규칙은
+        pick_citation_document."""
+        ...
+
     def events(self, case_id: str) -> list[EventRow]:
         """사건 이력 줄. 이력 순서(seq)대로, 자료로만 온 줄(seq 없음)은 뒤에."""
         ...
@@ -610,6 +637,10 @@ class InMemoryCaseRepository:
             documents=[*rows.documents, doc],
             materials_body=materials.model_dump(mode="json"),
         )
+
+    def citation_document(self, case_id: str, citation_key: str) -> DocumentRow | None:
+        rows = self._cases.get(case_id)
+        return pick_citation_document(list(rows.documents), citation_key) if rows else None
 
     def events(self, case_id: str) -> list[EventRow]:
         rows = self._cases.get(case_id)
