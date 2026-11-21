@@ -15,54 +15,27 @@
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-from patent_ai.api.deps import (
-    get_cancel_registry,
-    get_case_repository_unit,
-    get_case_unit,
-    get_oa_result_store,
-    get_run_executor,
-    get_run_launcher,
-    get_run_status_store,
-    get_step_result_store,
-    get_upload_dir,
-)
-from patent_ai.api.main import create_app
 from patent_ai.core.agents.orchestrator import CaseInput, run_case
 from patent_ai.core.agents.steps import MemoryStepRecorder
-from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputNotFound
-from patent_ai.core.cases.step_results import InMemoryStepResultStore
-from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
+from patent_ai.core.cases.store import InMemoryCaseAppStore
 from patent_ai.core.f3_claim_compare import run as f3_run
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
-from patent_ai.core.runs.cancel import CancelRegistry
-from patent_ai.core.runs.run_case_executor import RunCaseExecutor
 from patent_ai.core.schemas.common import StatusValue
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
-from tests.api.repo_fake import FakeRepoUnit
-
-# F3·F4 기록된 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것을 쓴다 (같은 사건이라 한 곳에)
-from tests.core.agents.test_fixed_order_f3_f4 import CHECKED_ON, _real_config, _responses, _texts
 from tests.core.f3 import scenario
+
+# F3·F4 기록된 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것 (같은 사건이라 한 곳에)
+from tests.core.run_case_app import NewCase, RunCaseApp
+from tests.core.run_case_fakes import CHECKED_ON, real_config, responses, texts
 
 ROOT = Path(__file__).resolve().parents[2]
 E2E = ROOT / "tests" / "fixtures" / "e2e"
-
-
-class _Store:
-    """같은 OA·같은 사건이 없는 새 사건."""
-
-    def find_oa(self, application_number, dispatch_number):
-        return None
-
-    def find_case(self, application_number):
-        return None
 
 
 def _read_oa_answer() -> TransportResponse:
@@ -87,17 +60,17 @@ def _run(tmp_path, responses):
         case_id="c_1",
         oa_document=tmp_path / "oa.pdf",
         oa_document_id="d_1",
-        texts=_texts(),
+        texts=texts(),
         checked_on=CHECKED_ON,
     )
     steps = MemoryStepRecorder()
     # 저장소 설정(config/orchestrator.yaml)의 순서 그대로, plan만 fixed_order
-    out = run_case(case, "oa_1", "r_1", _Store(), _real_config(tmp_path), ctx=ctx, steps=steps)
+    out = run_case(case, "oa_1", "r_1", NewCase(), real_config(tmp_path), ctx=ctx, steps=steps)
     return out, steps, recorder
 
 
 def _all_responses() -> dict:
-    return {"f1.read_oa": [_read_oa_answer()], **_responses()}
+    return {"f1.read_oa": [_read_oa_answer()], **responses()}
 
 
 def test_e2e_한_사건이_F1부터_F4까지_돌고_F2는_넘긴_이유가_남는다(tmp_path, offline):
@@ -143,8 +116,7 @@ def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, o
 
 
 def test_e2e_기록된_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
-    responses = _all_responses()
-    out, _, recorder = _run(tmp_path, responses)
+    out, _, recorder = _run(tmp_path, _all_responses())
     assert out.state == "succeeded"
     # 모든 호출이 이 실행 이름으로 기록되고, 실패·상한 초과가 없다
     assert recorder.records and all(r.run_id == "r_1" for r in recorder.records)
@@ -159,8 +131,7 @@ def test_e2e_F1_모델_답이_두_번_검사에_떨어지면_failed로_끝나고
     tmp_path, offline
 ):
     broken = TransportResponse("JSON 아님", 10, 10)
-    responses = {**_all_responses(), "f1.read_oa": [broken, broken]}
-    out, steps, _ = _run(tmp_path, responses)
+    out, steps, _ = _run(tmp_path, {**_all_responses(), "f1.read_oa": [broken, broken]})
 
     assert out.state == "failed"
     assert out.error["code"] == "ModelOutputInvalid" and out.error["message"]
@@ -176,7 +147,11 @@ def test_e2e_F1_모델_답이_두_번_검사에_떨어지면_failed로_끝나고
 
 
 class _MemoryRunInputs:
-    """PostgresRunInputSource 대신: 올린 OA의 문서와 사건으로 실행 입력을 만든다."""
+    """PostgresRunInputSource 대신: 올린 OA의 사건·문서로 실행 입력을 만든다.
+
+    메모리 저장소엔 파일 경로가 없어 oa_document는 지어 준다 (글자 읽기는 offline이 바꿔 끼운다).
+    올린 파일이 실행기까지 가는지는 db 테스트(tests/core/cases/test_run_inputs_db.py)가 본다.
+    """
 
     def __init__(self, cases: InMemoryCaseAppStore, upload_dir: Path) -> None:
         self._cases = cases
@@ -188,65 +163,27 @@ class _MemoryRunInputs:
             raise RunInputNotFound(oa_id)
         return CaseInput(
             case_id=oa.case_id,
-            oa_document=self._upload_dir / "oa.pdf",  # 글자 읽기는 offline이 바꿔 끼운다
+            oa_document=self._upload_dir / "oa.pdf",
             oa_document_id=oa.document_id,
-            texts=_texts(),
+            texts=texts(),
         )
 
 
-class _Unit:
-    def __init__(self, store) -> None:
-        self.store = store
+class _Server(RunCaseApp):
+    """서버 E2E용 앱: 모델 호출 기록을 실행끼리 하나로 모아 밖에서 본다."""
 
-    def commit(self) -> None:
-        pass
-
-    def rollback(self) -> None:
-        pass
-
-
-class _Server:
-    """앱 하나와 그 앱이 같이 쓰는 메모리 저장소들."""
-
-    def __init__(self, tmp_path: Path, responses: dict) -> None:
-        self.runs = InMemoryRunStore()
-        self.cases = InMemoryCaseAppStore(runs=self.runs)
-        self.registry = CancelRegistry()
-        self.oa_results = InMemoryOAResultStore(self.runs)
-        self.step_results = InMemoryStepResultStore()
+    def __init__(self, tmp_path: Path, answers: dict) -> None:
         self.recorder = MemoryRecorder()
-        transport = FakeTransport(responses)
-        executor = RunCaseExecutor(
-            store=self.runs,
-            registry=self.registry,
-            oa_results=self.oa_results,
-            step_results=self.step_results,
-            inputs=_MemoryRunInputs(self.cases, tmp_path),
-            cases=_Store(),
-            config_path=_real_config(tmp_path),
+        transport = FakeTransport(answers)
+        super().__init__(
+            tmp_path,
+            make_inputs=lambda cases: _MemoryRunInputs(cases, tmp_path),
             make_ctx=lambda run_id: RunContext(
                 run_id=run_id, budget=CallBudget(), recorder=self.recorder, transport=transport
             ),
-            today=lambda: CHECKED_ON,
         )
-        unit = _Unit(self.cases)
-        app = create_app(startup_store=self.runs)
-        overrides = {
-            get_case_unit: lambda: unit,
-            get_case_repository_unit: FakeRepoUnit,
-            get_upload_dir: lambda: tmp_path,
-            get_run_status_store: lambda: self.runs,
-            get_cancel_registry: lambda: self.registry,
-            get_oa_result_store: lambda: self.oa_results,
-            get_step_result_store: lambda: self.step_results,
-            get_run_executor: lambda: executor,
-            # 그 자리에서 바로 돈다 (진짜 앱은 백그라운드 스레드)
-            get_run_launcher: lambda: executor.execute,
-        }
-        app.dependency_overrides.update(overrides)
-        self.client = TestClient(app)
 
-    def upload(self) -> dict:
+    def uploaded(self) -> dict:
         res = self.client.post("/cases", files={"file": ("oa.pdf", PDF, "application/pdf")})
         assert res.status_code == 200, res.text
         return res.json()
@@ -267,7 +204,7 @@ RESULTS = ("oa-result", "units", "comparisons", "clarity-reviews", "directions",
 def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
     server = _Server(tmp_path, _all_responses())
     client = server.client
-    ids = server.upload()
+    ids = server.uploaded()
     case_id, oa_id, run_id = ids["case_id"], ids["oa_id"], ids["run_id"]
 
     run = server.poll(run_id)
@@ -309,7 +246,7 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
 def test_e2e_server_F1이_실패하면_failed와_이유가_남고_결과는_없다(tmp_path, offline):
     broken = TransportResponse("JSON 아님", 10, 10)
     server = _Server(tmp_path, {**_all_responses(), "f1.read_oa": [broken, broken]})
-    ids = server.upload()
+    ids = server.uploaded()
 
     run = server.poll(ids["run_id"])
     assert run["state"] == "failed"
