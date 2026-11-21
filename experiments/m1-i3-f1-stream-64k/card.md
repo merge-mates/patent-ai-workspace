@@ -87,7 +87,7 @@
 - 채택 여부(판단): 채택 쪽. 호출 하나가 길어지는 것(최대 약 27k 토큰)은 서버가 비동기로 돌려 문제없다(이슈 #172 본문). 정하는 것은 사람.
 
 ## 남은 것
-- 호출 기록(`CallRecord`·`agent_steps`)에 stop_reason·`output_truncated`를 남기는 것은 DB 마이그레이션이 필요해 이 PR 브랜치에 없다. 로컬 브랜치 `fix/172-f1-no-prediction-call-record`에 따로 있음 (재아 결정 대기). 위 표의 stop_reason은 실행 스크립트가 전송층 답에서 직접 읽어 남긴 것이다.
+- 호출 기록(`CallRecord`·`agent_steps`)에 stop_reason·`output_truncated`를 남기는 것은 DB 마이그레이션(`c4a8f1e63b27`)과 함께 같은 PR의 뒤 커밋(f646b1c, 11/21 재아가 합치기로 함)에 들어갔다. 이 실험을 돌린 판(75e12af)에는 아직 없어서, 위 표의 stop_reason은 실행 스크립트가 전송층 답에서 직접 읽어 남긴 것이다.
 - case10 OA PDF 없음 (이 Mac).
 - case4·case7·case9의 낮은 claim_rows.
 
