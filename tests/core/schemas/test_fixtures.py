@@ -81,6 +81,11 @@ def test_review_items_count가_검토할_사항_수와_같다(oa, materials):
     assert materials.review_items_count == len(collect_review_items([oa], materials)) == 2
 
 
+def test_6번의_review_items가_모으기_결과와_같다(oa, materials):
+    assert materials.review_items == collect_review_items([oa], materials)
+    assert len(materials.review_items) == materials.review_items_count
+
+
 def test_보류와_빠진_자료가_서로_맞는다(materials):
     missing = materials.missing[0]
     assert missing.ask_upload is True

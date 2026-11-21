@@ -385,6 +385,11 @@ def _plan_oas(
 
 def plan_case_rows(record: CaseRecord) -> CaseRows:
     """묶기 결과 → 표 줄. 저장할 수 없으면 CaseStoreError (DB에 닿기 전에 막는다)."""
+    # 마무리 안 한 ⑥(review_items None)은 0건처럼 조용히 저장되면 안 되니 거부하고,
+    # model_copy 등으로 검사를 건너뛴 어긋난 값(개수≠줄 수)도 저장 전에 다시 검사한다
+    if record.materials.review_items is None:
+        raise CaseStoreError("사건 자료 review_items가 None: 마무리(finalize) 안 한 ⑥은 저장 안 함")
+    CaseMaterials.model_validate(record.materials.model_dump())
     case_number = read_number("application", record.application_number).value
     if case_number is None:
         raise CaseStoreError(f"사건 출원번호 꼴이 아님: {record.application_number!r}")

@@ -24,6 +24,7 @@ from patent_ai.core.schemas.case_materials import (
     HeldTask,
     LookupResult,
     MissingMaterial,
+    ReviewItem,
 )
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
@@ -591,7 +592,15 @@ def test_materials_같은_열쇠_문서는_하나만_올린_것_우선(caplog):
     assert "d_api" in caplog.text
 
 
-def test_materials_확인_안_된_자료는_목록에_두고_검토할_사항에_셈():
+def test_materials_개수는_목록_줄_수와_같다():
+    oa = _fixture_oa()
+    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations=set())
+    assert got.review_items is not None
+    assert got.review_items_count == len(got.review_items) > 0
+    assert any(i.kind == "missing_material" for i in got.review_items)
+
+
+def test_materials_확인_안_된_자료는_목록에_두지만_검토할_사항_줄에는_아직_안_셈():
     oa = _fixture_oa()
     base = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1, US_D2})
     other = group_materials(
@@ -602,7 +611,9 @@ def test_materials_확인_안_된_자료는_목록에_두고_검토할_사항에
         "c_1", _fixture_grouped(oa) + other, oa, received_citations={KR_D1, US_D2}
     )
     assert "d_other" in [d.document_id for d in got.documents]
-    assert got.review_items_count == base.review_items_count + 1
+    # 임시(task-2의 문서 줄이 대신할 때까지): 개수·줄 둘 다에서 뺀다
+    assert got.review_items_count == base.review_items_count
+    assert got.review_items == base.review_items
 
 
 # --- 빠진 자료 올리기 (T7) ----------------------------------------------------------
@@ -628,6 +639,41 @@ def test_upload_빠진_자료에_답하면_missing과_그_보류만_빠지고_�
     # 검토할 사항: 빠진 인용문헌 한 줄이 빠지고 직접 검토 한 줄만 남는다
     assert after.review_items_count == before.review_items_count - 1 == 1
     assert before.missing  # 원래 값은 바꾸지 않는다
+    # 목록에서도 그 빠진 자료 줄이 빠지고 개수는 목록 길이와 같다
+    assert [i.kind for i in after.review_items] == ["needs_human_review"]
+    assert len(after.review_items) == after.review_items_count
+    assert len(before.review_items) == before.review_items_count == 2
+
+
+def test_upload_남은_빠진_자료_줄의_경로가_새_목록_위치를_가리킨다():
+    before = _fixture_materials()
+    extra = MissingMaterial(
+        what="D3 X 본문",
+        lookup_result="body_missing",
+        ask_upload=True,
+        depends_on_tasks=[],
+        citation_key="X",
+    )
+    item = ReviewItem(
+        kind="missing_material", target="materials.missing[1]", label=extra.what, reason="x"
+    )
+    m = CaseMaterials.model_validate(
+        before.model_dump()
+        | {
+            "missing": [*before.model_dump()["missing"], extra.model_dump()],
+            "review_items": [*(i.model_dump() for i in before.review_items), item.model_dump()],
+            "review_items_count": 3,
+        }
+    )
+    after = answer_missing(m, "D2 US20990000001A1 본문", _uploaded_citation())
+    (left,) = [i for i in after.review_items if i.kind == "missing_material"]
+    assert left.label == "D3 X 본문" and left.target == "materials.missing[0]"
+
+
+def test_upload_목록이_없는_옛_6번은_조용히_넘기지_않고_거부():
+    old = _fixture_materials().model_copy(update={"review_items": None, "review_items_count": 0})
+    with pytest.raises(ValueError, match="review_items"):
+        answer_missing(old, "D2 US20990000001A1 본문", _uploaded_citation())
 
 
 def test_upload_다른_보류_작업은_남는다():

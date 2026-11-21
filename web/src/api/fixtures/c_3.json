@@ -767,6 +767,7 @@
           "checked": "출원번호 대조",
           "searched_scope": null
         },
+        "text_status": null,
         "citation_key": null
       }
     ],
@@ -800,7 +801,57 @@
         "waiting_for": "D2 US20990000001A1 본문"
       }
     ],
-    "review_items_count": 8
+    "review_items_count": 8,
+    "review_items": [
+      {
+        "kind": "conflict",
+        "target": "oa_result[0].application_number",
+        "label": "oa_3",
+        "reason": "값이 서로 충돌"
+      },
+      {
+        "kind": "unverified",
+        "target": "oa_result[0].claim_rows[0]",
+        "label": "청구항 1·거절이유 1",
+        "reason": "not_extracted"
+      },
+      {
+        "kind": "unverified",
+        "target": "oa_result[0].claim_rows[1]",
+        "label": "청구항 2·거절이유 1",
+        "reason": "not_extracted"
+      },
+      {
+        "kind": "unverified",
+        "target": "oa_result[0].claim_rows[2]",
+        "label": "청구항 3·거절이유 1",
+        "reason": "not_extracted"
+      },
+      {
+        "kind": "unverified",
+        "target": "oa_result[0].claim_rows[3]",
+        "label": "청구항 4·거절이유 1",
+        "reason": "not_extracted"
+      },
+      {
+        "kind": "unverified",
+        "target": "oa_result[0].claim_rows[4]",
+        "label": "청구항 1·거절이유 2",
+        "reason": "not_extracted"
+      },
+      {
+        "kind": "missing_material",
+        "target": "materials.missing[0]",
+        "label": "D1 KR20990000003A 본문",
+        "reason": "body_missing"
+      },
+      {
+        "kind": "missing_material",
+        "target": "materials.missing[1]",
+        "label": "D2 US20990000001A1 본문",
+        "reason": "lookup_failed"
+      }
+    ]
   },
   "review_items": [
     {

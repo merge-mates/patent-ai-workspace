@@ -1,11 +1,8 @@
 """상태 전파와 검토할 사항 모으기. 규칙은 docs/data-model.md 3절 규칙 1·2."""
 
 import logging
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
-
-from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.case_materials import CaseMaterials, ReviewItem, ReviewKind
 from patent_ai.core.schemas.common import (
     ExtractedValue,
     Flag,
@@ -15,6 +12,9 @@ from patent_ai.core.schemas.common import (
     UnverifiedReason,
 )
 from patent_ai.core.schemas.oa_result import Citation, ClaimRow, OAResult, Rejection
+
+# ReviewItem·ReviewKind는 case_materials.py로 옮겼고(순환 import 방지) 여기서 다시 내보낸다
+__all__ = ["ReviewItem", "ReviewKind", "collect_review_items", "mark_recheck", "propagate"]
 
 logger = logging.getLogger(__name__)
 
@@ -36,28 +36,6 @@ def propagate(depends_on: list[Status]) -> Status:
 def mark_recheck[R: ResultBase](result: R, reason: str) -> R:
     """다시 확인할 표시를 단 새 결과를 돌려준다. status는 그대로, 원본도 그대로."""
     return result.model_copy(update={"needs_recheck": True, "recheck_reason": reason})
-
-
-ReviewKind = Literal[
-    "unverified",
-    "conflict",
-    "needs_recheck",
-    "needs_human_judgment",
-    "needs_human_review",
-    "missing_material",
-]
-
-
-class ReviewItem(BaseModel):
-    """사람이 봐야 할 것 하나."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    kind: ReviewKind
-    # 결과 안 경로. 예: oa_result[0].rejections[0].citations[1].country, materials.missing[0]
-    target: str
-    label: str  # 사람이 읽는 이름. 예: 조문 "42-3", 인용문헌 번호, 빠진 자료 이름
-    reason: str  # 왜. 예: not_extracted, "지원 안 하는 거절이유 42-3"
 
 
 def _text(v: ExtractedValue) -> str:

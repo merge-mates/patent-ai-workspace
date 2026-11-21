@@ -118,6 +118,32 @@ def test_저장하고_다시_읽으면_같은_CaseMaterials():
     assert repo.load_case_materials(CASE_ID) == record.materials
 
 
+def test_저장한_6번에_검토할_사항_목록이_있고_개수와_같다():
+    repo = InMemoryCaseRepository()
+    repo.save_case(_record())
+    got = repo.load_case_materials(CASE_ID)
+    assert got.review_items is not None
+    assert len(got.review_items) == got.review_items_count
+
+
+def test_마무리_안_한_6번은_저장_거부():
+    # review_items=None = 마무리 안 함. 0건으로 조용히 저장되지 않게 DB에 닿기 전에 막는다
+    record = _record()
+    unfinished = record.materials.model_copy(update={"review_items": None, "review_items_count": 0})
+    with pytest.raises(ValueError, match="review_items"):
+        plan_case_rows(record.model_copy(update={"materials": unfinished}))
+    with pytest.raises(ValueError, match="review_items"):
+        InMemoryCaseRepository().save_case(record.model_copy(update={"materials": unfinished}))
+
+
+def test_개수와_줄_수가_어긋난_6번은_저장_전에_다시_검사해_거부():
+    # model_copy는 검사를 거치지 않아 어긋난 값이 들어올 수 있다: 저장 전에 다시 검사
+    record = _record()
+    broken = record.materials.model_copy(update={"review_items_count": 99})
+    with pytest.raises(ValidationError):
+        plan_case_rows(record.model_copy(update={"materials": broken}))
+
+
 def test_없는_사건은_None():
     assert InMemoryCaseRepository().load_case_materials("c_none") is None
 

@@ -41,5 +41,19 @@
       "waiting_for": "D2 US20990000001A1 본문"
     }
   ],
-  "review_items_count": 2
+  "review_items_count": 2,
+  "review_items": [
+    {
+      "kind": "needs_human_review",
+      "target": "oa_result[0].rejections[2]",
+      "label": "42-3",
+      "reason": "지원 안 하는 거절이유 42-3"
+    },
+    {
+      "kind": "missing_material",
+      "target": "materials.missing[0]",
+      "label": "D2 US20990000001A1 본문",
+      "reason": "body_missing"
+    }
+  ]
 }

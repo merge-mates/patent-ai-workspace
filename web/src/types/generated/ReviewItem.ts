@@ -7,7 +7,7 @@ export type Label = string
 export type Reason = string
 
 /**
- * 사람이 봐야 할 것 하나.
+ * 사람이 봐야 할 것 하나. (propagation.py가 이 파일을 import하므로 정의는 여기에 둔다)
  */
 export interface ReviewItem {
   kind: Kind

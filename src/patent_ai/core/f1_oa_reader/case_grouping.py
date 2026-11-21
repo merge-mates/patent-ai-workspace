@@ -349,8 +349,7 @@ def build_case_materials(
     - 지원 안 하는 나라는 ask_upload=False ("직접 확인"), 그 밖은 "올려 주세요".
     - documents: 같은 열쇠(같은 문서)는 하나만, 올린 것 우선. 나머지는 경고 로그.
       confirmed가 아닌 자료(다른 출원번호·번호 못 읽음)도 빼지 않는다 (빼는 것은 cut_to_oa).
-    - review_items_count = 검토할 사항 모으기(collect_review_items) 줄 수
-      + confirmed가 아닌 자료 수 (조용히 섞이지 않게).
+    - review_items = 검토할 사항 모으기(collect_review_items) 줄, review_items_count = 그 줄 수.
     """
     lookup_failures = lookup_failures or {}
     # 저장된 인용문헌 문서(올린 것 포함)에 키가 있으면 본문을 받은 것으로 친다 (#201).
@@ -396,10 +395,13 @@ def build_case_materials(
         missing=missing,
         held_tasks=held,
     )
-    # 묶기에서 확인되지 않은 자료도 사람이 보게 검토할 사항 수에 더한다
-    unsettled = sum(1 for g in grouped if g.status.value != StatusValue.CONFIRMED)
-    count = len(collect_review_items([oa], materials)) + unsettled
-    return materials.model_copy(update={"review_items_count": count})
+    # 임시: 목록과 개수를 같이 채운다. 새로 만들어 개수 검사를 거친다 (model_copy는 검사를 안 함).
+    # 묶기에서 확인되지 않은 자료(unsettled)는 task-2 문서 줄이 대신할 때까지
+    # 개수·줄 둘 다에서 뺀다. OA 전부를 받는 것은 task-3
+    items = collect_review_items([oa], materials)
+    return CaseMaterials.model_validate(
+        materials.model_dump() | {"review_items": items, "review_items_count": len(items)}
+    )
 
 
 def _one_per_key(grouped: list[GroupedMaterial]) -> list[GroupedMaterial]:
@@ -458,10 +460,14 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     - 그 빠진 자료 줄과, 그 자료를 기다리던 보류 작업만 뺀다 (다른 보류는 그대로).
     - 올린 자료는 documents 끝에 더한다 (묶기 상태 그대로). 그 빠진 자료의 인용문헌 키를
       문서에 남겨 어느 인용문헌 본문인지 다시 열어도 알 수 있게 한다 (#201).
-    - 검토할 사항 수는 빠진 자료 한 줄만큼 줄인다 (collect_review_items가 빠진 자료마다 한 줄).
+    - 검토할 사항 목록에서 그 빠진 자료 줄(missing_material)을 빼고 개수는 새 목록 길이로 맞춘다.
+      남은 빠진 자료 줄의 경로(materials.missing[i])는 새 목록 위치로 고친다.
+    - 목록이 None인 옛 ⑥은 어느 줄을 뺄지 알 수 없어 ValueError (조용히 개수만 줄이지 않는다).
     - 빠진 자료가 아니거나 올려 달라고 하지 않은 것이면 오류 (조용히 더하지 않는다).
     """
     hit = missing_to_answer(materials, what)
+    if materials.review_items is None:
+        raise ValueError("review_items가 None인 ⑥(마무리 안 한 옛 값)에는 답할 수 없음")
     doc = CaseDocument(
         document_id=document.document_id,
         kind=document.kind,
@@ -472,11 +478,23 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     if hit.citation_key is None:
         # 번호를 못 읽은 인용문헌: 올린 문서가 어느 키인지 몰라 F3가 키로 찾지 못한다
         logger.warning("answer_missing: 인용문헌 키를 몰라 키 없이 더함 (%s)", what)
-    return materials.model_copy(
-        update={
-            "documents": [*materials.documents, doc],
-            "missing": [m for m in materials.missing if m is not hit],
-            "held_tasks": [h for h in materials.held_tasks if h.waiting_for != what],
-            "review_items_count": max(materials.review_items_count - 1, 0),
+    new_missing = [m for m in materials.missing if m is not hit]
+    # 그 빠진 자료의 줄만 빼고, 남은 빠진 자료 줄은 새 위치(materials.missing[i])로 경로를 고친다
+    items = []
+    for item in materials.review_items:
+        if item.kind != "missing_material":
+            items.append(item)
+        elif item.label != what:
+            idx = next(i for i, m in enumerate(new_missing) if m.what == item.label)
+            items.append(item.model_copy(update={"target": f"materials.missing[{idx}]"}))
+    # 새로 만들어 개수 검사를 거친다
+    return CaseMaterials.model_validate(
+        materials.model_dump()
+        | {
+            "documents": [*materials.model_dump()["documents"], doc.model_dump()],
+            "missing": [m.model_dump() for m in new_missing],
+            "held_tasks": [h.model_dump() for h in materials.held_tasks if h.waiting_for != what],
+            "review_items": [i.model_dump() for i in items],
+            "review_items_count": len(items),
         }
     )

@@ -4,6 +4,7 @@
 """
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,6 +28,9 @@ class CaseDocument(BaseModel):
     # 묶기 상태 (#16 GroupedMaterial.status). 다른 출원번호(conflict)·번호 못 읽음(unverified)
     # 자료가 어느 문서인지 다시 열어도 남게 한다. 빼는 것은 cut_to_oa(#54)
     status: Status
+    # 글자 추출 상태 (PageText.status). 스캔본이면 unverified(body_missing). 묶기 status와 합치지
+    # 않는다: 합치면 원인(글자 없음)이 묶기 결과에 가려진다. 모르면 None (#140)
+    text_status: Status | None = None
     # 인용문헌 본문이면 어느 인용문헌인지: OA 인용문헌 번호 값(Citation.number.value, 예
     # "US20990000001A1"). F3가 이 키로 본문 문서를 찾는다 (#201). 다른 종류이거나 모르면 None
     citation_key: str | None = None
@@ -58,6 +62,28 @@ class HeldTask(BaseModel):
     waiting_for: str
 
 
+ReviewKind = Literal[
+    "unverified",
+    "conflict",
+    "needs_recheck",
+    "needs_human_judgment",
+    "needs_human_review",
+    "missing_material",
+]
+
+
+class ReviewItem(BaseModel):
+    """사람이 봐야 할 것 하나. (propagation.py가 이 파일을 import하므로 정의는 여기에 둔다)"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: ReviewKind
+    # 결과 안 경로. 예: oa_result[0].rejections[0].citations[1].country, materials.missing[0]
+    target: str
+    label: str  # 사람이 읽는 이름. 예: 조문 "42-3", 인용문헌 번호, 빠진 자료 이름
+    reason: str  # 왜. 예: not_extracted, "지원 안 하는 거절이유 42-3"
+
+
 class CaseMaterials(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -66,3 +92,17 @@ class CaseMaterials(BaseModel):
     missing: list[MissingMaterial] = Field(default_factory=list)
     held_tasks: list[HeldTask] = Field(default_factory=list)
     review_items_count: int = Field(default=0, ge=0)
+    # 검토할 사항 목록. None = 아직 마무리(모으기)를 안 한 ⑥ (저장소가 저장을 거부한다).
+    # 빈 목록 []은 "마무리했고 0건"이라 None과 다르다
+    review_items: list[ReviewItem] | None = None
+
+    @model_validator(mode="after")
+    def _개수는_목록_줄_수와_같다(self) -> CaseMaterials:
+        # N(화면에 보이는 개수) = 목록 줄 수. 목록이 없으면 개수도 0이어야 한다
+        expected = len(self.review_items) if self.review_items is not None else 0
+        if self.review_items_count != expected:
+            raise ValueError(
+                f"review_items_count({self.review_items_count})가 "
+                f"review_items 줄 수({expected})와 다름"
+            )
+        return self

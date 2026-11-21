@@ -16,7 +16,6 @@ from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.case_materials import LookupResult
 from patent_ai.core.schemas.common import Status, StatusValue
 from patent_ai.core.schemas.document import PageText
-from patent_ai.core.schemas.propagation import collect_review_items
 
 ROOT = Path(__file__).resolve().parents[1]
 F1 = ROOT / "tests" / "fixtures" / "f1"
@@ -111,7 +110,8 @@ def _run_one(c: dict) -> dict:
     materials = build_case_materials(
         c["case_id"], grouped, oa, c["received"], lookup_failures=c["failures"]
     )
-    review = collect_review_items([oa], materials)
+    # ⑥에 이미 담긴 목록을 그대로 쓴다 (따로 모으지 않는다)
+    review = materials.review_items or []
     return {
         # 사건 이름·마지막으로 연 때는 사건 목록 응답(서버 #56)에 들어갈 값의 가짜
         "case_id": c["case_id"],
