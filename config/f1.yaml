@@ -2,7 +2,7 @@
 read_oa:
   model: claude-haiku-5-5
   effort: medium       # output_config.effort. claude-haiku-5-5 기본과 같게 적어 둠 (#134)
-  max_tokens: 16000    # 11/19: 실제 tune 5건 중 3건이 8000에 닿아 JSON이 잘림 → 올림 (값은 tune 점수 뒤 다시 봄)
+  max_tokens: 64000    # 11/21: 16000에서도 답(JSON)이 잘려 예측 없음이 남 → 올림. 길어도 끊기지 않게 전송층은 스트리밍으로 받음 (#172, 값은 tune 점수 뒤 다시 봄)
   prompt: prompts/f1/read_oa.md
   max_model_calls: 2   # 첫 호출 + 출력 검사 실패 때 한 번
   max_retries: 2       # 전송 오류(429·연결)를 다시 부르는 횟수

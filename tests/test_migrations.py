@@ -84,3 +84,12 @@ def test_offline_sql_inserts_one_default_user():
     inserts = re.findall(r"INSERT INTO users\b.*", _offline_sql())
     assert len(inserts) == 1
     assert "u_default" in inserts[0]
+
+
+def test_offline_sql_adds_stop_reason_and_output_truncated_to_agent_steps():
+    # 이슈 #172: 모델 호출 기록에 stop_reason 칸, outcome에 output_truncated
+    sql = _offline_sql()
+    assert re.search(r"ALTER TABLE agent_steps ADD COLUMN stop_reason TEXT", sql)
+    last_check = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\);", sql)[-1]
+    assert "'output_truncated'" in last_check
+    assert "'invalid_output'" in last_check

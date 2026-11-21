@@ -92,6 +92,14 @@ def test_사건_1건을_끝까지_돌고_도구마다_기록_한_줄(tmp_path, n
     assert [r.model_call_count for r in steps.records] == [0, 1, 0]
 
 
+def test_잘린_답으로_다시_부른_호출도_모델_호출_수에_센다(tmp_path, notice_pages):
+    # 첫 답이 max_tokens에 닿아 잘림(output_truncated) -> read_oa가 한 번 더 부름 (#172)
+    cut = TransportResponse('{"application_number": ', 100, 50, "max_tokens")
+    out, steps = _go(tmp_path, responses={"f1.read_oa": [cut, _basic()]})
+    assert out.state == "succeeded"
+    assert [r.model_call_count for r in steps.records] == [0, 2, 0]
+
+
 def test_agent_모드는_지휘_판단_이유를_기록한다(tmp_path, notice_pages):
     responses = {
         "agents.orchestrator": [_decision("read_oa"), _decision("stop")],
