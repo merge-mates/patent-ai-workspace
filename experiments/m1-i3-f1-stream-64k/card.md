@@ -79,7 +79,9 @@
 | 모르는 키 (1회) | `rejection_count_note` | 모델이 출력 모양에 없는 키를 만듦 | 프롬프트에 "없는 키를 만들지 않음" 한 줄 (T4) |
 | case4·7·9 정확도 0.4~0.6 | 세 실행 모두 claim_rows가 낮음 | 이 이슈 범위 밖 (예측은 있음) | `남은 것` |
 
-## 해석 (Claude 초안, 사람이 고칠 것)
+- case10(OA PDF 없음)이 0점으로 들어가서 주 지표가 main의 F1 기준선 줄보다 약 0.09 낮게 나온다. experiments/index.md에서 main F1 줄과 직접 비교하지 않는다. 이 PR 안의 실험끼리는 조건이 같다.
+
+## 해석 (Claude 초안, 재아 확인 11/21)
 - 잘림은 없어졌다 (max_tokens에 닿은 호출 4 → 0). 예측 없음도 PDF 없는 case10을 빼면 2 → 1·0건이다.
 - 주 지표 2회 평균 0.637은 예측 없음이 줄어든 몫이 크다. 예측이 있는 사건끼리의 차이는 같은 설정의 흔들림 안이다.
 - 남은 출력 검사 실패(회마다 3회)는 모두 한도 아래이고 stop_reason이 end_turn이다. 잘림이 아니라 모양 오류다. 원인은 표대로 프롬프트가 두 칸의 모양을 알려 주지 않은 것 → T4에서 프롬프트를 고친다.
@@ -92,5 +94,5 @@
 - case4·case7·case9의 낮은 claim_rows.
 
 ## 다시 내는 법
-- 실행: `uv run python ~/Desktop/project/patent_ai/repo/work/overnight_1120/f1_run.py <out>` (git 밖, 캐시 끔, 75e12af에서)
+- 실행: `uv run python work/overnight_1120/f1_run.py <out>` (git 밖, 캐시 끔, 75e12af에서)
 - 채점: `uv run python eval/run_eval.py --config experiments/m1-i3-f1-stream-64k/config.yaml --predictions <out>_pred --pages <out>_pages`

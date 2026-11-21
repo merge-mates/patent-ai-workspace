@@ -34,6 +34,8 @@
 
 사건별 정확도와 실패 호출 표는 [effort 카드](../m1-i3-f1-effort-low-stream64k/card.md)의 medium 1·2 칸에 있다.
 
+- case10(OA PDF 없음)이 0점으로 들어가서 주 지표가 main의 F1 기준선 줄보다 약 0.09 낮게 나온다. experiments/index.md에서 main F1 줄과 직접 비교하지 않는다. 이 PR 안의 실험끼리는 조건이 같다.
+
 ## 해석 (Claude 초안, 사람이 고칠 것)
 - 겨냥한 오류는 없어졌다: `no_location`·`clarity_reason` 모양 오류가 2회 5건 → 2회 0건 (effort low 2회까지 네 실행 0건).
 - 주 지표 평균은 0.637 → 0.626으로 같은 수준이다. 같은 설정 2회의 차이(0.08)가 더 커서 이 변경이 점수를 바꿨다고 말할 수 없다.
@@ -41,5 +43,5 @@
 - 채택 여부(판단): 채택 쪽. 겨냥한 실패가 없어졌고 점수·안전선(지어낸 값 0)은 그대로다. 정하는 것은 사람.
 
 ## 다시 내는 법
-- 실행: `uv run python ~/Desktop/project/patent_ai/repo/work/overnight_1120/f1_run.py <out> --effort medium` (git 밖, 캐시 끔, 6b87e06에서)
+- 실행: `uv run python work/overnight_1120/f1_run.py <out> --effort medium` (git 밖, 캐시 끔, 6b87e06에서)
 - 채점: `uv run python eval/run_eval.py --config experiments/m1-i3-f1-read-oa-prompt-shape/config.yaml --predictions <out>_pred --pages <out>_pages`

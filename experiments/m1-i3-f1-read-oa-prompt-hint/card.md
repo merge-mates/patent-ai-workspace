@@ -22,6 +22,7 @@
 - 1회만 돌렸다(이슈 #173 task: "tune 9건 한 번"). 같은 설정에서 흔들리는 크기(아래)보다 작은 차이는 읽지 않는다.
 - 이 Mac에는 tune 10건 중 1건(case10)의 OA PDF가 없어 9건만 돌렸다. case10은 예측 없음으로 0점.
 - scores.json의 `commit`은 채점한 때의 HEAD(75e12af)다. 예측을 만든 코드는 54ab36d(프롬프트만 고친 커밋)다.
+- 모델 응답 새로 남김(이슈 #173 task 4): 호출마다 답 글자(.txt)와 stop_reason 등(.meta.json)을 `work/overnight_1120/f1/a1_hint/responses/`(git 밖)에 남겼다. 파일 28개(호출 14개 × txt+meta).
 
 ## 결과
 보려던 것 (모델 답 원문을 세어 봄, git 밖 `work/overnight_1120/f1/a1_hint/responses/`)
@@ -66,15 +67,19 @@
 | case3 0.690 (v2 0.93·0.86) | claim_rows 0/9, 위치 0 | 모름. 같은 설정 2회에서도 case3 0.862~0.931, case8 0.200~0.779로 흔들림. 프롬프트가 바꾼 칸(힌트 두 칸)과 다른 칸이라 이번 변경 탓이라고 할 근거 없음 (짐작) | 고치지 않음. A3(#172 T3) 2회 실행에서 다시 봄 |
 | case6 1.000 (v2 0.933) | basic 칸 하나가 맞게 바뀜 | 이번 프롬프트(힌트 칸)가 겨냥한 칸 | - |
 
-## 해석 (Claude 초안, 사람이 고칠 것)
+- case10(OA PDF 없음)이 0점으로 들어가서 주 지표가 main의 F1 기준선 줄보다 약 0.09 낮게 나온다. experiments/index.md에서 main F1 줄과 직접 비교하지 않는다. 이 PR 안의 실험끼리는 조건이 같다.
+
+## 해석 (Claude 초안, 재아 확인 11/21)
 - 보려던 것은 됐다: 빈 객체 7 → 0, 칸 제목 2 → 0, 지어낸 값 0 유지.
 - 주 지표는 예측 없음 3건 때문에 낮다. 예측이 있는 사건끼리는 앞 실행과 같은 수준이고 차이는 같은 설정의 흔들림 안이다. 이 실험만으로 점수가 올랐다·내렸다고 말할 수 없다.
 - 채택 여부(판단): 프롬프트의 모순을 없앤 것이라 채택 쪽. 정하는 것은 사람.
 
+## 정한 것
+- 정함(11/21 재아): scores.json에는 프롬프트 sha256 칸을 더하지 않는다. scores.json의 commit이 프롬프트 파일 판을 가리키고, sha256 앞 12자는 이 카드와 캐시 키에 남는다.
+
 ## 남은 것
 - case10 OA PDF가 이 Mac `data/raw/cases/`에 없음 (은진 님 실행에는 있었음: 기준선 카드 case10 0.935).
-- 채점 결과(scores.json)에 프롬프트 sha256을 남길지(이슈 #173 task 3번의 "정한다"): 정하지 않음. 지금은 이 카드와 캐시 키에만 있음. 재아가 정할 것.
 
 ## 다시 내는 법
-- 실행: `uv run python ~/Desktop/project/patent_ai/repo/work/overnight_1120/f1_run.py <out>` (git 밖, 캐시 끔, 54ab36d에서)
+- 실행: `uv run python work/overnight_1120/f1_run.py <out>` (git 밖, 캐시 끔, 54ab36d에서)
 - 채점: `uv run python eval/run_eval.py --config experiments/m1-i3-f1-read-oa-prompt-hint/config.yaml --predictions <out>_pred --pages <out>_pages`
