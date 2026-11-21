@@ -6,6 +6,7 @@ import { sentence } from '../../format'
 import { CoreLabel, HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
+import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
 import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '../../types/generated/ComparisonTable'
 
 // 대비 결과 글자 (상태 네 가지와 다른 축). 색만으로 나누지 않게 아이콘도 붙인다
@@ -76,7 +77,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
             {judgmentTag[r.judgment].text}
           </Tag>
           {/* 확인됨은 꼬리표를 달지 않는다. 확인되지 않음·조회 범위 내 없음·충돌만 */}
-          {r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} />}
+          {r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
         </div>
       ),
     },
@@ -96,7 +97,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
         {/* 표가 "조회 범위 내 없음"이면 그 꼬리표와 찾아본 범위를 같이 */}
         {t.status.value !== 'confirmed' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <StatusTag status={t.status} detail={false} />
+            <StatusTag status={t.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />
             {t.status.value === 'not_found_in_scope' && t.status.searched_scope && (
               <span className="label1 t2">
                 {t.status.searched_scope}에서 같은 구성을 못 찾았어요. 없다고 단정하지는 않아요.
@@ -111,7 +112,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
             <span className="label1 t2">
               인용발명 {c.label} {c.number}는 대비하지 않았어요{c.skipped_reason ? ` · ${c.skipped_reason}` : ''}
             </span>
-            {c.skipped_status && <StatusTag status={c.skipped_status} detail={false} />}
+            {c.skipped_status && <StatusTag status={c.skipped_status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
           </div>
         ))}
       </div>
@@ -134,6 +135,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
                 items: r.evidence,
                 status: r.status,
                 note: r.why_retrieved ? `왜 가져왔나: ${r.why_retrieved}` : null,
+                unverifiedText: COMPARE_UNVERIFIED_TEXT,
               }),
             style: { cursor: 'pointer' },
           })}

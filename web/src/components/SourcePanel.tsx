@@ -83,7 +83,7 @@ function CiteBody({ r }: { r: CiteRef }) {
         </span>
       ) : (
         <div>
-          <StatusTag status={r.status} />
+          <StatusTag status={r.status} unverifiedText={r.unverifiedText} />
         </div>
       )}
       {r.items.map((e, i) => (

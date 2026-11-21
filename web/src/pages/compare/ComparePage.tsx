@@ -4,7 +4,7 @@ import { API_MODE } from '../../api'
 import { HumanCheckTag } from '../../components/Marks'
 import { StatusTag } from '../../components/StatusTag'
 import { claimRange } from '../../format'
-import { articleLabel, rejectionKindLabel } from '../../labels'
+import { articleLabel, COMPARE_UNVERIFIED_TEXT, rejectionKindLabel } from '../../labels'
 import type { CompareLoaderData, OALoaderData } from '../../loaders'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 import { ClarityView } from './ClarityView'
@@ -73,7 +73,7 @@ export function ComparePage() {
           묶음 {unit.order} · 청구항 {claimRange(unit.claims)}
           {unit.read_with.length > 0 ? ` · 함께 읽을 청구항 ${claimRange(unit.read_with)}` : ''}
         </span>
-        {unit.status.value !== 'confirmed' && <StatusTag status={unit.status} detail={false} />}
+        {unit.status.value !== 'confirmed' && <StatusTag status={unit.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
       </div>
 
       {table && <ComparisonView t={table} />}

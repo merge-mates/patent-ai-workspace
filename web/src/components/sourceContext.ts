@@ -18,6 +18,8 @@ export interface CiteRef {
   items: Evidence1[]
   status: Status
   note: string | null
+  // 확인되지 않음을 판에 보일 글자 (대비 줄은 "원문 확인 필요", D15). 없으면 "확인되지 않음"
+  unverifiedText?: string
 }
 export type OpenCite = (ref: CiteRef) => void
 

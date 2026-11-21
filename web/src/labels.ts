@@ -142,3 +142,8 @@ export const coarseLabel: Record<CoarseDirection, string> = {
   amend_and_argue: '보정+반박',
   amend_only: '보정',
 }
+
+// "보류" 글자 나누기 (D15, 11/21 재아): 대비(F3) 결과의 보류·확인되지 않음은 "원문 확인 필요",
+// 대응 방향·초안(F4)의 확신 낮음 보류는 "직접 판단 필요". 둘을 같은 "보류"로 쓰지 않는다
+export const COMPARE_UNVERIFIED_TEXT = '원문 확인 필요'
+export const LOW_CONFIDENCE_TEXT = '직접 판단 필요'

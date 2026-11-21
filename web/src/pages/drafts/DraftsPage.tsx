@@ -5,7 +5,7 @@ import { api, API_MODE } from '../../api'
 import { SourceContext } from '../../components/sourceContext'
 import { TrackedText } from '../../components/TrackedText'
 import type { DraftsLoaderData, OALoaderData } from '../../loaders'
-import { rejectionKindLabel } from '../../labels'
+import { LOW_CONFIDENCE_TEXT, rejectionKindLabel } from '../../labels'
 import type { AmendedClaim, Evidence1 } from '../../types/generated/Drafts'
 import type { DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
 import { CoverageTable } from './CoverageTable'
@@ -152,7 +152,7 @@ export function DraftsPage() {
     if (c.ai_text === null) {
       return (
         <div key={c.claim} style={box}>
-          {head('보류')}
+          {head(LOW_CONFIDENCE_TEXT)}
           {note === 'picked' ? (
             <Alert
               type="info"
@@ -162,7 +162,7 @@ export function DraftsPage() {
             />
           ) : (
             <Space wrap>
-              <span className="body1" style={{ fontWeight: 600 }}>보류: 방향을 골라 주세요</span>
+              <span className="body1" style={{ fontWeight: 600 }}>직접 판단 필요: 방향을 골라 주세요</span>
               <Link to="../directions" relative="path">
                 <Button size="small">고르기</Button>
               </Link>

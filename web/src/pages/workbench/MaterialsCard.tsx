@@ -87,7 +87,7 @@ export function MaterialsCard({ m, r }: { m: CaseMaterials; r: OAResult }) {
           {/* 보류한 작업: 기다리는 자료가 오면 이어서 한다. 나머지 작업은 진행 */}
           {m.held_tasks.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '12px 0' }}>
-              <span className="label2 t3">보류한 작업 {m.held_tasks.length}건 · 나머지 작업은 진행해요</span>
+              <span className="label2 t3">원문 확인 필요한 작업 {m.held_tasks.length}건 · 나머지 작업은 진행해요</span>
               {m.held_tasks.map((h) => (
                 <span key={`${h.task}-${h.waiting_for}`} className="body2 t2">
                   {h.task} — 기다리는 자료: {h.waiting_for}

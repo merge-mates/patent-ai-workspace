@@ -76,7 +76,7 @@ export function directTodos(input: TodoInput): DirectTodo[] | null {
       todos.push({
         key: `m-${i}`,
         title: `${row.what} 올리기`,
-        desc: `${lookupResultLabel[row.lookup_result]}라 대비 일부를 보류했어요`,
+        desc: `${lookupResultLabel[row.lookup_result]}라 대비 일부는 원문 확인 필요예요`,
         go: { kind: 'anchor', id: 'materials', label: '자료 보기' },
       })
     } else if (item.kind === 'needs_human_review') {

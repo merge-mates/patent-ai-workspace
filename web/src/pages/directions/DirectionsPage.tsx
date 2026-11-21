@@ -16,6 +16,7 @@ import {
   rebuttalTypeLabel,
   rejectionKindLabel,
   sourceKindLabel,
+  LOW_CONFIDENCE_TEXT,
 } from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
 import type { Evidence1 } from '../../types/generated/ComparisonTable'
@@ -231,7 +232,7 @@ export function DirectionsPage() {
               ) : d.candidates.length === 0 ? (
                 <StatusTag status={d.status} />
               ) : (
-                <HumanCheckTag>직접 판단 필요 · 초안 보류</HumanCheckTag>
+                <HumanCheckTag>{LOW_CONFIDENCE_TEXT} · 고를 때까지 초안 없음</HumanCheckTag>
               )}
               {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만) */}
               <span className="label1 t3">
@@ -267,10 +268,10 @@ export function DirectionsPage() {
               <Alert type="warning" showIcon message="후보를 만들지 못했어요. 이 묶음은 직접 대응해 주세요." />
             ) : d.flags.includes('needs_human_judgment') && !d.candidates.some((c) => c.rank !== null) ? (
               <p className="body1 t2">
-                확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 묶음의 초안은 보류해요.
+                확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 묶음의 초안은 만들지 않아요.
               </p>
             ) : (
-              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 묶음의 초안은 보류해요.</p>
+              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 묶음의 초안은 만들지 않아요.</p>
             )}
 
             {d.candidates.length > 0 && (
@@ -287,7 +288,7 @@ export function DirectionsPage() {
                     <span>
                       {`${c.rank === null ? '' : `${rankText(c)} `}${c.name} (확신도 ${confidenceLabel[c.confidence]})`}{' '}
                       {/* 순위 있는 후보와 섞여 있어도 확신이 낮은 후보는 직접 판단 필요 (ADR 0001) */}
-                      {c.confidence === 'low' && <HumanCheckTag>직접 판단 필요</HumanCheckTag>}
+                      {c.confidence === 'low' && <HumanCheckTag>{LOW_CONFIDENCE_TEXT}</HumanCheckTag>}
                     </span>
                   ),
                   value: c.candidate_id,
