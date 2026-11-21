@@ -120,18 +120,22 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
         <h3 className="headline1">구성요소 · 행을 누르면 오른쪽에 그 문단</h3>
         <Table<ComparisonRow>
           size="middle"
-          rowKey={(r) => `${r.claim}-${r.element_location}-${r.citation}-${r.element}`}
+          rowKey={(r) => `${r.claim}-${r.element_location}-${r.citation}-${r.paragraph_source}-${r.evidence[0]?.location ?? ''}-${r.element}`}
           columns={columns}
           dataSource={t.rows}
           pagination={false}
           scroll={{ x: 640 }}
           locale={{ emptyText: '대비한 줄이 없습니다 (인용문헌 본문을 받으면 대비)' }}
           onRow={(r) => ({
-            // 근거 위치가 있는 줄만 누르면 오른쪽 원문 판에 그 근거를 연다
+            // 모든 줄이 누르면 오른쪽 판에 열린다. 근거 위치가 없는 줄(찾아봤지만 못 찾음)도 상태·찾아본 범위·왜 가져왔나를 보인다
             onClick: () =>
-              r.evidence.length > 0 &&
-              openCite({ title: `${r.citation} ${r.evidence[0].location ?? ''}`.trim(), items: r.evidence, status: r.status, note: r.why_retrieved }),
-            style: { cursor: r.evidence.length > 0 ? 'pointer' : 'default' },
+              openCite({
+                title: `${r.citation} ${r.evidence[0]?.location ?? r.element_location}`.trim(),
+                items: r.evidence,
+                status: r.status,
+                note: r.why_retrieved ? `왜 가져왔나: ${r.why_retrieved}` : null,
+              }),
+            style: { cursor: 'pointer' },
           })}
         />
         <span className="label2 t3">

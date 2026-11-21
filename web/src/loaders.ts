@@ -122,6 +122,8 @@ export async function compareLoader({ params }: LoaderFunctionArgs): Promise<Com
 export interface DirectionsLoaderData {
   units: JudgmentUnit[]
   directions: DirectionCandidates[]
+  // 대비표: 후보 근거의 문서 번호를 인용발명 이름(D1 등)으로 맞추려고. 아직 없으면 []
+  comparisons: ComparisonTable[]
   // 아직 없으면 null (확인되지 않음으로 보인다)
   caseCheck: CaseCheck | null
 }
@@ -129,12 +131,16 @@ export interface DirectionsLoaderData {
 // 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
 export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<DirectionsLoaderData> {
   const oaId = params.oaId!
-  const [units, directions, caseCheck] = await Promise.all([
+  const [units, directions, comparisons, caseCheck] = await Promise.all([
     api.getUnits(oaId),
     api.getDirections(oaId),
+    api.getComparisons(oaId).catch((e: unknown) => {
+      if (isNotReady(e)) return []
+      throw e
+    }),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
-  return { units, directions, caseCheck }
+  return { units, directions, comparisons, caseCheck }
 }
 
 export interface DraftsLoaderData {

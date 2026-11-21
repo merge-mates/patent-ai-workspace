@@ -36,7 +36,10 @@ export function CaseShell() {
   const [srcOpen, setSrcOpen] = useState(true)
   const [source, setSource] = useState<{ page: number; text: string | null } | null>(null)
   // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다 (둘 중 하나만 열린다)
-  const [evidence, setEvidence] = useState<PanelEvidence | null>(null)
+  // 연 자리(owner: 단계 주소 + 고른 묶음)를 같이 들고, 자리가 바뀌면 판은 그 단계 기본(통지서 쪽)으로 보인다
+  const [evidenceAt, setEvidenceAt] = useState<{ data: PanelEvidence; owner: string } | null>(null)
+  const owner = `${sub}|${new URLSearchParams(location.search).get('unit') ?? ''}`
+  const evidence = evidenceAt && evidenceAt.owner === owner ? evidenceAt.data : null
   const [infoOpen, setInfoOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
 
@@ -59,7 +62,7 @@ export function CaseShell() {
     )
   const openSource: OpenSource = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
-    setEvidence(null)
+    setEvidenceAt(null)
     // scroll=false("자세히"로 줄을 펼칠 때)는 판을 새로 펴지 않는다: 열려 있을 때만 문서를 바꾸고 접힘은 그대로.
     // 쪽 링크·근거 링크를 직접 누를 때(scroll=true)만 편다
     if (scroll) {
@@ -69,14 +72,14 @@ export function CaseShell() {
   }
   // 법률 근거 열기: 근거 글(raw_text)을 판에 보인다
   const openEvidence: OpenEvidence = (src, checkedOn) => {
-    setEvidence({ kind: 'legal', source: src, checkedOn })
+    setEvidenceAt({ data: { kind: 'legal', source: src, checkedOn }, owner })
     setSrcOpen(true)
     scrollToPanel()
   }
 
   // 대비 줄·후보 근거 열기: 공통 근거 위치를 판에 보인다
   const openCite: OpenCite = (ref) => {
-    setEvidence({ kind: 'cite', ref })
+    setEvidenceAt({ data: { kind: 'cite', ref }, owner })
     setSrcOpen(true)
     scrollToPanel()
   }

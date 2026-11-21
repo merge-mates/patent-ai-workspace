@@ -23,12 +23,14 @@ import type { DirectionCandidate, DirectionCandidates, DirectionSelection } from
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle, LegalSource } from '../../types/generated/LegalEvidenceBundle'
 
-// 근거가 든 문서 종류 글자. 근거 위치(Evidence)에는 종류 칸이 없어 문서 번호 끝으로 읽는다 (못 읽으면 "근거")
-function documentKind(documentId: string): string {
+// 근거가 든 문서 이름: 같은 OA 대비표의 인용발명 이름(D1 등)과 문서 번호를 맞춘다. 통지서 문서면 "통지서".
+// 못 맞추면 명세서·청구항(문서 번호 끝 글자)이고, 그래도 모르면 "근거"
+function documentKind(documentId: string, names: Map<string, string>, noticeId: string | null): string {
+  if (noticeId !== null && documentId === noticeId) return '통지서'
+  const cite = names.get(documentId)
+  if (cite) return cite
   if (/_spec$/.test(documentId)) return '명세서'
   if (/_claims$/.test(documentId)) return '청구항'
-  const cite = /_D(\d+)$/.exec(documentId)
-  if (cite) return `인용발명 ${cite[1]}`
   return '근거'
 }
 
@@ -45,8 +47,18 @@ function legalMatch(e: Evidence1, bundles: LegalEvidenceBundle[]): { source: Leg
 }
 
 // 근거 N개: 줄마다 종류 라벨 · 링크 글 · (원문 글자를 못 받았으면) 확인되지 않음. 누르면 오른쪽 판에 연다
-function BasisLines({ c, legal }: { c: DirectionCandidate; legal: LegalEvidenceBundle[] }) {
-  const { openCite, openEvidence } = useContext(SourceContext)
+function BasisLines({
+  c,
+  legal,
+  names,
+  noticeId,
+}: {
+  c: DirectionCandidate
+  legal: LegalEvidenceBundle[]
+  names: Map<string, string>
+  noticeId: string | null
+}) {
+  const { openCite, openEvidence, openPage } = useContext(SourceContext)
   if (c.evidence.length === 0) return null
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -56,7 +68,7 @@ function BasisLines({ c, legal }: { c: DirectionCandidate; legal: LegalEvidenceB
       {c.evidence.map((e, i) => {
         const law = legalMatch(e, legal)
         const where = e.location ?? (e.page !== null ? `${e.page}쪽` : e.document_id)
-        const kind = law ? sourceKindLabel[law.source.source_kind] : documentKind(e.document_id)
+        const kind = law ? sourceKindLabel[law.source.source_kind] : documentKind(e.document_id, names, noticeId)
         return (
           <div
             key={`${e.document_id}-${e.location}-${i}`}
@@ -75,15 +87,16 @@ function BasisLines({ c, legal }: { c: DirectionCandidate; legal: LegalEvidenceB
             <Button
               type="link"
               style={{ padding: 0, height: 'auto', textAlign: 'left', whiteSpace: 'normal' }}
-              onClick={() =>
-                law
-                  ? openEvidence(law.source, law.checkedOn)
-                  : openCite({ title: `${kind} ${where}`, items: [e], status: c.status, note: null })
-              }
+              onClick={() => {
+                if (law) openEvidence(law.source, law.checkedOn)
+                // 통지서 근거는 받아 둔 통지서 원문을 그 쪽으로 연다
+                else if (e.document_id === noticeId) openPage(e.page, e.raw_text)
+                else openCite({ title: `${kind} ${where}`, items: [e], status: c.status, note: null })
+              }}
             >
               {e.raw_text ? `${e.raw_text} · ${where}` : where}
             </Button>
-            {e.raw_text === null && <StatusTag status="unverified" detail={false} />}
+            {e.raw_text === null && <span className="label2 t3">원문 글자 없음</span>}
           </div>
         )
       })}
@@ -151,7 +164,7 @@ const unitHead = (u: JudgmentUnit | undefined, unitId: string) =>
 // 4 대응 방향: 묶음마다 고른 후보(AI 기본값 또는 직접 고름)를 크게, 근거·칸을 줄로, 다른 후보로 바꾸기.
 // 최종 선택은 사람이 한다 (AI는 기본값만)
 export function DirectionsPage() {
-  const { units, directions, caseCheck } = useLoaderData() as DirectionsLoaderData
+  const { units, directions, comparisons, caseCheck } = useLoaderData() as DirectionsLoaderData
   const { oa, oaResult, legal } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
   const revalidator = useRevalidator()
@@ -163,6 +176,10 @@ export function DirectionsPage() {
   // 저장 중인 묶음들 (여러 묶음을 빨리 골라도 서로 덮지 않게 묶음마다 따로)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [checkOpen, setCheckOpen] = useState(false)
+  // 문서 번호 → 인용발명 이름 (대비표 줄의 근거와 citation 이름으로 맞춘다)
+  const citeNames = new Map<string, string>()
+  for (const t of comparisons)
+    for (const r of t.rows) for (const e of r.evidence) if (!citeNames.has(e.document_id)) citeNames.set(e.document_id, r.citation)
 
   // 사람이 고르면 서버에 저장한다 (저장한 선택은 1등과 같아도 "직접 고름")
   const choose = async (d: DirectionCandidates, candidateId: string) => {
@@ -209,10 +226,16 @@ export function DirectionsPage() {
                   d.unit_id,
                 )}
               </span>
-              {sel ? <OriginTag origin={sel.origin} /> : <HumanCheckTag>직접 판단 필요 · 초안 보류</HumanCheckTag>}
-              {/* 보정 제한: 최초/최후. 모르면 값 없이 상태만 (없음으로 읽히지 않게) */}
+              {sel ? (
+                <OriginTag origin={sel.origin} />
+              ) : d.candidates.length === 0 ? (
+                <StatusTag status={d.status} />
+              ) : (
+                <HumanCheckTag>직접 판단 필요 · 초안 보류</HumanCheckTag>
+              )}
+              {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만) */}
               <span className="label1 t3">
-                보정 제한: {d.amendment_limit.value ? amendmentLimitLabel[d.amendment_limit.value] : '확인되지 않음'}
+                보정 제한{d.amendment_limit.value ? `: ${amendmentLimitLabel[d.amendment_limit.value]}` : ''}
               </span>
               {/* 값이 있어도 확인되지 않았으면(애매 등) 상태를 같이 보인다 */}
               {d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
@@ -231,15 +254,26 @@ export function DirectionsPage() {
                     <StatusTag status={picked.status} />
                   </div>
                 )}
-                <BasisLines c={picked} legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)} />
+                <BasisLines
+                  c={picked}
+                  legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)}
+                  names={citeNames}
+                  noticeId={oa.document_id}
+                />
                 <Fields c={picked} />
               </>
-            ) : (
+            ) : d.candidates.length === 0 ? (
+              // 후보가 0개면 실패한 것이다 (이유는 머리의 상태 꼬리표). 확신이 낮아서라고 말하지 않는다
+              <Alert type="warning" showIcon message="후보를 만들지 못했어요. 이 묶음은 직접 대응해 주세요." />
+            ) : d.flags.includes('needs_human_judgment') && !d.candidates.some((c) => c.rank !== null) ? (
               <p className="body1 t2">
                 확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 묶음의 초안은 보류해요.
               </p>
+            ) : (
+              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 묶음의 초안은 보류해요.</p>
             )}
 
+            {d.candidates.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
               <span className="label1 t2">
                 {picked ? '다른 후보로 바꾸기' : '후보 고르기'} · 순위는 검토 순서 제안이고 등록을 보증하지 않아요
@@ -249,12 +283,19 @@ export function DirectionsPage() {
                 disabled={saving[d.unit_id] === true}
                 onChange={(e) => choose(d, e.target.value as string)}
                 options={d.candidates.map((c) => ({
-                  label: `${c.rank === null ? '' : `${rankText(c)} `}${c.name} (확신도 ${confidenceLabel[c.confidence]})`,
+                  label: (
+                    <span>
+                      {`${c.rank === null ? '' : `${rankText(c)} `}${c.name} (확신도 ${confidenceLabel[c.confidence]})`}{' '}
+                      {/* 순위 있는 후보와 섞여 있어도 확신이 낮은 후보는 직접 판단 필요 (ADR 0001) */}
+                      {c.confidence === 'low' && <HumanCheckTag>직접 판단 필요</HumanCheckTag>}
+                    </span>
+                  ),
                   value: c.candidate_id,
                 }))}
                 style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
               />
             </div>
+            )}
           </div>
         )
       })}
