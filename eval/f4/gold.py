@@ -51,6 +51,7 @@ class GoldClaimRow(BaseModel):
     inherited: bool  # 독립항 값을 물려받은 줄
     amend_kinds: list[AmendKind]  # ③ 보정 종류 (여럿 가능)
     added_from: list[str]  # ③ 더한 구성의 출처
+    merged_into: list[int] = []  # ③ 삭제 줄: 지운 구성을 옮겨 받은 청구항 (4절, 채점에는 안 씀)
     argued: bool  # ④ 의견서가 따로 논증한 줄인가
 
     @model_validator(mode="after")
