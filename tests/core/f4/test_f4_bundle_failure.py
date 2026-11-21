@@ -211,6 +211,8 @@ def test_반박만_하는_묶음이_있어도_보정_실패는_그_묶음_보류
 
 def test_F3가_상한으로_보류한_것은_F4_후보에서도_limit_reached로_남는다():
     data = json.loads((FIXTURES / "case_basic.json").read_text("utf-8"))
+    # 실제로 F3는 상한에 닿은 대비 묶음의 대비표를 남기지 않는다 (보류만 남김)
+    data["tables"] = [t for t in data["tables"] if t["unit_id"] != UNIT_INVENTIVE]
     data["held_tasks"] = [
         {"task": f"f3_compare:{UNIT_INVENTIVE}:limit_reached", "waiting_for": "원문 확인 필요"}
     ]

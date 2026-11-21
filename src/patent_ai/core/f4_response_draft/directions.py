@@ -144,14 +144,15 @@ def _status_of(
     f3: list, bundle: LegalEvidenceBundle, unit: JudgmentUnit, gaps: list[Status]
 ) -> Status:
     """후보 status: F3 결과·대비 못 한 것·법률 근거 묶음이 모두 확인됨이어야 확인됨."""
+    # F3가 호출 상한으로 못 한 것이 있으면 그 이유(limit_reached)를 잃지 않는다.
+    # F3는 상한에 닿은 묶음의 대비표를 남기지 않으므로 "F3 결과 없음"보다 먼저 본다
+    limited = next((g for g in gaps if g.reason == UnverifiedReason.LIMIT_REACHED), None)
+    if limited is not None:
+        return limited
     if not f3:
         # 기대는 F3 결과가 없으면 "영향 없음"이 아니라 확인되지 않음이다
         logger.warning("f4.direction %s: 이 묶음의 F3 결과가 없음 (input_unverified)", unit.unit_id)
         return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.INPUT_UNVERIFIED)
-    # F3가 호출 상한으로 못 한 것이 있으면 그 이유(limit_reached)를 잃지 않는다
-    limited = next((g for g in gaps if g.reason == UnverifiedReason.LIMIT_REACHED), None)
-    if limited is not None:
-        return limited
     return propagate([*(r.status for r in f3), *gaps, bundle.status])
 
 

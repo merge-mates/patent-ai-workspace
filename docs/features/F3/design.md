@@ -53,7 +53,7 @@ flowchart LR
    - 요약 (코드가 줄을 모음, 새 글을 만들지 않음): 진보성 = 어느 문헌에도 "개시됨"이 없는 구성요소(부모에서 온 것은 "(청구항 N에서 인용)") + 심사관 결합 논리 원문 + 효과 후보 빈 목록 (`:716-744`). 신규성 = 대표 청구항 줄로 세 값을 정하고 reason에 "AI 정리, 판정 아님" (`:755-790`). 모든 대비표에 "직접 검토 필요" (`:899-906`, 커밋 010bb1a).
 5. **명확성** (`f3/clarity.py`, 대비 방식과 따로): OA가 짚은 문구(F1 `clarity_terms`)의 청구항 위치는 코드가 찾는다. 같은 문구가 여러 번이면 몇 곳인지 적는다. 정의 후보는 그 사건 출원서만 메모리 BM25 상위 5 (청구범위·요약서·도면 머리 줄 구간은 뺌, `config/f3.yaml:67-78`). 모델 1회가 문구마다 문제 유형 4개 중 하나 + 정의 근거. 근거는 명세서 조각과 대조 (`f3/clarity.py:1-8`, `:360-396`).
 6. **모으기** (`f3/run.py:135-162`): 결과 status = 단위·대비표·명확성 검토·보류의 가장 나쁜 값. 보류가 있으면(본문 기다림 `body_missing`, 그 밖 `not_extracted`) 확인됨으로 모으지 않는다 (커밋 010bb1a). 결과가 없는 단위도 `not_extracted`로 센다.
-- 실패하면: 단계 예외(형식 검사 두 번 실패, 호출 상한 `ModelCallLimitExceeded`, DB 연결 오류)는 삼키지 않고 올린다 → 지휘가 실행을 failed로 남긴다 (`f3/run.py:6`). 이것이 이슈 #166·PRD F5 3번과 어떻게 맞는지는 10절 질문.
+- 실패하면 (정함 #211, #166 (가)): 판단 단위(묶음) 하나의 모델 호출 실패는 그 묶음만 보류(`f3_compare:<unit_id>:call_failed`, `f3_clarity:<unit_id>:call_failed`) + 확인되지 않음 + 이유, 같은 묶음에서 이미 나온 본문 미확보 보류는 남긴다. 대비와 명확성을 합쳐 모델을 부른 모든 묶음이 실패하면 마지막 원래 예외를 올리고 지휘가 실행을 failed로 남긴다 (`core/bundle_errors.py`). 호출 상한에 닿은 묶음은 `…:limit_reached` 보류 + `unverified(limit_reached)`. 청구항 나누기(`_split_claims`) 상한과 DB 연결 오류는 그대로 올린다.
 - 비면: 판단 단위 0개, 대비 줄 0개, 명세서 조각 0개는 경고를 남기고 보류 또는 확인되지 않음 (성공으로 숨기지 않음).
 - 느리면: 지금 순서대로 1건씩 돈다 (tune 9건 합 1,386초, 사건 4개 병렬, [`experiments/m2-f3-skeleton/card.md`](../../../experiments/m2-f3-skeleton/card.md)). 시간 상한 키는 없다 (호출 수 상한만).
 
@@ -157,7 +157,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 - 데이터: 인용문헌 색인 `cite-idx-v2` (tune 8건 인용문헌 16개 [`experiments/m2-i2-cite-search-hybrid-rrf/card.md:74`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md), 미국 문헌 0건 [cite-search requirements](../cite-search/requirements.md) 46줄), OA 당시 청구항(청구항 이력으로 복원), 최초 명세서(출원서. 출원서가 없는 사건은 명세서 없음 → 명확성 정의는 본문 미확보).
 - 예측 만들기: tune 사건마다 `run_f3`를 돌려 `F3Result` 폴더를 만드는 명령은 지금 git 밖 스크립트뿐이다. 질문: 예측 만드는 스크립트를 `scripts/`(또는 `eval/f3/`)로 들일지, 누가 (새 질문)
 - 채점 스크립트: `uv run python eval/run_eval.py --config experiments/<실험>/config.yaml --predictions <F3 결과 폴더>` (`feature: f3`, 색인 DB 또는 `--chunks`).
-- 실행 상한(비용·시간): `config/f3.yaml`의 `split_elements.max_model_calls`, `compare.max_model_calls`, `clarity.max_model_calls`, `embed.max_model_calls`, 단계마다 `max_retries`. 시간·비용 상한 키는 없다. 상한에 닿으면 지금은 예외다 (10절 질문).
+- 실행 상한(비용·시간): `config/f3.yaml`의 `split_elements.max_model_calls`, `compare.max_model_calls`, `clarity.max_model_calls`, `embed.max_model_calls`, 단계마다 `max_retries`. 시간·비용 상한 키는 없다. 대비·명확성 상한에 닿으면 그 묶음부터 `limit_reached` 보류, 청구항 나누기 상한은 예외 (#211).
 - 결과에 남길 것: 모델 이름·effort·프롬프트 판·설정 파일 판은 호출 기록과 `scores.json`(`commit`, `index_version`, `impl`, `goldset_version`, `gold_sha256`). 1회 실행 비용 약 $0.28 ([가정] 단가, 모델 호출 190 + 질의 임베딩 176, [`experiments/m2-f3-skeleton/card.md`](../../../experiments/m2-f3-skeleton/card.md)).
 - 원인 모름 (기준선 카드 `남은 것`): selected_recall 0.186이 search_recall 0.584의 약 1/3이다 (검색은 덮었는데 모델이 근거로 고르지 않음). 정답 줄인데 F3가 찾지 않은 줄 6. 같은 설정 반복 실행 흔들림은 안 쟀다. 부모 구성요소 넣기(911410e·c093221) 뒤 판으로는 다시 재지 않았다.
 
@@ -220,8 +220,8 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 
 ## 10. 열린 질문 (design)
 1. 질문: 11/21 결정(OA 흐름에서 F2는 지휘가 부름)과 [product.md](../../product.md) 4절 4단계·5절 F2 8번은 이미 같다(순서 F3 → F2 → F4). 어긋나는 곳은 넷: product.md 3.1 표 F3 줄 "OA 쟁점의 법률 근거 찾기(O5, F2 호출)", [data-model.md](../../data-model.md) 4절 ② 줄 "판단 단위 나누기 도구·지휘 → F3·F4"(실제는 `run_f3` 안 `build_units`가 만듦)·④ 줄 "F2 → F3·F4"(F3는 ④를 받지 않음), F2 design 51·66줄 "F3·F4가 받음"(은진 님이 이슈 #29 PR에서 고침). product.md·data-model.md를 고치는 PR을 낼지
-2. 질문: 이슈 #166 합격 기준 "단계 하나가 실패하면 실행이 failed로 끝나고 이유가 남는다"와 PRD F5 3번 "빠진 자료가 있어도 할 수 있는 작업은 끝까지"가 부딪힌다. 지금 F3는 단계 예외를 삼키지 않아 F3 안 판단 단위 하나의 모델 실패도 실행 전체 failed가 된다. 경계를 "단계(F3 전체)가 못 돌면 failed, 단위·청구항 하나는 그것만 확인되지 않음"으로 둘지 (이슈 #166에서 정하는 중)
-3. 질문: 호출 상한(`max_model_calls`)에 닿으면 지금은 예외(`ModelCallLimitExceeded`)로 실행이 끝난다. ADR 0003 "상한에 닿으면 확인되지 않음과 찾아본 범위를 남기고 끝낸다"와 이유 코드 `limit_reached`에 맞춰, 남은 단위를 `unverified(limit_reached)`로 두고 끝낼지 (2번과 같이)
+2. 정함 (#211): 단계(F3 전체)가 못 돌면 failed, 판단 단위 하나는 그것만 확인되지 않음 + 보류 (#166 (가), PRD F5 3번).
+3. 정함 (#211): 대비·명확성 호출 상한에 닿은 단위는 `unverified(limit_reached)` 보류로 두고 끝까지 간다 (ADR 0003 110줄). 남은 것: 찾아본 범위(`searched_scope`) 채우기, 청구항 나누기 상한, 실행 state의 `limit_reached` (서버·DB, #57·#206).
 4. 질문: ADR 0003 "판단 단위 나누기는 F1 결과와 청구항 판(독립/종속, 인용하는 앞 청구항)만 보고 규칙대로, LLM은 OA 읽기와 더 나누기에만"과 달리, 인용 관계를 F3 나누기 모델이 읽고 코드가 원문 대조한다. 이대로 두고 ADR 0003 문장을 고칠지, 청구항 판 쪽에서 인용 관계를 받을지 (새 질문)
 5. 질문: 공통 근거 검토 에이전트(ADR 0003)를 F3 대비 판정("개시됨")에도 붙일지, M3까지 코드 출처 대조만 둘지
 6. 질문: 하이브리드·벡터는 범위 안 조각을 다 순위 매겨 "조회 범위 내 없음"이 검색에서 거의 안 나온다. 지금처럼 모델이 근거를 못 고르면 조회 범위 내 없음으로 둘지, 점수 문턱도 같이 둘지
