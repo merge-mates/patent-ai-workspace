@@ -13,6 +13,8 @@ export interface RunSnapshot {
   error: string | null
   // 실패한 실행의 이유 (GET /runs/{id}의 error). latest_run에는 없어서 failed를 처음 보면 한 번 받아 온다
   reason: string | null
+  // 사람 기다림의 이유 (GET /runs/{id}의 waiting_for). latest_run에는 없어서 waiting_for_human을 처음 보면 한 번 받아 온다
+  waitingFor: string | null
 }
 
 // 더 이상 바뀌지 않는 상태 (waiting_for_human은 사람이 고를 때까지 멈춘 것으로 본다)
@@ -46,7 +48,7 @@ export function seedRun(run: LatestRun) {
   const e = entries.get(run.run_id)
   if (!e) {
     entries.set(run.run_id, {
-      snap: { run, error: null, reason: null },
+      snap: { run, error: null, reason: null, waitingFor: null },
       listeners: new Set(),
       timer: null,
       reasonAsked: false,
@@ -55,19 +57,28 @@ export function seedRun(run: LatestRun) {
     return
   }
   if (!sameRun(e.snap.run, run) || e.snap.error !== null) {
+    const stateChanged = e.snap.run.state !== run.state
     // 실행 상태가 달라지면 이전 실패 이유는 버린다 (다시 돌린 경우)
-    e.snap = { run, error: null, reason: run.state === 'failed' ? e.snap.reason : null }
-    if (run.state !== 'failed') e.reasonAsked = false
+    e.snap = {
+      run,
+      error: null,
+      reason: run.state === 'failed' ? e.snap.reason : null,
+      waitingFor: run.state === 'waiting_for_human' ? e.snap.waitingFor : null,
+    }
+    // 상태가 바뀌면(예: 사람 기다림 → 실패) 이유를 다시 받는다
+    if (stateChanged || !needsDetail(run.state)) e.reasonAsked = false
     notify(e)
   }
   askReason(run.run_id)
   schedule(run.run_id)
 }
 
-// failed인 실행은 latest_run에 이유가 없어서 GET /runs/{id}를 한 번 불러 받는다
+// failed·waiting_for_human인 실행은 latest_run에 이유(error·waiting_for)가 없어서 GET /runs/{id}를 한 번 불러 받는다
+// (둘 다 끝난 상태로 보아 폴링하지 않으니, 여기서 안 받으면 이유를 영영 모른다)
+const needsDetail = (state: RunState) => state === 'failed' || state === 'waiting_for_human'
 function askReason(runId: string) {
   const e = entries.get(runId)
-  if (!e || e.snap.run.state !== 'failed' || e.reasonAsked) return
+  if (!e || !needsDetail(e.snap.run.state) || e.reasonAsked) return
   e.reasonAsked = true
   void refresh(runId, false)
 }
@@ -125,8 +136,9 @@ async function refresh(runId: string, force: boolean) {
     const stepChanged = run.current_step !== prev.current_step
     const justEnded = isRunEnded(run.state) && !isRunEnded(prev.state)
     const reason = next.error?.message ?? null
-    if (!sameRun(prev, run) || e.snap.error !== null || e.snap.reason !== reason) {
-      e.snap = { run, error: null, reason }
+    const waitingFor = next.waiting_for ?? null
+    if (!sameRun(prev, run) || e.snap.error !== null || e.snap.reason !== reason || e.snap.waitingFor !== waitingFor) {
+      e.snap = { run, error: null, reason, waitingFor }
       notify(e)
     }
     if (force || stepChanged || justEnded) revalidate()
