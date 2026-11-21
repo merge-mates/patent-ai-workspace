@@ -126,6 +126,8 @@ def write(tmp_path, rows, raw=None):
 
 
 def load_one(tmp_path, row):
+    if row["kind"] == "injected" and row.get("base_case_id") == "r1":
+        return load_f2_cases(write(tmp_path, [real("r1"), row]), 2)[1]  # 바탕 사례를 같이 둠
     return load_f2_cases(write(tmp_path, [row]), 2)[0]
 
 
@@ -336,7 +338,7 @@ def test_base_case_id는_null이어도_된다(tmp_path):
 
 # ---- 세트 크기 ----
 def full_set(per_error=4, reals=1):
-    rows = [real(f"r{i}") for i in range(reals)]
+    rows = [real(f"r{i}") for i in range(1, reals + 1)]  # r1은 주입 사례의 바탕
     for e in ERRORS:
         rows += [injected(e, f"{e}-{i}") for i in range(per_error)]
     return rows
@@ -361,7 +363,7 @@ def test_합계가_모자라면_멈춘다(tmp_path):
 
 
 def test_한_종류가_비면_멈춘다(tmp_path):
-    rows = [real(f"r{i}") for i in range(10)]
+    rows = [real(f"r{i}") for i in range(1, 11)]
     for e in ERRORS[:4]:
         rows += [injected(e, f"{e}-{i}") for i in range(4)]
     cases = load_f2_cases(write(tmp_path, rows), 2)  # 26개지만 old_deadline 0
@@ -388,6 +390,51 @@ def test_CLI_세트가_모자라면_1(tmp_path):
 
 def test_CLI_파일이_없으면_1(tmp_path):
     assert main(["--check", str(tmp_path / "없음.jsonl"), "--version", "2"]) == 1
+
+
+# ---- 오류 이유 글 ----
+def test_value_error는_이유_문구까지_메시지에_싣는다(tmp_path):
+    row = injected("nonexistent_source", target_claim=7)
+    with pytest.raises(EvalError, match="target_claim이 bundle 주장에 없음"):
+        load_one(tmp_path, row)
+
+
+def test_fix_규칙_위반은_이유를_말한다(tmp_path):
+    with pytest.raises(EvalError, match="fix가 null"):
+        load_one(tmp_path, injected("claim_text_mismatch", fix={"identifier": "가짜 식별자"}))
+
+
+# ---- 줄 사이 검사 (base_case_id) ----
+def test_base_case_id가_파일_안_real을_가리키면_통과(tmp_path):
+    rows = [real("r1"), injected("nonexistent_source")]  # base_case_id = r1, oa_id 같음
+    assert len(load_f2_cases(write(tmp_path, rows), 2)) == 2
+
+
+def test_base_case_id가_없는_사례를_가리키면_멈춘다(tmp_path):
+    rows = [real("r1"), injected("nonexistent_source", base_case_id="없는사례")]
+    with pytest.raises(EvalError, match="base_case_id"):
+        load_f2_cases(write(tmp_path, rows), 2)
+
+
+def test_base_case_id가_injected를_가리키면_멈춘다(tmp_path):
+    rows = [
+        real("r1"),
+        injected("nonexistent_source", "i1"),
+        injected("claim_text_mismatch", "i2", base_case_id="i1"),
+    ]
+    with pytest.raises(EvalError, match="base_case_id"):
+        load_f2_cases(write(tmp_path, rows), 2)
+
+
+def test_bundle_oa_id가_바탕_사례와_다르면_멈춘다(tmp_path):
+    rows = [real("r1", oa_id="9-9-9999-000777"), injected("nonexistent_source")]
+    with pytest.raises(EvalError, match="oa_id"):
+        load_f2_cases(write(tmp_path, rows), 2)
+
+
+def test_바탕_사례가_뒷줄에_있어도_통과(tmp_path):
+    rows = [injected("nonexistent_source"), real("r1")]
+    assert len(load_f2_cases(write(tmp_path, rows), 2)) == 2
 
 
 def test_입력_dict는_검사가_바꾸지_않는다(tmp_path):

@@ -183,7 +183,12 @@ def _lines(e: ValidationError) -> list[str]:
     out = []
     for err in e.errors():
         path = ".".join(str(x) for x in err["loc"][1:])  # 맨 앞은 감싼 칸 이름
-        out.append(f"{path or '(줄)'}: {err['type']}")
+        line = f"{path or '(줄)'}: {err['type']}"
+        # value_error의 msg는 검사 코드(이 파일·core 스키마)에 박힌 고정 문구라 같이 싣는다.
+        # 그 밖의 오류는 msg에 입력 값이 낄 수 있어 type만 남긴다.
+        if err["type"] == "value_error":
+            line += " (" + err["msg"].removeprefix("Value error, ") + ")"
+        out.append(line)
     return out
 
 
@@ -217,7 +222,22 @@ def load_f2_cases(path: str | Path, expected_version: int) -> list[RealCase | In
         cases.append(case)
     if not cases:
         raise NoGold("F2 정답 파일이 0줄이다")
+    _바탕_사례_검사(cases)
     return cases
+
+
+def _바탕_사례_검사(cases: list[RealCase | InjectedCase]) -> None:
+    """줄 사이 검사: 주입 사례의 base_case_id는 같은 파일의 real 사례, oa_id도 같아야 한다."""
+    reals = {c.case_id: c for c in cases if isinstance(c, RealCase)}
+    for n, c in enumerate(cases, start=1):
+        if not isinstance(c, InjectedCase) or c.base_case_id is None:
+            continue
+        base = reals.get(c.base_case_id)
+        where = f"정답 사례 {n}번째"  # 빈 줄을 뺀 순번
+        if base is None:
+            raise EvalError(f"{where}: base_case_id가 같은 파일의 real 사례가 아니다")
+        if c.bundle.oa_id is not None and c.bundle.oa_id != base.oa_id:
+            raise EvalError(f"{where}: bundle.oa_id가 바탕 사례의 oa_id와 다르다")
 
 
 def count_cases(cases: list[RealCase | InjectedCase]) -> dict[str, int]:
