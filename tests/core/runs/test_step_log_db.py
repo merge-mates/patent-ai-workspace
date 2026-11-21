@@ -131,3 +131,79 @@ def test_call_recorder_없는_run_id면_RunLogWriteFailed이고_records에_안_�
     with pytest.raises(RunLogWriteFailed):
         rec.record(_call("r_없음", "ok"))
     assert rec.records == []
+
+
+# --- 조립: 서버 실행 한 번이 지휘 단계와 모델 호출을 같이 남긴다 ------------------------------
+
+
+class _Saved:
+    """결과 받는 곳 (이 테스트는 agent_steps만 본다)."""
+
+    def save_oa_result(self, oa_id, run_id, result):
+        pass
+
+    def save_step_result(self, oa_id, run_id, result):
+        pass
+
+
+def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출을_같이_남긴다(
+    factory,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+):
+    import threading
+
+    from patent_ai.core.llm.limits import CallBudget, RunContext
+    from patent_ai.core.llm.transport import FakeTransport
+    from patent_ai.core.runs.cancel import CancelRegistry
+    from patent_ai.core.runs.run_case_executor import RunCaseExecutor
+    from patent_ai.core.runs.state import RunState
+    from patent_ai.core.runs.step_log_pg import PostgresCallRecorder
+    from tests.core.agents.test_fixed_order_f3_f4 import _responses
+    from tests.core.run_case_fakes import CHECKED_ON, real_config, wire
+    from tests.core.runs.test_run_case_executor import _Cases, _Inputs
+
+    wire(monkeypatch)
+    oa_id, rid = _new_run(factory, "db_steplog_" + "c" * 20)
+    store = PostgresRunStatusStore(factory)
+    # 서버(deps.py)와 같이: 단계는 PostgresStepRecorder, 모델 호출은 PostgresCallRecorder
+    RunCaseExecutor(
+        store=store,
+        registry=CancelRegistry(),
+        oa_results=_Saved(),
+        step_results=_Saved(),
+        inputs=_Inputs(tmp_path),
+        cases=_Cases(),
+        config_path=real_config(tmp_path),
+        make_ctx=lambda r: RunContext(
+            run_id=r,
+            budget=CallBudget(),
+            recorder=PostgresCallRecorder(factory),
+            transport=FakeTransport(_responses()),
+        ),
+        today=lambda: CHECKED_ON,
+        lock=threading.Lock(),
+        step_log=PostgresStepRecorder(factory),
+    ).execute(rid, oa_id)
+    assert store.get_status(rid).state == RunState.SUCCEEDED
+
+    # 실행이 끝난 뒤 새 세션에서: 어느 단계가 돌았고 몇 번 불렀는지 보인다
+    with factory() as other:
+        rows = list(
+            other.scalars(select(AgentStep).where(AgentStep.run_id == rid).order_by(AgentStep.id))
+        )
+    steps = [r for r in rows if r.step_kind != "model_call"]
+    calls = [r for r in rows if r.step_kind == "model_call"]
+    assert ("read_oa", "ok") in {(r.tool_name, r.outcome) for r in steps}
+    assert ("run_f2", "skipped") in {(r.tool_name, r.outcome) for r in steps}
+    assert calls, "모델 호출 줄이 없다"
+    # 단계 기록의 호출 수(model_call_count)가 셈할 수 있게 채워지고, 합이 전송 줄 수와 같다
+    sent = {"ok", "invalid_output", "output_truncated", "transport_error"}
+    counted = [
+        r.model_call_count for r in steps if r.outcome == "ok" and r.step_kind == "code_tool"
+    ]
+    assert all(c is not None for c in counted)
+    assert sum(counted) == sum(1 for c in calls if c.outcome in sent)
+    assert store.skipped_steps(rid) == [
+        SkippedStep("run_f2", next(r.reason for r in steps if r.outcome == "skipped"))
+    ]
