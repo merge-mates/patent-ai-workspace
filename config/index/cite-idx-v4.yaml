@@ -1,0 +1,12 @@
+# 인용문헌 색인 cite-idx-v4 설정 (#178 T3). 청킹 규칙은 v1과 같고(config/cite_search.yaml),
+# 문헌만 늘렸다: tune 30건 인용 한국 공보 47 + 논문 1(학회판, git 밖 file_doc_ids.yaml)
+# + C안 노이즈 공보 115 (data/raw/cited_v2/noise_c/). 미국 공보 7개는 청킹이 아직 없어 빠진다 (#25).
+# cite-idx-v3는 11/22 논문 표 없이 만들어 공유 DB에 들어간 판이다 (논문 1건 빠짐). 쓰지 않는다.
+# 설정을 바꾸면 새 판(v5)으로, 이 파일은 고치지 않는다.
+# 조각 만들기: uv run python -m patent_ai.retrieval.cite_index --config config/cite_search.yaml
+#   --no-db --jsonl data/processed/cite_search/cite-idx-v3-base.jsonl
+#   (파일 이름은 v3-base지만 논문을 넣어 다시 만든 것. 안의 판 이름은 v1, 아래 embed가 v4로 바꿈)
+index_version: cite-idx-v4
+from: data/processed/cite_search/cite-idx-v3-base.jsonl
+embed_step: cite_search.embed
+out: data/processed/cite_search/cite-idx-v4.jsonl

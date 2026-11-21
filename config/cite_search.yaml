@@ -51,5 +51,5 @@ embed:
   model: text-embedding-3-small
   batch_size: 100                 # 묶음 하나 = 호출 1번
   price_per_mtok_input: 0.02      # 달러 / 입력 토큰 100만 [가정]
-  max_model_calls: 200            # v3(#178) 조각 묶음 167번 + 질의 묶음에 넉넉히 (v2는 약 20번)
+  max_model_calls: 200            # v4(#178) 조각 묶음 167번 + 질의 묶음에 넉넉히 (v2는 약 20번)
   max_retries: 3
