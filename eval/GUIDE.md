@@ -9,6 +9,7 @@
   - 받은 사건 묶음 전체(위 서류, 이력 전체 판)는 정답 쪽 `data/goldsets/<세트>/case_full/<출원번호>/`에 그대로 둔다. F4 정답을 뽑는 재료도 여기서 읽는다.
   - AI 입력은 스크립트가 OA 시점까지 잘라 `data/processed/cases/<출원번호>/<발송번호>/`에 만든다 (#148, `scripts/split_cases_at_oa.py`). 청구항이력은 OA 앞 판만 남는다.
   - 검색 정답 변환(`eval/retrieval/cite_gold.yaml`의 `cases_root`)도 이 입력 폴더에서 질의를 만든다 (#159).
+  - report 입력은 마일스톤 끝에 은진이 터미널에서 같은 스크립트에 `--allow-report`를 붙여 `data/processed/report/cases/<출원번호>/<발송번호>/`에 만든다. 출력도 report 경로여야 돌고, Claude는 이 폴더를 열지 않는다 (#159).
 
 ```
 data/goldsets/
