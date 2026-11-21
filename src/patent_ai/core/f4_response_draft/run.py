@@ -116,6 +116,9 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
             f"보류 {len(held)}묶음, 누락 쌍 {len(missing)}, "
             f"누락 검사 못 한 거절이유 {len(unchecked)}는 따로"
         )
+    if unsupported:
+        # 지원 안 하는 거절이유는 AI가 다루지 않았다: "모두 확인됨"으로 읽히지 않게 글로 드러낸다
+        notes.append(f"AI가 다루지 않은 거절이유 {len(unsupported)}개(직접 대응 필요)")
     overlaps = amendment.overlaps
     if overlaps:
         # 겹침은 Drafts.flags로는 구분이 안 되므로(늘 붙어 있음) 글로 드러낸다

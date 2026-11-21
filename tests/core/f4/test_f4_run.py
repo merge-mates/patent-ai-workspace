@@ -289,8 +289,12 @@ def test_지원_안_하는_거절이유는_번호를_남기고_status는_나빠�
     out, _ = _run(_with_unsupported(_clean_case()))
     assert out.unsupported_rejections == [3]
     assert out.flags == [Flag.NEEDS_HUMAN_REVIEW]  # 지원 안 하는 거절이유 때문에 새로 붙음
-    assert out.status == plain.status  # 지원 안 하는 거절이유 때문에 달라지지 않음
+    assert out.status.value == plain.status.value  # 값은 달라지지 않음 (글만 달라진다)
     assert out.uncovered == []  # 지원 안 하는 거절이유의 청구항은 누락으로 세지 않는다
+    # status 값은 같아도 확인 글은 "모두 확인됨"이 아니고, 다루지 않은 거절이유가 글로 드러난다
+    assert plain.status.checked == ALL_F4_CHECKED
+    assert out.status.checked != ALL_F4_CHECKED
+    assert "AI가 다루지 않은 거절이유 1개(직접 대응 필요)" in out.status.checked
 
 
 # ---- 확신 낮음 ----
