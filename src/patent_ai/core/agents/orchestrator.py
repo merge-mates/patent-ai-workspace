@@ -204,6 +204,8 @@ def run_case(
         counted = tool.kind == "code_tool"
         return {
             "results": {**state["results"], name: out.result},
+            # 전에 넘겼던 단계가 이번에 돌았으면 넘김 목록에서 뺀다 (단계 기록은 그대로)
+            "skipped": {k: v for k, v in state["skipped"].items() if k != name},
             "steps": state["steps"] + (1 if counted else 0),
         }
 

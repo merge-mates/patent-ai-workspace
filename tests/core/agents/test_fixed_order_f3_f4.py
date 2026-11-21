@@ -301,3 +301,18 @@ def test_agent_모드에서도_지휘가_F3_F4를_골라_부를_수_있다(tmp_p
     assert out.state == "succeeded"
     assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f4"]
     assert out.skipped == {}
+
+
+def test_agent_모드에서_넘겼던_단계가_나중에_돌면_넘김_목록에서_빠진다(tmp_path, wired):
+    def pick(name):
+        return _text({"next_tool": name, "reason": f"{name} 차례"})
+
+    # 처음 run_f4는 F3 결과가 없어 넘겨지고, F3를 돌린 뒤 다시 골라 성공한다
+    order = ("read_oa", "run_f4", "run_f3", "run_f4", "stop")
+    responses = _responses()
+    responses["agents.orchestrator"] = [pick(n) for n in order]
+    out, steps = _go(tmp_path, responses, plan="agent")
+    assert out.state == "succeeded"
+    assert "run_f4" in out.results and "run_f4" not in out.skipped
+    # 단계 기록(이력)에는 넘겼던 줄이 그대로 남는다
+    assert any(r.tool_name == "run_f4" and r.reason.startswith("넘김:") for r in steps.records)
