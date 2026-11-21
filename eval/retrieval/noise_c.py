@@ -26,7 +26,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
@@ -49,6 +49,7 @@ class Hit:
     doc_id: str
     app_no: str
     date: date
+    text: str = field(default="", compare=False)  # 명칭 + 요약 (낱말 겹침 줄 세우기용)
 
 
 def _text(el: ET.Element, tag: str) -> str:
@@ -79,26 +80,44 @@ def parse_search_xml(body: str) -> list[Hit]:
         app = _text(it, "applicationNumber")
         open_no, open_d = _text(it, "openNumber"), _text(it, "openDate")
         reg_no, reg_d = _text(it, "registerNumber"), _text(it, "registerDate")
+        text = " ".join(t for t in (_text(it, "inventionTitle"), _text(it, "astrtCont")) if t)
         if open_no and open_d:
-            hits.append(Hit(doc_id=f"KR{open_no[2:]}A", app_no=app, date=_ymd(open_d)))
+            hits.append(Hit(f"KR{open_no[2:]}A", app, _ymd(open_d), text))
         elif reg_no and reg_d:
-            hits.append(Hit(doc_id=f"KR{reg_no[:9]}B1", app_no=app, date=_ymd(reg_d)))
+            hits.append(Hit(f"KR{reg_no[:9]}B1", app, _ymd(reg_d), text))
         # 공개도 등록도 없으면 날짜를 몰라 우선일 조건을 못 본다: 넣지 않는다
     return hits
 
 
 def pick_candidates(
-    hits: list[Hit], oa: PoolOa, known_apps: set[str], known_doc_ids: set[str], n: int = PER_OA
+    hits: list[Hit],
+    oa: PoolOa,
+    known_apps: set[str],
+    known_doc_ids: set[str],
+    n: int = PER_OA,
+    words: list[str] | None = None,
 ) -> list[Hit]:
-    """넣는 조건을 지난 것을 응답 순서대로 n건. 같은 특허는 한 번만 넣는다."""
+    """넣는 조건을 지난 것 중 n건. 같은 특허는 한 번만 넣는다.
+
+    words가 있으면 명칭·요약에 질의 낱말이 많이 나온 순으로 고른다 (같으면 응답 순서).
+    11/21 첫 실호출에서 응답 순서는 최근 순에 가까워 '비슷한 낱말' 순위로 쓸 수 없었다.
+    """
+    ok = [
+        h
+        for h in hits
+        if h.doc_id not in known_doc_ids
+        and h.app_no != oa.app_no
+        and h.app_no not in known_apps
+        and h.date < oa.priority_date  # 당일 공개도 뺀다 (noise_scope와 같은 규칙)
+    ]
+    if words:
+        ok.sort(key=lambda h: -sum(h.text.count(w) for w in words))  # 안정 정렬: 같으면 응답 순서
     out: list[Hit] = []
-    seen_apps = set(known_apps)
-    for h in hits:
+    seen_apps: set[str] = set()
+    for h in ok:
         if len(out) >= n:
             break
-        if h.doc_id in known_doc_ids or h.app_no == oa.app_no or h.app_no in seen_apps:
-            continue
-        if h.date >= oa.priority_date:  # 당일 공개도 뺀다 (noise_scope와 같은 규칙)
+        if h.app_no in seen_apps:
             continue
         out.append(h)
         seen_apps.add(h.app_no)
@@ -231,8 +250,11 @@ def load_queries(path: Path) -> dict[str, CQuery]:
     return out
 
 
-def add_c_docs(table: PoolTable, responses: Path, oa_nos: list[str]) -> tuple[PoolTable, dict]:
+def add_c_docs(
+    table: PoolTable, responses: Path, queries: dict[str, CQuery]
+) -> tuple[PoolTable, dict]:
     """풀 표에 OA마다 C안 문헌을 더한 새 표와 건수 보고."""
+    oa_nos = sorted(queries)
     missing = [o for o in oa_nos if o not in table.oas]
     if missing:
         raise RetrievalEvalError(f"풀 표 oas에 발송번호가 없다: {', '.join(missing)}")
@@ -244,7 +266,9 @@ def add_c_docs(table: PoolTable, responses: Path, oa_nos: list[str]) -> tuple[Po
         if not f.is_file():
             raise RetrievalEvalError(f"응답 파일이 없다 (먼저 받기 스크립트): {oa_no}")
         hits = parse_search_xml(f.read_text(encoding="utf-8"))
-        picked = pick_candidates(hits, table.oas[oa_no], known_apps, set(docs))
+        picked = pick_candidates(
+            hits, table.oas[oa_no], known_apps, set(docs), words=queries[oa_no].words
+        )
         if len(picked) < PER_OA:
             # 실패는 아니지만 줄마다 노이즈 수가 달라진다: 알린다
             log.warning("C안 후보가 %d건뿐인 OA: %s (응답 %d건)", len(picked), oa_no, len(hits))
@@ -295,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"질의 표 초안 저장: {len(draft)}개 OA (낱말·IPC를 사람이 확인)", file=sys.stderr)
             return 0
         queries = load_queries(q_p)
-        new, rep = add_c_docs(table, Path(args.responses), sorted(queries))
+        new, rep = add_c_docs(table, Path(args.responses), queries)
         out_p.parent.mkdir(parents=True, exist_ok=True)
         body = new.model_dump(mode="json")
         for d in body["docs"].values():

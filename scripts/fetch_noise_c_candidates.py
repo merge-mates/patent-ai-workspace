@@ -6,14 +6,12 @@
 - 입력: 질의 표 <goldsets_root>/tune/retrieval/cite_c_queries.yaml {발송번호: {ipc, words}}
   (초안: `uv run python -m eval.retrieval.noise_c --draft-queries --ipc-csv <사건 목록 CSV>`)
 - 호출: OA마다 1번. 같은 IPC + 청구항 낱말로 공개·등록공보를 찾는다 (특허만, 실용신안 뺌).
-  우선일·같은 특허 거르기는 받은 뒤 eval/retrieval/noise_c.py가 한다. 넉넉히 받으려고 --rows건.
+  우선일·같은 특허 거르기와 낱말 겹침 줄 세우기는 받은 뒤 eval/retrieval/noise_c.py가 한다.
 - 저장: work/kipris_c/<발송번호>.xml (git 밖, 응답 그대로)
 - 키: .env의 KIPRIS_PLUS_API_KEY (Open API 무료 옵션, 월 1,000건. 30 OA면 30건)
 
-확인 안 된 것: 오퍼레이션(getAdvancedSearch)과 칸 이름(ipcNumber·claimScope)·낱말 잇는 꼴은
-KIPRIS Plus 안내 화면 기준이고 이 저장소에서 아직 실호출로 확인하지 않았다
-(#54 댓글엔 getPubFullTextInfoSearch만). 처음에는 `--only <발송번호> --dry-run`으로 칸을 보고,
-`--only <발송번호>` 한 건으로 응답을 확인한다.
+11/21 실호출 1건으로 확인: getAdvancedSearch 응답 00, ipcNumber로 걸러짐(30건 모두 그 IPC),
+claimScope를 '+'(OR)로 이음. 응답 순서는 검색 순위가 아니라 최근 순에 가까웠다.
 
 실행: uv run python scripts/fetch_noise_c_candidates.py [--only <발송번호>] [--dry-run]
 """
@@ -50,7 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--queries", default="data/goldsets/tune/retrieval/cite_c_queries.yaml")
     ap.add_argument("--out", default="work/kipris_c")
     ap.add_argument("--only", help="이 발송번호 하나만")
-    ap.add_argument("--rows", type=int, default=30)
+    # 11/21 첫 실호출: 30건 중 우선일 전은 8건뿐(최근 순에 가까움). 넉넉히 받는다
+    ap.add_argument("--rows", type=int, default=100)
     # 낱말 잇기: KIPRIS 검색식에서 '+'는 OR, '*'는 AND (안내 화면 기준, 실호출로 확인 전)
     ap.add_argument("--join", default="+")
     ap.add_argument("--dry-run", action="store_true", help="부르지 않고 칸만 보인다")

@@ -205,3 +205,24 @@ def test_질의_표_초안은_컴퓨터_비전_IPC를_먼저_쓰고_낱말을_�
 def test_어디에나_나오는_말과_꾸밈말은_낱말에서_뺀다():
     claim = "복수의 신호들을 수신하는 단계; 수신된 신호들에서 혈류 영역을 찾는 단계를 포함하는 방법"
     assert suggest_words(claim, n=3) == ["신호", "혈류", "영역"]
+
+
+def test_질의_낱말이_명칭과_요약에_많이_나온_순으로_고른다():
+    # 11/21 첫 실호출: 응답이 검색 순위가 아니라 최근 순에 가까웠다.
+    # 그래서 낱말 겹침으로 다시 줄 세운다
+    hits = [
+        Hit(doc_id="KR20990000001A", app_no="P1", date=date(2012, 1, 1), text="신호처리 장치"),
+        Hit(doc_id="KR20990000002A", app_no="P2", date=date(2012, 1, 1), text="MR 혈류 영상 혈류"),
+        Hit(doc_id="KR20990000003A", app_no="P3", date=date(2012, 1, 1), text="혈류 측정"),
+    ]
+    picked = pick_candidates(hits, OA, set(), set(), n=2, words=["혈류", "MR"])
+    assert [h.doc_id for h in picked] == ["KR20990000002A", "KR20990000003A"]
+
+
+def test_응답의_명칭과_요약을_글로_남긴다():
+    body = xml(
+        "<item><applicationNumber>P9</applicationNumber><openNumber>9920990000009</openNumber>"
+        "<openDate>20110105</openDate><inventionTitle>혈류 영상</inventionTitle>"
+        "<astrtCont>MR 신호</astrtCont></item>"
+    )
+    assert parse_search_xml(body)[0].text == "혈류 영상 MR 신호"
