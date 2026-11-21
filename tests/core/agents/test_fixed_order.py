@@ -99,7 +99,7 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
     rec = steps.records[-1]
     assert rec.tool_name == "run_f2"
     assert rec.outcome != "ok"
-    assert rec.reason == "넘김: " + out.skipped["run_f2"]  # DB에 남는 칸(reason)에 이유가 있다
+    assert rec.outcome == "skipped" and rec.reason == out.skipped["run_f2"]  # DB reason 칸에 이유
     assert rec.result_status == "unverified"
     assert rec.skipped_reason == out.skipped["run_f2"]
     # 넘기지 않은 단계에는 이유 칸이 비어 있다
