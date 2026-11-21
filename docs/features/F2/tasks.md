@@ -21,6 +21,8 @@
 - 출원일판 비교, 법령 API 조회(색인에 없는 판), `agent_steps` 도구 단계 기록, 실행 상한은 다음 계획.
 - design 7-1 인터페이스 `research(question, ctx)`와 `impl` 고르기(`split`/`code_only`) 대신 진입 함수 `run_f2(F2Input)` 하나. 답 쓰기·근거 검토가 붙는 #29에서 `research`를 그 뒤에 둔다.
 - 법령 색인 판이 저장소에 없으면(색인을 안 올린 DB) 모든 묶음을 `unverified(body_missing)` + 경고 (리뷰 반영).
+- F4는 법률 주장의 `needs_human_review`를 그 묶음 후보 flags와 확인 사항으로 옮긴다 (11/22 은진 B안: 근거 검토 전 F2 묶음이 후보에서 "확인됨 + 표시 없음"으로 보이지 않게).
+- F2 결과의 서버 저장(`step_results` kind `f2` 마이그레이션 + `legal-evidence` API)은 다음 계획, 별도 PR (11/22 은진).
 
 ```mermaid
 graph LR
