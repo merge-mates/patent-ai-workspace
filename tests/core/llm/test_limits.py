@@ -22,6 +22,7 @@ from patent_ai.core.llm.transport import (
     FakeTransport,
     TransportError,
     TransportResponse,
+    TransportUsage,
 )
 
 FIX = Path(__file__).parent.parent.parent / "fixtures" / "llm"
@@ -491,3 +492,71 @@ def test_기록기는_CallRecord_하나를_받는다(tmp_path):
     rec = MemoryRecorder()
     run(scripted(OK), cfg, CallBudget(), rec)
     assert isinstance(rec.records[0], CallRecord)
+
+
+# ---- #194 스트림이 끊긴 호출의 토큰·비용 기록과 budget ----
+def _prompt_bytes() -> int:
+    return len(render_prompt("prompts/summarize.txt", VARS, FIX).encode("utf-8"))
+
+
+def test_끊긴_호출에_받은_usage가_있으면_토큰과_비용을_기록한다(tmp_path):
+    cfg = make_config(tmp_path)
+    rec = MemoryRecorder()
+    t = scripted(TransportError("끊김", retryable=False, usage=TransportUsage(1200, 37)))
+    with pytest.raises(ModelCallFailed):
+        run(t, cfg, CallBudget(), rec)
+    (r,) = rec.records
+    assert r.outcome == "transport_error"
+    assert (r.input_tokens, r.output_tokens) == (1200, 37)
+    assert r.cost == pytest.approx((1200 * 3.0 + 37 * 15.0) / 1_000_000)
+
+
+def test_끊긴_호출에_usage가_없으면_토큰과_비용은_확인되지_않음(tmp_path):
+    cfg = make_config(tmp_path)
+    rec = MemoryRecorder()
+    t = scripted(TransportError("끊김", retryable=False))
+    with pytest.raises(ModelCallFailed):
+        run(t, cfg, CallBudget(), rec)
+    (r,) = rec.records
+    assert (r.input_tokens, r.output_tokens, r.cost) == (None, None, None)
+
+
+def test_청구_없는_오류는_토큰_0_비용_0(tmp_path):
+    cfg = make_config(tmp_path)
+    rec = MemoryRecorder()
+    t = scripted(TransportError("429", retryable=False, usage=TransportUsage(0, 0)))
+    with pytest.raises(ModelCallFailed):
+        run(t, cfg, CallBudget(), rec)
+    (r,) = rec.records
+    assert (r.input_tokens, r.output_tokens, r.cost) == (0, 0, 0.0)
+
+
+@pytest.mark.parametrize("used,blocked", [(999, False), (1000, True)])
+def test_끊긴_호출의_받은_입력_토큰을_budget에_센다(tmp_path, used, blocked):
+    cfg = make_config(tmp_path, max_input_tokens=1000, max_retries=1)
+    t = scripted(TransportError("끊김", retryable=True, usage=TransportUsage(used, 3)), OK)
+    if blocked:
+        with pytest.raises(ModelCallLimitExceeded):
+            run(t, cfg, CallBudget(), MemoryRecorder())
+        assert len(t.calls) == 1
+    else:
+        assert run(t, cfg, CallBudget(), MemoryRecorder()).text == "답"
+
+
+def test_usage를_모르면_budget에_프롬프트_바이트_수를_입력_토큰으로_센다(tmp_path):
+    # 토큰 하나는 1바이트 이상이라 프롬프트 바이트 수는 입력 토큰의 위 한계 (보수적으로 셈)
+    n = _prompt_bytes()
+    cfg = make_config(tmp_path, max_input_tokens=n, max_retries=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportError("끊김", retryable=True), OK)
+    with pytest.raises(ModelCallLimitExceeded) as e:
+        run(t, cfg, CallBudget(), rec)
+    assert e.value.used == n
+    assert [r.outcome for r in rec.records] == ["transport_error", "limit_exceeded"]
+
+
+def test_usage를_모를_때_센_양은_프롬프트_바이트_수보다_크지_않다(tmp_path):
+    n = _prompt_bytes()
+    cfg = make_config(tmp_path, max_input_tokens=n + 1, max_retries=1)
+    t = scripted(TransportError("끊김", retryable=True), OK)
+    assert run(t, cfg, CallBudget(), MemoryRecorder()).text == "답"

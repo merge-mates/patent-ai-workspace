@@ -15,12 +15,29 @@ class TransportResponse:
     stop_reason: str | None = None
 
 
-class TransportError(Exception):
-    """전송 오류(429·연결 오류 등). retryable=True면 다시 불러 볼 만한 오류."""
+@dataclass(frozen=True)
+class TransportUsage:
+    """실패한 호출에서 청구됐을 토큰 수 (스트림이 끊기기 전까지 받은 usage)."""
 
-    def __init__(self, message: str, retryable: bool) -> None:
+    input_tokens: int
+    output_tokens: int
+
+
+# 서버가 요청을 거절한 오류(429·5xx·4xx 상태): 모델이 돌지 않아 청구가 없다
+NOT_BILLED = TransportUsage(0, 0)
+
+
+class TransportError(Exception):
+    """전송 오류(429·연결 오류 등). retryable=True면 다시 불러 볼 만한 오류.
+
+    usage: 이 호출에서 청구됐을 토큰. None이면 확인되지 않음 (스트림 시작 전에 끊겼거나
+    요청이 갔는지 모름). NOT_BILLED면 청구가 없음을 안다.
+    """
+
+    def __init__(self, message: str, retryable: bool, usage: TransportUsage | None = None) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.usage = usage
 
 
 def is_real_transport(transport) -> bool:
@@ -64,6 +81,8 @@ class AnthropicTransport:
         # effort는 output_config로 넘긴다. temperature는 API에서 빠져 넘기지 않는다 (#134).
         # SDK 예외를 TransportError로 바꿔 던진다. 요청은 with에 들어갈 때 나가고 답은
         # get_final_message에서 받으므로 둘 다 try 안에 둔다.
+        # 스트림이 중간에 끊기면 그때까지 받은 usage(입력·부분 출력 토큰)를 오류에 싣는다 (#194).
+        stream = None  # with에 들어가기 전에 실패하면 None으로 남는다
         try:
             with self._client.messages.stream(
                 model=model,
@@ -73,13 +92,32 @@ class AnthropicTransport:
             ) as stream:
                 message = stream.get_final_message()
         except anthropic.APIStatusError as e:
-            raise TransportError(f"{e.status_code} {e.message}", _retryable_status(e)) from e
+            # 상태 200 = 스트림 중 오류 이벤트 (모델이 돌던 중). 그 밖은 서버가 요청을 거절함
+            usage = _partial_usage(stream) if e.status_code == 200 else NOT_BILLED
+            raise TransportError(f"{e.status_code} {e.message}", _retryable_status(e), usage) from e
         except anthropic.APIConnectionError as e:
-            raise TransportError(f"연결 오류: {e}", True) from e
+            raise TransportError(f"연결 오류: {e}", True, _partial_usage(stream)) from e
         except httpx2.TransportError as e:
             # 답을 받는 중에 연결이 끊기거나 시간이 넘으면 SDK가 감싸지 않고 그대로 올린다
-            raise TransportError(f"스트림 중 연결 오류: {type(e).__name__}: {e}", True) from e
+            raise TransportError(
+                f"스트림 중 연결 오류: {type(e).__name__}: {e}", True, _partial_usage(stream)
+            ) from e
         return parse_anthropic_message(message)
+
+
+def _partial_usage(stream) -> TransportUsage | None:
+    """끊긴 스트림에서 SDK가 모아 둔 usage를 읽는다. message_start 전이면 None (확인되지 않음)."""
+    if stream is None:
+        return None
+    try:
+        # SDK는 message_start를 받기 전이면 assert로 실패한다
+        snapshot = stream.current_message_snapshot
+    except AssertionError:
+        return None
+    usage = getattr(snapshot, "usage", None)
+    if usage is None:
+        return None
+    return TransportUsage(usage.input_tokens or 0, usage.output_tokens or 0)
 
 
 # 스트림 중 오류 이벤트의 종류 가운데 다시 불러 볼 만한 것 (서버 쪽 사정)
