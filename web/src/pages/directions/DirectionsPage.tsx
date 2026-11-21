@@ -210,7 +210,7 @@ export function DirectionsPage() {
     .join(', ')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {directions.length === 0 && <span className="body2 t3">대응 방향 후보가 아직 없습니다</span>}
       {directions.map((d, idx) => {
