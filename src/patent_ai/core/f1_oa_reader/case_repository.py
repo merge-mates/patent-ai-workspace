@@ -438,7 +438,7 @@ def uploaded_document_row(case_id: str, document: GroupedMaterial, file: StoredF
 
 
 def sorted_events(events: list[EventRow]) -> list[EventRow]:
-    """이력 순서(seq)대로, seq 없는 줄은 뒤에 (넣은 순서 그대로)."""
+    """이력 순서(seq)대로, seq 없는 줄은 뒤에 (뒤쪽 줄끼리 순서는 정하지 않는다)."""
     return sorted(events, key=lambda e: (e.seq is None, e.seq or 0))
 
 
