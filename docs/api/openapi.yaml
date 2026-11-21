@@ -478,6 +478,11 @@ components:
           title: Source
         status:
           $ref: '#/components/schemas/Status'
+        citation_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Citation Key
       additionalProperties: false
       type: object
       required:
@@ -1029,6 +1034,11 @@ components:
         ask_upload:
           type: boolean
           title: Ask Upload
+        citation_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Citation Key
       additionalProperties: false
       type: object
       required:
