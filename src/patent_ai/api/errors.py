@@ -20,19 +20,25 @@ _HTTP_CODES = {
 class AppError(Exception):
     """엔드포인트가 던지는 오류. code는 화면이 분기에 쓰는 고정 문자열이다."""
 
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self, status_code: int, code: str, message: str, extra: dict[str, str | None] | None = None
+    ) -> None:
         super().__init__(message)
+        self.extra = extra or {}  # 본문에 {code, message}와 같이 담을 값 (예: 기존 case_id)
         self.status_code = status_code
         self.code = code
         self.message = message
 
 
-def _body(status_code: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"code": code, "message": message})
+def _body(
+    status_code: int, code: str, message: str, extra: dict[str, str | None] | None = None
+) -> JSONResponse:
+    content = {"code": code, "message": message, **(extra or {})}
+    return JSONResponse(status_code=status_code, content=content)
 
 
 async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-    return _body(exc.status_code, exc.code, exc.message)
+    return _body(exc.status_code, exc.code, exc.message, exc.extra)
 
 
 async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:

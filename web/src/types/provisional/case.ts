@@ -28,7 +28,7 @@ export interface CaseSummary {
   run_state: RunState
   status: StatusValue
   review_items_count: number | null // 모르면 null (0건과 다름)
-  last_opened_at: string
+  updated_at: string // 가장 최근 OA를 올린 시각
 }
 
 // GET /cases/{id}
@@ -44,7 +44,8 @@ export interface OADetail {
   case_id: string
   case_name: string
   document_id: string | null
-  latest_run: LatestRun
+  latest_run: LatestRun | null // 실행 줄이 아직 없으면 null
+  dispatch_number?: string | null // 발송번호, 모르면 null (선택 칸: 하위 호환)
 }
 
 // GET /oas/{oa_id}/oa-result (결과 응답 스키마: 결과를 result에 그대로 담는다)
