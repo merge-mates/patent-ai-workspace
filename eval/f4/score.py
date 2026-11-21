@@ -258,6 +258,9 @@ def score_f4(
     if not any(g.claim_rows for g in golds.values()):
         # 정답 줄이 하나도 없으면 잰 것이 없다. 빈 점수로 성공하지 않는다
         raise EvalError("F4 정답 청구항 줄이 0개라 채점한 것이 없다")
+    if not metrics:
+        # 줄은 있어도 전부 안 다룸이면 ② 대상이 없어 지표가 하나도 안 나온다
+        raise EvalError("F4 채점한 지표가 없다 (정답 줄이 모두 안 다룸이라 ② 대상이 0개)")
 
     return {
         "experiment": cfg.experiment,

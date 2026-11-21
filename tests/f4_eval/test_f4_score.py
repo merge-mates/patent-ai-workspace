@@ -254,6 +254,14 @@ def test_안_다룸_줄은_방향_채점에서_빼고_건수를_남긴다(env):
     assert s["failures"]["uncovered_pairs"] == 1  # 그래도 대상 청구항이 빠진 것은 누락으로 센다
 
 
+def test_안_다룸_줄만_있는_정답이면_빈_점수로_성공하지_않는다(env, capsys):
+    env.put_gold(gold([row(1, 1, None, handled=False), row(2, 1, None, handled=False)]))
+    env.put_pred(*prediction())
+    assert main(env.args) == 1
+    assert "채점한 지표가 없다" in capsys.readouterr().err
+    assert not (env.out / "scores.json").exists()
+
+
 # ---- 누락 ----
 def test_어느_묶음에도_없는_거절이유_청구항_쌍을_누락으로_센다(env, caplog):
     env.put_gold(gold())
