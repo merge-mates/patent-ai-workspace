@@ -9,8 +9,10 @@ import type {
   CaseDetail,
   CaseSummary,
   CreatedCase,
+  LatestRun,
   OADetail,
   OAResultResponse,
+  RunStatus,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
 import type { ComparisonTable } from '../types/generated/ComparisonTable'
@@ -99,7 +101,7 @@ function summaryOf(b: Bundle): CaseSummary {
     application_number: r.application_number.raw_text ?? r.application_number.value ?? null,
     latest_oa: { oa_id: b.oa_id, notice_kind: r.notice_kind.value ?? null },
     rejection_kinds: kinds,
-    run_state: 'succeeded',
+    run_state: runOf(b).state,
     status: r.status.value,
     review_items_count: b.review_items?.length ?? null,
     last_opened_at: b.last_opened_at,
@@ -125,20 +127,24 @@ export const mockApi = {
       case_id: b.case_id,
       case_name: b.case_name,
       document_id: b.document?.document_id ?? null,
-      latest_run: { run_id: b.run_id, state: 'succeeded', current_step: null },
+      latest_run: runOf(b),
     }
   },
   async getOAResult(oaId: string): Promise<OAResultResponse> {
     const b = await byOA(oaId)
+    gate(b, PHASE.summary)
     return { oa_id: b.oa_id, run_id: b.run_id, status: b.oa_result.status.value, result: b.oa_result }
   },
   async getMaterials(caseId: string): Promise<CaseMaterials> {
-    const m = (await byCase(caseId)).materials
+    const b = await byCase(caseId)
+    gate(b, PHASE.materials)
+    const m = b.materials
     if (!m) throw new ApiError('result_not_ready', '사건 자료 목록이 아직 없습니다', 404)
     return m
   },
   async getReviewItems(caseId: string): Promise<ReviewItem[]> {
     const b = await byCase(caseId)
+    gate(b, PHASE.summary)
     if (!b.review_items) throw new ApiError('result_not_ready', '검토할 사항 목록이 아직 없습니다', 404)
     return b.review_items
   },
@@ -166,16 +172,19 @@ export const mockApi = {
   },
   // ②③④는 스키마가 아직 없어 예시 데이터 (types/provisional/examples.ts)
   async getUnits(oaId: string): Promise<JudgmentUnit[]> {
-    await byOA(oaId)
+    gate(await byOA(oaId), PHASE.compare)
     return exampleUnits[oaId] ?? []
   },
   async getComparisons(oaId: string): Promise<ComparisonTable[]> {
+    gate(await byOA(oaId), PHASE.compare)
     return ofOA(exampleComparisons, oaId)
   },
   async getClarityReviews(oaId: string): Promise<ClarityReview[]> {
+    gate(await byOA(oaId), PHASE.compare)
     return ofOA(exampleClarity, oaId)
   },
   async getLegalEvidence(oaId: string): Promise<LegalEvidenceBundle[]> {
+    gate(await byOA(oaId), PHASE.compare)
     return ofOA(exampleLegal, oaId)
   },
   async askLegal(q: LegalQuestion): Promise<LegalEvidenceBundle> {
@@ -183,7 +192,7 @@ export const mockApi = {
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 이 탭 메모리에만 둔다 (새로고침하면 처음으로)
   async getDirections(oaId: string): Promise<DirectionCandidates[]> {
-    await byOA(oaId)
+    gate(await byOA(oaId), PHASE.directions)
     return directions[oaId] ?? []
   },
   async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
@@ -198,14 +207,14 @@ export const mockApi = {
     return found
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {
-    await byOA(oaId)
+    gate(await byOA(oaId), PHASE.directions)
     // 예시가 없으면 "다루지 않은 거절이유 없음"처럼 지어내지 않고 결과 없음으로
     const check = exampleCaseChecks[oaId]
     if (!check) throw new ApiError('result_not_ready', '사건 전체 검사 결과가 아직 없습니다', 404)
     return check
   },
   async getDrafts(oaId: string): Promise<DraftsWithCheck> {
-    await byOA(oaId)
+    gate(await byOA(oaId), PHASE.directions)
     const d = drafts[oaId]
     if (!d) throw new ApiError('result_not_ready', '초안이 아직 없습니다', 404)
     return d
@@ -231,11 +240,98 @@ export const mockApi = {
     d.origin = edited ? 'human_edited' : 'ai_generated'
     return { ...d }
   },
+  // 실행 상태: 시작 시각과 흐른 시간으로 만든다 (D5). 표에 없는 OA는 늘 끝남
+  async getRun(runId: string): Promise<RunStatus> {
+    const b = (await bundles()).find((x) => x.run_id === runId)
+    if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
+    return { ...runOf(b), oa_id: b.oa_id, error: null } as RunStatus
+  },
+  async cancelRun(runId: string): Promise<RunStatus> {
+    const b = (await bundles()).find((x) => x.run_id === runId)
+    if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
+    const run = loadRun(b.oa_id)
+    // 이미 끝난 실행은 취소할 수 없다 (끝난 것을 취소로 바꾸지 않는다)
+    if (run && !run.cancelledAt && elapsedOf(run) < STEP_MS * RUN_STEPS.length) {
+      run.cancelledAt = Date.now()
+      saveRun(b.oa_id, run)
+    }
+    return { ...runOf(b), oa_id: b.oa_id, error: null } as RunStatus
+  },
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
   async createCase(_file: File): Promise<CreatedCase> {
     const b = committed[0]
+    startRun(b.oa_id)
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: b.run_id }
   },
+}
+
+// ---- mock 실행 흉내 (D5): 통지서를 올리면 첫 fixture 사건의 실행이 새로 시작한 것으로 친다 ----
+// current_step은 서버에서 자유 글 한 줄이라, 화면은 이 글을 그대로 보이기만 한다
+export const RUN_STEPS = [
+  '통지서 읽기',
+  '자료 찾아오기',
+  '거절이유별 정리',
+  '인용발명 대비 · 법률 근거',
+  '대응 방향 후보',
+]
+const STEP_MS = 3000 // 단계마다 약 3초 (판단)
+// 결과가 "열리는" 단계 번호: 그 단계를 지나면(번호 이상이면) 결과 엔드포인트가 200
+const PHASE = { materials: 2, summary: 3, compare: 4, directions: 5 }
+
+interface MockRun {
+  startedAt: number
+  cancelledAt?: number
+}
+// mockRuns[oa_id]: 새로고침해도 이어지게 sessionStorage에 둔다 (막히면 메모리만)
+const mockRuns: Record<string, MockRun> = {}
+const runKey = (oaId: string) => `patent_ai:mock:v1:run:${oaId}`
+
+function loadRun(oaId: string): MockRun | null {
+  if (mockRuns[oaId]) return mockRuns[oaId]
+  try {
+    const raw = sessionStorage.getItem(runKey(oaId))
+    if (raw) mockRuns[oaId] = JSON.parse(raw) as MockRun
+  } catch {
+    // 저장소를 못 읽으면 메모리만 쓴다
+  }
+  return mockRuns[oaId] ?? null
+}
+function saveRun(oaId: string, run: MockRun) {
+  mockRuns[oaId] = run
+  try {
+    sessionStorage.setItem(runKey(oaId), JSON.stringify(run))
+  } catch {
+    // 저장소를 못 쓰면 메모리만 쓴다
+  }
+}
+function startRun(oaId: string) {
+  saveRun(oaId, { startedAt: Date.now() })
+}
+const elapsedOf = (run: MockRun) => (run.cancelledAt ?? Date.now()) - run.startedAt
+
+// 지금 몇 번째 단계까지 왔나: 0~4는 그 단계를 하는 중, 5는 모두 끝남. 표에 없으면 5
+function phaseOf(oaId: string): number {
+  const run = loadRun(oaId)
+  if (!run) return RUN_STEPS.length
+  return Math.min(Math.floor(elapsedOf(run) / STEP_MS), RUN_STEPS.length)
+}
+
+// 실행이 끝나면: 확신 낮은 묶음이 아직 안 골라졌으면 사람 기다림, 아니면 끝남
+function runOf(b: Bundle): LatestRun {
+  const run = loadRun(b.oa_id)
+  if (!run) return { run_id: b.run_id, state: 'succeeded', current_step: null }
+  const phase = phaseOf(b.oa_id)
+  if (run.cancelledAt) return { run_id: b.run_id, state: 'cancelled', current_step: null }
+  if (phase < RUN_STEPS.length) return { run_id: b.run_id, state: 'running', current_step: RUN_STEPS[phase] }
+  const waiting = (directions[b.oa_id] ?? []).some(
+    (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
+  )
+  return { run_id: b.run_id, state: waiting ? 'waiting_for_human' : 'succeeded', current_step: null }
+}
+
+// 아직 안 지난 단계의 결과는 404 result_not_ready (서버와 같게)
+function gate(b: Bundle, need: number) {
+  if (phaseOf(b.oa_id) < need) throw new ApiError('result_not_ready', '결과가 아직 없습니다', 404)
 }
 
 // mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)
@@ -244,6 +340,10 @@ const drafts: Record<string, DraftsWithCheck> = structuredClone(exampleDrafts)
 
 // 지금 단계(mock 짐작): 결과가 있는 가장 뒤 단계
 function stageOf(oaId: string): CaseStage {
+  // 실행 중이면 아직 안 지난 단계의 결과는 없다
+  const phase = phaseOf(oaId)
+  if (phase < PHASE.compare) return 'summary'
+  if (phase < PHASE.directions) return 'compare'
   if (drafts[oaId]) return 'drafts'
   if ((directions[oaId] ?? []).length > 0) return 'directions'
   if ((exampleUnits[oaId] ?? []).length > 0) return 'compare'

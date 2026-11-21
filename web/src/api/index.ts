@@ -16,6 +16,7 @@ import type {
   CreatedCase,
   OADetail,
   OAResultResponse,
+  RunStatus,
 } from '../types/provisional/case'
 import { ApiError } from './errors'
 import { getJson, postForm, postJson, sendJson } from './http'
@@ -54,6 +55,8 @@ const httpApi: typeof mockApi = {
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
   getDrafts: (oaId) => getJson<DraftsWithCheck>(`/oas/${oaId}/drafts`),
   patchDraft: (draftId, patch) => sendJson<DraftsWithCheck>('PATCH', `/drafts/${draftId}`, patch),
+  getRun: (runId) => getJson<RunStatus>(`/runs/${encodeURIComponent(runId)}`),
+  cancelRun: (runId) => postJson<RunStatus>(`/runs/${encodeURIComponent(runId)}/cancel`, {}),
   createCase: (file) => {
     const form = new FormData()
     form.append('file', file)

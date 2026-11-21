@@ -13,6 +13,7 @@ import type { LegalEvidenceBundle } from './types/generated/LegalEvidenceBundle'
 import type { CaseSummary, OADetail, OAResultResponse } from './types/provisional/case'
 import type { CaseListExtra } from './types/provisional/caseListExtra'
 import type { CaseCheck, DraftsWithCheck } from './types/provisional/pending'
+import { seedRun } from './runPoll'
 import { directTodos, pickFocusCase } from './todos'
 
 export interface CasesLoaderData {
@@ -56,16 +57,27 @@ export interface OALoaderData {
   directions: DirectionCandidates[] | null
   // 이 OA의 법률 근거 묶음 (거절이유마다 "이 거절이유의 법리"). 아직 안 찾았으면 [] (지어내지 않고 그 줄을 뺀다)
   legal: LegalEvidenceBundle[]
+  // 단계마다 결과가 있는지 (D5). 404 result_not_ready였으면 false. 단계 막대의 "끝남/찾는 중/대기"를 정한다
+  ready: { summary: boolean; compare: boolean; directions: boolean; drafts: boolean }
 }
 
 export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> {
   return loadOA(params.oaId!)
 }
 
+// /cases/new?oa=<oa_id>: 올린 뒤 같은 화면에 머문다. 주소에 oa가 없으면 올리기 전 (null).
+// 새로고침해도 이어지게 이 주소로 OA·자료를 받는다
+export function uploadLoader({ request }: LoaderFunctionArgs): Promise<OALoaderData | null> {
+  const oaId = new URL(request.url).searchParams.get('oa')
+  return oaId ? loadOA(oaId) : Promise.resolve(null)
+}
+
 // 사건 작업대에 필요한 것을 한 번에 받는다 (사건 목록의 "오늘 먼저 볼 사건"도 쓴다)
 async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
-  const [oaResult, materials, reviewItems, document, directions, legal] = await Promise.all([
+  // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
+  seedRun(oa.latest_run)
+  const [oaResult, materials, reviewItems, document, directions, legal, units, drafts] = await Promise.all([
     api.getOAResult(oa.oa_id).catch((e: unknown) => {
       if (isNotReady(e)) return null
       throw e
@@ -84,8 +96,17 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
       if (isNotReady(e)) return []
       throw e
     }),
+    // 대비·초안 단계에 결과가 있는지만 알려고 부른다 (값은 쓰지 않고, 없는 것을 지어내지 않는다)
+    api.getUnits(oa.oa_id).catch(notReadyAsNull),
+    api.getDrafts(oa.oa_id).catch(notReadyAsNull),
   ])
-  return { oa, oaResult, materials, reviewItems, document, directions, legal }
+  const ready = {
+    summary: oaResult !== null,
+    compare: units !== null,
+    directions: directions !== null,
+    drafts: drafts !== null,
+  }
+  return { oa, oaResult, materials, reviewItems, document, directions, legal, ready }
 }
 
 // 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다
