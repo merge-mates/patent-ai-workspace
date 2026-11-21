@@ -34,7 +34,7 @@
 
 사건별 정확도와 실패 호출 표는 [effort 카드](../m1-i3-f1-effort-low-stream64k/card.md)의 medium 1·2 칸에 있다.
 
-- case10(OA PDF 없음)이 0점으로 들어가서 주 지표가 main의 F1 기준선 줄보다 약 0.09 낮게 나온다. experiments/index.md에서 main F1 줄과 직접 비교하지 않는다. 이 PR 안의 실험끼리는 조건이 같다.
+- case10(OA PDF 없음)이 0점으로 들어가서 그 몫(main 기준선 카드의 case10 0.935 ÷ 10 ≈ 0.09)만큼 주 지표가 깎여 있다. experiments/index.md에서 main F1 줄과 직접 비교하지 않는다. 이 PR 안의 실험끼리는 조건이 같다.
 
 ## 해석 (Claude 초안, 사람이 고칠 것)
 - 겨냥한 오류는 없어졌다: `no_location`·`clarity_reason` 모양 오류가 2회 5건 → 2회 0건 (effort low 2회까지 네 실행 0건).
