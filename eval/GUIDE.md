@@ -15,7 +15,7 @@ data/goldsets/
 ├── VERSION                  정수 하나 (지금 2)
 ├── tune/                    개발 중에 보는 세트
 │   ├── f1/                  F1 통지서 읽기: OA 한 통에 JSON 하나 (<출원번호>_<발송번호>.json)
-│   ├── retrieval/           F2·F3 검색: cite_gold.jsonl, law_gold.jsonl, cite_doc_ids.yaml
+│   ├── retrieval/           F2·F3 검색: cite_gold.jsonl, law_gold.jsonl, cite_doc_ids.yaml, cite_pool.yaml·cite_noise_b.jsonl(#178 둘째 점수 범위)
 │   ├── case_full/           받은 사건 묶음 전체 (정답 쪽, AI 입력 아님, #148)
 │   ├── search_v0/           검색 정답을 만든 검수본 (retrieval/ 파일의 재료, 드라이브 이름 `tune_search_v0/`)
 │   └── f4/                  F4 대응 방향 (아직 없음, 6절)

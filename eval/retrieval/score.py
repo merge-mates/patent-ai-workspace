@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from eval.common.goldset import gold_path as goldset_file
 from eval.common.paths import check_experiment_name, git_commit
 from eval.common.scores import write_scores
 from eval.retrieval.checks import REPO_ROOT, gold_path, preflight
@@ -24,6 +25,7 @@ from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
 from eval.retrieval.metrics import random_hit, random_recall, row_hit, row_recall
+from eval.retrieval.noise_scope import load_noise_scope
 from patent_ai.db.index_dump import index_fingerprint
 from patent_ai.git_paths import is_git_ignored as git_ignored_strict  # 저장소 밖도 거절
 from patent_ai.retrieval import get_searcher
@@ -66,6 +68,9 @@ class RowResult:
     n_scope: int  # 검색 범위 조각 수 N
     match_sizes: list[int]  # 항목마다 범위 안에서 맞는 조각 수 Mi
     union_size: int  # 어느 항목에든 맞는 조각 수
+    # 노이즈 범위(#178)에서만 쓴다: 순위마다 정답 문헌 조각인가, 범위 안 정답 문헌 조각 수
+    gold_doc_by_rank: list[bool] = field(default_factory=list)
+    gold_doc_size: int = 0
 
 
 @dataclass
@@ -129,6 +134,11 @@ def score(
     searcher = get_searcher(cfg.impl, repo, {**cfg.settings, "index_version": cfg.index_version})
     k_max = max(cfg.k)
     results: list[RowResult] = []
+    # 둘째 점수(#178): 줄마다 노이즈를 섞은 검색 범위. 없으면 그 인용문헌 안(주 점수)
+    noise: dict[str, list[str]] | None = None
+    if cfg.noise_scope is not None:
+        noise_path = goldset_file(goldsets_root, cfg.goldset, cfg.noise_scope)
+        noise = load_noise_scope(noise_path)
 
     for row in gold:
         # 3. 검색 전에 뺄 줄
@@ -147,10 +157,22 @@ def score(
             failures["excluded_no_location"] += 1
             continue
 
+        search_docs = row.doc_ids
+        if noise is not None:
+            search_docs = noise.get(row.row_id)
+            if search_docs is None:
+                raise RetrievalEvalError(f"노이즈 범위 파일에 줄이 없다: {row.row_id}")
+            if not set(row.doc_ids or []) <= set(search_docs):
+                raise RetrievalEvalError(f"노이즈 범위에 정답 문헌이 빠졌다: {row.row_id}")
+            # 노이즈 조각이 있어도 정답 문헌 본문이 없으면 맞힐 수 없다: 주 점수와 같이 뺀다
+            if repo.count_chunks(cfg.corpus, cfg.index_version, row.doc_ids) == 0:
+                failures["excluded_body_missing"] += 1
+                continue
+
         # 4. 줄마다 search를 한 번 (k는 가장 큰 값, 작은 k는 앞부분을 자른다)
         try:
             result = searcher.search(
-                row.query, cfg.corpus, cfg.mode, k_max, doc_ids=row.doc_ids, as_of=row.as_of
+                row.query, cfg.corpus, cfg.mode, k_max, doc_ids=search_docs, as_of=row.as_of
             )
         except Exception as e:  # 줄 하나의 검색 예외는 조용히 넘기지 않는다
             # 메시지에 질의 글자가 섞일 수 있어 예외 종류만 적는다
@@ -163,7 +185,7 @@ def score(
             raise RetrievalEvalError(f"줄 {row.row_id}: 결과에 다른 색인 판 조각이 섞였다")
 
         # 7. 검색 범위 N과 항목별 맞는 조각 수 Mi
-        scope = repo.chunks(cfg.corpus, cfg.index_version, row.doc_ids, row.as_of)
+        scope = repo.chunks(cfg.corpus, cfg.index_version, search_docs, row.as_of)
         if not scope:
             # 기준일로 걸러 범위가 0개: 무작위 기준선을 못 정하므로
             # 이 줄만 빼고 센다 (design 2절 4번)
@@ -214,6 +236,8 @@ def score(
                 union_size=sum(
                     1 for c in scope if any(matcher.matches(c, item, row) for item in row.items)
                 ),
+                gold_doc_by_rank=[h.doc_id in (row.doc_ids or []) for h in result.hits],
+                gold_doc_size=sum(1 for c in scope if c.doc_id in (row.doc_ids or [])),
             )
         )
 
@@ -237,6 +261,12 @@ def score(
         else:
             # 분모가 0이면 배수를 만들 수 없다: 키를 빼고 건수만 센다
             failures["recall_ratio_undefined"] += 1
+        if noise is not None:
+            # 문헌 Hit@k: 상위 k개에 정답 문헌 조각이 하나라도 있나 (위치는 안 봄)
+            metrics[f"doc_hit@{k}"] = sum(any(r.gold_doc_by_rank[:k]) for r in results) / n
+            metrics[f"random_doc_hit@{k}"] = (
+                sum(random_hit(r.n_scope, r.gold_doc_size, k) for r in results) / n
+            )
 
     scores = {
         "experiment": cfg.experiment,
@@ -265,6 +295,14 @@ def score(
             "seconds": round(time.monotonic() - started, 3),
         },
     }
+    if noise is not None:
+        # 주 점수와 섞어 읽지 않게 범위 종류와 파일 지문을 남긴다
+        scores["scope"] = {
+            "kind": "noise",
+            "file": cfg.noise_scope,
+            "sha256": hashlib.sha256(noise_path.read_bytes()).hexdigest(),
+            "docs_per_row_mean": sum(len(noise[r.row.row_id]) for r in results) / n,
+        }
     return ScoreReport(scores=scores, rows=results, k_max=k_max)
 
 
