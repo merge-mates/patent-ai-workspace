@@ -61,13 +61,16 @@ def test_step_recorder_쓰기가_실패하면_record_failed로_끝나고_원문�
 
     class Broken:
         def record(self, step: StepRecord) -> None:
-            raise RunLogWriteFailed("비밀 연결문자열 postgres://x")
+            raise RunLogWriteFailed(step.tool_name) from RuntimeError(
+                "비밀 연결문자열 postgres://x"
+            )
 
     store = _run(tmp_path, Broken())
     st = store.get_status(RID)
     assert st.state == RunState.FAILED and st.error["code"] == "record_failed"
     assert "비밀" not in st.error["message"]
-    assert "실행 기록 저장 실패" in st.error["message"]
+    # 첫 단계 기록(extract_pages)에서 깨졌으니 그 이름이 남는다
+    assert st.error["message"] == "실행 기록 저장 실패 (extract_pages)"
 
 
 # --- T2: 모델 호출 기록 (CallRecord) ---------------------------------------------------
@@ -82,14 +85,20 @@ def test_call_recorder_쓰기가_실패하면_record_failed로_끝나고_원문�
     wire(monkeypatch)
 
     class BrokenCalls:
+        def __init__(self) -> None:
+            self.tried: list[str] = []
+
         def record(self, rec) -> None:
-            raise RunLogWriteFailed("비밀 연결문자열 postgres://x")
+            self.tried.append(rec.step)
+            raise RunLogWriteFailed(rec.step) from RuntimeError("비밀 연결문자열 postgres://x")
+
+    broken = BrokenCalls()
 
     def ctx(run_id: str) -> RunContext:
         return RunContext(
             run_id=run_id,
             budget=CallBudget(),
-            recorder=BrokenCalls(),
+            recorder=broken,
             transport=FakeTransport(_responses()),
         )
 
@@ -110,6 +119,8 @@ def test_call_recorder_쓰기가_실패하면_record_failed로_끝나고_원문�
     st = store.get_status(RID)
     assert st.state == RunState.FAILED and st.error["code"] == "record_failed"
     assert "비밀" not in st.error["message"]
+    # 바로 앞에 끝난 단계가 아니라, 기록을 못 남긴 모델 호출의 step 이름이 남는다
+    assert broken.tried and st.error["message"] == f"실행 기록 저장 실패 ({broken.tried[0]})"
 
 
 def test_call_recorder_서버_실행맥락은_PostgresCallRecorder이고_실행마다_새_객체다():

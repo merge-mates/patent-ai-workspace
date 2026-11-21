@@ -40,7 +40,7 @@ class PostgresStepRecorder:
                 s.commit()
         except SQLAlchemyError as e:
             # DB 예외를 실행기가 아는 예외로 바꾼다 (조용히 삼키지 않는다)
-            raise RunLogWriteFailed(f"{step.tool_name} 단계 기록 저장 실패") from e
+            raise RunLogWriteFailed(step.tool_name) from e
 
 
 class PostgresCallRecorder:
@@ -79,6 +79,6 @@ class PostgresCallRecorder:
                 s.commit()
         except SQLAlchemyError as e:
             # 쓰기 실패를 삼키지 않는다: 실행기가 record_failed로 실행을 실패 처리한다
-            raise RunLogWriteFailed(f"{rec.step} 모델 호출 기록 저장 실패") from e
+            raise RunLogWriteFailed(rec.step) from e
         # DB에 남은 뒤에만 메모리에 붙인다 (센 값과 DB가 어긋나지 않게)
         self.records.append(rec)

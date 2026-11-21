@@ -4,8 +4,9 @@
 - succeeded / waiting_for_human: 결과(F1 OA 정리, F3, F4)를 먼저 저장하고 상태를 바꾼다
   (상태부터 바꾸면 화면이 "끝남"을 보고 결과를 읽을 때 404가 난다).
 - failed: 결과를 저장하지 않고 이유를 남긴다. 예외 원문은 로그에만 (safe_message).
-- 넘긴 단계: 지휘가 단계 기록(outcome skipped)을 남길 때마다 바로 record_skipped로 옮긴다
-  (폴링하는 화면이 도는 중에도 본다).
+- 단계 기록: 지휘가 단계 기록을 남길 때마다 바로 step_log 한 곳에 넘긴다 (서버는 agent_steps에
+  ok·failed·waiting·skipped 모두, #216). 넘긴 단계도 거기 남아 폴링하는 화면이 도는 중에도 본다.
+  step_log를 안 주면 넘긴 단계만 record_skipped로 옮긴다 (메모리 저장소 테스트용).
 - 취소: 단계 기록이 하나 남을 때마다 취소 표시를 보고, 있으면 그 자리에서 멈춘다
   (지금 단계는 끝까지 돈 뒤라 "지금 단계가 끝난 뒤 cancelled" 규칙과 같다). 결과는 저장하지 않는다.
 - 한 번에 하나: 서버 안 실행은 잠금 하나를 같이 쓴다. 뒤에 온 실행은 queued로 기다린다
@@ -172,11 +173,12 @@ class RunCaseExecutor:
         except _Cancelled:
             self._finish(run_id, RunState.CANCELLED)
             return
-        except RunLogWriteFailed:
-            # 기록을 못 남기면 성공으로 끝내지 않는다. 원문은 로그에만 (message에 안 넣음)
-            logger.exception("실행 %s의 단계 기록 저장 실패", run_id)
-            where = steps.records[-1].tool_name if steps.records else "지휘"
-            self._fail(run_id, "record_failed", f"실행 기록 저장 실패 ({where})")
+        except RunLogWriteFailed as e:
+            # 기록을 못 남기면 성공으로 끝내지 않는다. 원문은 로그에만 (message에 안 넣음).
+            # 어느 기록이었는지는 예외가 들고 온 이름을 쓴다 (모델 호출 실패는 단계 기록보다 먼저라
+            # steps.records 끝을 보면 바로 앞 단계 이름이 찍힌다)
+            logger.exception("실행 %s의 실행 기록 저장 실패", run_id)
+            self._fail(run_id, "record_failed", f"실행 기록 저장 실패 ({e.where})")
             return
         except Exception as exc:  # run_case가 목록 밖 예외(버그·검색 자원 실패)를 올려 보냄
             logger.exception("실행 %s의 지휘가 예외로 끝남", run_id)

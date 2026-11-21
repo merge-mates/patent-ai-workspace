@@ -17,7 +17,15 @@ class RunNotFound(LookupError):
 
 
 class RunLogWriteFailed(Exception):
-    """실행 기록(agent_steps)을 DB에 쓰지 못했다. 실행기는 이걸 받으면 실행을 failed로 끝낸다."""
+    """실행 기록(agent_steps)을 DB에 쓰지 못했다. 실행기는 이걸 받으면 실행을 failed로 끝낸다.
+
+    where = 기록하던 단계 이름 (지휘 단계 이름 또는 모델 호출 step). 화면 메시지에 그대로 쓰므로
+    안전한 이름만 담는다. DB 예외 원문은 `raise ... from e`의 원인(__cause__)으로만 둔다.
+    """
+
+    def __init__(self, where: str) -> None:
+        super().__init__(f"{where} 기록 저장 실패")
+        self.where = where
 
 
 class RunStatus(BaseModel):
