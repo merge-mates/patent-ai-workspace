@@ -442,7 +442,7 @@ def _fixture_grouped(oa: OAResult):
     )
 
 
-def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같은_구조():
+def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같다():
     oa = _fixture_oa()
     got = build_case_materials(
         "c_1",
@@ -452,20 +452,15 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같은_구조
         lookup_failures={US_D2: LookupResult.BODY_MISSING},
     )
     want = CaseMaterials.model_validate(json.loads((FIXTURE / "case_materials.json").read_text()))
-    assert got.case_id == want.case_id
-    assert got.documents == want.documents
-    # 빠진 자료 이름은 fixture가 손으로 쓴 글자라 글자 대신 구조를 비교한다
-    assert len(got.missing) == len(want.missing) == 1
+    # 공유 fixture의 빠진 자료 이름이 실제 출력과 같으니 글자 그대로 비교한다 (#16 T8)
+    assert got == want
     (m,) = got.missing
     assert m.what == "D2 US20990000001A1 본문"
     assert (m.lookup_result, m.ask_upload) == (LookupResult.BODY_MISSING, True)
     # 보류는 없는 인용문헌의 F3 대비만, 그 작업은 빠진 자료를 기다린다
-    assert len(got.held_tasks) == len(want.held_tasks) == 1
     (h,) = got.held_tasks
-    assert h.waiting_for == m.what
+    assert (h.task, h.waiting_for) == ("F3 대비: D2 US20990000001A1", m.what)
     assert m.depends_on_tasks == [h.task]
-    assert h.task == "F3 대비: D2 US20990000001A1"
-    assert got.review_items_count == want.review_items_count
 
 
 def test_materials_빠진_것이_없으면_missing_held_비어_있음():
