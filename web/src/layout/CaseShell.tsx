@@ -11,7 +11,7 @@ import { TodoRows } from '../components/TodoList'
 import { noticeKindLabel, runStateLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
 import { refreshRun, isRunEnded } from '../runPoll'
-import { directTodos } from '../todos'
+import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../todos'
 import { useRunSnapshot } from '../useRunSnapshot'
 import type { LatestRun } from '../types/provisional/case'
 
@@ -87,7 +87,7 @@ export function CaseShell() {
 
   const r = data.oaResult?.result ?? null
   const todos = directTodos(data)
-  const todoText = todos === null ? '모름' : String(todos.length)
+  const todoText = todoCountText(todos)
   // 실행 상태는 폴링 값 (loader가 준 값에서 시작해 2.5초마다 GET /runs/{id}만 부른다)
   const snap = useRunSnapshot(data.oa.latest_run)
   const { run, error: runError } = snap
@@ -217,7 +217,10 @@ export function CaseShell() {
                 검토할 사항 목록을 받지 못해 직접 할 일 개수를 알 수 없어요. 제출기일은 통지서에서 직접 확인해 주세요.
               </span>
             ) : (
-              <TodoRows todos={todos} variant="panel" />
+              <>
+                <TodoRows todos={todos.todos} variant="panel" />
+                {!todos.directionsKnown && <span className="label1 t3">{DIRECTIONS_UNKNOWN_NOTE}</span>}
+              </>
             )}
             {/* 직접 할 일과 검토할 사항은 다른 숫자다: 전체 목록은 정리 단계 아래쪽 */}
             <div style={{ padding: '10px 0' }}>

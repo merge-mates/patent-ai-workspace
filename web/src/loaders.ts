@@ -31,7 +31,7 @@ export async function casesLoader(): Promise<CasesLoaderData> {
   if (top === null) return { cases, extras, focus: null }
   // 한 건만 제목이 필요해서 그 사건만 작업대 데이터를 받는다
   const d = await loadOA(top.latest_oa.oa_id)
-  const todos = directTodos(d) ?? []
+  const todos = directTodos(d)?.todos ?? []
   return { cases, extras, focus: { case: top, titles: todos.slice(0, 3).map((t) => t.title) } }
 }
 

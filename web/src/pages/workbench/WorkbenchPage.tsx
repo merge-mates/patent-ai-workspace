@@ -8,7 +8,7 @@ import { runStateLabel } from '../../labels'
 import type { OALoaderData } from '../../loaders'
 import { api } from '../../api'
 import { isRunEnded, refreshRun } from '../../runPoll'
-import { directTodos } from '../../todos'
+import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../../todos'
 import { useRunSnapshot } from '../../useRunSnapshot'
 import { MaterialsCard } from './MaterialsCard'
 import { RejectionsCard } from './RejectionsCard'
@@ -77,14 +77,17 @@ export function WorkbenchPage() {
       {/* 사람이 해야 할 일. 목록을 모르면 개수도 모름 (0으로 그리지 않는다) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <h2 className="heading2" style={{ marginBottom: 8 }}>
-          직접 할 일 {todos === null ? '(모름)' : todos.length}
+          직접 할 일 {todos === null ? '(모름)' : todoCountText(todos)}
         </h2>
         {todos === null ? (
           <span className="body2 t3">
             검토할 사항 목록을 받지 못해 직접 할 일을 알 수 없어요. 제출기일은 통지서에서 직접 확인해 주세요.
           </span>
         ) : (
-          <TodoRows todos={todos} variant="page" />
+          <>
+            <TodoRows todos={todos.todos} variant="page" />
+            {!todos.directionsKnown && <span className="label1 t3" style={{ paddingTop: 8 }}>{DIRECTIONS_UNKNOWN_NOTE}</span>}
+          </>
         )}
       </div>
 

@@ -26,7 +26,7 @@ export interface TodoInput {
   reviewItems: ReviewItem[] | null
   materials: CaseMaterials | null
   oaResult: { result: OAResult } | null
-  // 대응 방향 결과를 못 받았으면 null → 방향 고르기를 셀 수 없어 개수도 모름
+  // 대응 방향 결과가 아직 없으면 null → 방향 고르기 줄만 셀 수 없다 (나머지는 센다)
   directions: DirectionCandidates[] | null
 }
 
@@ -47,9 +47,22 @@ function unitText(unitId: string): string {
   return m ? `${articleLabel(m[1])} · 청구항 ${m[2]}` : unitId
 }
 
-export function directTodos(input: TodoInput): DirectTodo[] | null {
+export interface DirectTodoList {
+  todos: DirectTodo[]
+  // false면 방향 고르기 줄을 세지 못한 것이라 todos 길이는 "이 이상"이다
+  directionsKnown: boolean
+}
+
+// 개수 글자: 목록을 모르면 "모름", 방향 고르기를 못 셌으면 "N+" (모름을 숨기지 않는다)
+export const todoCountText = (list: DirectTodoList | null): string =>
+  list === null ? '모름' : list.directionsKnown ? String(list.todos.length) : `${list.todos.length}+`
+
+export const DIRECTIONS_UNKNOWN_NOTE = '대응 방향 결과가 아직 없어 방향 고르기는 아직 셀 수 없어요'
+
+export function directTodos(input: TodoInput): DirectTodoList | null {
   const { reviewItems, materials, oaResult, directions } = input
-  if (reviewItems === null || directions === null) return null
+  // 검토할 사항 목록을 모르면 전체를 모른다
+  if (reviewItems === null) return null
   const r = oaResult?.result ?? null
   const todos: DirectTodo[] = []
 
@@ -102,7 +115,7 @@ export function directTodos(input: TodoInput): DirectTodo[] | null {
 
   // 방향 고르기: 서버 검토할 사항 줄(모양이 다름)을 쓰지 않고 대응 방향 결과에서 바로 센다.
   // 직접 판단 표시가 있고 아직 안 고른(selection === null) 묶음마다 한 줄
-  for (const d of directions) {
+  for (const d of directions ?? []) {
     if (!d.flags.includes('needs_human_judgment') || d.selection !== null) continue
     todos.push({
       key: `j-${d.unit_id}`,
@@ -111,7 +124,7 @@ export function directTodos(input: TodoInput): DirectTodo[] | null {
       go: { kind: 'route', path: '/directions', label: '고르러 가기' },
     })
   }
-  return todos
+  return { todos, directionsKnown: directions !== null }
 }
 
 // 제출기일 원문 글자 → 정렬 키. `2099.04.10.` · `2027. 1. 10.` 꼴만 읽고, 못 읽으면 null (뒤로)

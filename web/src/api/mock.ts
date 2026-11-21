@@ -165,7 +165,8 @@ export const mockApi = {
         case_id: b.case_id,
         response_due_raw: b.oa_result.response_due.raw_text,
         stage: stageOf(b.oa_id),
-        todo_count: todos?.length ?? null,
+        // 방향 고르기를 못 센 사건은 개수를 "모름"으로 둔다 (적게 센 숫자를 정확한 값처럼 보이지 않게)
+        todo_count: todos?.directionsKnown ? todos.todos.length : null,
       }
     })
   },
