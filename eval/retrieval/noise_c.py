@@ -284,7 +284,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="eval.retrieval.noise_c")
     ap.add_argument("--goldsets-root", default="data/goldsets")
     ap.add_argument("--goldset", default="tune")  # report 세트에는 만들지 않는다 (11/21)
-    ap.add_argument("--pool", default="retrieval/cite_pool.yaml")
+    # tune 30건 표 (eval.retrieval.cite_pool이 만든다).
+    # 옛 8통 손 표는 --pool retrieval/cite_pool.yaml
+    ap.add_argument("--pool", default="retrieval/cite_pool_t30.yaml")
     ap.add_argument("--queries", default="retrieval/cite_c_queries.yaml")
     ap.add_argument("--out", default="retrieval/cite_pool_bc.yaml")
     ap.add_argument("--responses", default="work/kipris_c")
@@ -303,6 +305,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         if out_p == pool_p:
             raise RetrievalEvalError("--out이 원래 풀 표와 같다 (덮지 않는다)")
+        if not args.draft_queries and out_p.exists():
+            # cite_pool 명령과 같이 덮지 않는다 (#217 리뷰). 다시 만들려면 사람이 옮기고 돌린다
+            raise RetrievalEvalError(f"출력 표가 이미 있다 (덮지 않는다): {out_p.name}")
         if not pool_p.is_file():
             raise RetrievalEvalError(f"풀 표가 없다: {pool_p.name}")
         try:

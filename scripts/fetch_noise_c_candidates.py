@@ -26,6 +26,10 @@ import requests
 import yaml
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # eval 패키지를 쓰려고
+from eval.common.errors import EvalError  # noqa: E402
+from eval.retrieval.noise_c import parse_search_xml  # noqa: E402
+
 URL = "http://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getAdvancedSearch"
 SLEEP_S = 1.0  # 호출 사이 쉼
 MAX_CALLS = 40  # 한 번 실행에 부르는 최대 수 (30 OA + 여유). 월 1,000건 무료 한도 안
@@ -50,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", help="이 발송번호 하나만")
     # 11/21 첫 실호출: 30건 중 우선일 전은 8건뿐(최근 순에 가까움). 넉넉히 받는다
     ap.add_argument("--rows", type=int, default=100)
-    # 낱말 잇기: KIPRIS 검색식에서 '+'는 OR, '*'는 AND (안내 화면 기준, 실호출로 확인 전)
+    # 낱말 잇기: KIPRIS 검색식에서 '+'는 OR, '*'는 AND. '+'는 11/21 실호출로 확인 ('*'는 안 써 봄)
     ap.add_argument("--join", default="+")
     ap.add_argument("--dry-run", action="store_true", help="부르지 않고 칸만 보인다")
     args = ap.parse_args(argv)
@@ -106,6 +110,14 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if r.status_code != 200 or "<response" not in r.text:
             print(f"{k}: 응답 이상 (HTTP {r.status_code})", file=sys.stderr)
+            failed.append(k)
+            continue
+        try:
+            # HTTP 200이어도 키 오류·한도 초과면 resultCode가 00이 아니다. 저장하면 다음 실행이
+            # 그 OA를 건너뛰므로, 저장하기 전에 noise_c와 같은 검사로 걸러 실패로 센다 (#217 리뷰)
+            parse_search_xml(r.text)
+        except EvalError as e:
+            print(f"{k}: {e}", file=sys.stderr)
             failed.append(k)
             continue
         (out / f"{k}.xml").write_text(r.text.replace(key, "***"), encoding="utf-8")

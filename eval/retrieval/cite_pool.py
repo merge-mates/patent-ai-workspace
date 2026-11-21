@@ -51,12 +51,13 @@ def parse_front(text: str) -> tuple[str, date]:
     app = re.search(r"\(21\)출원번호(\d{2}-\d{4}-\d{7})", t) or re.search(
         r"\(21\)Appl\.No\.:?(\d{2}/\d{3},\d{3})", t
     )
-    # 공개공보는 (43) 공개일, 등록공보는 (45) 등록공고일 (GUIDE 칸 정의)
+    # 공개공보는 (43) 공개일, 등록공보는 (45) 등록공고일 (GUIDE 칸 정의).
+    # 등록공보 첫 쪽에는 (43) 공개일이 같이 찍히기도 해서 (45)를 먼저 본다 (#217 리뷰, 실제 B1 1건)
     found = (
-        (re.search(r"\(43\)공개일자" + _KR_DATE, t), _kr),
         (re.search(r"\(45\)공고일자" + _KR_DATE, t), _kr),
-        (re.search(r"\(43\)Pub\.Date:" + _US_DATE, t), _us),
         (re.search(r"\(45\)DateofPatent:" + _US_DATE, t), _us),
+        (re.search(r"\(43\)공개일자" + _KR_DATE, t), _kr),
+        (re.search(r"\(43\)Pub\.Date:" + _US_DATE, t), _us),
     )
     d = next((conv(m) for m, conv in found if m), None)
     if not app or d is None:
