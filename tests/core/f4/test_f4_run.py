@@ -257,6 +257,31 @@ def test_뒤_묶음_초안을_싣지_않은_겹침이_결과와_확인_글에_�
     assert "청구항 2" in out.status.checked and "직접 합치기 필요" in out.status.checked
 
 
+def test_세_묶음이_겹쳐_고치면_확인_글의_개수는_초안_수고_청구항은_중복_없이_나온다():
+    first = copy.deepcopy(_answer("amendment_inventive"))
+    first["claims"].append(copy.deepcopy(_answer("amendment_clarity")["claims"][0]))  # 청구항 1·2
+    clarity_both = copy.deepcopy(_answer("amendment_clarity"))
+    clarity_both["claims"].insert(0, copy.deepcopy(_answer("amendment_inventive")["claims"][0]))
+    third = "oa_1:42-4-3:c3"
+    data = _clean_case()
+    unit3 = copy.deepcopy(data["units"][1])
+    unit3.update(unit_id=third, order=3, representative_claim=3, claims=[3], read_with=[1, 2])
+    data["units"].append(unit3)
+    data["legal"].append(_confirmed_legal(third, 2))
+    clarity3 = copy.deepcopy(data["clarity"][0])  # 셋째 묶음도 F3 명확성 결과가 있어야 확인됨
+    clarity3.update(unit_id=third, claim=3)
+    data["clarity"].append(clarity3)
+    out, _ = _run(
+        data,
+        directions=("direction_inventive", "direction_clarity", "direction_clarity"),
+        opinions=("opinion_inventive", "opinion_clarity", "opinion_clarity"),
+        amendments=(first, clarity_both, clarity_both),
+    )
+    assert len(out.amendment_overlaps) == 4
+    # 버린 초안은 4개, 겹친 청구항은 1·2 두 개 (개수는 초안 수, 번호는 중복 없이)
+    assert "뒤 묶음 초안 4개를 싣지 않음(청구항 1, 2, 직접 합치기 필요)" in out.status.checked
+
+
 def test_겹침이_없으면_겹침_목록이_비어_있다():
     out, _ = _run(_clean_case())
     assert out.amendment_overlaps == []

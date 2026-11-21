@@ -343,6 +343,41 @@ def test_앞선_묶음이_가진_청구항을_뒤_묶음이_덮어쓰지_않는�
     ]
 
 
+def _three_units_data() -> dict:
+    """명확성 묶음을 하나 더 복제해 묶음 셋(order 1·2·3)이 되게 한 사건."""
+    data = json.loads((FIXTURES / "case_basic.json").read_text("utf-8"))
+    data["spec"] = json.loads((FIXTURES / "spec_basic.pages.json").read_text("utf-8"))
+    third = copy.deepcopy(data["units"][1])
+    third.update(
+        unit_id="oa_1:42-4-3:c3", order=3, representative_claim=3, claims=[3], read_with=[1, 2]
+    )  # 청구항 1·2는 읽기만 하는 묶음
+    data["units"].append(third)
+    return data
+
+
+def test_세_묶음이_같은_청구항을_겹쳐_고치면_버린_묶음마다_한_줄씩_남는다():
+    first = copy.deepcopy(_answer("amendment_inventive"))
+    first["claims"].append(copy.deepcopy(_answer("amendment_clarity")["claims"][0]))  # 청구항 1·2
+    clarity = _answer("amendment_clarity")
+    clarity_both = copy.deepcopy(clarity)
+    clarity_both["claims"].insert(0, copy.deepcopy(_answer("amendment_inventive")["claims"][0]))
+    inp = F4Input.model_validate(_three_units_data())
+    part, _, _ = _run(
+        [first, clarity_both, clarity_both],
+        directions=("direction_inventive", "direction_clarity", "direction_clarity"),
+        opinions=("opinion_inventive", "opinion_clarity", "opinion_clarity"),
+        inp=inp,
+    )
+    third = "oa_1:42-4-3:c3"
+    # (청구항, 남긴 묶음, 버린 묶음): 남긴 묶음은 늘 order 1, 버린 묶음마다 청구항 수만큼 한 줄
+    assert sorted((o.claim, o.kept_unit, o.dropped_unit) for o in part.overlaps) == [
+        (1, UNIT_INVENTIVE, UNIT_CLARITY),
+        (1, UNIT_INVENTIVE, third),
+        (2, UNIT_INVENTIVE, UNIT_CLARITY),
+        (2, UNIT_INVENTIVE, third),
+    ]
+
+
 # ---- Drafts로 묶기 ----
 def test_의견서와_보정_청구항을_Drafts_하나로_묶는다():
     part, _, opinion = _basic()
