@@ -246,6 +246,16 @@ def test_make_cases_없는_출처는_없는_가지_번호를_고른다(mats):
     assert all(c.target_claim == 1 and c.target_source == 0 for c in by_base.values())
 
 
+def test_make_cases_없는_출처는_다른_판에만_있는_가지도_건너뛴다(mats):
+    # 현행 판 D3에만 52조의2가 생겼다 → 바탕 판(52조 바탕)에 없어도 "없는 출처"로 쓰면 안 된다
+    data = _law("20210101", "3개월", "3개월", "2년", "3개월")
+    data["법령"]["조문"]["조문단위"].append(_art(52, 2, "가짜제목52의2", ["가짜 글 오십이의이"]))
+    _write_json(mats.law_raw / f"body_{D3}.json", data)
+    cases = _run(mats)
+    by_base = {c.base_case_id: c for c in _inj(cases, "nonexistent_source")}
+    assert by_base["real:o4:r1"].bundle.claims[0].sources[0].identifier == "특허법 제52조의3제1항"
+
+
 def test_make_cases_주장_불일치는_다음_제목_있는_조문(mats):
     cases = _run(mats)
     c = _inj(cases, "claim_text_mismatch")[0]  # 바탕 o1

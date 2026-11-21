@@ -294,8 +294,10 @@ def _nonexistent(reals, corpus, checked_on, gv) -> list[InjectedCase]:
         m = _LABEL.match(es.identifier)
         loc = chunk.location.start
         jo, hang = loc // 10000, loc % 100
-        have = {k // 100 for k in corpus.law_of(chunk.doc_id).chunks[chunk.doc_id]}
-        # 같은 조의 가지 번호를 2부터 올려 그 판에 없는 첫 번호를 고른다
+        # 그 법의 모든 판을 본다: 다른 판(예: 현행)에 있는 조문을 "없는 출처"로 내면 안 된다
+        law = corpus.law_of(chunk.doc_id)
+        have = {k // 100 for doc in law.chunks.values() for k in doc}
+        # 같은 조의 가지 번호를 2부터 올려 어느 판에도 없는 첫 번호를 고른다
         g = next((g for g in range(2, 100) if jo * 100 + g not in have), None)
         if m is None or g is None:
             raise EvalError(f"{real.case_id}: 없는 가지 번호를 고를 수 없다")
