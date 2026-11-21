@@ -191,8 +191,8 @@ flowchart LR
 - **결과에 남길 것:** 모델 이름, 프롬프트 판, 설정 파일 판, 색인 판·지문 (`runs`·`agent_steps`, 실험은 `scores.json`).
 
 ### 7-2. 각자 칸
-한 사람(은진)이 구현하고 설정만 바꿔 비교한다. 기본 `impl`은 `split`이고, `single` 비교는 M3에 시간 나면 한다 (requirements "비교 실험", 11/20 정함).
-- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → (M3에 돌리면) `experiments/m3-f2-review-split/`
+한 사람(은진)이 구현하고 설정만 바꿔 비교한다. 기본 `impl`은 `split`이고, `single` 비교는 M3에 한다 (requirements "비교 실험", 11/20 정함).
+- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → (M3) `experiments/m3-f2-review-split/`
 - 모델 호출: 거절이유마다 답 쓰기 1~3번 + 근거 검토 1~2번 [가정]. OA 한 통(거절이유 2~3개)에 10번 안팎.
 - 프롬프트 파일: `prompts/f2/research.md` (F2), `prompts/agents/evidence_review.md` (공통 근거 검토).
 - 실험 설정: `config/f2.yaml`의 `impl`, `query_style`, `search_mode`.
@@ -213,7 +213,7 @@ flowchart LR
    d. 조 조각을 하나 더 색인 (항 조각은 그대로): 조 맞힘이 더 좋았다. 근거 위치는 항까지 보여야 하므로 조 조각으로 찾고 항 조각으로 위치를 붙이는 변형.
    e. 모델이 관련 조문을 먼저 써 보고 그 글로 찾기. 모델 호출 비용이 들어 맨 뒤에 한다. 지어낸 조문은 2절 4단계 출처 확인이 거른다 ([KoBLEX, arXiv 2509.01324](https://arxiv.org/html/2509.01324v1)).
 2. 심사기준·판례·심결 BM25 / 벡터 기준선 (`law-idx-v3`, #24 뒤). 판례·심결은 조각 단위에 더해 **문헌 단위**로도 센다 (한 판례의 조각 여럿이 상위 k를 다 차지하는지).
-3. (M3, 시간 나면) 근거 검토 역할 분리 `single` / `split` (PRD 비교 축). M2는 `split`만 만든다.
+3. (M3) 근거 검토 역할 분리 `single` / `split` (PRD 비교 축). M2 뼈대는 `split` 기본.
 - 메타데이터 거르기는 점수를 매기기 **전에** 한다 (pre-filter). 상위 k를 뽑은 뒤 거르면 결과가 모자란다. 지금은 벡터 인덱스가 없어 그대로 되고, HNSW 인덱스를 붙이면 pgvector `iterative_scan`이나 값마다 부분 인덱스가 필요하다. 판례 문단 역할(판단 / 당사자 주장)도 같은 메타데이터로 두어 8절 구분을 검색 조건으로 쓸 수 있게 한다 (#24 검색 계약 PR).
 - 판례·심결 날짜 거르기는 4절 "쓰는 판례·심결 날짜"로 옮겼다.
 - 나중 (M2에서 안 함):
