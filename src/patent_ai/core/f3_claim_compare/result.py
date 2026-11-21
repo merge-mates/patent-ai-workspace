@@ -20,8 +20,9 @@ class SearchLogRow(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit_id: str
-    claim: int
-    element_no: int
+    claim: int  # 대비 대상 청구항
+    element_claim: int  # 구성요소가 실제로 있는 청구항 (부모에서 온 구성요소면 claim과 다르다)
+    element_no: int  # element_claim 안의 순번
     element_hash: str  # 구성요소 글자의 sha256 앞 12자 (원문 아님)
     citation: str  # 라벨 D1…
     doc_id: str

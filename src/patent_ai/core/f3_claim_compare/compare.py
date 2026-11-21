@@ -6,6 +6,10 @@
 - 심사관 지정 조각은 (설정이 켜져 있을 때만) 표시 없이 후보에 더하고, 줄의 출처는 코드가 붙인다.
 - 근거를 못 고르면 "조회 범위 내 없음" + 찾아본 범위. "없다"고 단정하는 글을 만들지 않는다.
 - 신규성은 인용문헌 하나와만: 인용문헌마다 모델을 따로 부르고 표도 따로 만든다.
+- 종속항 대비에는 그 종속항이 인용하는(거슬러 올라가는) 부모 청구항의 구성요소를 같이 넣는다
+  (11/21 결정). 줄의 claim은 대비 대상 종속항, element_location은 구성요소가 실제로 있는 청구항이다.
+  부모가 같은 단위 안에서 이미 대비되면 다시 넣지 않는다.
+- 같은 (질의, 인용문헌) 검색은 한 번만 한다 (부모 구성요소가 종속항마다 되풀이되므로).
 """
 
 import json
@@ -26,11 +30,18 @@ from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
 from patent_ai.core.f3_claim_compare.result import ExaminerLocationRow, SearchLogRow
 from patent_ai.core.f3_claim_compare.retry import call_checked, confirmed, unverified
 from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short, text_hash
+from patent_ai.core.f3_claim_compare.units import ancestors
 from patent_ai.core.llm.embed import query_embedder
 from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.case_materials import HeldTask
-from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import (
+    Evidence,
+    Flag,
+    Status,
+    StatusValue,
+    UnverifiedReason,
+)
 from patent_ai.core.schemas.comparison import (
     ComparisonRow,
     ComparisonTable,
@@ -131,6 +142,122 @@ def _scope_text(cite: ResolvedCitation, settings: F3Settings) -> str:
 
 
 @dataclass
+class _Item:
+    """대비할 구성요소 하나. n은 모델에게 보여 주는 번호 (청구항 안 순번이 아니라 목록 순번)."""
+
+    n: int
+    e: ClaimElement
+
+
+@dataclass
+class _View:
+    """청구항 하나(대비 대상)의 대비 목록: 부모에서 온 구성요소 + 자기 구성요소."""
+
+    claim: int
+    items: list[_Item]
+    # 모델에 보여 줄 청구항 글자 (부모에서 온 구성요소가 있으면 그 부모 청구항 글자도)
+    claim_text: str
+    parents: list[int] = field(default_factory=list)  # 구성요소를 빌려 온 부모 청구항
+    # 빌려 올 부모의 나누기 결과가 비었거나 확인되지 않음: 표를 input_unverified로 둔다
+    parent_unverified: bool = False
+
+
+def _has_branch(claim: int, splits: Mapping[int, SplitClaim]) -> bool:
+    """인용 경로 어디엔가 앞 청구항을 둘 이상 인용하는 청구항("제2항 또는 제3항")이 있나."""
+    seen: set[int] = set()
+    todo = [claim]
+    while todo:
+        c = todo.pop()
+        if c in seen:
+            continue
+        seen.add(c)
+        depends = splits[c].depends_on or []
+        if len(depends) > 1:
+            return True
+        todo += depends
+    return False
+
+
+def _carried_parents(
+    claim: int,
+    compared: Mapping[int, set[str]],
+    labels: set[str],
+    splits: Mapping[int, SplitClaim],
+) -> list[int]:
+    """구성요소를 빌려 와야 하는 부모 청구항들 (번호 순).
+
+    인용을 거슬러 올라간 앞 청구항 중, 이 묶음에서 이미 대비되는 청구항(과 그 앞 청구항들)은 뺀다.
+    "이미 대비됨" = 그 부모가 이 묶음에 있고 이 종속항이 대비되는 문헌을 모두 대비받음
+    (신규성은 문헌마다 표가 따로라, 부모가 다른 문헌과 대비됐다고 이 문헌 대비를 건너뛰면 안 된다).
+    인용 관계를 모르는 청구항(ancestors가 None)이면 아무것도 빌리지 않는다: 단위가
+    확인되지 않음으로 남고 대비표에도 자기 구성요소만 들어간다.
+    """
+    family = ancestors(claim, splits)
+    if not family:
+        return []
+    if _has_branch(claim, splits):
+        # 가지마다 따로 대비하는 일은 아직 없다. 가지 합집합을 한 청구항처럼 대비하지 않는다
+        logger.warning(
+            "compare 청구항 %d: 인용 가지가 여럿이라 부모 구성요소를 넣지 않음 (직접 검토 필요)",
+            claim,
+        )
+        return []
+    covered: set[int] = set()
+    for a in family:
+        if splits[a].elements and labels <= compared.get(a, set()):
+            covered |= {a} | (ancestors(a, splits) or set())
+    return sorted(family - covered)
+
+
+def _make_view(
+    split: SplitClaim,
+    compared: Mapping[int, set[str]],
+    splits: Mapping[int, SplitClaim],
+    config: F3Config,
+) -> _View:
+    texts = config.inputs.claims_at_oa
+    parents = _carried_parents(split.claim, compared, compared[split.claim], splits)
+    unverified_parent = False
+    for p in parents:
+        if not splits[p].elements or splits[p].status.value != StatusValue.CONFIRMED:
+            # 조용히 빠지지 않게: 경고를 남기고 표를 확인되지 않음으로 둔다
+            logger.warning(
+                "compare 청구항 %d: 부모 청구항 %d의 구성요소 나누기가 비었거나 확인되지 않아"
+                " 부모 구성요소를 온전히 대비하지 못함",
+                split.claim,
+                p,
+            )
+            unverified_parent = True
+    elements = [e for p in parents for e in splits[p].elements] + list(split.elements)
+    items = [_Item(n, e) for n, e in enumerate(elements, start=1)]
+    if parents:
+        shown = [f"[청구항 {p}: 인용되는 앞 청구항]\n{texts.get(p, '')}" for p in parents]
+        shown.append(f"[청구항 {split.claim}: 대비 대상]\n{texts.get(split.claim, '')}")
+        claim_text = "\n\n".join(shown)
+    else:
+        claim_text = texts.get(split.claim, "")
+    return _View(split.claim, items, claim_text, parents, unverified_parent)
+
+
+class _CachedSearcher:
+    """같은 검색(질의·말뭉치·방식·k·문헌)은 한 번만 하고 결과를 다시 쓴다."""
+
+    def __init__(self, inner: Searcher):
+        self.inner = inner
+        self.done: dict[tuple, SearchResult] = {}
+
+    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
+        key = (query, corpus, mode, k, tuple(doc_ids or ()), as_of)
+        if key not in self.done:
+            self.done[key] = self.inner.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of)
+        return self.done[key]
+
+
+def _cached(searcher: Searcher) -> Searcher:
+    return searcher if isinstance(searcher, _CachedSearcher) else _CachedSearcher(searcher)
+
+
+@dataclass
 class _Candidate:
     """모델에 보여 줄 후보 조각 하나."""
 
@@ -175,7 +302,7 @@ def _log_status(result: SearchResult, scope: str) -> Status:
 def _gather(
     unit: JudgmentUnit,
     claim: int,
-    elements: list[ClaimElement],
+    items: list[_Item],
     cites: list[ResolvedCitation],
     oa: OAResult,
     config: F3Config,
@@ -187,7 +314,8 @@ def _gather(
     search = settings.search
     mode = _mode(search.impl)
     candidates: dict[str, _Candidate] = {}
-    for e in elements:
+    for item in items:
+        e = item.e
         for cite in cites:
             # 질의는 구성요소 원문뿐이다 (심사관 지정 번호를 넣지 않는다). 범위는 그 인용문헌 하나
             result = searcher.search(e.text, "cite", mode, search.k, doc_ids=[cite.doc_id])
@@ -196,6 +324,7 @@ def _gather(
                 SearchLogRow(
                     unit_id=unit.unit_id,
                     claim=claim,
+                    element_claim=e.claim,
                     element_no=e.no,
                     element_hash=text_hash(e.text),
                     citation=cite.label,
@@ -207,7 +336,7 @@ def _gather(
             )
             for hit in result.hits:
                 found = candidates.setdefault(hit.chunk_id, _Candidate(hit, cite.label))
-                found.ranks[e.no] = hit.rank
+                found.ranks[item.n] = hit.rank
     if not settings.use_examiner_paragraphs:
         return candidates  # 평가 누출 막기: 심사관 위치를 읽지도 않는다
     for cite in cites:
@@ -292,10 +421,16 @@ def _check(
     return judged, errors
 
 
+def _item_line(item: _Item, claim: int) -> str:
+    """모델에 보여 줄 구성요소 한 줄. 부모 청구항에서 온 것은 어느 청구항 것인지 덧붙인다."""
+    line = f"{item.n}: {' '.join(item.e.text.split())}"
+    return line if item.e.claim == claim else f"{line} (청구항 {item.e.claim}의 구성요소)"
+
+
 def _ask(
     claim: int,
     claim_text: str,
-    elements: list[ClaimElement],
+    items: list[_Item],
     pairs: list[tuple[int, str]],
     candidates: Mapping[str, _Candidate],
     min_chars: int,
@@ -310,7 +445,7 @@ def _ask(
         "claim": str(claim),
         "citations": ", ".join(dict.fromkeys(label for _, label in pairs)),
         "claim_text": claim_text,
-        "elements": "\n".join(f"{e.no}: {' '.join(e.text.split())}" for e in elements),
+        "elements": "\n".join(_item_line(i, claim) for i in items),
         # 후보에는 심사관 지정 여부도 검색 순위도 싣지 않는다
         "candidates": json.dumps(
             [
@@ -360,18 +495,23 @@ def _scope_text_twice(cite: ResolvedCitation, settings: F3Settings, figures: int
 
 
 def _rows_of(
-    e: ClaimElement,
+    claim: int,
+    item: _Item,
     cite: ResolvedCitation,
     one: _Judged | None,
     settings: F3Settings,
 ) -> list[ComparisonRow]:
-    """구성요소 × 인용문헌 하나의 줄. 근거 출처가 섞이면 심사관 지정 / AI 찾음 두 줄로 나눈다."""
+    """구성요소 × 인용문헌 하나의 줄 (claim = 대비 대상 청구항).
+
+    근거 출처가 섞이면 심사관 지정 / AI 찾음 두 줄로 나눈다.
+    """
+    e = item.e
     scope = (one.scope if one else None) or _scope_text(cite, settings)
     twice = one is not None and one.scope is not None
 
     def row(judgment: Judgment, status: Status, picks=(), examiner=False, why=None):
         return ComparisonRow(
-            claim=e.claim,
+            claim=claim,  # 부모에서 온 구성요소여도 줄의 claim은 대비 대상 종속항
             element=e.text,
             element_location=e.element_location,
             citation=cite.label,
@@ -409,7 +549,7 @@ def _rows_of(
     if by_examiner:
         rows.append(row(one.judgment, status, by_examiner, examiner=True))
     if by_ai:
-        why = _why(e.no, by_ai, scope)
+        why = _why(item.n, by_ai, scope)
         rows.append(row(one.judgment, status, by_ai, why="두 번째 검색. " + why if twice else why))
     return rows
 
@@ -426,8 +566,8 @@ def _second_log_status(result: SearchResult, fresh: bool, scope: str) -> Status:
 
 def _second_round(
     unit: JudgmentUnit,
-    split: SplitClaim,
-    missing: list[tuple[ClaimElement, ResolvedCitation]],
+    view: _View,
+    missing: list[tuple[_Item, ResolvedCitation]],
     first: Mapping[tuple[int, str], Judgment],
     shown: Mapping[str, _Candidate],
     config: F3Config,
@@ -445,7 +585,7 @@ def _second_round(
     settings = config.settings
     search = settings.search
     mode = _mode(search.impl)
-    claim = split.claim
+    claim = view.claim
     candidates: dict[str, _Candidate] = {}
     scopes: dict[str, str] = {}
     # 도면 설명 조각 (인용문헌마다 한 번만 읽는다)
@@ -458,7 +598,8 @@ def _second_round(
         for c in sorted(figures, key=lambda c: c.chunk_id):
             candidates[c.chunk_id] = _Candidate(c, cite.label)
         scopes[cite.label] = _scope_text_twice(cite, settings, len(figures))
-    for e, cite in missing:
+    for item, cite in missing:
+        e = item.e
         # 질의는 1차와 같다 (구성요소 원문뿐). 더 깊이 받아 이미 본 조각을 뺀다
         depth = settings.second_search_depth
         result = searcher.search(e.text, "cite", mode, depth, doc_ids=[cite.doc_id])
@@ -468,6 +609,7 @@ def _second_round(
             SearchLogRow(
                 unit_id=unit.unit_id,
                 claim=claim,
+                element_claim=e.claim,
                 element_no=e.no,
                 element_hash=text_hash(e.text),
                 citation=cite.label,
@@ -480,27 +622,28 @@ def _second_round(
         )
         for hit in fresh:
             found = candidates.setdefault(hit.chunk_id, _Candidate(hit, cite.label))
-            found.ranks[e.no] = hit.rank
-    pairs = [(e.no, cite.label) for e, cite in missing]
+            found.ranks[item.n] = hit.rank
+    pairs = [(item.n, cite.label) for item, cite in missing]
     again: dict[tuple[int, str], _Judged] = {}
     if candidates:
-        elements = list({e.no: e for e, _ in missing}.values())
-        claim_text = config.inputs.claims_at_oa.get(claim, "")
-        again = _ask(claim, claim_text, elements, pairs, candidates, settings.min_quote_chars, ctx)
+        items = list({i.n: i for i, _ in missing}.values())
+        again = _ask(
+            claim, view.claim_text, items, pairs, candidates, settings.min_quote_chars, ctx
+        )
     else:
         logger.warning("compare 청구항 %d: 두 번째 검색에서 새 조각이 0개", claim)
     out: dict[tuple[int, str], _Judged] = {}
-    for e, cite in missing:
+    for item, cite in missing:
         # 모델이 답을 안 준 짝은 1차 판정(못 찾음)을 그대로 두고 범위만 두 번으로 적는다
-        one = again.get((e.no, cite.label)) or _Judged(first[(e.no, cite.label)])
+        one = again.get((item.n, cite.label)) or _Judged(first[(item.n, cite.label)])
         one.scope = scopes[cite.label]
-        out[(e.no, cite.label)] = one
+        out[(item.n, cite.label)] = one
     return out
 
 
 def _compare_claim(
     unit: JudgmentUnit,
-    split: SplitClaim,
+    view: _View,
     cites: list[ResolvedCitation],
     oa: OAResult,
     config: F3Config,
@@ -509,43 +652,40 @@ def _compare_claim(
     repo: ChunkRepository,
     seen: _Collected,
 ) -> list[ComparisonRow]:
-    claim = split.claim
+    claim = view.claim
     # 원문에서 확인된 구성요소만 찾고 판정한다
-    usable = [e for e in split.elements if e.status.value == StatusValue.CONFIRMED]
+    usable = [i for i in view.items if i.e.status.value == StatusValue.CONFIRMED]
     labels = [c.label for c in cites]
     candidates = _gather(unit, claim, usable, cites, oa, config, searcher, repo, seen)
     judged: dict[tuple[int, str], _Judged] = {}
     if usable and candidates:
-        claim_text = config.inputs.claims_at_oa.get(claim, "")
         min_chars = config.settings.min_quote_chars
-        pairs = [(e.no, label) for e in usable for label in labels]
-        judged = _ask(claim, claim_text, usable, pairs, candidates, min_chars, ctx)
+        pairs = [(i.n, label) for i in usable for label in labels]
+        judged = _ask(claim, view.claim_text, usable, pairs, candidates, min_chars, ctx)
     elif usable:
         # 후보가 하나도 없으면 모델을 부르지 않는다: 모두 "조회 범위 내 없음"
         logger.warning("compare 청구항 %d: 후보 조각이 0개라 모델을 부르지 않음", claim)
         judged = {
-            (e.no, label): _Judged(Judgment.DIFFERENCE_CANDIDATE)
-            for e in usable
-            for label in labels
+            (i.n, label): _Judged(Judgment.DIFFERENCE_CANDIDATE) for i in usable for label in labels
         }
     if config.settings.second_search:
         missing = [
-            (e, cite)
-            for e in usable
+            (i, cite)
+            for i in usable
             for cite in cites
-            if (one := judged.get((e.no, cite.label))) is not None and one.not_found()
+            if (one := judged.get((i.n, cite.label))) is not None and one.not_found()
         ]
         if missing:
-            first = {key: judged[key].judgment for key in [(e.no, c.label) for e, c in missing]}
+            first = {key: judged[key].judgment for key in [(i.n, c.label) for i, c in missing]}
             judged.update(
                 _second_round(
-                    unit, split, missing, first, candidates, config, ctx, searcher, repo, seen
+                    unit, view, missing, first, candidates, config, ctx, searcher, repo, seen
                 )
             )
     rows: list[ComparisonRow] = []
-    for e in split.elements:
+    for i in view.items:
         for cite in cites:
-            rows += _rows_of(e, cite, judged.get((e.no, cite.label)), config.settings)
+            rows += _rows_of(claim, i, cite, judged.get((i.n, cite.label)), config.settings)
     return rows
 
 
@@ -581,6 +721,8 @@ def _inventive_summary(
     # 확인 못 한 구성요소는 글자를 싣지 않고 대비하지 않았다고만 적는다 (빠뜨리지 않는다)
     differences = [
         f"{location} {_LOST_NOTE if (claim, location) in lost else text}"
+        # 부모 청구항에서 온 구성요소는 어느 종속항 대비에서 왔는지 덧붙인다
+        + ("" if location.startswith(f"청구항 {claim} ") else f" (청구항 {claim}에서 인용)")
         for (claim, location), (text, mark) in marks.items()
         if mark != Judgment.DISCLOSED
     ]
@@ -679,6 +821,7 @@ def compare_unit(
     if unit.rejection_kind not in (RejectionKind.INVENTIVE_STEP, RejectionKind.NOVELTY):
         raise ValueError(f"대비 단계는 진보성·신규성 단위만 받는다: {unit.unit_id}")
     rej = next(r for r in oa.rejections if r.no == unit.rejection)
+    searcher = _cached(searcher)  # 같은 검색은 한 번만
     settings = config.settings
     seen = _Collected()
     resolved = resolve_citations(rej, oa.oa_id, repo, settings.search.index_version)
@@ -696,19 +839,23 @@ def compare_unit(
     # 신규성은 인용문헌 하나씩 따로 (두 문헌을 한 프롬프트·한 표에 섞지 않는다)
     groups = [[c] for c in usable] if novelty else ([usable] if usable else [])
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
-    # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
-    lost: set[tuple[int, str]] = {
-        (e.claim, e.element_location)
-        for claim in unit.claims
-        if claim in splits
-        for e in splits[claim].elements
-        if e.status.value != StatusValue.CONFIRMED
-    }
     for group in groups:
         rows: list[ComparisonRow] = []
+        # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
+        cites_of = {c: _labels_for(oa, unit.rejection, c, group) for c in unit.claims}
+        has_elements = {c for c in unit.claims if c in splits and splits[c].elements}
+        compared = {c: {x.label for x in cites_of[c]} for c in has_elements if cites_of[c]}
+        # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
+        views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
+        # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
+        lost: set[tuple[int, str]] = {
+            (v.claim, i.e.element_location)
+            for v in views.values()
+            for i in v.items
+            if i.e.status.value != StatusValue.CONFIRMED
+        }
         for claim in unit.claims:
-            split = splits.get(claim)
-            if split is None or not split.elements:
+            if claim not in has_elements:
                 logger.warning(
                     "compare %s: 청구항 %d의 구성요소가 없어 건너뜀", unit.unit_id, claim
                 )
@@ -717,21 +864,29 @@ def compare_unit(
                     f"f3_compare:{unit.unit_id}:claim{claim}",
                     f"청구항 {claim} 구성요소 나누기",
                 )
-                continue
-            cites = _labels_for(oa, unit.rejection, claim, group)
-            if cites:
-                rows += _compare_claim(unit, split, cites, oa, config, ctx, searcher, repo, seen)
+            elif claim in views:
+                rows += _compare_claim(
+                    unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+                )
         if not rows:
             labels = "·".join(c.label for c in group)
             logger.warning("compare %s: %s 대비 줄이 0개라 표를 만들지 않음", unit.unit_id, labels)
             _hold(seen, f"f3_compare:{unit.unit_id}:{labels}", "대비할 청구항 구성요소")
             continue
+        unverified_claims = {c for c, v in views.items() if v.parent_unverified}
         # 요약은 status를 덮기 전의 줄로 모은다 (입력 상태 때문에 차이 후보가 빠지지 않게)
         summary = (
             _novelty_summary(rows, lost, unit, group[0].label)
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )
+        if unverified_claims:
+            # 부모 구성요소를 온전히 대비하지 못한 종속항의 줄은 확인되지 않음으로 낮춘다
+            bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
+            rows = [
+                r.model_copy(update={"status": bad}) if r.claim in unverified_claims else r
+                for r in rows
+            ]
         if not input_ok:
             # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
             bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
@@ -771,6 +926,7 @@ def compare_units(
     """진보성·신규성 단위를 순서대로 대비해 한데 모은다 (명확성 단위는 건너뛴다)."""
     total = _Collected()
     tables: list[ComparisonTable] = []
+    searcher = _cached(searcher)  # 단위가 달라도 같은 (구성요소, 문헌) 검색은 한 번만
     for unit in sorted(units, key=lambda u: u.order):
         if unit.rejection_kind == RejectionKind.CLARITY:
             continue

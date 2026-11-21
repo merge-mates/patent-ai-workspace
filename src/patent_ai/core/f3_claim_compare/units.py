@@ -3,6 +3,8 @@
 답이 정해진 코드 도구다 (같은 입력 -> 같은 결과). 청구항을 읽는 일(누가 누구를 인용하나)은
 구성요소 나누기 단계의 모델이 했고, 여기서는 그 결과(SplitClaim.depends_on)를 규칙대로 묶기만 한다.
 - 진보성·신규성: 독립항 묶음. 여러 항을 인용하는 종속항은 그 독립항 묶음마다 들어간다.
+  독립항이 거절이유의 대상이 아니어도 대상 종속항끼리 묶는다. 그 독립항(부모)의 구성요소는
+  대비 단계가 종속항 대비에 같이 넣는다 (11/21 결정), 그래서 여기서 경고·표시를 붙이지 않는다.
 - 명확성: 청구항 하나. 함께 읽을 청구항(read_with)은 인용을 거슬러 올라간 앞 청구항 전부.
 """
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 _CHECKED = "거절이유 대상 청구항과 확인된 인용 관계로 묶음"
 
 
-def _ancestors(claim: int, splits: Mapping[int, SplitClaim]) -> set[int] | None:
+def ancestors(claim: int, splits: Mapping[int, SplitClaim]) -> set[int] | None:
     """인용을 거슬러 올라간 앞 청구항 전부. 중간에 인용 관계를 모르는 청구항이 있으면 None."""
     seen: set[int] = set()
     todo = [claim]
@@ -64,7 +66,7 @@ def _unit(rej: Rejection, oa_id: str, kind: UnitKind, rep: int, claims: list[int
 
 def _units_of(rej: Rejection, oa_id: str, splits: Mapping[int, SplitClaim]) -> list[JudgmentUnit]:
     targets = sorted(set(rej.claims.value or []))
-    family = {c: _ancestors(c, splits) for c in targets}
+    family = {c: ancestors(c, splits) for c in targets}
     unknown = [c for c in targets if family[c] is None]
     if unknown:
         logger.warning(
@@ -100,17 +102,6 @@ def _units_of(rej: Rejection, oa_id: str, splits: Mapping[int, SplitClaim]) -> l
         # 독립항이 이 거절이유의 대상이 아니면 대상 중 가장 앞 청구항이 대표
         rep = root if root in members else members[0]
         unit = _unit(rej, oa_id, UnitKind.INDEPENDENT_GROUP, rep, members, known=True)
-        if root not in members:
-            # 이 단위에서는 독립항의 구성요소를 대비하지 않는다. 조용히 넘어가지 않게 표시한다
-            logger.warning(
-                "build_units 거절이유 %d: 독립항 %d이 대상이 아니라 청구항 %s만 묶음"
-                " (직접 검토 필요)",
-                rej.no,
-                root,
-                members,
-            )
-            flags = list(dict.fromkeys([*unit.flags, Flag.NEEDS_HUMAN_REVIEW]))
-            unit = unit.model_copy(update={"flags": flags})
         units.append(unit)
     units += [_unit(rej, oa_id, UnitKind.INDEPENDENT_GROUP, c, [c], known=False) for c in unknown]
     return units
