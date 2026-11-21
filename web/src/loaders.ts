@@ -79,9 +79,10 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
-  const [oaResult, materials, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
+  const [oaResult, materialsP, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(missingAsNull),
-    api.getMaterials(oa.case_id).catch(missingAsNull),
+    // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
+    probe(api.getMaterials(oa.case_id), true),
     // 목록 엔드포인트가 API v0에 없거나 아직 없을 때만 null. 다른 오류는 오류 화면으로
     api.getReviewItems(oa.case_id).catch((e: unknown) => {
       if (e instanceof ApiError && e.code === 'not_in_api_v0') return null
@@ -103,6 +104,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     if (p.unknown) warnings.push(`${label} 결과를 받지 못했어요`)
     return p.value
   }
+  const materials = known(materialsP, '사건 자료')
   const directions = known(directionsP, '대응 방향')
   const legal = known(legalP, '법률 근거') ?? []
   const units = known(unitsP, '인용발명 대비')
@@ -121,11 +123,13 @@ interface Probe<T> {
   value: T | null
   unknown: boolean
 }
-async function probe<T>(p: Promise<T>): Promise<Probe<T>> {
+// notFoundIsMissing: 서버에 엔드포인트가 아직 없어서 나는 404(not_found)도 "아직 없음"으로 본다
+async function probe<T>(p: Promise<T>, notFoundIsMissing = false): Promise<Probe<T>> {
   try {
     return { value: await p, unknown: false }
   } catch (e) {
     if (isNotReady(e)) return { value: null, unknown: false }
+    if (notFoundIsMissing && e instanceof ApiError && e.code === 'not_found') return { value: null, unknown: false }
     return { value: null, unknown: true }
   }
 }
