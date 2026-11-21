@@ -1,4 +1,3 @@
-import { UserOutlined } from '@ant-design/icons'
 import { Tag } from 'antd'
 import type { DirectionSelection } from '../types/generated/DirectionCandidates'
 
@@ -9,15 +8,6 @@ export function OriginTag({ origin }: { origin: DirectionSelection['origin'] }) 
   return (
     <Tag color="purple" bordered={false}>
       AI 기본값
-    </Tag>
-  )
-}
-
-// 사람이 고친 글이 있는 곳 수: [사람이 고침 N곳]
-export function HumanEditedTag({ count }: { count: number }) {
-  return (
-    <Tag color="#1677FF" icon={<UserOutlined />}>
-      사람이 고침 {count}곳
     </Tag>
   )
 }

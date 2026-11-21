@@ -1,4 +1,4 @@
-import { ExclamationCircleOutlined, ExperimentOutlined, RobotOutlined } from '@ant-design/icons'
+import { ExclamationCircleOutlined, RobotOutlined } from '@ant-design/icons'
 import { Tag, Tooltip } from 'antd'
 import type { ReactNode } from 'react'
 
@@ -17,17 +17,6 @@ export function AiResultMark() {
     <Tooltip title="AI가 원문에서 뽑고 원문과 대조한 결과입니다. 사람은 이 칸을 고치지 않습니다.">
       <Tag icon={<RobotOutlined />} bordered={false}>
         AI 결과
-      </Tag>
-    </Tooltip>
-  )
-}
-
-// 스키마가 아직 없어 임시 타입·예시 데이터로 그린 화면 표시
-export function ExampleDataMark() {
-  return (
-    <Tooltip title="이 기능의 결과 스키마는 아직 설계 전입니다. 화면 모양을 보려고 만든 예시 데이터입니다.">
-      <Tag color="purple" icon={<ExperimentOutlined />}>
-        예시 데이터
       </Tag>
     </Tooltip>
   )
