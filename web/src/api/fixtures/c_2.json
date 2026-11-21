@@ -815,43 +815,43 @@
     "review_items_count": 3,
     "review_items": [
       {
+        "kind": "missing_material",
+        "target": "materials.missing[0]",
+        "label": "D2 JP2099000001A 본문",
+        "reason": "unsupported_country"
+      },
+      {
         "kind": "needs_human_review",
-        "target": "oa_result[0].rejections[0].citations[1]",
+        "target": "oa_result[oa_2].rejections[0].citations[1]",
         "label": "JP2099000001A",
         "reason": "지원 안 하는 나라 JP"
       },
       {
         "kind": "needs_human_review",
-        "target": "oa_result[0].rejections[1]",
+        "target": "oa_result[oa_2].rejections[1]",
         "label": "42-3",
         "reason": "지원 안 하는 거절이유 42-3"
-      },
-      {
-        "kind": "missing_material",
-        "target": "materials.missing[0]",
-        "label": "D2 JP2099000001A 본문",
-        "reason": "unsupported_country"
       }
     ]
   },
   "review_items": [
     {
+      "kind": "missing_material",
+      "target": "materials.missing[0]",
+      "label": "D2 JP2099000001A 본문",
+      "reason": "unsupported_country"
+    },
+    {
       "kind": "needs_human_review",
-      "target": "oa_result[0].rejections[0].citations[1]",
+      "target": "oa_result[oa_2].rejections[0].citations[1]",
       "label": "JP2099000001A",
       "reason": "지원 안 하는 나라 JP"
     },
     {
       "kind": "needs_human_review",
-      "target": "oa_result[0].rejections[1]",
+      "target": "oa_result[oa_2].rejections[1]",
       "label": "42-3",
       "reason": "지원 안 하는 거절이유 42-3"
-    },
-    {
-      "kind": "missing_material",
-      "target": "materials.missing[0]",
-      "label": "D2 JP2099000001A 본문",
-      "reason": "unsupported_country"
     }
   ],
   "document": {

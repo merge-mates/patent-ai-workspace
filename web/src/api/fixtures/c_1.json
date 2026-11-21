@@ -1543,67 +1543,67 @@
     "review_items_count": 5,
     "review_items": [
       {
-        "kind": "needs_human_review",
-        "target": "oa_result[0].rejections[3]",
-        "label": "42-3",
-        "reason": "지원 안 하는 거절이유 42-3"
+        "kind": "missing_material",
+        "target": "materials.missing[0]",
+        "label": "D2 KR20990000012A 본문",
+        "reason": "lookup_failed"
       },
       {
         "kind": "unverified",
-        "target": "oa_result[0].claim_rows[5]",
+        "target": "oa_result[oa_1].claim_rows[5]",
         "label": "청구항 5·거절이유 2",
         "reason": "ambiguous"
       },
       {
         "kind": "unverified",
-        "target": "oa_result[0].claim_rows[6]",
+        "target": "oa_result[oa_1].claim_rows[6]",
         "label": "청구항 6·거절이유 2",
         "reason": "ambiguous"
       },
       {
         "kind": "unverified",
-        "target": "oa_result[0].claim_rows[7]",
+        "target": "oa_result[oa_1].claim_rows[7]",
         "label": "청구항 7·거절이유 2",
         "reason": "ambiguous"
       },
       {
-        "kind": "missing_material",
-        "target": "materials.missing[0]",
-        "label": "D2 KR20990000012A 본문",
-        "reason": "lookup_failed"
+        "kind": "needs_human_review",
+        "target": "oa_result[oa_1].rejections[3]",
+        "label": "42-3",
+        "reason": "지원 안 하는 거절이유 42-3"
       }
     ]
   },
   "review_items": [
     {
-      "kind": "needs_human_review",
-      "target": "oa_result[0].rejections[3]",
-      "label": "42-3",
-      "reason": "지원 안 하는 거절이유 42-3"
+      "kind": "missing_material",
+      "target": "materials.missing[0]",
+      "label": "D2 KR20990000012A 본문",
+      "reason": "lookup_failed"
     },
     {
       "kind": "unverified",
-      "target": "oa_result[0].claim_rows[5]",
+      "target": "oa_result[oa_1].claim_rows[5]",
       "label": "청구항 5·거절이유 2",
       "reason": "ambiguous"
     },
     {
       "kind": "unverified",
-      "target": "oa_result[0].claim_rows[6]",
+      "target": "oa_result[oa_1].claim_rows[6]",
       "label": "청구항 6·거절이유 2",
       "reason": "ambiguous"
     },
     {
       "kind": "unverified",
-      "target": "oa_result[0].claim_rows[7]",
+      "target": "oa_result[oa_1].claim_rows[7]",
       "label": "청구항 7·거절이유 2",
       "reason": "ambiguous"
     },
     {
-      "kind": "missing_material",
-      "target": "materials.missing[0]",
-      "label": "D2 KR20990000012A 본문",
-      "reason": "lookup_failed"
+      "kind": "needs_human_review",
+      "target": "oa_result[oa_1].rejections[3]",
+      "label": "42-3",
+      "reason": "지원 안 하는 거절이유 42-3"
     }
   ],
   "document": {

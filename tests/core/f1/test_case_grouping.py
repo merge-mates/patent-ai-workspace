@@ -600,7 +600,7 @@ def test_materials_개수는_목록_줄_수와_같다():
     assert any(i.kind == "missing_material" for i in got.review_items)
 
 
-def test_materials_확인_안_된_자료는_목록에_두지만_검토할_사항_줄에는_아직_안_셈():
+def test_materials_확인_안_된_자료는_목록에_두고_문서_줄로_검토할_사항에_센다():
     oa = _fixture_oa()
     base = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1, US_D2})
     other = group_materials(
@@ -610,10 +610,25 @@ def test_materials_확인_안_된_자료는_목록에_두지만_검토할_사항
     got = build_case_materials(
         "c_1", _fixture_grouped(oa) + other, oa, received_citations={KR_D1, US_D2}
     )
-    assert "d_other" in [d.document_id for d in got.documents]
-    # 임시(task-2의 문서 줄이 대신할 때까지): 개수·줄 둘 다에서 뺀다
-    assert got.review_items_count == base.review_items_count
-    assert got.review_items == base.review_items
+    docs = [d.document_id for d in got.documents]
+    assert "d_other" in docs
+    # 다른 출원번호 자료는 문서 줄 하나(충돌)로 늘고, 개수 = 줄 수
+    (line,) = [i for i in got.review_items if i.target.startswith("materials.documents")]
+    assert (line.kind, line.target) == ("conflict", f"materials.documents[{docs.index('d_other')}]")
+    assert got.review_items_count == base.review_items_count + 1 == len(got.review_items)
+
+
+def test_materials_끝에서_마무리를_거쳐_빠진_자료가_맨_위():
+    oa = _fixture_oa()
+    got = build_case_materials(
+        "c_1",
+        _fixture_grouped(oa),
+        oa,
+        received_citations={KR_D1},
+        lookup_failures={US_D2: LookupResult.BODY_MISSING},
+    )
+    assert got.review_items[0].kind == "missing_material"
+    assert all(i.target.startswith(("materials.", "oa_result[oa_1]")) for i in got.review_items)
 
 
 # --- 빠진 자료 올리기 (T7) ----------------------------------------------------------
@@ -643,6 +658,24 @@ def test_upload_빠진_자료에_답하면_missing과_그_보류만_빠지고_�
     assert [i.kind for i in after.review_items] == ["needs_human_review"]
     assert len(after.review_items) == after.review_items_count
     assert len(before.review_items) == before.review_items_count == 2
+
+
+def test_upload_확인_안_된_문서를_올리면_끝에_더한_문서_줄이_생기고_경로가_맞다():
+    before = _fixture_materials()
+    (g,) = group_materials(
+        [_m("doc_up_9", "oa", app="10-2099-0009999", number="9-5-2099-012345678")], CASE
+    )
+    assert g.status.value == StatusValue.CONFLICT
+    after = answer_missing(before, "D2 US20990000001A1 본문", g)
+    idx = len(after.documents) - 1
+    assert after.documents[idx].document_id == "doc_up_9"
+    # 빠진 자료 줄은 빠지고, 새 문서 줄이 그 문서 위치를 가리킨다. 개수 = 줄 수
+    pairs = [(i.kind, i.target) for i in after.review_items]
+    assert pairs == [
+        ("conflict", f"materials.documents[{idx}]"),
+        ("needs_human_review", "oa_result[oa_1].rejections[2]"),
+    ]
+    assert after.review_items_count == len(after.review_items) == 2
 
 
 def test_upload_남은_빠진_자료_줄의_경로가_새_목록_위치를_가리킨다():

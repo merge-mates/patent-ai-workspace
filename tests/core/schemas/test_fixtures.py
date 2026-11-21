@@ -9,7 +9,11 @@ import pytest
 from patent_ai.core.schemas.case_materials import CaseMaterials, HeldTask
 from patent_ai.core.schemas.common import StatusValue
 from patent_ai.core.schemas.oa_result import OAResult, collect_evidence
-from patent_ai.core.schemas.propagation import ReviewItem, collect_review_items
+from patent_ai.core.schemas.propagation import (
+    ReviewItem,
+    collect_review_items,
+    finalize_case_materials,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "case_missing_citation"
@@ -64,7 +68,7 @@ def test_검토할_사항은_빠진_인용문헌_하나와_직접_검토_하나(
     assert items == [
         ReviewItem(
             kind="needs_human_review",
-            target="oa_result[0].rejections[2]",
+            target="oa_result[oa_1].rejections[2]",
             label="42-3",
             reason="지원 안 하는 거절이유 42-3",
         ),
@@ -81,8 +85,9 @@ def test_review_items_count가_검토할_사항_수와_같다(oa, materials):
     assert materials.review_items_count == len(collect_review_items([oa], materials)) == 2
 
 
-def test_6번의_review_items가_모으기_결과와_같다(oa, materials):
-    assert materials.review_items == collect_review_items([oa], materials)
+def test_6번의_review_items가_마무리_결과와_같다(oa, materials):
+    # fixture는 마무리(모으기 + 순서 + 개수)를 거친 값: 빠진 자료 줄이 맨 위
+    assert materials.review_items == finalize_case_materials([oa], materials).review_items
     assert len(materials.review_items) == materials.review_items_count
 
 

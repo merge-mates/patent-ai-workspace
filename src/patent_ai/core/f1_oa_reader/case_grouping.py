@@ -32,7 +32,11 @@ from patent_ai.core.schemas.common import (
     worst_status,
 )
 from patent_ai.core.schemas.oa_result import Citation, OAResult
-from patent_ai.core.schemas.propagation import collect_review_items
+from patent_ai.core.schemas.propagation import (
+    document_review_items,
+    finalize_case_materials,
+    sort_review_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -349,7 +353,7 @@ def build_case_materials(
     - 지원 안 하는 나라는 ask_upload=False ("직접 확인"), 그 밖은 "올려 주세요".
     - documents: 같은 열쇠(같은 문서)는 하나만, 올린 것 우선. 나머지는 경고 로그.
       confirmed가 아닌 자료(다른 출원번호·번호 못 읽음)도 빼지 않는다 (빼는 것은 cut_to_oa).
-    - review_items = 검토할 사항 모으기(collect_review_items) 줄, review_items_count = 그 줄 수.
+    - review_items·review_items_count는 끝에서 finalize_case_materials가 채운다.
     """
     lookup_failures = lookup_failures or {}
     # 저장된 인용문헌 문서(올린 것 포함)에 키가 있으면 본문을 받은 것으로 친다 (#201).
@@ -395,13 +399,9 @@ def build_case_materials(
         missing=missing,
         held_tasks=held,
     )
-    # 임시: 목록과 개수를 같이 채운다. 새로 만들어 개수 검사를 거친다 (model_copy는 검사를 안 함).
-    # 묶기에서 확인되지 않은 자료(unsettled)는 task-2 문서 줄이 대신할 때까지
-    # 개수·줄 둘 다에서 뺀다. OA 전부를 받는 것은 task-3
-    items = collect_review_items([oa], materials)
-    return CaseMaterials.model_validate(
-        materials.model_dump() | {"review_items": items, "review_items_count": len(items)}
-    )
+    # 끝에서 F5 마무리를 거쳐 검토할 사항 목록·개수를 채운다 (마무리 안 한 ⑥이 저장되지 않게).
+    # OA 전부를 넘기는 것은 task-3 (지금은 OA 하나)
+    return finalize_case_materials([oa], materials)
 
 
 def _one_per_key(grouped: list[GroupedMaterial]) -> list[GroupedMaterial]:
@@ -487,6 +487,11 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
         elif item.label != what:
             idx = next(i for i, m in enumerate(new_missing) if m.what == item.label)
             items.append(item.model_copy(update={"target": f"materials.missing[{idx}]"}))
+    # 올린 문서가 확인되지 않았거나 충돌이면 그 문서 줄을 더한다. 문서는 끝에 더해지므로 기존
+    # 문서 줄의 경로(materials.documents[i])는 그대로이고, 새 줄은 끝 위치를 가리킨다
+    new_doc_items = document_review_items(doc, len(materials.documents))
+    if new_doc_items:
+        items = sort_review_items(items + new_doc_items)
     # 새로 만들어 개수 검사를 거친다
     return CaseMaterials.model_validate(
         materials.model_dump()
