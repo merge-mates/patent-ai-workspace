@@ -76,7 +76,21 @@ def test_대상_청구항이_인용하는_앞_청구항도_나눈다():
     # 거절이유가 청구항 2만 짚어도 청구항 1(인용되는 항)을 나눠야 묶음과 함께 읽을 항을 안다
     answers = scenario.responses()
     answers["f3.split_elements"] = list(reversed(answers["f3.split_elements"]))  # 2 먼저, 그다음 1
-    answers["f3.compare"] = answers["f3.compare"][1:]
+    # 청구항 1은 대상이 아니라 청구항 2 대비에 부모 구성요소(1, 2번)로 같이 들어간다: 자기 것은 3번
+    answers["f3.compare"] = [
+        scenario._text(
+            {
+                "claim": 2,
+                "rows": [
+                    scenario._row(
+                        1, "disclosed", (scenario.P23, "습도 센서는 흙에 꽂혀 습도를 잰다")
+                    ),
+                    scenario._row(2, "disclosed", (scenario.P31, "물통은 물을 담아 둔다")),
+                    scenario._row(3, "difference_candidate"),
+                ],
+            }
+        )
+    ]
     result, transport = _run(scenario.oa_result(claims=(2,)), answers=answers)
     assert [c["step"] for c in transport.calls].count("f3.split_elements") == 2
     assert result.units[0].unit_id == "oa_1:29-2:c2" and result.units[0].claims == [2]
