@@ -29,6 +29,10 @@ STEP = "f3.split_elements"
 _CITE = re.compile(r"제\s*(\d+)\s*항(?:\s*(?:내지|~)\s*제?\s*(\d+)\s*항)?")
 # 원문이 맨 앞에서 "제N항에 있어서/의/또는/내지 ..."처럼 앞 청구항을 인용하는 꼴 (넓히지 않는다)
 _LEADING_CITE = re.compile(r"^\s*제\s*\d+\s*항(?=\s*(?:에|의|또는|내지|~|,))")
+# 원문 맨 앞의 인용 문구 전체: "제1항, 제2항 또는 제5항", "제1항 내지 제3항"처럼
+# 번호 나열이 이어지는 데까지 ("에 있어서" 같은 뒷말 앞에서 끝난다)
+_ONE_CITE = r"제\s*\d+\s*항(?:\s*(?:내지|~)\s*제?\s*\d+\s*항)?"
+_LEADING_LIST = re.compile(rf"^\s*{_ONE_CITE}(?:\s*(?:,|또는|및|와|과)\s*{_ONE_CITE})*")
 
 
 def cited_numbers(quote: str) -> set[int]:
@@ -207,6 +211,14 @@ def _check_depends_on(
             errors.append(
                 f"depends_on {sorted(set(answer.depends_on))}이 인용구 속 청구항 번호 "
                 f"{sorted(in_quote)}와 다름"
+            )
+    # 인용구를 일부만 옮기면 위 대조를 빠져나간다: 원문 맨 앞 인용 문구 전체의 번호와도 비교한다
+    if answer.depends_on and has_quote:
+        lead = _LEADING_LIST.match(claim_text) if _LEADING_CITE.match(claim_text) else None
+        if lead and cited_numbers(lead.group(0)) != set(answer.depends_on):
+            errors.append(
+                f"depends_on {sorted(set(answer.depends_on))}이 원문 맨 앞 인용 문구의 청구항 번호 "
+                f"{sorted(cited_numbers(lead.group(0)))}와 다름 (인용구를 문구 전체로)"
             )
     # 인용구 없이 독립항으로 답했는데 원문이 "제N항에 있어서"처럼 시작하면 놓친 것이다
     if not has_quote and not answer.depends_on and _LEADING_CITE.match(claim_text):
