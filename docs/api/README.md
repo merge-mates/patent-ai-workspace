@@ -21,7 +21,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 - 오래 걸리는 AI 실행은 만들기 → 상태 보기(폴링) → 결과 받기 순서다.
 - 실행 취소(`POST /runs/{id}/cancel`): queued·waiting_for_human은 바로 `cancelled`로 답한다. running은 취소 표시만 하고 응답 `state`는 `running` 그대로이니, 화면은 폴링으로 `cancelled`를 확인한다.
 - 실행 관련 오류: 409 `run_in_progress`(같은 OA에 진행 중인 실행이 있음), 409 `run_already_finished`(이미 끝난 실행을 취소), 500 `launch_failed`(실행을 시작하지 못함. 그 실행은 failed로 남는다), 404 `run_not_found`.
-- 실행이 `failed`일 때 `error.code`는 `server_restarted`(서버가 다시 켜져 중단) · `step_failed`(단계 실패) · `oa_already_exists`(이미 올린 OA) · `max_steps`·`invalid_tool_choice`·`no_oa_result`(지휘가 끝내지 못함) · `result_save_failed`(결과 저장 실패) · `executor_crashed`(실행기가 예상 밖으로 죽음) · `launch_failed`(시작 실패) 중 하나다. `error.message`에는 어느 단계에서 어떤 종류로 실패했는지만 담고 예외 원문은 담지 않는다 (원문은 서버 로그). 서버는 실행을 한 번에 하나만 돌리고, 뒤에 온 실행은 `queued`로 기다린다.
+- 실행이 `failed`일 때 `error.code`는 `server_restarted`(서버가 다시 켜져 중단) · `step_failed`(단계 실패) · `oa_already_exists`(이미 올린 OA) · `max_steps`·`invalid_tool_choice`·`no_oa_result`(지휘가 끝내지 못함) · `result_save_failed`(결과 저장 실패) · `record_failed`(실행 기록 저장 실패) · `executor_crashed`(실행기가 예상 밖으로 죽음) · `launch_failed`(시작 실패) 중 하나다. `error.message`에는 어느 단계에서 어떤 종류로 실패했는지만 담고 예외 원문은 담지 않는다 (원문은 서버 로그). 서버는 실행을 한 번에 하나만 돌리고, 뒤에 온 실행은 `queued`로 기다린다.
 - 평가(평가 세트 채점)는 API를 거치지 않고 스크립트가 `core/`를 직접 부른다.
 
 ## 3. 엔드포인트

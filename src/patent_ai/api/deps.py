@@ -28,6 +28,7 @@ from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import RunExecutor
 from patent_ai.core.runs.launcher import RunLauncher, ThreadLauncher
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
+from patent_ai.core.runs.step_log_pg import PostgresStepRecorder
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
 from patent_ai.settings import get_settings
@@ -156,6 +157,7 @@ def _run_case_executor() -> RunCaseExecutor:
         config_path=ORCHESTRATOR_CONFIG,
         make_ctx=_new_run_context,
         today=date.today,
+        step_log=PostgresStepRecorder(factory),  # 지휘 단계 전부를 agent_steps에
     )
 
 

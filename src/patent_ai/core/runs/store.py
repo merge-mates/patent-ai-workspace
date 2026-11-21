@@ -16,6 +16,10 @@ class RunNotFound(LookupError):
     """없는 실행 id."""
 
 
+class RunLogWriteFailed(Exception):
+    """실행 기록(agent_steps)을 DB에 쓰지 못했다. 실행기는 이걸 받으면 실행을 failed로 끝낸다."""
+
+
 class RunStatus(BaseModel):
     """실행 한 줄의 상태 (runs 표의 상태 칸들)."""
 
