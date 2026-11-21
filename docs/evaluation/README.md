@@ -6,5 +6,6 @@
 |---|---|---|
 | [f1-oa-gold.md](f1-oa-gold.md) | F1 통지서 읽기 정답 형식 | 확정 (#90, 11/18 재아 승인) |
 | [search-gold.md](search-gold.md) | F2·F3 검색 정답 규칙 | 확정 (#9 B안, 11/18 재아 승인) |
+| [f2-evidence-gold.md](f2-evidence-gold.md) | F2 근거 검토 정답 (실제 질문 + 오류 주입 5종) | 초안, 은진 검수 전 (#35) |
 | [f3-compare-gold.md](f3-compare-gold.md) | F3 명확성·신규성 지표 | 제안 (M2 F3 설계 때 정함) |
 | [f4-direction-gold.md](f4-direction-gold.md) | F4 대응 방향 정답 (4층, 청구항마다) | 단위·집계 확정 (#9 A안), JSON 모양은 F4 설계 때 |
