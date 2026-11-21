@@ -139,24 +139,24 @@ def test_신규성_표가_두_문헌을_합치면_위반으로_센다(run, compa
 # ---- ③ 명확성 문구 위치 ----
 def test_명확성_문구_위치가_청구항_글자와_겹치면_맞음(run):
     _, scores, _ = run()
-    assert scores["metrics"]["clarity_location_accuracy"] == 1.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 1.0
 
 
 def test_명확성_문구_위치가_안_겹치면_틀림(run):
     _, scores, _ = run(prediction(clarity_location="청구항 2 [글자 0-3]"))
-    assert scores["metrics"]["clarity_location_accuracy"] == 0.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 0.0
 
 
 def test_위치를_못_정한_검토는_틀림(run):
     _, scores, _ = run(prediction(clarity_location="청구항 2 (위치 확인되지 않음)"))
-    assert scores["metrics"]["clarity_location_accuracy"] == 0.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 0.0
 
 
 def test_청구항_글자_입력이_없으면_명확성_위치는_건너뛰고_그_사실을_남긴다(run, capsys):
     code, scores, _ = run(inputs=False)
-    assert code == 0 and "clarity_location_accuracy" not in scores["metrics"]
+    assert code == 0 and "clarity_term_reviewed" not in scores["metrics"]
     assert scores["failures"]["clarity_no_claim_text"] == 1
-    assert "clarity_location_accuracy" in scores["skipped_metrics"]
+    assert "clarity_term_reviewed" in scores["skipped_metrics"]
 
 
 # ---- 정답이 없는 지표 ----
@@ -177,7 +177,7 @@ def test_정답_폴더가_없으면_종료_코드_3이고_scores를_쓰지_않�
 def test_검색_정답만_있어도_채점하고_명확성은_건너뛴다(run):
     code, scores, _ = run(goldset=lambda root: write_goldset(root, f1=False))
     assert code == 0 and "search_recall" in scores["metrics"]
-    assert scores["skipped_metrics"]["clarity_location_accuracy"] == "정답 없음"
+    assert scores["skipped_metrics"]["clarity_term_reviewed"] == "정답 없음"
 
 
 # ---- 예측·명령 ----
@@ -259,7 +259,7 @@ def test_심사관_위치_기록만_있어도_오염이라_멈춘다(run, capsys
 
 def test_여러_곳_꼬리가_붙은_위치도_읽는다(run):
     _, scores, _ = run(prediction(clarity_location="청구항 2 [글자 10-19] (2곳 중 첫 자리)"))
-    assert scores["metrics"]["clarity_location_accuracy"] == 1.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 1.0
     assert scores["failures"]["clarity_location_unreadable"] == 0
 
 

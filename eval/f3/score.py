@@ -282,7 +282,7 @@ def _novelty(preds: dict[str, F3Pred]) -> tuple[int, int]:
 def _score_clarity(
     golds: list[F1Gold], run: RunInputs, failures: dict[str, int], missing: set[str]
 ) -> tuple[float | None, set[str]]:
-    """(문구 위치 일치율, 채점한 OA 키). 문구 점수 -> OA 평균 -> 세트 평균."""
+    """(문구 검토 일치율, 채점한 OA 키). 문구 점수 -> OA 평균 -> 세트 평균."""
     per_oa: dict[str, list[float]] = {}
     for g in golds:
         key = f"{g.application_number.value}_{g.dispatch_number.value}"
@@ -371,16 +371,16 @@ def score_f3(
         logger.warning("신규성 대비표 %d개가 인용문헌 하나와만 대비하지 않았다", bad)
 
     if f1_golds is None:
-        skipped["clarity_location_accuracy"] = NO_GOLD
+        skipped["clarity_term_reviewed"] = NO_GOLD
     else:
         accuracy, oas = _score_clarity(f1_golds, run, failures, missing)
         if accuracy is None:
             why = (
                 "청구항 글자 입력 없음" if failures["clarity_no_claim_text"] else "채점할 문구 없음"
             )
-            skipped["clarity_location_accuracy"] = why
+            skipped["clarity_term_reviewed"] = why
         else:
-            metrics["clarity_location_accuracy"] = accuracy
+            metrics["clarity_term_reviewed"] = accuracy
             scored |= {_dispatch(k) for k in oas}
 
     failures["missing_prediction"] = len(missing)

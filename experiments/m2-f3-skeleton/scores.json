@@ -14,7 +14,7 @@
     "selected_hit": 0.37822802197802197,
     "selected_recall": 0.18632835969145492,
     "novelty_tables": 3,
-    "clarity_location_accuracy": 0.6944444444444445
+    "clarity_term_reviewed": 0.6944444444444445
   },
   "failures": {
     "missing_prediction": 1,
