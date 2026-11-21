@@ -3,6 +3,7 @@
 번호는 모두 지어낸 것 (2099년 값, 실제 사건 아님). 실제 DB 왕복은 tests/test_case_repository_db.py.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -20,6 +21,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     CaseRecord,
     CaseStoreError,
     ClaimVersionInput,
+    DocumentRow,
     DuplicateDocumentError,
     InMemoryCaseRepository,
     StoredFile,
@@ -394,6 +396,45 @@ def test_올린_자료는_문서_줄로_그_사건에_남는다():
     rows = repo._cases[CASE_ID]
     (doc,) = [d for d in rows.documents if d.id == "doc_up"]
     assert (doc.case_id, doc.case_event_id, doc.kind) == (CASE_ID, None, "citation")
+
+
+def test_올린_인용문헌은_문서_줄에_키가_남고_키로_찾는다():
+    # #201: 어느 인용문헌 답인지 문서 줄·사건 자료에 남아 F3가 키로 본문 문서를 찾는다
+    repo = _saved_repo()
+    hit = repo.load_case_materials(CASE_ID).missing[0]
+    assert hit.citation_key is not None
+    upload_missing_material(repo, CASE_ID, hit.what, _file("up"), document_id="doc_up")
+    (doc,) = [d for d in repo._cases[CASE_ID].documents if d.id == "doc_up"]
+    assert doc.citation_key == hit.citation_key
+    assert repo.load_case_materials(CASE_ID).documents[-1].citation_key == hit.citation_key
+    found = repo.citation_document(CASE_ID, hit.citation_key)
+    assert found is not None and found.id == "doc_up"
+
+
+def test_키로_찾을_때_없는_키나_없는_사건이면_None():
+    repo = _saved_repo()
+    assert repo.citation_document(CASE_ID, "KR20990009999A") is None
+    assert repo.citation_document("c_none", "KR20990009999A") is None
+
+
+def test_같은_키_문서가_둘이면_올린_것을_고른다():
+    repo = _saved_repo()
+    hit = repo.load_case_materials(CASE_ID).missing[0]
+    rows = repo._cases[CASE_ID]
+    api_doc = DocumentRow(
+        id="doc_api",
+        case_id=CASE_ID,
+        case_event_id=None,
+        kind="citation",
+        path="p",
+        sha256="sha-api",
+        source="api",
+        received_at=_file("api").received_at,
+        citation_key=hit.citation_key,
+    )
+    repo._cases[CASE_ID] = replace(rows, documents=[*rows.documents, api_doc])
+    upload_missing_material(repo, CASE_ID, hit.what, _file("up"), document_id="doc_up")
+    assert repo.citation_document(CASE_ID, hit.citation_key).id == "doc_up"
 
 
 def test_같은_사건에_같은_파일을_올리면_중복_오류이고_자료는_안_바뀜():

@@ -103,6 +103,9 @@ class Document(Base):
     sha256: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # 인용문헌 본문이면 어느 인용문헌인지: OA 인용문헌 번호 값 (CaseDocument.citation_key, #201).
+    # F3가 이 키로 본문 문서를 찾는다. 인용문헌이 아니거나 모르면 비운다
+    citation_key: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
 
