@@ -256,12 +256,12 @@ class DirectionCandidates(ResultBase):
             # (ai_default는 위에서 rank 1이 아니라며 이미 거부됨)
             if Flag.NEEDS_HUMAN_JUDGMENT not in self.flags:
                 raise ValueError("순위 있는 후보가 없으면 flags에 needs_human_judgment가 필요")
-        # 보정 제한을 모르면 확인됨일 수 없다
+        # 보정 제한을 모르면 "없음"도 확인됨도 아니고 모름(unverified)뿐
         if (
             self.amendment_limit.value is None
-            and self.amendment_limit.status.value == StatusValue.CONFIRMED
+            and self.amendment_limit.status.value != StatusValue.UNVERIFIED
         ):
-            raise ValueError("amendment_limit.value가 null이면 status는 confirmed일 수 없음")
+            raise ValueError("amendment_limit.value가 null이면 status는 unverified만")
         expected = summarize_direction_status(self.candidates, self.amendment_limit)
         if self.status.value != expected.value:
             raise ValueError(f"status {self.status.value}가 안쪽을 모은 값 {expected.value}와 다름")

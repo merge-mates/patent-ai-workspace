@@ -246,7 +246,7 @@ def test_모르는_칸은_거부():
 def test_명확성_claim은_unit_id의_c번호와_같아야_함():
     with pytest.raises(ValidationError, match="c번호"):
         ClarityReview(
-            status=OK,
+            status=BAD,
             unit_id="oa_1:42-4-2:c3",
             claim=1,
             term="t",
@@ -302,7 +302,10 @@ def test_ClarityReview_왕복():
         note="정의 있음",
     )
     assert ClarityReview.model_validate(review.model_dump(mode="json")) == review
-    none_def = review.model_copy(update={"spec_definition": None})
+    # 정의가 없으면 confirmed일 수 없으니 status도 같이 바꿔 다시 만든다
+    none_def = ClarityReview.model_validate(
+        {**review.model_dump(), "spec_definition": None, "status": BAD}
+    )
     assert ClarityReview.model_validate(none_def.model_dump(mode="json")) == none_def
 
 
@@ -321,3 +324,54 @@ def test_대비표_줄은_청구항_번호가_필수이고_1부터():
     with pytest.raises(ValidationError):
         row(claim=0)
     assert row(claim=3).claim == 3
+
+
+# ---------- 리뷰 반영 (PR #176) ----------
+
+
+def test_개시됨_confirmed_줄은_근거_필수():
+    with pytest.raises(ValidationError, match="evidence"):
+        row(judgment="disclosed", status=OK, evidence=[])
+
+
+@pytest.mark.parametrize("judgment", ["difference_candidate", "unclear"])
+def test_차이후보_불명은_근거_없이_confirmed_통과(judgment):
+    # 차이 후보는 인용문헌에 그 구성이 없다는 뜻이라 근거 위치가 없을 수 있다
+    assert row(judgment=judgment, status=OK, evidence=[]).evidence == []
+
+
+def test_개시됨이어도_confirmed가_아니면_근거_없이_통과():
+    assert row(judgment="disclosed", status=BAD, evidence=[]).evidence == []
+
+
+def test_ClarityReview_물려받은_evidence는_비어_있어야_함():
+    with pytest.raises(ValidationError, match="evidence"):
+        ClarityReview(
+            status=BAD,
+            unit_id="oa_1:42-4-2:c1",
+            claim=1,
+            term="t",
+            claim_location="l",
+            note="n",
+            evidence=[Evidence(document_id="d")],
+        )
+
+
+def test_ClarityReview_confirmed는_spec_definition_필수():
+    with pytest.raises(ValidationError, match="spec_definition"):
+        ClarityReview(
+            status=OK,
+            unit_id="oa_1:42-4-2:c1",
+            claim=1,
+            term="t",
+            claim_location="l",
+            note="n",
+            spec_definition=None,
+        )
+
+
+def test_ClarityReview_confirmed가_아니면_정의_없이_통과():
+    r = ClarityReview(
+        status=BAD, unit_id="oa_1:42-4-2:c1", claim=1, term="t", claim_location="l", note="n"
+    )
+    assert r.spec_definition is None
