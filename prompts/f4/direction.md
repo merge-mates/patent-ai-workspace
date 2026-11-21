@@ -12,6 +12,7 @@
 - 후보는 최대 $max_candidates개. 서로 다른 방향만 냅니다. 낼 만한 방향이 없으면 `"candidates": []`.
 - coarse: `argue_only`(보정 없이 반박) / `amend_and_argue`(보정 + 반박) / `amend_only`(보정만).
 - confidence: `high` / `medium` / `low`. 아래 자료만으로 방향을 가리기 어려우면 `low`.
+- candidates는 먼저 검토할 만한 순서대로 적습니다. 확신이 `low`여서 rank가 `null`인 후보도 먼저 볼 것을 앞에 둡니다.
 - rank: 확신이 `high`·`medium`인 후보에만 1부터 빠짐·중복 없이 붙입니다. `low`인 후보는 반드시 `null` (직접 판단 필요).
 - name: 방향을 한 구로. reason: 왜 이 방향인지 한 줄. 변리사가 출원인에게 보고할 요약으로도 읽히게 씁니다.
 - checks: 사람이 확인할 사항. "보정하면 권리범위가 얼마나 줄어드나"를 꼭 넣습니다 (보정이 없으면 그대로임을 적음).

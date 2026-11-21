@@ -145,6 +145,38 @@ def test_확신이_낮으면_순위_없이_직접_판단_필요이고_미리_고
     assert results[0].selection.origin == Origin.AI_DEFAULT
 
 
+# ---- 모델이 낸 순서는 그대로 남는다 (채점이 "모델의 1번 후보"를 읽는다) ----
+def test_확신_낮음뿐인_묶음도_모델이_낸_순서가_결과에_남는다():
+    answer = _answer("direction_low")
+    results, _ = _run([_text(_answer("direction_inventive")), _text(answer)])
+    low = results[1]
+    assert [c.name for c in low.candidates] == [c["name"] for c in answer["candidates"]]
+    assert [c.candidate_id for c in low.candidates] == [f"{UNIT_CLARITY}:d1", f"{UNIT_CLARITY}:d2"]
+    # 순서는 남지만 화면에 보일 순위는 여전히 없다: 미리 고르지 않고 직접 판단 필요
+    assert all(c.rank is None for c in low.candidates)
+    assert low.selection is None and Flag.NEEDS_HUMAN_JUDGMENT in low.flags
+
+
+def test_순위_있는_후보와_낮은_후보가_섞여_와도_모델이_낸_순서_그대로다():
+    answer = copy.deepcopy(_answer("direction_inventive"))
+    first_low = copy.deepcopy(
+        answer["candidates"][1]
+    )  # 보정 없이 반박 후보를 확신 낮음으로 맨 앞에
+    first_low.update(rank=None, confidence="low", name="확신 낮은 첫 후보")
+    answer["candidates"][1]["rank"] = 2
+    answer["candidates"] = [first_low, answer["candidates"][0], answer["candidates"][1]]
+    results, _ = _run([_text(answer), _text(_answer("direction_clarity"))])
+    mixed = results[0]
+    assert [c.name for c in mixed.candidates] == [c["name"] for c in answer["candidates"]]
+    assert [c.rank for c in mixed.candidates] == [None, 1, 2]
+    assert [c.candidate_id for c in mixed.candidates] == [
+        f"{UNIT_INVENTIVE}:d{n}" for n in (1, 2, 3)
+    ]
+    # AI 기본값은 여전히 순위 1 후보 (목록의 첫째가 아니라)
+    assert mixed.selection.candidate_id == f"{UNIT_INVENTIVE}:d2"
+    assert mixed.selection.origin == Origin.AI_DEFAULT
+
+
 def _low_with_rank() -> dict:
     bad = copy.deepcopy(_answer("direction_low"))
     bad["candidates"][0]["rank"] = 1  # 낮은 확신에 순위를 붙임 (규칙 위반)
