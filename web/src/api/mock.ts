@@ -113,6 +113,9 @@ function summaryOf(b: Bundle): CaseSummary {
   }
 }
 
+// 이번 화면 세션에서 올린 파일 (이름:크기). 409 흉내용
+const uploadedKeys = new Set<string>()
+
 export const mockApi = {
   async listCases(): Promise<CaseSummary[]> {
     return (await bundles()).map(summaryOf)
@@ -266,8 +269,13 @@ export const mockApi = {
     return { ...runOf(b), oa_id: b.oa_id, error: null }
   },
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
-  async createCase(_file: File): Promise<CreatedCase> {
+  async createCase(file: File): Promise<CreatedCase> {
     const b = committed[0]
+    // 같은 파일을 또 올리면 서버처럼 409 document_already_exists + 기존 사건·OA (새로고침하면 잊는다)
+    const key = `${file.name}:${file.size}`
+    if (uploadedKeys.has(key))
+      throw new ApiError('document_already_exists', '이미 올린 통지서입니다', 409, { case_id: b.case_id, oa_id: b.oa_id })
+    uploadedKeys.add(key)
     startRun(b, false)
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: runOf(b).run_id }
   },

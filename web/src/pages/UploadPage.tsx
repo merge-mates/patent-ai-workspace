@@ -7,6 +7,7 @@ import { MaterialRows } from '../components/MaterialRows'
 import { RunNotice } from '../components/RunNotice'
 import type { OALoaderData } from '../loaders'
 import { isRunEnded, refreshRun } from '../runPoll'
+import { existingCaseLink } from '../uploadError'
 import { useRunSnapshot } from '../useRunSnapshot'
 
 // 새 사건 · 통지서 올리기 (PUpload 디자인). 올린 뒤에는 같은 화면에 머물고 주소만 ?oa=<oa_id>로 바뀐다.
@@ -24,7 +25,21 @@ export function UploadPage() {
       setFileName(file.name)
       navigate(`/cases/new?oa=${encodeURIComponent(created.oa_id)}`)
     } catch (e) {
-      message.error(`올리지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
+      const text = `올리지 못했습니다: ${e instanceof Error ? e.message : String(e)}`
+      // 이미 올린 통지서(409)면 기존 사건 열기 링크를 같이 보인다
+      const link = existingCaseLink(e)
+      message.error(
+        link === null
+          ? text
+          : {
+              duration: 8,
+              content: (
+                <span>
+                  {text} <Link to={link}>기존 사건 열기</Link>
+                </span>
+              ),
+            },
+      )
     }
     return false // antd가 따로 업로드하지 않게
   }
