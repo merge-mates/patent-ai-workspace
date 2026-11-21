@@ -351,10 +351,14 @@ def test_목록_첫째가_확신_낮음이고_순위_있는_후보가_둘째면_
 def test_확신도별_일치율은_1번_후보의_확신도로_줄을_나눈다(env, caplog):
     env.put_gold(gold())
     # 진보성 묶음 1번 후보(rank 1) 확신 높음 -> 청구항 1·2 맞음. 명확성 1번 후보는 낮음+틀림
-    env.put_pred(*low_clarity(*prediction(clarity_low=True), wrong=True))
+    units, directions = low_clarity(*prediction(clarity_low=True), wrong=True)
+    # 물려받은 청구항 3을 틀리게: 확신도 칸에 섞이면 high가 2/3으로 내려간다
+    directions[0]["candidates"][0]["amendment_core"].append({"claim": 3, "kind": "delete"})
+    env.put_pred(units, directions)
     with caplog.at_level(logging.WARNING):
         assert main(env.args) == 0
     m = env.scores()["metrics"]
+    assert m["direction_top1_with_inherited"] == pytest.approx(2 / 4)  # 청구항 3과 명확성 줄이 틀림
     assert m["direction_top1_conf_high"] == 1.0  # 진보성 2줄 맞음 (물려받은 줄 제외)
     assert m["direction_top1_conf_low"] == 0.0  # 명확성 1줄 틀림
     assert "direction_top1_conf_medium" not in m  # 줄 없는 단계는 0이 아니라 뺌
@@ -383,7 +387,79 @@ def test_줄_수는_scores에_넣지_않고_로그로_남긴다(env, caplog):
         "experiment", "commit", "goldset", "goldset_version", "gold_sha256", "impl",
         "metric_name", "n", "metrics", "failures", "cost",
     }  # fmt: skip
-    assert "확신도별 줄 수" in caplog.text
+    # 줄 수: 높음 = 진보성 청구항 1·2, 낮음 = 명확성 청구항 2 (물려받은 청구항 3 제외)
+    assert "확신도별 줄 수 (물려받은 줄 제외): {'high': 2, 'medium': 0, 'low': 1}" in caplog.text
+
+
+def test_물려받지_않은_줄이_어느_묶음에도_없으면_주_지표에서_틀림이다(env):
+    rows = gold()["claim_rows"] + [row(4, 1, "amend_only", kinds=("delete",))]
+    env.put_gold(gold(rows))
+    env.put_pred(*prediction())  # 청구항 4는 어느 묶음에도 없음
+    assert main(env.args) == 0
+    s = env.scores()
+    assert s["failures"]["uncovered_pairs"] == 1
+    assert s["metrics"]["direction_top1"] == pytest.approx(3 / 4)  # 빼지 않고 틀림
+    assert s["metrics"]["direction_top1_ranked_only"] == pytest.approx(3 / 4)
+
+
+# ---- 가지 충돌: 같은 크기 묶음 둘이 같은 (거절이유, 청구항)을 담음 (3절 5번) ----
+def make_twin() -> dict:
+    """진보성 묶음과 같은 크기(청구항 1·2·3)의 쌍둥이 묶음 (unit_id 끝 /a는 가지 표시)."""
+    twin = unit(1, "29-2", [1, 2, 3])
+    twin["unit_id"] += "/a"
+    return twin
+
+
+def with_twin(units, directions, cands):
+    """쌍둥이 묶음과 그 후보를 더한다."""
+    twin = make_twin()
+    return [*units, twin], [*directions, group(twin, cands)]
+
+
+def test_가지의_1번_후보_방향이_엇갈리면_주_지표에서_빼고_센다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    twin_u = make_twin()
+    cands = [cand(twin_u, 1, 1, "argue_only", [])]  # 반박만: 원래 묶음(보정+반박)과 엇갈림
+    env.put_pred(*with_twin(units, directions, cands))
+    assert main(env.args) == 0
+    s = env.scores()
+    assert s["failures"]["excluded_branch_conflict"] == 3  # 진보성 청구항 1·2·3
+    assert s["failures"]["excluded_ranked_only_conflict"] == 3
+    assert s["metrics"]["direction_top1"] == 1.0  # 남은 명확성 줄만
+
+
+def test_가지의_방향은_같고_확신도만_다르면_셈하고_낮은_확신도_칸에_넣는다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    twin_u = make_twin()
+    twin_cand = cand(twin_u, 1, 1, "amend_and_argue", [ADD, DELETE])
+    twin_cand["confidence"] = "medium"  # 원래 묶음 1번 후보는 high
+    env.put_pred(*with_twin(units, directions, [twin_cand]))
+    assert main(env.args) == 0
+    s = env.scores()
+    assert s["failures"]["excluded_branch_conflict"] == 0
+    assert s["failures"]["excluded_ranked_only_conflict"] == 0
+    assert s["metrics"]["direction_top1"] == 1.0  # 충돌이 아니라 셈
+    assert s["metrics"]["direction_top1_conf_medium"] == 1.0  # 진보성 2줄: 더 낮은 쪽 칸
+    assert s["metrics"]["direction_top1_conf_high"] == 1.0  # 명확성 줄만 남음
+
+
+def test_순위_1_후보만_엇갈리면_ranked_only에서만_빼고_센다(env):
+    env.put_gold(gold())
+    units, directions = prediction()
+    twin_u = make_twin()
+    cands = [
+        cand(twin_u, 1, None, "amend_and_argue", [ADD, DELETE]),  # 첫째는 같은 방향, 확신 낮음
+        cand(twin_u, 2, 1, "argue_only", []),  # rank 1은 반박만: 원래 묶음과 엇갈림
+    ]
+    env.put_pred(*with_twin(units, directions, cands))
+    assert main(env.args) == 0
+    s = env.scores()
+    assert s["failures"]["excluded_branch_conflict"] == 0  # 1번 후보 방향은 같다
+    assert s["failures"]["excluded_ranked_only_conflict"] == 3
+    assert s["metrics"]["direction_top1"] == 1.0
+    assert s["metrics"]["direction_top1_conf_low"] == 1.0  # 쌍둥이 첫째가 낮음 -> 낮음 칸
 
 
 # ---- 예측 없음 ----

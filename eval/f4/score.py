@@ -46,6 +46,7 @@ FAILURE_KEYS = (
     "uncovered_pairs",  # AI의 어느 묶음에도 없는 (거절이유, 청구항) 쌍
     "excluded_not_handled",  # 정답이 안 다룸이라 ② 채점에서 뺀 줄 (3절 13번)
     "no_candidate",  # 후보가 0개인 묶음이라 1번 후보가 없는 줄 (주 지표에서 틀림으로 셈)
+    "excluded_ranked_only_conflict",  # 순위 1 후보 방향이 가지끼리 엇갈려 ranked_only에서만 뺀 줄
     "excluded_ranked_only_abstain",  # 순위 1 후보가 없는 묶음이라 ranked_only에서만 뺀 줄
     "excluded_branch_conflict",  # 같은 크기 묶음끼리 AI 값이 엇갈려 뺀 줄 (3절 5번)
 )
@@ -66,7 +67,7 @@ def _first(result: DirectionCandidates) -> DirectionCandidate | None:
 
 
 def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> str:
-    """1등 후보의 청구항별 보정 종류에서 그 청구항의 거친 방향을 계산한다 (정답 문서 4절 추천).
+    """후보의 청구항별 보정 종류에서 그 청구항의 거친 방향을 계산한다 (정답 문서 4절 추천).
 
     종속항 글자가 그대로(또는 오기 정정뿐)이고 묶음의 독립항이 보정됐으면 독립항 값을 물려받는다.
     그 밖에는 그대로면 반박만, 보정이면 후보에 반박이 있으면 보정+반박, 없으면 보정만.
@@ -108,7 +109,8 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
     if not units:
         return None
     smallest = min(len(u.claims) for u in units)
-    firsts: set[tuple[str, str | None]] = set()
+    firsts: set[str] = set()
+    confidences: list[str] = []
     ranked: set[str] = set()
     for u in units:
         if len(u.claims) != smallest:
@@ -116,13 +118,19 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
         result = pred.directions[u.unit_id]
         first, top = _first(result), _rank1(result)
         if first is None:
-            firsts.add((_NO_CANDIDATE, None))
+            firsts.add(_NO_CANDIDATE)
         else:
-            firsts.add((claim_direction(u, first, row.claim), first.confidence))
+            firsts.add(claim_direction(u, first, row.claim))
+            confidences.append(first.confidence)
         ranked.add(_ABSTAIN if top is None else claim_direction(u, top, row.claim))
-    # 가지가 엇갈리면 그 줄은 conflict (3절 5번)
-    first_value, confidence = firsts.pop() if len(firsts) == 1 else ("conflict", None)
-    return Reading(first_value, confidence, ranked.pop() if len(ranked) == 1 else "conflict")
+    # 충돌은 방향 값으로만 가른다 (3절 5번의 "AI 값" = 방향). 확신도가 갈려도 충돌이 아니다.
+    # 방향이 같고 확신도만 다르면 보수적으로 가장 낮은 확신도 칸에 넣는다.
+    confidence = max(confidences, key=CONFIDENCES.index, default=None)
+    return Reading(
+        firsts.pop() if len(firsts) == 1 else "conflict",
+        confidence,
+        ranked.pop() if len(ranked) == 1 else "conflict",
+    )
 
 
 @dataclass
@@ -156,7 +164,9 @@ def score_oa(g: F4Gold, pred: F4Pred | None) -> OAScore:
         # 비교용: 순위 1 후보로 센 값. 보류·가지 충돌 줄은 뺀다
         if reading is not None and reading.ranked == _ABSTAIN:
             s.failures["excluded_ranked_only_abstain"] += 1
-        elif reading is None or reading.ranked != "conflict":
+        elif reading is not None and reading.ranked == "conflict":
+            s.failures["excluded_ranked_only_conflict"] += 1
+        else:
             ok_ranked = reading is not None and reading.ranked == row.direction
             if not row.inherited:
                 s.direction_ranked_only.append(ok_ranked)
