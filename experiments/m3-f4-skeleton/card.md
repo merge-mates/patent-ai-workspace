@@ -68,5 +68,5 @@
 - F4 입력에 `claims_status`(OA 당시 청구항 판 확인 여부)를 실을 칸이 없다.
 
 ## 다시 내는 법
-- 실행: `uv run python <데이터 폴더>/overnight_1120/f4_run.py <out> --workers 4` (git 밖. 스트리밍 전송층이 있는 판에서. F3 결과 폴더 필요)
+- 실행: `uv run python <repo>/work/<실행 폴더>/f4_run.py <out> --workers 4` (git 밖. 스트리밍 전송층이 있는 판에서. F3 결과 폴더 필요)
 - 채점: `uv run python eval/run_eval.py --config experiments/m3-f4-skeleton/config.yaml --predictions <out>` (정답 폴더가 없으면 "정답 없음", 종료 코드 3)
