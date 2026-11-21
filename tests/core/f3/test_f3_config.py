@@ -12,7 +12,7 @@ from patent_ai.core.schemas.common import Status, StatusValue
 def test_config_f3_yaml의_스위치와_검색_값():
     settings = load_f3_settings()
     assert settings.impl == "split_search"
-    assert settings.second_search is False
+    assert settings.second_search is True
     assert settings.use_examiner_paragraphs is True
     assert settings.search.impl == "hybrid"
     assert settings.search.index_version == "cite-idx-v2"
