@@ -399,6 +399,16 @@ def test_value_error는_이유_문구까지_메시지에_싣는다(tmp_path):
         load_one(tmp_path, row)
 
 
+def test_value_error_문구에_입력_값이_끼면_문구를_빼고_값을_싣지_않는다(tmp_path):
+    # core 스키마 unit_id 꼴 검사는 입력 값을 문구에 넣는다 → 그 글자가 메시지에 새면 안 된다
+    row = injected("nonexistent_source")
+    row["bundle"]["unit_id"] = "비공개표식-XYZ"
+    with pytest.raises(EvalError) as e:
+        load_one(tmp_path, row)
+    assert "비공개표식-XYZ" not in str(e.value)
+    assert "unit_id: value_error" in str(e.value)
+
+
 def test_fix_규칙_위반은_이유를_말한다(tmp_path):
     with pytest.raises(EvalError, match="fix가 null"):
         load_one(tmp_path, injected("claim_text_mismatch", fix={"identifier": "가짜 식별자"}))

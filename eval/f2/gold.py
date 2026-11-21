@@ -184,10 +184,15 @@ def _lines(e: ValidationError) -> list[str]:
     for err in e.errors():
         path = ".".join(str(x) for x in err["loc"][1:])  # 맨 앞은 감싼 칸 이름
         line = f"{path or '(줄)'}: {err['type']}"
-        # value_error의 msg는 검사 코드(이 파일·core 스키마)에 박힌 고정 문구라 같이 싣는다.
+        # value_error의 msg는 대개 검사 코드에 박힌 고정 문구라 같이 싣는다.
+        # 다만 core 스키마 중에는 입력 값을 msg에 넣는 검사도 있다 (예: unit_id 꼴 검사).
+        # 입력 값(글자)이 msg 안에 들어 있으면 정답 글자가 새지 않게 msg를 빼고 type만 남긴다.
         # 그 밖의 오류는 msg에 입력 값이 낄 수 있어 type만 남긴다.
         if err["type"] == "value_error":
-            line += " (" + err["msg"].removeprefix("Value error, ") + ")"
+            msg = err["msg"].removeprefix("Value error, ")
+            value = err.get("input")
+            if not (isinstance(value, str) and value.strip() and value in msg):
+                line += " (" + msg + ")"
         out.append(line)
     return out
 
