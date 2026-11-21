@@ -10,7 +10,9 @@
 """
 
 import logging
+from collections.abc import Callable
 from datetime import date
+from functools import cache
 from pathlib import Path
 
 import yaml
@@ -36,12 +38,15 @@ from patent_ai.core.schemas.common import (
 from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 from patent_ai.core.schemas.legal_evidence import (
     AsOfSource,
+    FurtherReview,
+    FurtherReviewWhy,
     LegalClaim,
     LegalEvidenceBundle,
     LegalQuestion,
     LegalSource,
     LegalSourceKind,
     QuestionSource,
+    SearchLogEntry,
     summarize_bundle_status,
     summarize_claim_status,
 )
@@ -124,7 +129,7 @@ def _question(rej: Rejection, as_of: date | None, label: str | None) -> LegalQue
     )
 
 
-def _empty(unit, oa, question, checked_on, status, logs=()) -> LegalEvidenceBundle:
+def _empty(unit, oa, question, checked_on, status, logs=(), further=()) -> LegalEvidenceBundle:
     """주장 없는 묶음. 빈 묶음에 둘 수 있는 값은 unverified·not_found_in_scope뿐이다."""
     if status.value not in (StatusValue.UNVERIFIED, StatusValue.NOT_FOUND_IN_SCOPE):
         # 충돌(같은 날 시행판 둘)은 고를 근거가 없어 확인되지 않음(ambiguous)으로 둔다
@@ -137,6 +142,7 @@ def _empty(unit, oa, question, checked_on, status, logs=()) -> LegalEvidenceBund
         question=question,
         checked_on=checked_on,
         claims=[],
+        further_review=list(further),
         search_log=list(logs),
         status=status,
     )
@@ -146,7 +152,13 @@ def _unverified(reason: UnverifiedReason) -> Status:
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
 
 
-def _bundle(unit: JudgmentUnit, inp: F2Input, repo: ChunkRepository) -> LegalEvidenceBundle:
+# 기준일 -> 심사기준·판례 찾아본 기록 (같은 실행 안에서는 한 번만 센다)
+SideLogs = Callable[[date], tuple[SearchLogEntry, ...]]
+
+
+def _bundle(
+    unit: JudgmentUnit, inp: F2Input, repo: ChunkRepository, side_logs: SideLogs
+) -> LegalEvidenceBundle:
     oa, checked_on, iv = inp.oa, inp.checked_on, inp.settings.index_version
     rej = next((r for r in oa.rejections if r.no == unit.rejection), None)
     if rej is None:
@@ -173,11 +185,19 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, repo: ChunkRepository) -> LegalEvi
         )
 
     found = get_article(repo, iv, ref, as_of)
-    _, guide_log = search_guideline(repo, iv, as_of)
-    _, prec_log = search_precedent(repo, iv, as_of)
-    logs = [found.log, guide_log, prec_log]
+    logs = [found.log, *side_logs(as_of)]
     if found.chunk is None:
-        return _empty(unit, oa, question, checked_on, found.status, logs)
+        # 같은 날 시행판이 둘이면 고르지 않고, 겹친 조각을 사람이 볼 수 있게 남긴다
+        further = [
+            FurtherReview(
+                chunk_id=c.chunk_id,
+                why=FurtherReviewWhy.OTHER_EDITION,
+                note=f"{ref.label}: 기준일 {as_of.isoformat()}에 시행판이 둘 이상 (판본 확인 필요)",
+                index_version=c.index_version,
+            )
+            for c in found.conflicts
+        ]
+        return _empty(unit, oa, question, checked_on, found.status, logs, further)
 
     chunk = found.chunk
     evidence = Evidence(
@@ -222,13 +242,46 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, repo: ChunkRepository) -> LegalEvi
     )
 
 
+def _missing_index(unit: JudgmentUnit, inp: F2Input, status: Status) -> LegalEvidenceBundle:
+    """색인이 없을 때의 묶음: 질문은 남기고 주장은 비운다."""
+    oa = inp.oa
+    rej = next((r for r in oa.rejections if r.no == unit.rejection), None)
+    nd = oa.notice_date
+    as_of = parse_dispatch_date(nd.raw_text) if nd.status.value == StatusValue.CONFIRMED else None
+    if rej is None:
+        q = LegalQuestion(
+            text=f"거절이유 {unit.rejection} 법률 근거",
+            source=QuestionSource.OA_REJECTION,
+            as_of_source=AsOfSource.NONE,
+            source_kinds=_ALL_KINDS,
+        )
+    else:
+        ref = article_ref(rej.article.value)
+        q = _question(rej, as_of, ref.label if ref else None)
+    return _empty(unit, oa, q, inp.checked_on, status)
+
+
 def run_f2(inp: F2Input, *, repo: ChunkRepository | None = None) -> F2Result:
     """판단 단위마다 법률 근거 묶음 하나를 만든다. repo가 없으면 make_law_repo()."""
     if not inp.units:
         logger.warning("run_f2 %s: 판단 단위가 없음 (만든 묶음 0개)", inp.oa.oa_id)
         return F2Result(oa_id=inp.oa.oa_id, status=_unverified(UnverifiedReason.INPUT_UNVERIFIED))
     repo = repo if repo is not None else make_law_repo()
-    bundles = [_bundle(u, inp, repo) for u in inp.units]
+    iv = inp.settings.index_version
+    if not repo.has_index_version("law", iv):
+        # 색인이 없어 못 본 것을 "조회 범위 내 없음"으로 내지 않는다 (못 찾음 ≠ 없음)
+        logger.warning("run_f2 %s: 법령 색인 %s이 저장소에 없음", inp.oa.oa_id, iv)
+        missing = _unverified(UnverifiedReason.BODY_MISSING)
+        bundles = [_missing_index(u, inp, missing) for u in inp.units]
+        return F2Result(oa_id=inp.oa.oa_id, bundles=bundles, status=missing)
+
+    @cache
+    def side_logs(as_of: date) -> tuple[SearchLogEntry, ...]:
+        _, guide = search_guideline(repo, iv, as_of)
+        _, prec = search_precedent(repo, iv, as_of)
+        return guide, prec
+
+    bundles = [_bundle(u, inp, repo, side_logs) for u in inp.units]
     return F2Result(
         oa_id=inp.oa.oa_id,
         bundles=bundles,

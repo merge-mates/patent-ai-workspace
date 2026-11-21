@@ -11,7 +11,7 @@ from patent_ai.core.schemas.legal_evidence import AsOfSource, LegalSourceKind
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 from tests.core.f2 import fakes
 from tests.core.f2.fakes import IV, NEW_DOC, TEXT_292_NEW, TEXT_424_NEW
-from tests.core.f3.fakes import OK, oa, rejection, split
+from tests.core.f3.fakes import OK, bad, oa, rejection, split
 
 CHECKED_ON = date(2099, 2, 1)
 AS_OF = date(2099, 1, 26)  # tests/core/f3/fakes.oa 발송일 글자 "2099.01.26."
@@ -113,3 +113,58 @@ def test_repo가_없으면_make_law_repo로_만든다(monkeypatch):
 
 def test_저장소_설정을_읽는다():
     assert load_f2_settings().index_version == "law-idx-v2"
+
+
+def test_법령_색인이_저장소에_없으면_없음이_아니라_확인되지_않음(caplog):
+    # 색인을 안 올린 DB: 못 본 것을 "조회 범위 내 없음"으로 내지 않는다
+    with caplog.at_level(logging.WARNING):
+        out = run_f2(_input(), repo=InMemoryChunkRepository({"law": []}))
+    assert len(out.bundles) == 2
+    for b in out.bundles:
+        assert b.claims == [] and b.search_log == []
+        assert (b.status.value, b.status.reason) == (
+            StatusValue.UNVERIFIED,
+            UnverifiedReason.BODY_MISSING,
+        )
+        assert b.question.article_refs  # 질문은 남긴다
+    assert out.status.reason == UnverifiedReason.BODY_MISSING
+    assert "law-idx-v2" in caplog.text
+
+
+def test_같은_날_시행판이_둘이면_고르지_않고_겹친_조각을_더_볼_것으로_남긴다():
+    twin = fakes.law_chunk("특허법_1009_20200101", 290002, "제29조제2항", "겹친 판", fakes.NEW)
+    out = run_f2(_input(), repo=fakes.repo([twin]))
+    inventive = out.bundles[0]
+    assert inventive.claims == []
+    assert inventive.status.reason == UnverifiedReason.AMBIGUOUS
+    assert sorted(f.chunk_id for f in inventive.further_review) == [
+        f"{IV}:{NEW_DOC}:290002",
+        f"{IV}:특허법_1009_20200101:290002",
+    ]
+    assert all("시행판이 둘 이상" in f.note for f in inventive.further_review)
+    assert inventive.search_log[0].hits == 2
+    # 다른 단위(42조)는 그대로 확인됨
+    assert out.bundles[1].status.value == StatusValue.CONFIRMED
+
+
+def test_발송일이_확인되지_않음이면_글자가_있어도_조문을_찾지_않는다():
+    nd = ExtractedValue(value=None, raw_text="2099.01.26.", page=1, status=bad())
+    o = _oa(notice_date=nd)
+    units, _ = build_units(o, {1: split(1, ["가"]), 2: split(2, ["나"], [1])})
+    # OA 전체 status는 칸을 모은 값이라, 검사를 거치지 않는 model_construct로 칸만 바꾼다
+    inp = F2Input.model_construct(
+        oa=o, units=units, checked_on=CHECKED_ON, settings=F2Settings(index_version=IV)
+    )
+    for b in run_f2(inp, repo=fakes.repo()).bundles:
+        assert b.claims == [] and b.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+
+
+def test_단위가_가리키는_거절이유가_OA에_없으면_확인되지_않음(caplog):
+    inp = _input()
+    only_first = inp.oa.model_copy(update={"rejections": inp.oa.rejections[:1]})
+    inp = inp.model_copy(update={"oa": only_first})
+    with caplog.at_level(logging.WARNING):
+        out = run_f2(inp, repo=fakes.repo())
+    assert out.bundles[0].status.value == StatusValue.CONFIRMED
+    assert out.bundles[1].status.reason == UnverifiedReason.INPUT_UNVERIFIED
+    assert "OA에 없음" in caplog.text

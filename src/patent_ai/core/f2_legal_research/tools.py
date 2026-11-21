@@ -35,6 +35,7 @@ class ArticleLookup:
     chunk: Chunk | None
     status: Status
     log: SearchLogEntry
+    conflicts: tuple[Chunk, ...] = ()  # 같은 날 시행판이 둘 이상일 때 그 조각들 (사람이 볼 것)
 
 
 def _law_of(doc_id: str) -> str | None:
@@ -87,7 +88,9 @@ def get_article(
     if len(in_force) > 1:
         # 같은 날 시행판이 둘이면 판본 표가 틀린 것: 하나를 고르지 않는다
         logger.warning("get_article: %s %s 시행판이 %d개", ref.label, as_of, len(in_force))
-        return ArticleLookup(ref, as_of, None, Status(value=StatusValue.CONFLICT), log)
+        return ArticleLookup(
+            ref, as_of, None, Status(value=StatusValue.CONFLICT), log, tuple(in_force)
+        )
     if unknown:
         return ArticleLookup(
             ref,

@@ -1,5 +1,5 @@
 ---
-상태: 초안   # 이슈 계획마다 초안 → 승인 → 끝 (끝난 계획도 지우지 않는다)
+상태: 승인   # 이슈 계획마다 초안 → 승인 → 끝 (끝난 계획도 지우지 않는다)
 기능: F2 법률 근거 조사
 ---
 # F2 법률 근거 조사 tasks (구현 계획 + 진행)
@@ -19,6 +19,8 @@
 - 주장 글은 모델이 쓰지 않는다. 주장 = "거절이유 근거 조문: <조문> (OA 발송일 시행판)" 한 줄, 근거 = 그 조문 조각. 근거 검토를 안 했으므로 `review = null` + `needs_human_review`.
 - 심사기준·판례·심결은 `law-idx-v2`에 조각이 없어 `search`를 부르지 않고 `unverified(body_missing)`로 `search_log`에 남긴다 (design 2절 3단계 그대로).
 - 출원일판 비교, 법령 API 조회(색인에 없는 판), `agent_steps` 도구 단계 기록, 실행 상한은 다음 계획.
+- design 7-1 인터페이스 `research(question, ctx)`와 `impl` 고르기(`split`/`code_only`) 대신 진입 함수 `run_f2(F2Input)` 하나. 답 쓰기·근거 검토가 붙는 #29에서 `research`를 그 뒤에 둔다.
+- 법령 색인 판이 저장소에 없으면(색인을 안 올린 DB) 모든 묶음을 `unverified(body_missing)` + 경고 (리뷰 반영).
 
 ```mermaid
 graph LR
