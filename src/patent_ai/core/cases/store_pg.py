@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime
 
@@ -32,6 +33,8 @@ from patent_ai.core.cases.store import (
 )
 from patent_ai.core.f1_oa_reader.case_repository import DEFAULT_USER_ID
 from patent_ai.db.models import OA, Case, CaseEvent, Document, OAResultRow, Run
+
+logger = logging.getLogger(__name__)
 
 
 def _run_row(r: Run) -> RunRow:
@@ -131,13 +134,16 @@ class PostgresCaseAppStore:
         q = select(OA).where(OA.case_id == case_id).order_by(OA.created_at, OA.id)
         return list(self._s.scalars(q))
 
-    def _latest_succeeded_result(self, case_id: str) -> OAResultRow | None:
-        """이 사건의 가장 최근 succeeded 실행이 낸 OA 정리. 없으면 None."""
+    def _latest_succeeded_result(self, oa_id: str) -> OAResultRow | None:
+        """이 OA의 가장 최근 succeeded 실행이 낸 OA 정리. 없으면 None.
+
+        ①(OA 정리)은 OA마다 고른다 (docs/data-model.md 5절). 사건 전체에서 고르면
+        다음 OA를 올린 직후 앞 OA의 거절이유가 이번 OA 것처럼 보인다.
+        """
         q = (
             select(OAResultRow)
             .join(Run, OAResultRow.run_id == Run.id)
-            .join(OA, OAResultRow.oa_id == OA.id)
-            .where(OA.case_id == case_id, Run.state == "succeeded")
+            .where(OAResultRow.oa_id == oa_id, Run.state == "succeeded")
             .order_by(OAResultRow.created_at.desc(), OAResultRow.id.desc())
             .limit(1)
         )
@@ -149,10 +155,13 @@ class PostgresCaseAppStore:
         for case in cases:
             oas = self._oas_of(case.id)
             if not oas:
-                continue  # OA 없는 사건은 이 API로 만들지 않는다
+                # 이 API로는 안 생기지만 다른 경로(save_case)로 생기면 목록에서 빠지므로 남긴다
+                logger.warning("OA 없는 사건을 목록에서 건너뜀: case_id=%s", case.id)
+                continue
             latest = oas[-1]
             run = self._runs.latest_for_oa(latest.id)
-            result = self._latest_succeeded_result(case.id)
+            # 거절이유·status는 가장 최근 OA의 정리에서만 (결과 전이면 []·unverified)
+            result = self._latest_succeeded_result(latest.id)
             kinds: list[str] = []
             if result is not None:
                 for r in result.body.get("rejections", []):

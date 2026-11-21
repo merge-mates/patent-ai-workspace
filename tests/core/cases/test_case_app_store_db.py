@@ -121,3 +121,20 @@ def test_succeeded_정리만_거절이유와_status로_나온다(session):
     row = next(r for r in store.list_cases() if r.case_id == created.case_id)
     assert row.rejection_kinds == ["novelty", "inventive_step"]
     assert row.status == "conflict"
+
+
+def test_OA2를_올린_직후_OA1_거절이유가_안_보인다(session):
+    store = PostgresCaseAppStore(session)
+    created = store.create_case(_file("db_next_oa_" + "f" * 20))
+    # OA1은 succeeded 정리가 있다
+    done = Run(oa_id=created.oa_id, state="succeeded", created_at=T0)
+    session.add(done)
+    session.flush()
+    _result(session, created.oa_id, done.id, "confirmed", ["novelty"], T0)
+
+    # OA2를 막 올렸다: 실행은 queued, 정리는 아직 없다
+    store.add_oa(created.case_id, _file("db_next_oa_" + "g" * 20))
+
+    row = next(r for r in store.list_cases() if r.case_id == created.case_id)
+    # 앞 OA 거절이유가 이번 OA 것으로 읽히지 않게, 새 OA 기준 기본값
+    assert (row.rejection_kinds, row.status, row.run_state) == ([], "unverified", "queued")

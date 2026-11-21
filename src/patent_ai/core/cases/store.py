@@ -121,9 +121,9 @@ class CaseSummaryRow:
     case_name: str
     application_number: str | None
     latest_oa: OARef
-    rejection_kinds: list[str]  # 가장 최근 succeeded 정리에서. 없으면 []
-    run_state: str  # 가장 최근 실행 state
-    status: str  # 정리 status. 결과 전 unverified
+    rejection_kinds: list[str]  # latest_oa의 가장 최근 succeeded 정리에서. 없으면 []
+    run_state: str  # latest_oa의 가장 최근 실행 state
+    status: str  # latest_oa의 정리 status. 결과 전 unverified
     updated_at: datetime  # 가장 최근 OA를 올린 시각
 
 
@@ -251,7 +251,11 @@ class _Doc:
 
 
 class InMemoryCaseAppStore:
-    """테스트·API 테스트용 메모리 저장소 (DB 없이 돈다). 결과 저장이 아직 없어 정리 칸은 기본값."""
+    """테스트·API 테스트용 메모리 저장소 (DB 없이 돈다).
+
+    결과 저장이 아직 없어 정리 칸은 기본값([]·unverified)이다. 결과 저장이 생기면
+    Postgres 쪽처럼 latest_oa의 정리에서만 고른다 (사건 전체에서 고르지 않는다).
+    """
 
     def __init__(
         self,
@@ -296,6 +300,7 @@ class InMemoryCaseAppStore:
         for case in self._cases.values():
             latest = self._oas[case.oa_ids[-1]]
             run = self._runs.latest_for_oa(latest.id)
+            # 거절이유·status는 latest_oa 기준. 메모리 저장소엔 정리가 없어 늘 기본값
             rows.append(
                 CaseSummaryRow(
                     case_id=case.id,
