@@ -9,7 +9,7 @@ import { rejectionKindLabel } from '../../labels'
 import type { AmendedClaim, Evidence1 } from '../../types/generated/Drafts'
 import type { DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
 import { CoverageTable } from './CoverageTable'
-import { buildCoverage, buildFixes } from './coverage'
+import { buildCoverage, buildFixes, caseToCheck } from './coverage'
 import { FixList } from './FixList'
 
 // 고치는 중인 곳: 의견서 칸 하나 또는 보정 청구항 하나 (보낼 요청과 같은 모양)
@@ -82,7 +82,8 @@ export function DraftsPage() {
     (a, b) => a - b,
   )
   const coverage = buildCoverage(drafts, directions, rejections, unsupported)
-  const fixes = buildFixes(drafts, directions, rejections, unsupported, caseCheck?.items ?? [])
+  const fixes = buildFixes(drafts, directions, rejections, unsupported, drafts.opinion.map((x) => x.title))
+  const caseItems = caseToCheck(caseCheck?.items ?? [])
 
   // 고친 글을 저장한다. AI 원본(ai_text)은 서버가 그대로 남기고 사람 글은 human_text에 둔다
   const save = async () => {
@@ -202,6 +203,14 @@ export function DraftsPage() {
             <TrackedText before={c.before} after={text} mode="amend" />
           </p>
         )}
+        {edited && !showAi && !isEditing && (
+          <div>
+            <span className="label2 t3">AI 초안 → 고친 글 (검정 밑줄이 사람이 고친 곳)</span>
+            <p className="body1" style={{ lineHeight: '28px', margin: 0 }}>
+              <TrackedText before={c.ai_text} after={c.human_text!} mode="human" />
+            </p>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="label2 t3">
             {copyFrom ? `${copyFrom.location}에서 옮김 · ` : ''}근거
@@ -232,7 +241,17 @@ export function DraftsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
       <CoverageTable model={coverage} />
-      <FixList fixes={fixes} hasCheck={caseCheck !== null} onShowClaims={() => setView('claims')} />
+      <FixList
+        fixes={fixes}
+        caseItems={caseItems}
+        hasCheck={caseCheck !== null}
+        onShowClaims={() => setView('claims')}
+        onShowOpinion={(title) => {
+          setView('opinion')
+          // 화면이 바뀐 뒤 그 칸으로 내린다 (칸 id = 제목)
+          setTimeout(() => document.getElementById(`op-${title}`)?.scrollIntoView({ block: 'center' }), 0)
+        }}
+      />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <Segmented
@@ -262,7 +281,7 @@ export function DraftsPage() {
               const showAi = aiShown.includes(key)
               const startEdit = () => setEditing({ section: s.key, text: s.human_text ?? s.ai_text })
               return (
-                <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div key={s.key} id={`op-${s.title}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <h3 className="headline1" style={{ margin: 0 }}>{`${i + 1}. ${s.title}`}</h3>
                     {edited && humanTag}
@@ -287,7 +306,12 @@ export function DraftsPage() {
                       }}
                     >
                       {edited && !showAi ? (
-                        <TrackedText before={s.ai_text} after={s.human_text!} mode="human" />
+                        <TrackedText
+                          before={s.ai_text}
+                          after={s.human_text!}
+                          mode="human"
+                          renderText={(t) => <LinkedText text={t} evidence={allEvidence} onOpen={openEvidence} />}
+                        />
                       ) : (
                         <LinkedText text={showAi || !edited ? s.ai_text : s.human_text!} evidence={allEvidence} onOpen={openEvidence} />
                       )}
@@ -304,7 +328,7 @@ export function DraftsPage() {
           </>
         ) : (
           <>
-            <span className="label2 t3">검토용 초안이에요. 보정이 적법한지는 판단하지 않아요. 바뀐 곳만 파랑, 지운 곳은 줄을 그었어요.</span>
+            <span className="label2 t3">검토용 초안이에요. 보정이 적법한지는 판단하지 않아요. AI가 바꾼 곳은 파랑, 지운 곳은 줄을 그었어요. 사람이 고친 곳은 검정 밑줄이에요.</span>
             {drafts.claims.map(claimView)}
           </>
         )}

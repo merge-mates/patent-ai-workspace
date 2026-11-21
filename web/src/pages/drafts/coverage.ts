@@ -6,16 +6,19 @@ import type { Rejection } from '../../types/generated/OAResult'
 import type { DraftsWithCheck } from '../../types/provisional/pending'
 
 // done: 대응함(검정) / pending: 남음 · 방향 안 고름 등(갈색) / manual: AI가 다루지 않아 직접 대응(빨강)
-export type CellKind = 'done' | 'pending' | 'manual'
+// unknown: 검사 결과가 없어 모름(회색). "남음"과 다르다 (확인되지 않음 ≠ 남음)
+export type CellKind = 'done' | 'pending' | 'manual' | 'unknown'
 export interface Cell {
   kind: CellKind
   text: string
 }
 export interface CoverageModel {
-  cols: { no: number; label: string }[]
+  // claimsUnknown: 그 거절이유의 대상 청구항을 확인하지 못함 (정리 결과 claims.value가 null)
+  cols: { no: number; label: string; claimsUnknown: boolean }[]
   rows: { claim: number; cells: Record<number, Cell | undefined> }[]
   total: number
   done: number
+  unknown: number
 }
 
 // 묶음(unit_id)에서 지금 고른 후보
@@ -37,7 +40,7 @@ export function buildCoverage(
   const nos = [...new Set([...rejections.map((r) => r.no), ...cov.map((c) => c.rejection), ...unsupported])].sort((a, b) => a - b)
   const cols = nos.map((no) => {
     const r = rejections.find((x) => x.no === no)
-    return { no, label: `거절이유 ${no}${r ? ` ${rejectionKindLabel[r.kind]}` : ''}` }
+    return { no, label: `거절이유 ${no}${r ? ` ${rejectionKindLabel[r.kind]}` : ''}`, claimsUnknown: r !== undefined && r.claims.value === null }
   })
   // 걸리는 쌍: 거절이유의 대상 청구항 + 검사에 나온 쌍
   const pairs = new Set<string>()
@@ -47,6 +50,7 @@ export function buildCoverage(
 
   let total = 0
   let done = 0
+  let unknown = 0
   const rows = claims.map((claim) => {
     const cells: Record<number, Cell | undefined> = {}
     for (const no of nos) {
@@ -67,30 +71,31 @@ export function buildCoverage(
       } else if (hit) {
         cells[no] = { kind: 'pending', text: sel.known && sel.cand === null ? '남음 · 방향 안 고름' : '남음 · 초안에 안 적음' }
       } else {
-        cells[no] = { kind: 'pending', text: '남음 · 검사 결과 없음' }
+        unknown += 1
+        cells[no] = { kind: 'unknown', text: '확인되지 않음 · 검사 결과 없음' }
       }
     }
     return { claim, cells }
   })
-  return { cols, rows, total, done }
+  return { cols, rows, total, done, unknown }
 }
 
 // 제출 전에 고칠 곳 한 줄. tag: 충돌(빨강) / 누락(노랑)
 export interface Fix {
   key: string
-  tag: 'conflict' | 'missing'
+  tag: 'conflict' | 'missing' | 'check'
   title: string
   sub?: string
-  action?: { kind: 'source'; page: number | null; rawText: string | null } | { kind: 'pick' } | { kind: 'claims' }
+  action?: { kind: 'source'; page: number | null; rawText: string | null } | { kind: 'pick' } | { kind: 'claims' } | { kind: 'opinion'; title: string }
 }
 
-// 화면에 있던 정보를 빠짐없이 줄로: 누락 검사·번호 불일치·AI가 다루지 않은 거절이유·사건 전체 검사 warn/fail
+// 줄로: AI가 다루지 않은 거절이유·누락 검사·번호 불일치
 export function buildFixes(
   drafts: DraftsWithCheck,
   directions: DirectionCandidates[],
   rejections: Rejection[],
   unsupported: number[],
-  caseItems: { name: string; result: 'ok' | 'warn' | 'fail'; detail: string }[],
+  opinionTitles: string[],
 ): Fix[] {
   const out: Fix[] = []
   // AI가 다루지 않은 거절이유: 통지서 쪽으로 원문 보기
@@ -123,18 +128,14 @@ export function buildFixes(
       tag: 'conflict',
       title: `번호 불일치 · ${m.where}`,
       sub: m.detail,
-      action: { kind: 'claims' },
+      // 위치가 의견서 칸이면 그 칸으로, 아니면 보정 청구항으로
+      action: opinionTitles.includes(m.where) ? { kind: 'opinion', title: m.where } : { kind: 'claims' },
     })
   }
-  // 사건 전체 검사: 통과(ok) 아닌 것
-  caseItems.forEach((it, i) => {
-    if (it.result === 'ok') return
-    out.push({
-      key: `case-${i}`,
-      tag: it.result === 'fail' ? 'conflict' : 'missing',
-      title: it.name,
-      sub: `사건 전체 검사 · ${it.detail}`,
-    })
-  })
   return out
+}
+
+// 사건 전체 검사에서 ok가 아닌 항목: 자유 글이라 위 줄과 짝을 맞추지 않고 따로 모은다 (N에 넣지 않음)
+export function caseToCheck(items: { name: string; result: 'ok' | 'warn' | 'fail'; detail: string }[]) {
+  return items.filter((it) => it.result !== 'ok')
 }
