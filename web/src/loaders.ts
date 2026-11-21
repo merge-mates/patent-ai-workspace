@@ -54,6 +54,8 @@ export interface OALoaderData {
   document: PageText | null
   // 대응 방향 묶음 (직접 할 일의 방향 고르기를 세려고). 결과가 아직 없으면 null (모름)
   directions: DirectionCandidates[] | null
+  // 이 OA의 법률 근거 묶음 (거절이유마다 "이 거절이유의 법리"). 아직 안 찾았으면 [] (지어내지 않고 그 줄을 뺀다)
+  legal: LegalEvidenceBundle[]
 }
 
 export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> {
@@ -63,7 +65,7 @@ export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> 
 // 사건 작업대에 필요한 것을 한 번에 받는다 (사건 목록의 "오늘 먼저 볼 사건"도 쓴다)
 async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
-  const [oaResult, materials, reviewItems, document, directions] = await Promise.all([
+  const [oaResult, materials, reviewItems, document, directions, legal] = await Promise.all([
     api.getOAResult(oa.oa_id).catch((e: unknown) => {
       if (isNotReady(e)) return null
       throw e
@@ -77,8 +79,13 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
     // 방향 결과가 아직 없으면 null: 0개로 보이지 않게 직접 할 일 개수는 모름
     api.getDirections(oa.oa_id).catch(notReadyAsNull),
+    // 법률 근거: 결과가 아직 없으면 빈 목록
+    api.getLegalEvidence(oa.oa_id).catch((e: unknown) => {
+      if (isNotReady(e)) return []
+      throw e
+    }),
   ])
-  return { oa, oaResult, materials, reviewItems, document, directions }
+  return { oa, oaResult, materials, reviewItems, document, directions, legal }
 }
 
 // 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다

@@ -11,7 +11,7 @@ import { StatusTag } from './StatusTag'
 // 사건 정보 한 칸: 이름 · 값(원문 글자) · 상태 꼬리표(확인됨은 없음) · "통지서 N쪽"
 // 날짜·기한은 AI가 확정하지 않는다: 원문 글자 + "직접 확인"
 function InfoField({ label, value, v, human = false }: { label: string; value: string; v: Extracted; human?: boolean }) {
-  const openSource = useContext(SourceContext)
+  const { openPage: openSource } = useContext(SourceContext)
   const confirmed = v.status.value === 'confirmed'
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>

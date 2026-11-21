@@ -3,12 +3,13 @@ import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
 import { CaseInfo } from '../components/CaseInfo'
 import { HumanCheckTag } from '../components/Marks'
-import { SourceContext } from '../components/sourceContext'
+import { type OpenEvidence, type OpenSource, SourceContext } from '../components/sourceContext'
 import { SourcePanel } from '../components/SourcePanel'
 import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
 import { noticeKindLabel, runStateLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
+import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
 import { directTodos } from '../todos'
 
 // 사건 안의 단계 4개 (디자인 B 고친 판). 단계마다 주소가 있어 새로고침·뒤로 가기가 된다
@@ -35,6 +36,8 @@ export function CaseShell() {
 
   const [srcOpen, setSrcOpen] = useState(true)
   const [source, setSource] = useState<{ page: number; text: string | null } | null>(null)
+  // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다 (둘 중 하나만 열린다)
+  const [evidence, setEvidence] = useState<{ source: LegalSource; checkedOn: string } | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
 
@@ -48,19 +51,28 @@ export function CaseShell() {
   const shown = source ?? { page: defaultPage, text: null }
 
   // 쪽 링크를 누르면 판을 펴고 그 쪽으로. 쪽을 모르면(null) 판만 편다
-  const openSource = (page: number | null, text: string | null) => {
-    if (page !== null) setSource({ page, text })
-    setSrcOpen(true)
+  const scrollToPanel = () =>
     // 판 안에서는 강조 줄(없으면 판)로, 좁은 화면에서 판이 본문 아래면 화면도 거기로 (effect 없이 그린 뒤 한 번)
     requestAnimationFrame(() =>
       (document.getElementById('source-highlight') ?? document.getElementById('source-panel'))?.scrollIntoView({
         block: 'nearest',
       }),
     )
+  const openSource: OpenSource = (page, text, scroll = true) => {
+    if (page !== null) setSource({ page, text })
+    setEvidence(null)
+    setSrcOpen(true)
+    if (scroll) scrollToPanel()
+  }
+  // 법률 근거 열기: 근거 글(raw_text)을 판에 보인다
+  const openEvidence: OpenEvidence = (src, checkedOn) => {
+    setEvidence({ source: src, checkedOn })
+    setSrcOpen(true)
+    scrollToPanel()
   }
 
   return (
-    <SourceContext value={openSource}>
+    <SourceContext value={{ openPage: openSource, openEvidence }}>
       {/* 자리 이동(#materials 등)을 단계가 바뀐 뒤에도 해 준다 */}
       <ScrollRestoration />
       <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto' }}>
@@ -162,6 +174,7 @@ export function CaseShell() {
             page={shown.page}
             highlight={shown.text}
             document={data.document}
+            evidence={evidence}
             onToggle={() => setSrcOpen(!srcOpen)}
           />
         </div>

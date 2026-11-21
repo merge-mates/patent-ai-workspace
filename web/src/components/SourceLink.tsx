@@ -14,7 +14,7 @@ export function SourceLink({
   rawText: string | null
   candidate?: boolean
 }) {
-  const open = useContext(SourceContext)
+  const { openPage: open } = useContext(SourceContext)
   if (page === null) return null
   return (
     <Typography.Link onClick={() => open(page, rawText)} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>

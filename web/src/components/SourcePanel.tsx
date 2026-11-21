@@ -1,4 +1,6 @@
 import { Alert, Button } from 'antd'
+import { sourceKindLabel, speakerLabel } from '../labels'
+import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
 import type { PageText } from '../types/generated/PageText'
 import { StatusTag } from './StatusTag'
 
@@ -17,12 +19,57 @@ interface Props {
   highlight: string | null
   // 원문을 못 받았으면 null
   document: PageText | null
+  // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다
+  evidence: { source: LegalSource; checkedOn: string } | null
   onToggle: () => void
+}
+
+// 근거 하나의 판 안 모양: 머리(참고 원문 + 이름) → 메타 → 상태 줄 → 근거 글(강조) → 안내.
+// 원문 전체를 여는 API가 아직 없어 근거가 가리키는 부분(raw_text)만 보인다
+function EvidenceBody({ s, checkedOn }: { s: LegalSource; checkedOn: string }) {
+  const meta = [
+    sourceKindLabel[s.source_kind],
+    // 판본은 법령·심사기준에만 의미가 있다. 모르면 "판본 모름"
+    s.source_kind === 'statute' || s.source_kind === 'guideline' ? (s.evidence.edition ?? '판본 모름') : null,
+    s.text_kind ? (s.text_kind === 'full' ? '전문' : '요지') : null,
+    // 판례·심결은 법원 판단인지 당사자 주장인지 가른다
+    s.speaker ? speakerLabel[s.speaker] : null,
+    [s.court, s.decided_on].filter(Boolean).join(' ') || null,
+    `확인 기준일 ${s.evidence.checked_on ?? checkedOn}`,
+  ].filter(Boolean)
+  return (
+    <>
+      <span className="label2 t3">{meta.join(' · ')}</span>
+      {s.status.value === 'confirmed' ? (
+        <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
+          확인됨{s.status.checked ? ` · ${s.status.checked}` : ''}
+        </span>
+      ) : (
+        <div>
+          <StatusTag status={s.status} />
+        </div>
+      )}
+      {s.evidence.raw_text ? (
+        <p
+          className="body2r"
+          style={{ margin: 0, color: 'var(--fg-neutral-secondary)', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
+        >
+          <span id="source-highlight" style={highlightStyle}>
+            {s.evidence.raw_text}
+          </span>
+        </p>
+      ) : (
+        <Alert type="info" showIcon message="이 근거의 원문 글자를 받지 못했어요" />
+      )}
+      {s.evidence.location && <span className="label1 t3">원문 위치: {s.evidence.location}</span>}
+      <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
+    </>
+  )
 }
 
 // 오른쪽 "참고 원문" 판. 펴면 그 쪽 글자, 접으면 48px 세로 막대.
 // 단계를 옮겨도 사건 틀이 상태를 들고 있어서 접힘이 유지된다
-export function SourcePanel({ open, page, highlight, document, onToggle }: Props) {
+export function SourcePanel({ open, page, highlight, document, evidence, onToggle }: Props) {
   if (!open) {
     return (
       <aside
@@ -78,14 +125,16 @@ export function SourcePanel({ open, page, highlight, document, onToggle }: Props
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span className="label2 t3">참고 원문</span>
-          <span className="headline2">통지서 {page}쪽</span>
+          <span className="headline2">{evidence ? evidence.source.identifier : `통지서 ${page}쪽`}</span>
         </div>
-        {document && document.status.value !== 'confirmed' && <StatusTag status={document.status} detail={false} />}
+        {!evidence && document && document.status.value !== 'confirmed' && <StatusTag status={document.status} detail={false} />}
         <Button type="text" onClick={onToggle}>
           접기
         </Button>
       </div>
-      {document === null ? (
+      {evidence ? (
+        <EvidenceBody s={evidence.source} checkedOn={evidence.checkedOn} />
+      ) : document === null ? (
         // 원문이 없어도 빈 판으로 두지 않는다
         <Alert type="info" showIcon message="원문을 받지 못했어요" />
       ) : (

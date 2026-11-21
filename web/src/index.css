@@ -97,3 +97,16 @@ body {
     overflow-y: visible;
   }
 }
+
+/* 줄을 펼쳤을 때 안쪽 내용: 줄 제목 칸(120px) + 틈만큼 들여 쓴다. 좁은 화면에서는 들이지 않는다 */
+.row-detail {
+  padding-left: 132px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .row-detail {
+    padding-left: 0;
+  }
+}

@@ -1,4 +1,4 @@
-import { Button, Card, Result, Space, Typography } from 'antd'
+import { Button, Result, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { useLocation, useRouteLoaderData } from 'react-router'
 import { ReviewPanel } from '../../components/ReviewPanel'
@@ -54,17 +54,18 @@ export function WorkbenchPage() {
         )}
       </div>
 
-      <RejectionsCard r={r} />
+      <RejectionsCard r={r} legal={data.legal} />
       <HintsCard h={r.examiner_hints} />
       {materials ? (
         <MaterialsCard m={materials} r={r} />
       ) : (
-        <Card size="small" title="사건 자료" id="materials">
+        <div id="materials" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h2 className="heading2">사건 자료 (모름)</h2>
           <Space>
             <StatusTag status="unverified" />
             <Typography.Text type="secondary">사건 자료 목록을 받지 못했습니다</Typography.Text>
           </Space>
-        </Card>
+        </div>
       )}
 
       {/* 검토할 사항 (확인되지 않음·충돌 등 전부): 직접 할 일과 다른 숫자라 아래쪽에 따로 */}

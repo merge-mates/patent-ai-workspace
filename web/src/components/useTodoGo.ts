@@ -7,7 +7,7 @@ import { SourceContext } from './sourceContext'
 // "가기" 버튼이 하는 일. 어느 단계에서든 같게 동작한다:
 // 원문 판을 그 쪽으로 / 정리 단계의 그 자리(id)로 / 다른 단계로
 export function useTodoGo(): (go: TodoGo) => void {
-  const openSource = useContext(SourceContext)
+  const { openPage: openSource } = useContext(SourceContext)
   const navigate = useNavigate()
   const { oa } = useRouteLoaderData('oa') as OALoaderData
   const base = `/oas/${oa.oa_id}`
