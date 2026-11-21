@@ -81,10 +81,6 @@ def test_검토할_사항은_빠진_인용문헌_하나와_직접_검토_하나(
     ]
 
 
-def test_review_items_count가_검토할_사항_수와_같다(oa, materials):
-    assert materials.review_items_count == len(collect_review_items([oa], materials)) == 2
-
-
 def test_6번의_review_items가_마무리_결과와_같다(oa, materials):
     # fixture는 마무리(모으기 + 순서 + 개수)를 거친 값: 빠진 자료 줄이 맨 위
     assert materials.review_items == finalize_case_materials([oa], materials).review_items

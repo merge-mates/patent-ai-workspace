@@ -144,7 +144,7 @@ def _run_one(c: dict) -> dict:
         c["case_id"], grouped, [oa], c["received"], lookup_failures=c["failures"]
     )
     # ⑥에 이미 담긴 목록을 그대로 쓴다 (따로 모으지 않는다)
-    review = materials.review_items or []
+    review = materials.review_items  # None(모름)은 빈 목록으로 바꾸지 않는다
     return {
         # 사건 이름·마지막으로 연 때는 사건 목록 응답(서버 #56)에 들어갈 값의 가짜
         "case_id": c["case_id"],
@@ -154,7 +154,7 @@ def _run_one(c: dict) -> dict:
         "run_id": run_id,
         "oa_result": oa.model_dump(mode="json"),
         "materials": materials.model_dump(mode="json"),
-        "review_items": [r.model_dump(mode="json") for r in review],
+        "review_items": None if review is None else [r.model_dump(mode="json") for r in review],
         "document": pages.model_dump(mode="json"),
     }
 
