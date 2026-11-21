@@ -27,6 +27,8 @@ from eval.common.goldset import gold_path
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.noise_scope import NPL_PREFIX, PoolTable
 
+# C안 노이즈 공보 폴더 (사건 폴더가 아님, scripts/fetch_noise_c_pdfs.py). 풀 표에는 noise_c가 더한다
+NOISE_DIR = "noise_c"
 DOC_ID = re.compile(r"^(KR|US)\d+[A-Z]\d?$")  # cited-patents.md의 doc_id 꼴 (파일 이름)
 _KR_DATE = r"(\d{4})년(\d{1,2})월(\d{1,2})일"
 _US_DATE = r"([A-Z][a-z]{2})\.?(\d{1,2}),(\d{4})"
@@ -84,7 +86,9 @@ def build_pool(
     oas: dict[str, dict] = {}
     skipped_npl = 0
     for app_dir in sorted(
-        p for p in cited_dir.iterdir() if p.is_dir() and not p.name.startswith("_")
+        p
+        for p in cited_dir.iterdir()
+        if p.is_dir() and not p.name.startswith("_") and p.name != NOISE_DIR
     ):
         pdfs = sorted(app_dir.glob("*.pdf"))
         patents = [p for p in pdfs if DOC_ID.match(p.stem)]

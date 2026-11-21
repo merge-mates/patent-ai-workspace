@@ -125,3 +125,11 @@ def test_명령은_이미_있는_표를_덮지_않는다(tmp_path):
     out.write_text(yaml.safe_dump({"docs": {}, "oas": {}}), encoding="utf-8")
     argv = ["--goldsets-root", str(root), "--out", "retrieval/cite_pool_t30.yaml"]
     assert main(argv) == 1
+
+
+def test_C안_노이즈_폴더는_사건_폴더로_보지_않는다(tmp_path):
+    cited, proc = _setup(tmp_path, {"PA": {"KR20990000001A": KR_A}}, {"PA": "OA1"})
+    (cited / "noise_c").mkdir()
+    (cited / "noise_c" / "KR20990000009A.pdf").write_text("못 읽는 글", encoding="utf-8")
+    table, _ = build_pool(cited, proc, {"PA": date(2015, 1, 1)}, None, read=fake_reader)
+    assert set(table.docs) == {"KR20990000001A"}
