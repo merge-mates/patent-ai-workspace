@@ -156,7 +156,7 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
     search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0 }],
     claims: [
       {
-        no: 1, text: '신규성은 청구항 발명과 인용발명의 구성이 같은지, 차이가 있어도 실질적으로 같은지로 판단한다.', review: null, ...common(ok('심사기준 원문 대조')),
+        no: 1, text: '신규성은 청구항 발명과 인용발명의 구성이 같은지, 차이가 있어도 실질적으로 같은지로 판단한다.', review: { verdict: 'supported', reason: '심사기준 원문이 주장을 그대로 뒷받침 (예시)' }, ...common(ok('심사기준 원문 대조')),
         sources: [
           { source_kind: 'guideline', identifier: '특허·실용신안 심사기준 제3부 제2장 (예시 위치)', text_kind: null, speaker: null, decided_on: null, court: null, evidence: ev('legal_exam_guideline', '4.3 실질적 동일', '차이가 주지 관용기술의 단순한 부가·전환 정도이면 실질적으로 같다고 본다.', '2099.1. 개정 (예시)'), status: ok('원문 대조') },
           { source_kind: 'precedent', identifier: '대법원 예시판결 20XX후0001', text_kind: 'full', speaker: 'court', decided_on: '2099-03-01', court: '대법원 (예시)', evidence: ev('legal_precedent', '판결 이유 2.가.', '두 발명의 차이가 과제 해결을 위한 구체적 수단에서 미세한 차이에 불과하면 실질적으로 동일하다.', null), status: ok('판례 전문 대조') },
@@ -164,8 +164,8 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
       },
     ],
     further_review: [
-      { chunk_id: 'legal_precedent#7', why: 'opposite_holding', note: '실질적 동일을 부정한 판례가 더 있는지' },
-      { chunk_id: 'legal_exam_guideline#12', why: 'other_edition', note: null },
+      { chunk_id: 'legal_precedent#7', why: 'opposite_holding', note: '실질적 동일을 부정한 판례가 더 있는지', index_version: null },
+      { chunk_id: 'legal_exam_guideline#12', why: 'other_edition', note: null, index_version: null },
     ],
     ...common(ok('주장마다 근거 원문 대조')),
   },
@@ -190,8 +190,8 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
       },
     ],
     further_review: [
-      { chunk_id: 'legal_statute#3', why: 'edition_unknown', note: '판본을 확인한 뒤 다시 보기' },
-      { chunk_id: 'legal_precedent#9', why: 'not_used_candidate', note: '효과가 현저한 효과로 인정된 사례' },
+      { chunk_id: 'legal_statute#3', why: 'edition_unknown', note: '판본을 확인한 뒤 다시 보기', index_version: null },
+      { chunk_id: 'legal_precedent#9', why: 'not_used_candidate', note: '효과가 현저한 효과로 인정된 사례', index_version: null },
     ],
     ...common(unv('edition_unknown')),
   },
@@ -200,7 +200,7 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
     search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0 }],
     claims: [
       {
-        no: 1, text: "청구항에 '상기'로 가리키는 대상이 앞에 없으면 무엇을 가리키는지 불명확해 제42조제4항제2호 거절이유가 된다.", review: null, ...common(ok('심사기준 원문 대조')),
+        no: 1, text: "청구항에 '상기'로 가리키는 대상이 앞에 없으면 무엇을 가리키는지 불명확해 제42조제4항제2호 거절이유가 된다.", review: { verdict: 'supported', reason: '조문과 심사기준이 주장을 뒷받침 (예시)' }, ...common(ok('심사기준 원문 대조')),
         sources: [
           { source_kind: 'statute', identifier: '특허법 제42조제4항제2호', text_kind: null, speaker: null, decided_on: null, court: null, evidence: ev('legal_statute', '제42조제4항제2호', '발명이 명확하고 간결하게 적혀 있을 것', '시행 2099.1.1. (예시)'), status: ok('조문 원문 대조') },
           { source_kind: 'guideline', identifier: '특허·실용신안 심사기준 제2부 제4장 (예시 위치)', text_kind: null, speaker: null, decided_on: null, court: null, evidence: ev('legal_exam_guideline', '3.2 (4)', "'상기'로 인용한 용어가 앞에 없는 경우", '2099.1. 개정 (예시)'), status: ok('원문 대조') },

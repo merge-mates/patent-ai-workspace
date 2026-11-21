@@ -35,12 +35,14 @@ async function readBody<T>(res: Response): Promise<T> {
   // 오류 본문이 {code, message}가 아니어도 조용히 넘기지 않고 HTTP 코드로 알린다
   let code = `http_${res.status}`
   let message = `서버 오류 (${res.status})`
+  let extra: Record<string, unknown> = {}
   try {
-    const body = (await res.json()) as { code?: string; message?: string }
-    code = body.code ?? code
-    message = body.message ?? message
+    const { code: c, message: m, ...rest } = (await res.json()) as Record<string, unknown>
+    if (typeof c === 'string') code = c
+    if (typeof m === 'string') message = m
+    extra = rest // 나머지 칸은 버리지 않고 ApiError에 담는다
   } catch {
     // 본문이 JSON이 아님: 위 기본 문구 그대로
   }
-  throw new ApiError(code, message, res.status)
+  throw new ApiError(code, message, res.status, extra)
 }

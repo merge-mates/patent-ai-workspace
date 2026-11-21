@@ -159,7 +159,7 @@ flowchart LR
   1. 조각 종류 값: `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
   2. 판본 값: 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
   3. 조각 메타데이터 칸: `Chunk`(`retrieval/schemas.py`, 지금 `extra="forbid"`)와 `law_chunks` 열에 `source_kind`(`statute` / `guideline` / `precedent` / `trial`), `decided_on`(판례·심결 필수, 못 뽑으면 null + 건수), 판례 문단 역할(`court` / `party` / `unknown`), `rejection_ground`(거절이유 근거 조문 표시, 7-3), 후보 칸(법원, 거절이유 유형, 심결 결과, IPC 분야). **Alembic 마이그레이션**이 필요하다 (5절 #29 표와 따로).
-  4. `search()` 매개변수: `chunk_kinds` 거르기, 메타데이터 거르기(`source_kind`, `decided_on ≤ 날짜`, `rejection_ground`). 모두 점수 매기기 전에 거른다 (pre-filter). 결과에 `skipped_unknown_date` 건수를 더한다. `CheckedSearcher`·`fake`·`law_bm25`·`vector` 구현이 같이 바뀐다.
+  4. `search()` 매개변수: `chunk_kinds` 거르기, 메타데이터 거르기(`source_kind`, `decided_on ≤ 날짜`, `rejection_ground`). 모두 점수 매기기 전에 거른다 (pre-filter). 결과에 `skipped_unknown_date` 건수를 더한다. `CheckedSearcher`·`fake`·`bm25`·`vector` 구현이 같이 바뀐다.
   5. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`) 메서드 둘: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기. 메모리·Postgres 저장소 둘 다.
   6. 채점기(`eval/retrieval/score.py`): 정답 줄의 검색 범위에 `chunk_kinds`(와 판례 줄의 날짜)를 넣는다. 지금 법령 정답 줄은 `doc_ids: null`이라, `law-idx-v3`에 심사기준·판례가 같은 표로 들어오면 조문 줄 검색 범위에 섞인다(판례는 `not_applicable`이라 `as_of`도 통과). 그러면 Recall·무작위 기준선이 v2와 비교가 안 되므로, 조문 줄은 `chunk_kinds = [article]`로 고정한다. 정답 파일 칸이 바뀌면 `eval/GUIDE.md`도 같이.
 - 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 위 3·4의 조각 메타데이터로 거른다. 조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`, 판례와 심결은 `source_kind`로 가른다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. IPC 분야는 심결·판례를 분야 없이 받되 비전 사건을 먼저 보이기용이다 (requirements 열린 질문 9).
@@ -171,7 +171,7 @@ flowchart LR
 
 ## 7. AI
 ### 7-1. 공통 칸 (비교 실험이라 둘이 같이 정함, 구현 전에 확정) [제안 — 재아 님 확인 필요]
-- **인터페이스:** `research(question: LegalQuestion, ctx: RunContext) -> LegalEvidenceBundle` (`core/f2_legal_research/`). 구현은 `config/f2.yaml`의 `impl`로 고른다 (`single`: 한 에이전트가 쓰고 스스로 검토 / `split`: 답 쓰기와 근거 검토 에이전트를 나눔). 출처 확인은 두 구현 밖에서 같은 코드로 돈다. 근거 검토 에이전트는 F2 것이 아니라 F2·F3·F4 공통이다 (`core/agents/`, [ADR 0003](../../decisions/0003-tech-stack.md) 폴더). F2는 `impl`로 그것을 따로 부를지(`split`) 같이 할지(`single`)만 고른다.
+- **인터페이스:** `research(question: LegalQuestion, ctx: RunContext) -> LegalEvidenceBundle` (`core/f2_legal_research/`). 구현은 `config/f2.yaml`의 `impl`로 고른다 (`split`: 답 쓰기 뒤 근거 검토 에이전트를 부름 / `code_only`: 근거 검토 에이전트를 부르지 않고 출처 확인 코드만). 출처 확인은 두 구현 밖에서 같은 코드로 돈다. 근거 검토 에이전트는 F2 것이 아니라 F2·F3·F4 공통이다 (`core/agents/`, [ADR 0003](../../decisions/0003-tech-stack.md) 폴더). F2는 `impl`로 그것을 부를지(`split`) 말지(`code_only`)만 고른다.
 - **도구 (서브에이전트가 골라 부름):**
 
   | 도구 | 입력 → 출력 | 실패 시 |
@@ -191,8 +191,8 @@ flowchart LR
 - **결과에 남길 것:** 모델 이름, 프롬프트 판, 설정 파일 판, 색인 판·지문 (`runs`·`agent_steps`, 실험은 `scores.json`).
 
 ### 7-2. 각자 칸
-한 사람(은진)이 구현하고 설정만 바꿔 비교한다. 기본 `impl`은 `split`이고, `single` 비교는 M3에 시간 나면 한다 (requirements "비교 실험", 11/20 정함).
-- 은진: `single`과 `split` 두 `impl`. 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → (M3에 돌리면) `experiments/m3-f2-review-split/`
+한 사람(은진)이 구현하고 설정만 바꿔 비교한다. 기본 `impl`은 `split`이고, `code_only` 비교는 M3에 한다 (requirements "비교 실험", 11/20 정함).
+- 은진: `split`과 `code_only` 두 `impl` (`code_only`는 근거 검토 에이전트 호출만 끈다). 모델은 `config/agents.yaml`의 `f2_research`(F2)·`evidence_review`(공통 근거 검토) 단계 칸 (기본은 지휘와 같은 계열, 값은 실험에서). → (M3) `experiments/m3-f2-review-split/`
 - 모델 호출: 거절이유마다 답 쓰기 1~3번 + 근거 검토 1~2번 [가정]. OA 한 통(거절이유 2~3개)에 10번 안팎.
 - 프롬프트 파일: `prompts/f2/research.md` (F2), `prompts/agents/evidence_review.md` (공통 근거 검토).
 - 실험 설정: `config/f2.yaml`의 `impl`, `query_style`, `search_mode`.
@@ -213,7 +213,7 @@ flowchart LR
    d. 조 조각을 하나 더 색인 (항 조각은 그대로): 조 맞힘이 더 좋았다. 근거 위치는 항까지 보여야 하므로 조 조각으로 찾고 항 조각으로 위치를 붙이는 변형.
    e. 모델이 관련 조문을 먼저 써 보고 그 글로 찾기. 모델 호출 비용이 들어 맨 뒤에 한다. 지어낸 조문은 2절 4단계 출처 확인이 거른다 ([KoBLEX, arXiv 2509.01324](https://arxiv.org/html/2509.01324v1)).
 2. 심사기준·판례·심결 BM25 / 벡터 기준선 (`law-idx-v3`, #24 뒤). 판례·심결은 조각 단위에 더해 **문헌 단위**로도 센다 (한 판례의 조각 여럿이 상위 k를 다 차지하는지).
-3. (M3, 시간 나면) 근거 검토 역할 분리 `single` / `split` (PRD 비교 축). M2는 `split`만 만든다.
+3. (M3) 근거 검토 에이전트 있음 `split` / 없음 `code_only`(출처 확인 코드만) (PRD 비교 축). M2 뼈대는 `split` 기본.
 - 메타데이터 거르기는 점수를 매기기 **전에** 한다 (pre-filter). 상위 k를 뽑은 뒤 거르면 결과가 모자란다. 지금은 벡터 인덱스가 없어 그대로 되고, HNSW 인덱스를 붙이면 pgvector `iterative_scan`이나 값마다 부분 인덱스가 필요하다. 판례 문단 역할(판단 / 당사자 주장)도 같은 메타데이터로 두어 8절 구분을 검색 조건으로 쓸 수 있게 한다 (#24 검색 계약 PR).
 - 판례·심결 날짜 거르기는 4절 "쓰는 판례·심결 날짜"로 옮겼다.
 - 나중 (M2에서 안 함):

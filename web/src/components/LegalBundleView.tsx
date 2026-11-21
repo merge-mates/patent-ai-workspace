@@ -57,11 +57,18 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
               <HumanCheckTag>직접 검토 필요</HumanCheckTag>
             </div>
           )}
-          {c.review && (
+          {c.review ? (
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
               <Tag>{reviewVerdictLabel[c.review.verdict]}</Tag>
               {c.review.reason}
             </Typography.Paragraph>
+          ) : (
+            // 근거는 있는데 검토 결과가 없으면 "검토 안 함"을 드러낸다 (조용히 확인됨으로 보이지 않게)
+            c.sources.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <Tag>검토 안 함</Tag>
+              </div>
+            )
           )}
           <List
             size="small"
