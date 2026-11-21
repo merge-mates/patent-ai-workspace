@@ -430,6 +430,20 @@ def test_응답이_없는_전송_오류의_None은_usd를_비우지_않는다(ca
     assert "usd를 비움" not in caplog.text
 
 
+def test_토큰을_모르는_호출이_있으면_usd를_비우고_경고(caplog):
+    # 스트림이 끊겨 usage를 못 받은 호출 (#194): 토큰·비용이 None(확인되지 않음)
+    unknown = _rec(input_tokens=None, output_tokens=None, cost=None, outcome="transport_error")
+    c = _cost([_rec(), unknown])
+    assert c["usd"] is None
+    assert c["input_tokens"] == 100  # 아는 것만 더한다
+    assert c["external_calls"] == 2
+    assert "확인되지 않은" in caplog.text
+
+
+def test_호출_기록_파일의_토큰_None은_읽힌다(tmp_path):
+    assert len(_load(tmp_path, [_rec(input_tokens=None, output_tokens=None, cost=None)])) == 1
+
+
 def _load(tmp_path, data):
     from eval.f1.score import load_calls
 
