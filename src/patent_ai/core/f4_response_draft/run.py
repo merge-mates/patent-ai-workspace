@@ -110,12 +110,23 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
     statuses = [d.status for d in directions] + ([drafts.status] if drafts else [])
     # 확인됨일 때의 글: 보류·누락이 있으면 "모두 확인됨"이라고 쓰지 않고 사실대로 적는다
     # (status 값은 원문 확인 여부만 뜻하고, 사람이 봐야 할 것은 flags와 아래 칸들로 드러낸다)
-    checked = ALL_F4_CHECKED
+    notes: list[str] = []
     if held or missing or unchecked:
-        checked = (
-            f"만든 방향 후보·초안의 입력 확인됨 (보류 {len(held)}묶음, 누락 쌍 {len(missing)}, "
-            f"누락 검사 못 한 거절이유 {len(unchecked)}는 따로)"
+        notes.append(
+            f"보류 {len(held)}묶음, 누락 쌍 {len(missing)}, "
+            f"누락 검사 못 한 거절이유 {len(unchecked)}는 따로"
         )
+    overlaps = amendment.overlaps
+    if overlaps:
+        # 겹침은 Drafts.flags로는 구분이 안 되므로(늘 붙어 있음) 글로 드러낸다
+        nums = ", ".join(str(n) for n in sorted({o.claim for o in overlaps}))
+        notes.append(
+            f"같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안 {len(overlaps)}개를 싣지 않음"
+            f"(청구항 {nums}, 직접 합치기 필요)"
+        )
+    checked = ALL_F4_CHECKED
+    if notes:
+        checked = f"만든 방향 후보·초안의 입력 확인됨 ({'; '.join(notes)})"
     return F4Output(
         oa_id=oa_id,
         units=list(inp.units),
@@ -125,6 +136,7 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
         unsupported_rejections=unsupported,
         uncovered=missing,
         coverage_unchecked=unchecked,
+        amendment_overlaps=overlaps,
         amendment_limit_applied=bool(limit_note),
         rank_notice=RANK_NOTICE,
         legality_notice=LEGALITY_NOTICE,

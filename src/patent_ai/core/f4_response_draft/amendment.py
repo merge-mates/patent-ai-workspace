@@ -20,6 +20,7 @@ from patent_ai.core.f4_response_draft.directions import f3_results, to_json, uni
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.f4_response_draft.opinion import OpinionPart, drafts_from_opinion, has_amendment
+from patent_ai.core.f4_response_draft.result import AmendmentOverlap
 from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
@@ -82,6 +83,8 @@ class AmendmentPart(BaseModel):
     statuses: list[Status]  # claims와 같은 순서: 그 청구항의 명세서 근거 확인 상태
     held_units: list[str]  # 초안을 보류한 묶음
     flags: list[Flag] = Field(default_factory=list)
+    # 같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안을 싣지 않은 기록
+    overlaps: list[AmendmentOverlap] = Field(default_factory=list)
 
 
 def _check_output(
@@ -221,6 +224,7 @@ def build_amendments(
     placeholders: dict[int, AmendedClaim] = {}
     held_units: list[str] = []
     flags: list[Flag] = []
+    overlaps: list[AmendmentOverlap] = []
 
     def flag(f: Flag) -> None:
         if f not in flags:
@@ -242,6 +246,10 @@ def build_amendments(
                 owner,
             )
             flag(Flag.NEEDS_HUMAN_REVIEW)
+            # 로그만으로는 결과를 보는 사람이 모르므로 겹침을 결과에도 남긴다
+            overlaps.append(
+                AmendmentOverlap(claim=claim.claim, kept_unit=owner, dropped_unit=unit.unit_id)
+            )
             return
         taken[claim.claim] = (claim, status)
 
@@ -326,6 +334,7 @@ def build_amendments(
         statuses=[s for _, s in ordered],
         held_units=held_units,
         flags=flags,
+        overlaps=overlaps,
     )
 
 

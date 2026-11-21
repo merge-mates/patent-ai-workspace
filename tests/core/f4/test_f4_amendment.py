@@ -336,6 +336,10 @@ def test_앞선_묶음이_가진_청구항을_뒤_묶음이_덮어쓰지_않는�
     assert second.unit_id == UNIT_INVENTIVE and second.ai_text == "진보성 묶음이 쓴 청구항 2 초안"
     assert Flag.NEEDS_HUMAN_REVIEW in part.flags
     assert UNIT_CLARITY in caplog.text
+    # 겹침은 로그만이 아니라 결과에도 남는다: 남긴 묶음·버린 묶음
+    assert [(o.claim, o.kept_unit, o.dropped_unit) for o in part.overlaps] == [
+        (2, UNIT_INVENTIVE, UNIT_CLARITY)
+    ]
 
 
 # ---- Drafts로 묶기 ----

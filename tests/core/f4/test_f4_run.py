@@ -13,7 +13,7 @@ import pytest
 from patent_ai.core.f4_response_draft.coverage import unchecked_rejections, uncovered
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.result import F4Output
-from patent_ai.core.f4_response_draft.run import run_f4
+from patent_ai.core.f4_response_draft.run import ALL_F4_CHECKED, run_f4
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -240,6 +240,25 @@ def test_대상_청구항을_못_읽은_거절이유_번호를_따로_낸다():
     inp = F4Input.model_validate(_claims_unread(_case_data()))
     assert unchecked_rejections(inp.oa) == [2]
     assert unchecked_rejections(F4Input.model_validate(_case_data()).oa) == []
+
+
+# ---- 같은 청구항을 여러 묶음이 고침 ----
+def test_뒤_묶음_초안을_싣지_않은_겹침이_결과와_확인_글에_드러난다():
+    both = copy.deepcopy(_answer("amendment_inventive"))
+    extra = copy.deepcopy(_answer("amendment_clarity")["claims"][0])
+    both["claims"].append(extra)  # 진보성 묶음(order 1)이 청구항 2도 고침
+    out, _ = _run(_clean_case(), amendments=(both, "amendment_clarity"))
+    assert [(o.claim, o.kept_unit, o.dropped_unit) for o in out.amendment_overlaps] == [
+        (2, UNIT_INVENTIVE, UNIT_CLARITY)
+    ]
+    assert out.status.checked != ALL_F4_CHECKED
+    assert "같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안 1개를 싣지 않음" in out.status.checked
+    assert "청구항 2" in out.status.checked and "직접 합치기 필요" in out.status.checked
+
+
+def test_겹침이_없으면_겹침_목록이_비어_있다():
+    out, _ = _run(_clean_case())
+    assert out.amendment_overlaps == []
 
 
 # ---- 지원 안 하는 거절이유 ----
