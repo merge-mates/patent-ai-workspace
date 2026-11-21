@@ -9,6 +9,7 @@ from datetime import date
 
 from patent_ai.retrieval.contract import Embed, register_impl
 from patent_ai.retrieval.embedding import cosine, recorded_embed
+from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import (
     Chunk,
@@ -54,6 +55,9 @@ class FakeSearcher:
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
     ) -> SearchResult:
+        # fake는 bm25·vector만 한다. hybrid는 hybrid impl이 섞는다 (래퍼가 더는 막지 않음)
+        if mode not in ("bm25", "vector"):
+            raise ModeNotSupportedError(f"fake 구현은 bm25·vector만 한다 (받은 값 {mode!r})")
         scope = SearchScope(doc_ids=doc_ids, as_of=as_of, k=k)
         base = {
             "corpus": corpus,

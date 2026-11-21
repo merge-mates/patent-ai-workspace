@@ -13,7 +13,6 @@
 import argparse
 import json
 import logging
-import re
 import sys
 from pathlib import Path
 
@@ -22,13 +21,13 @@ import yaml
 from patent_ai.core.llm.embed import embed
 from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelConfigError
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
+from patent_ai.index_version import corpus_of
 from patent_ai.retrieval.law_index import write_jsonl
 from patent_ai.retrieval.law_index_db import read_chunks_jsonl
 from patent_ai.retrieval.schemas import Chunk
 
 logger = logging.getLogger(__name__)
 
-_VERSION = re.compile(r"^(law|cite)-idx-v[0-9]+$")
 
 # 실패하면 한 줄로 알리고 1로 끝낼 오류들 (성공 종료하지 않음)
 RUN_ERRORS = (ValueError, OSError, ModelConfigError, ModelCallFailed, ModelCallLimitExceeded)
@@ -53,7 +52,7 @@ def embed_chunks(
     """조각들을 새 판으로 옮기며 embedding을 채운다. 검사에서 걸리면 모델을 부르지 않는다."""
     if not chunks:
         raise IndexEmbedError("벡터를 채울 조각이 0개다")
-    if not _VERSION.match(to_version):
+    if corpus_of(to_version) is None:
         raise IndexEmbedError(f"색인 판 이름이 아니다: {to_version!r}")
     versions = {c.index_version for c in chunks}
     if len(versions) != 1:
@@ -61,7 +60,7 @@ def embed_chunks(
     (from_version,) = versions
     if from_version == to_version:
         raise IndexEmbedError(f"같은 판({to_version})에 덮어쓰지 않는다. 새 판 이름을 준다")
-    if from_version.split("-")[0] != to_version.split("-")[0]:
+    if corpus_of(from_version) != corpus_of(to_version):
         raise IndexEmbedError(f"말뭉치가 다르다: {from_version} → {to_version}")
     prefix = from_version + ":"
     bad = [c.chunk_id for c in chunks if not c.chunk_id.startswith(prefix)]
@@ -148,7 +147,11 @@ def main(
                 f"이미 있는 파일이라 덮어쓰지 않는다 (새 설정이면 새 판): {out_path}"
             )
         ctx = ctx or new_context(f"index-embed-{cfg['index_version']}")
-        chunks = read_chunks_jsonl(cfg["from"])
+        # 말뭉치는 새 판 이름 앞말에서 꺼낸다 (cite-idx-v2 → cite). 새 설정 키는 두지 않는다
+        corpus = corpus_of(str(cfg["index_version"]))
+        if corpus is None:
+            raise IndexEmbedError(f"색인 판 이름이 아니다: {cfg['index_version']!r}")
+        chunks = read_chunks_jsonl(cfg["from"], corpus)
         out = embed_chunks(chunks, cfg["index_version"], cfg["embed_step"], ctx, config_dir)
         write_jsonl(out, out_path)
     except RUN_ERRORS as e:

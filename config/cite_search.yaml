@@ -45,3 +45,11 @@ chunking:
     # 공백을 뺀 뒤 맞춤: <부호의 설명>, 【부호의 설명】, 도면의 주요 부분에 대한 부호의 설명
     - '^[<【(\[]?(도면의주요부분에대한)?부호의설명[>】)\]]?$'
     - '^산업상이용가능성$'
+
+# 조각 벡터·질의 벡터 (core/llm/embed.py가 `cite_search.embed` 단계로 읽는다). cite-idx-v2 색인용
+embed:
+  model: text-embedding-3-small
+  batch_size: 100                 # 묶음 하나 = 호출 1번
+  price_per_mtok_input: 0.02      # 달러 / 입력 토큰 100만 [가정]
+  max_model_calls: 40             # 조각 묶음 약 20번 + 질의 묶음 1번에 넉넉히
+  max_retries: 3

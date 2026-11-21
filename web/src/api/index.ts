@@ -1,12 +1,11 @@
 // 서버를 부르는 곳은 여기 한 곳이다. 화면은 이 api 객체만 쓴다.
 // VITE_API_MODE=mock 이면 fixture(mock.ts), 아니면 서버(/api/*).
-import type {
-  ClarityReview,
-  ComparisonTable,
-  JudgmentUnit,
-  LegalEvidenceBundle,
-} from '../types/provisional/analysis'
-import type { CaseCheck, DirectionCandidates, Drafts } from '../types/provisional/direction'
+import type { ClarityReview } from '../types/generated/ClarityReview'
+import type { ComparisonTable } from '../types/generated/ComparisonTable'
+import type { DirectionCandidates } from '../types/generated/DirectionCandidates'
+import type { JudgmentUnit } from '../types/generated/JudgmentUnit'
+import type { LegalEvidenceBundle } from '../types/generated/LegalEvidenceBundle'
+import type { CaseCheck, DraftsWithCheck } from '../types/provisional/pending'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { PageText } from '../types/generated/PageText'
 import type { ReviewItem } from '../types/generated/ReviewItem'
@@ -50,8 +49,8 @@ const httpApi: typeof mockApi = {
       candidate_id: candidateId,
     }),
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
-  getDrafts: (oaId) => getJson<Drafts>(`/oas/${oaId}/drafts`),
-  patchDraft: (draftId, patch) => sendJson<Drafts>('PATCH', `/drafts/${draftId}`, patch),
+  getDrafts: (oaId) => getJson<DraftsWithCheck>(`/oas/${oaId}/drafts`),
+  patchDraft: (draftId, patch) => sendJson<DraftsWithCheck>('PATCH', `/drafts/${draftId}`, patch),
   createCase: (file) => {
     const form = new FormData()
     form.append('file', file)
