@@ -57,8 +57,10 @@ export interface OALoaderData {
   directions: DirectionCandidates[] | null
   // 이 OA의 법률 근거 묶음 (거절이유마다 "이 거절이유의 법리"). 아직 안 찾았으면 [] (지어내지 않고 그 줄을 뺀다)
   legal: LegalEvidenceBundle[]
-  // 단계마다 결과가 있는지 (D5). 404 result_not_ready였으면 false. 단계 막대의 "끝남/찾는 중/대기"를 정한다
-  ready: { summary: boolean; compare: boolean; directions: boolean; drafts: boolean }
+  // 단계마다 결과가 있는지 (D5). 404 result_not_ready였으면 false. 그 밖의 오류로 알 수 없으면 null (모름)
+  ready: { summary: boolean; compare: boolean | null; directions: boolean | null; drafts: boolean | null }
+  // 결과 유무만 보려던 호출이 실패했을 때 화면에 작게 보일 경고 ("<단계> 결과를 받지 못했어요")
+  warnings: string[]
 }
 
 export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> {
@@ -77,7 +79,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   seedRun(oa.latest_run)
-  const [oaResult, materials, reviewItems, document, directions, legal, units, drafts] = await Promise.all([
+  const [oaResult, materials, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch((e: unknown) => {
       if (isNotReady(e)) return null
       throw e
@@ -90,23 +92,44 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     }),
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
     // 방향 결과가 아직 없으면 null: 0개로 보이지 않게 직접 할 일 개수는 모름
-    api.getDirections(oa.oa_id).catch(notReadyAsNull),
+    probe(api.getDirections(oa.oa_id)),
     // 법률 근거: 결과가 아직 없으면 빈 목록
-    api.getLegalEvidence(oa.oa_id).catch((e: unknown) => {
-      if (isNotReady(e)) return []
-      throw e
-    }),
+    probe(api.getLegalEvidence(oa.oa_id)),
     // 대비·초안 단계에 결과가 있는지만 알려고 부른다 (값은 쓰지 않고, 없는 것을 지어내지 않는다)
-    api.getUnits(oa.oa_id).catch(notReadyAsNull),
-    api.getDrafts(oa.oa_id).catch(notReadyAsNull),
+    probe(api.getUnits(oa.oa_id)),
+    probe(api.getDrafts(oa.oa_id)),
   ])
+  // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
+  const warnings: string[] = []
+  const known = <T,>(p: Probe<T>, label: string): T | null => {
+    if (p.unknown) warnings.push(`${label} 결과를 받지 못했어요`)
+    return p.value
+  }
+  const directions = known(directionsP, '대응 방향')
+  const legal = known(legalP, '법률 근거') ?? []
+  const units = known(unitsP, '인용발명 대비')
+  const drafts = known(draftsP, '초안')
   const ready = {
     summary: oaResult !== null,
-    compare: units !== null,
-    directions: directions !== null,
-    drafts: drafts !== null,
+    compare: unitsP.unknown ? null : units !== null,
+    directions: directionsP.unknown ? null : directions !== null,
+    drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, materials, reviewItems, document, directions, legal, ready }
+  return { oa, oaResult, materials, reviewItems, document, directions, legal, ready, warnings }
+}
+
+// 결과 유무 확인용 호출: 결과 없음(result_not_ready)은 value null, 그 밖의 오류는 unknown(모름)
+interface Probe<T> {
+  value: T | null
+  unknown: boolean
+}
+async function probe<T>(p: Promise<T>): Promise<Probe<T>> {
+  try {
+    return { value: await p, unknown: false }
+  } catch (e) {
+    if (isNotReady(e)) return { value: null, unknown: false }
+    return { value: null, unknown: true }
+  }
 }
 
 // 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다
@@ -150,17 +173,19 @@ export interface DirectionsLoaderData {
 }
 
 // 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
-export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<DirectionsLoaderData> {
+// 실행 중이라 결과가 아직 없으면 null (화면은 "아직 결과가 없어요"를 보인다)
+export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<DirectionsLoaderData | null> {
   const oaId = params.oaId!
   const [units, directions, comparisons, caseCheck] = await Promise.all([
-    api.getUnits(oaId),
-    api.getDirections(oaId),
+    api.getUnits(oaId).catch(notReadyAsNull),
+    api.getDirections(oaId).catch(notReadyAsNull),
     api.getComparisons(oaId).catch((e: unknown) => {
       if (isNotReady(e)) return []
       throw e
     }),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
+  if (units === null || directions === null) return null
   return { units, directions, comparisons, caseCheck }
 }
 
@@ -173,12 +198,14 @@ export interface DraftsLoaderData {
 }
 
 // 5 의견서·보정 초안
-export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData> {
+export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData | null> {
   const oaId = params.oaId!
   const [drafts, directions, caseCheck] = await Promise.all([
     api.getDrafts(oaId).catch(notReadyAsNull),
-    api.getDirections(oaId),
+    api.getDirections(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
+  // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
+  if (directions === null) return null
   return { drafts, directions, caseCheck }
 }

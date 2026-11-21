@@ -1,4 +1,5 @@
 import { createBrowserRouter, redirect } from 'react-router'
+import { ResultGate } from './components/ResultGate'
 import { AppShell } from './layout/AppShell'
 import { CaseShell } from './layout/CaseShell'
 import { caseLoader, casesLoader, compareLoader, directionsLoader, draftsLoader, oaLoader, uploadLoader } from './loaders'
@@ -32,8 +33,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <WorkbenchPage /> },
           { path: 'compare', loader: compareLoader, element: <ComparePage />, errorElement: <RouteError /> },
-          { path: 'directions', loader: directionsLoader, element: <DirectionsPage />, errorElement: <RouteError /> },
-          { path: 'drafts', loader: draftsLoader, element: <DraftsPage />, errorElement: <RouteError /> },
+          { path: 'directions', loader: directionsLoader, element: <ResultGate><DirectionsPage /></ResultGate>, errorElement: <RouteError /> },
+          { path: 'drafts', loader: draftsLoader, element: <ResultGate><DraftsPage /></ResultGate>, errorElement: <RouteError /> },
         ],
       },
     ],

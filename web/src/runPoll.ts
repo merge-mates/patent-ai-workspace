@@ -11,6 +11,8 @@ export const POLL_MS = 2500 // 폴링 간격 (판단)
 export interface RunSnapshot {
   run: LatestRun
   error: string | null
+  // 실패한 실행의 이유 (GET /runs/{id}의 error). latest_run에는 없어서 failed를 처음 보면 한 번 받아 온다
+  reason: string | null
 }
 
 // 더 이상 바뀌지 않는 상태 (waiting_for_human은 사람이 고를 때까지 멈춘 것으로 본다)
@@ -21,6 +23,7 @@ interface Entry {
   snap: RunSnapshot
   listeners: Set<() => void>
   timer: ReturnType<typeof setTimeout> | null
+  reasonAsked: boolean
 }
 const entries = new Map<string, Entry>()
 // run_id마다 같은 subscribe 함수를 돌려줘야 React가 다시 구독하지 않는다
@@ -42,14 +45,31 @@ function notify(e: Entry) {
 export function seedRun(run: LatestRun) {
   const e = entries.get(run.run_id)
   if (!e) {
-    entries.set(run.run_id, { snap: { run, error: null }, listeners: new Set(), timer: null })
+    entries.set(run.run_id, {
+      snap: { run, error: null, reason: null },
+      listeners: new Set(),
+      timer: null,
+      reasonAsked: false,
+    })
+    askReason(run.run_id)
     return
   }
   if (!sameRun(e.snap.run, run) || e.snap.error !== null) {
-    e.snap = { run, error: null }
+    // 실행 상태가 달라지면 이전 실패 이유는 버린다 (다시 돌린 경우)
+    e.snap = { run, error: null, reason: run.state === 'failed' ? e.snap.reason : null }
+    if (run.state !== 'failed') e.reasonAsked = false
     notify(e)
   }
+  askReason(run.run_id)
   schedule(run.run_id)
+}
+
+// failed인 실행은 latest_run에 이유가 없어서 GET /runs/{id}를 한 번 불러 받는다
+function askReason(runId: string) {
+  const e = entries.get(runId)
+  if (!e || e.snap.run.state !== 'failed' || e.reasonAsked) return
+  e.reasonAsked = true
+  void refresh(runId, false)
 }
 
 export function getRunSnapshot(runId: string): RunSnapshot | null {
@@ -104,8 +124,9 @@ async function refresh(runId: string, force: boolean) {
     const run: LatestRun = { run_id: next.run_id, state: next.state, current_step: next.current_step }
     const stepChanged = run.current_step !== prev.current_step
     const justEnded = isRunEnded(run.state) && !isRunEnded(prev.state)
-    if (!sameRun(prev, run) || e.snap.error !== null) {
-      e.snap = { run, error: null }
+    const reason = next.error ?? null
+    if (!sameRun(prev, run) || e.snap.error !== null || e.snap.reason !== reason) {
+      e.snap = { run, error: null, reason }
       notify(e)
     }
     if (force || stepChanged || justEnded) revalidate()
@@ -113,7 +134,7 @@ async function refresh(runId: string, force: boolean) {
     // 조용히 넘기지 않는다: 오류 글을 스냅숏에 넣어 화면이 "상태를 받지 못했어요"를 보이게 한다
     const msg = err instanceof Error ? err.message : String(err)
     if (e.snap.error !== msg) {
-      e.snap = { run: e.snap.run, error: msg }
+      e.snap = { ...e.snap, error: msg }
       notify(e)
     }
   }

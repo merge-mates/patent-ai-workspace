@@ -1,24 +1,13 @@
 import { InboxOutlined } from '@ant-design/icons'
-import { App, Button, Steps, Tooltip, Upload } from 'antd'
+import { App, Button, Steps, Upload } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import { api, API_MODE } from '../api'
-import { StatusTag } from '../components/StatusTag'
-import { HumanCheckTag } from '../components/Marks'
-import { UploadMaterialButton } from '../components/UploadMaterialButton'
-import { lookupResultLabel, materialKindLabel, sourceLabel } from '../labels'
+import { MaterialRows } from '../components/MaterialRows'
+import { RunNotice } from '../components/RunNotice'
 import type { OALoaderData } from '../loaders'
 import { isRunEnded, refreshRun } from '../runPoll'
 import { useRunSnapshot } from '../useRunSnapshot'
-
-const lineStyle = {
-  display: 'flex',
-  gap: 12,
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  padding: '12px 0',
-  borderBottom: '1px solid var(--line-neutral-tertiary)',
-} as const
 
 // 새 사건 · 통지서 올리기 (PUpload 디자인). 올린 뒤에는 같은 화면에 머물고 주소만 ?oa=<oa_id>로 바뀐다.
 // 그 주소의 loader가 OA·자료를 받아 오므로 새로고침해도 이어진다
@@ -84,13 +73,14 @@ export function UploadPage() {
 function UploadProgress({ data }: { data: OALoaderData }) {
   const navigate = useNavigate()
   const { oaResult, materials, ready, oa } = data
-  const { run, error: runError } = useRunSnapshot(oa.latest_run)
+  const snap = useRunSnapshot(oa.latest_run)
+  const { run, error: runError } = snap
   const r = oaResult?.result ?? null
   const ended = isRunEnded(run.state)
 
-  // 단계 위치는 "결과가 있나"로 정한다 (current_step은 자유 글이라 파싱하지 않고 아래 글로만 보인다).
-  // 뒤 단계 결과가 있으면 앞 단계도 끝난 것
-  const done = [r !== null || materials !== null, materials !== null, ready.summary, ready.compare, ready.directions]
+  // Steps는 "결과가 있나"로 가를 수 있는 만큼만 끝남/진행을 정한다 (current_step은 자유 글이라 파싱하지 않는다).
+  // 앞 두 단계(통지서 읽기·자료 찾아오기)는 결과 엔드포인트로 가를 수 없어, 자료 목록(materials)이 오면 둘 다 끝남
+  const done = [materials !== null, materials !== null, ready.summary, ready.compare === true, ready.directions === true]
   const doneCount = done.lastIndexOf(true) + 1
   const titles = ['통지서 읽기', '자료 찾아오기', '거절이유별 정리', '인용발명 대비 · 법률 근거', '대응 방향 후보']
   const detail: (string | undefined)[] = [
@@ -101,11 +91,18 @@ function UploadProgress({ data }: { data: OALoaderData }) {
     ready.directions ? '끝남' : undefined,
   ]
   const items = titles.map((title, i) => {
-    if (i < doneCount) return { title, description: detail[i] ?? '끝남' }
-    // 지금 하는 단계: 서버가 준 current_step 글을 그대로 (실행이 멈췄으면 그 이유로 표시)
-    if (i === doneCount && !ended) return { title, description: run.current_step ?? '진행 중' }
-    if (i === doneCount && run.state === 'failed') return { title, description: run.current_step ?? '멈춤', status: 'error' as const }
-    if (i === doneCount && run.state === 'cancelled') return { title, description: '취소됨' }
+    if (i < doneCount) {
+      // 사람 기다림: 대응 방향 후보 단계가 고르기를 기다리는 자리 (사건 단계 막대와 같게)
+      if (run.state === 'waiting_for_human' && i === (ready.summary ? 4 : 2))
+        return { title, description: '고르기 기다림', status: 'process' as const }
+      return { title, description: detail[i] ?? '끝남' }
+    }
+    // 아직 결과가 없는 첫 단계: 진행 중 (current_step 글은 Steps 위 한 줄에 따로 보인다)
+    if (i === doneCount && !ended) return { title, status: 'process' as const }
+    if (i === doneCount && run.state === 'failed') return { title, description: '멈춤', status: 'error' as const }
+    if (i === doneCount && run.state === 'cancelled') return { title, description: '취소됨', status: 'wait' as const }
+    if (i === doneCount && run.state === 'waiting_for_human')
+      return { title, description: '고르기 기다림', status: 'process' as const }
     return { title }
   })
 
@@ -114,7 +111,9 @@ function UploadProgress({ data }: { data: OALoaderData }) {
       <section style={{ display: 'flex', gap: 40, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <h2 className="headline1">지금 하는 일</h2>
+          {!ended && run.current_step && <span className="body2 t2">지금 하는 일: {run.current_step}</span>}
           <Steps direction="vertical" size="small" current={doneCount} items={items} />
+          <RunNotice oaId={oa.oa_id} snap={snap} />
           <span className="label2 t3">조회는 이 통지서 시점까지만 해요. 그 뒤 보정서·등록 청구항은 넣지 않아요.</span>
           {(!ended || runError !== null) && (
             <div className="label2 t3">
@@ -146,54 +145,7 @@ function UploadProgress({ data }: { data: OALoaderData }) {
             </span>
           ) : (
             <>
-              {materials.documents.map((d) => (
-                <div key={d.document_id} style={lineStyle}>
-                  <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span className="body2" style={{ fontWeight: 600 }}>
-                      {materialKindLabel[d.kind] ?? d.kind}
-                    </span>
-                    <span className="label1 t3">
-                      {d.kind === 'oa' && r ? `발송번호 ${r.dispatch_number.raw_text ?? r.dispatch_number.value ?? '모름'} · ` : ''}
-                      {sourceLabel[d.source] ?? d.source}
-                    </span>
-                  </div>
-                  {/* 확인됨은 꼬리표 없음 */}
-                  {d.status.value !== 'confirmed' && <StatusTag status={d.status} />}
-                </div>
-              ))}
-              {materials.missing.map((x, i) => (
-                <div key={`missing-${i}`} style={lineStyle}>
-                  <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span className="body2" style={{ fontWeight: 600 }}>
-                      {x.what}
-                    </span>
-                    <span className="label1 t3">{lookupResultLabel[x.lookup_result]}</span>
-                  </div>
-                  {x.lookup_result === 'unsupported_country' ? (
-                    <HumanCheckTag>직접 확인</HumanCheckTag>
-                  ) : (
-                    <StatusTag status={{ value: 'unverified', reason: x.lookup_result, checked: null, searched_scope: null }} />
-                  )}
-                  {x.ask_upload && (
-                    <span style={{ display: 'inline-flex', gap: 8 }}>
-                      {/* 다시 조회 API는 명세에 없어 누를 수 없다. 올리기는 서버 모드에서만 눌린다 */}
-                      <Tooltip title="서버가 오면 다시 조회할 수 있어요">
-                        <span>
-                          <Button size="small" disabled>
-                            다시 조회
-                          </Button>
-                        </span>
-                      </Tooltip>
-                      <UploadMaterialButton caseId={oa.case_id} />
-                    </span>
-                  )}
-                </div>
-              ))}
-              {materials.documents.length + materials.missing.length === 0 && (
-                <span className="body2 t3" style={{ padding: '12px 0' }}>
-                  사건 자료가 아직 없어요
-                </span>
-              )}
+              <MaterialRows m={materials} r={r} caseId={oa.case_id} showRetry />
             </>
           )}
         </div>

@@ -5,6 +5,7 @@ import { CaseInfo } from '../components/CaseInfo'
 import { HumanCheckTag } from '../components/Marks'
 import { type OpenCite, type OpenEvidence, type OpenSource, SourceContext } from '../components/sourceContext'
 import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
+import { RunNotice } from '../components/RunNotice'
 import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
 import { noticeKindLabel, runStateLabel } from '../labels'
@@ -26,14 +27,16 @@ type StepItem = { title: string; description?: React.ReactNode; status?: 'wait' 
 
 // 단계 막대 항목 (D5). 단계 상태는 "결과가 있나"(로더가 받은 값)로 정한다. current_step은 자유 글이라 파싱하지 않고 그대로 보인다.
 // 실행 중: 결과 있는 단계 "끝남", 결과 없는 첫 단계 "찾는 중", 그 뒤 "대기". 실행이 끝났으면 지금까지처럼 (정리에 직접 할 일 N)
-function stepItems(run: LatestRun, ready: boolean[], todoText: string): StepItem[] {
+function stepItems(run: LatestRun, ready: (boolean | null)[], todoText: string): StepItem[] {
   const ended = isRunEnded(run.state)
-  const firstMissing = ready.indexOf(false) // 결과 없는 첫 단계 (모두 있으면 -1)
+  const firstMissing = ready.indexOf(false) // 결과 없는 첫 단계 (모두 있으면 -1). null(모름)은 건너뛴다
   const stepText = run.current_step ? (
     <div className="label2 t3">{run.current_step}</div>
   ) : undefined
   return STEPS.map((s, i) => {
     const base: StepItem = { title: s.label }
+    // 결과 유무를 알 수 없었던 단계(확인 호출 실패)는 지어내지 않고 "모름"
+    if (ready[i] === null) return { ...base, description: '모름', status: 'wait' }
     // 끝난 실행이 아니고 결과도 없는 단계는 눌러 가 봐야 빈 화면이라 막는다
     if (ended && run.state !== 'failed' && run.state !== 'cancelled') {
       if (run.state === 'waiting_for_human') {
@@ -86,8 +89,9 @@ export function CaseShell() {
   const todos = directTodos(data)
   const todoText = todos === null ? '모름' : String(todos.length)
   // 실행 상태는 폴링 값 (loader가 준 값에서 시작해 2.5초마다 GET /runs/{id}만 부른다)
-  const { run, error: runError } = useRunSnapshot(data.oa.latest_run)
-  const ready = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
+  const snap = useRunSnapshot(data.oa.latest_run)
+  const { run, error: runError } = snap
+  const ready: (boolean | null)[] = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
   const reviewCount = data.reviewItems?.length ?? data.materials?.review_items_count ?? null
 
   // 아무것도 안 골랐으면 통지서 첫 거절이유가 있는 쪽을 기본으로 (없으면 1쪽)
@@ -173,6 +177,15 @@ export function CaseShell() {
               items={stepItems(run, ready, todoText)}
             />
             {/* 실행이 도는 동안: 상태를 못 받았으면 알리고, 직접 새로 받는 버튼 */}
+            {/* 실패·취소는 단계 결과가 다 있어도 보여야 한다 */}
+            <div style={{ marginTop: 8 }}>
+              <RunNotice oaId={data.oa.oa_id} snap={snap} />
+            </div>
+            {data.warnings.map((w) => (
+              <div key={w} className="label2" style={{ marginTop: 8, color: 'var(--fg-status-warning, #ff9200)' }}>
+                {w}
+              </div>
+            ))}
             {(!isRunEnded(run.state) || runError !== null) && (
               <div className="label2 t3" style={{ marginTop: 8 }}>
                 {runError !== null && <span>상태를 받지 못했어요 · </span>}

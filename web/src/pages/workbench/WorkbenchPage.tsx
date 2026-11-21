@@ -61,7 +61,11 @@ export function WorkbenchPage() {
         <Alert
           type="info"
           showIcon
-          message="인용발명 대비와 법률 근거를 찾는 중이에요. 정리는 끝났으니 먼저 보세요."
+          message={
+            data.ready.compare
+              ? '대응 방향 후보를 만드는 중이에요. 정리·대비는 먼저 보세요.'
+              : '인용발명 대비와 법률 근거를 찾는 중이에요. 정리는 끝났으니 먼저 보세요.'
+          }
           description={`지금 하는 일: ${run.current_step ?? '준비 중'}. 끝나면 위 단계에 표시돼요.`}
           action={
             <Popconfirm title="실행을 취소할까요?" description="지금까지 끝난 결과는 남아요." okText="취소하기" cancelText="계속 두기" onConfirm={cancel}>

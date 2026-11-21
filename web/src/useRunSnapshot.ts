@@ -10,7 +10,7 @@ export function useRunSnapshot(loaderRun: LatestRun): RunSnapshot {
   if (snap) return snap
   let f = fallbacks.get(loaderRun)
   if (!f) {
-    f = { run: loaderRun, error: null }
+    f = { run: loaderRun, error: null, reason: null }
     fallbacks.set(loaderRun, f)
   }
   return f
