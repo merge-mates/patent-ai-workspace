@@ -84,3 +84,15 @@ def test_offline_sql_inserts_one_default_user():
     inserts = re.findall(r"INSERT INTO users\b.*", _offline_sql())
     assert len(inserts) == 1
     assert "u_default" in inserts[0]
+
+
+# --- 이슈 #57 T5: 건너뛴 단계 ---
+
+
+def test_offline_sql_agent_steps_outcome_check_allows_skipped():
+    # 오프라인 SQL에서 새 CHECK가 skipped를 허용하는지 (옛 CHECK는 지워진다)
+    sql = _offline_sql()
+    checks = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\)", sql)
+    assert checks, "ck_agent_steps_outcome을 다시 만드는 줄이 없다"
+    assert "'skipped'" in checks[-1]
+    assert "'waiting'" in checks[-1]
