@@ -213,26 +213,26 @@ def test_다시_불러도_틀리면_실패가_그대로_드러난다():
 
 def test_답이_JSON이_아니어도_한_번만_다시_부른다():
     garbage = TransportResponse("방향 후보는 다음과 같습니다", 100, 50)
-    transport = FakeTransport({STEP: [garbage, garbage]})
+    transport = FakeTransport({STEP: [garbage] * 4})  # 묶음 둘이 모두 실패
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     with pytest.raises(ModelOutputInvalid):
         build_directions(_case(), ctx)
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 4  # 묶음마다 첫 호출 + 다시 한 번
 
 
 # ---- 그 밖의 출력 검사 (스키마 규칙·설정 상한) ----
 def test_후보가_설정_상한보다_많으면_출력_검사_실패():
     options = F4Options(final_rejection_limit=False, max_units=20, max_candidates=1)
     two = _text(_answer("direction_inventive"))  # 후보 2개
-    transport = FakeTransport({STEP: [two, two]})
+    transport = FakeTransport({STEP: [two] * 4})
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     with pytest.raises(ModelOutputInvalid):
         build_directions(_case(), ctx, options=options)
-    assert len(transport.calls) == 2  # 첫 호출 + 다시 한 번
+    assert len(transport.calls) == 4  # 묶음마다 첫 호출 + 다시 한 번
 
 
 def test_거절이유_종류에_안_맞는_반박_유형은_출력_검사_실패_뒤_다시_부른다():
@@ -248,12 +248,14 @@ def test_거절이유_종류에_안_맞는_반박_유형은_출력_검사_실패
 def test_OA에_없는_거절이유_번호는_틀린_번호만_오류에_찍힌다():
     bad = copy.deepcopy(_answer("direction_inventive"))
     bad["candidates"][0]["per_rejection"].append({"rejection": 9, "response": "없는 번호"})
-    transport = FakeTransport({STEP: [_text(bad), _text(bad)]})
+    transport = FakeTransport({STEP: [_text(bad)] * 2})
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
+    data = _case_data()
+    data["units"] = data["units"][:1]  # 진보성 묶음 하나만 (묶음 하나가 전부 실패 = 단계 실패)
     with pytest.raises(ModelOutputInvalid, match=r"OA에 없는 거절이유 번호: \[9\]"):
-        build_directions(_case(), ctx)
+        build_directions(_case(data), ctx)
 
 
 def test_묶음_밖_청구항을_보정하겠다는_후보는_출력_검사_실패():
@@ -265,8 +267,10 @@ def test_묶음_밖_청구항을_보정하겠다는_후보는_출력_검사_실�
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
-    with pytest.raises(ModelOutputInvalid):
-        build_directions(_case(), ctx)
+    # 두 번 다 틀린 후보는 받지 않는다: 그 묶음만 후보 없이 보류하고 앞 묶음 결과는 남는다
+    first, second = build_directions(_case(), ctx)
+    assert len(first.candidates) == 2
+    assert second.candidates == [] and Flag.NEEDS_HUMAN_JUDGMENT in second.flags
 
 
 # ---- 순위는 보증이 아니라는 문구 (결과에 싣는 것은 run_f4, test_f4_run.py) ----
@@ -451,6 +455,26 @@ def test_단위_안_F3_보류는_그_묶음_후보에_보인다(task):
         assert Flag.NEEDS_HUMAN_REVIEW in c.flags
         assert "F3 보류: 청구항 2 구성요소 나누기" in c.checks
     assert clarity.candidates[0].status.value == StatusValue.CONFIRMED
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        f"f3_clarity:{UNIT_CLARITY}",  # OA가 짚은 문구가 없어 명확성 검토를 못 만듦
+        f"f3_clarity:{UNIT_CLARITY}:call_failed",  # 명확성 검토 모델 호출이 실패해 보류 (#211)
+    ],
+)
+def test_명확성_F3_보류도_그_묶음_후보에_보인다(task):
+    # _held_for는 f3_compare와 f3_clarity 두 갈래를 다 본다
+    data = _case_data()
+    data["held_tasks"] = [{"task": task, "waiting_for": "OA가 짚은 문구 확인"}]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive, clarity = results
+    for c in clarity.candidates:
+        assert c.status.value == StatusValue.UNVERIFIED
+        assert Flag.NEEDS_HUMAN_REVIEW in c.flags
+        assert "F3 보류: OA가 짚은 문구 확인" in c.checks
+    assert inventive.candidates[0].status.value == StatusValue.CONFIRMED
 
 
 def test_다른_단위의_보류는_옮기지_않는다():

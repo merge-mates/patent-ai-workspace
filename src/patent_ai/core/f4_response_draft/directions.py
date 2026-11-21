@@ -13,6 +13,14 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from patent_ai.core.bundle_errors import (
+    BUNDLE_ERRORS,
+    failed_status,
+    held_error_status,
+    is_limit,
+    raise_if_all_failed,
+    why,
+)
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
@@ -28,6 +36,7 @@ from patent_ai.core.schemas.common import (
     StatusValue,
     UnverifiedReason,
 )
+from patent_ai.core.schemas.comparison import ComparisonTable
 from patent_ai.core.schemas.direction import (
     AmendmentCore,
     AmendmentLimit,
@@ -139,6 +148,10 @@ def _status_of(
         # 기대는 F3 결과가 없으면 "영향 없음"이 아니라 확인되지 않음이다
         logger.warning("f4.direction %s: 이 묶음의 F3 결과가 없음 (input_unverified)", unit.unit_id)
         return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.INPUT_UNVERIFIED)
+    # F3가 호출 상한으로 못 한 것이 있으면 그 이유(limit_reached)를 잃지 않는다
+    limited = next((g for g in gaps if g.reason == UnverifiedReason.LIMIT_REACHED), None)
+    if limited is not None:
+        return limited
     return propagate([*(r.status for r in f3), *gaps, bundle.status])
 
 
@@ -173,13 +186,20 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
     for result in f3:
         if Flag.NEEDS_HUMAN_REVIEW in result.flags:
             needs_review = True
-        for c in getattr(result, "citations", []):
+        # 대비표만 인용문헌 목록(citations)이 있다. 명확성 검토 결과는 건너뛴다
+        if not isinstance(result, ComparisonTable):
+            continue
+        for c in result.citations:
             if not c.compared and c.skipped_status is not None:
                 statuses.append(c.skipped_status)
                 checks.append(f"인용문헌 {c.label}({c.number}) 대비 못 함: {c.skipped_reason}")
     held = [h for h in inp.held_tasks if _held_for(h.task, unit.unit_id)]
     for h in held:
-        statuses.append(Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED))
+        # F3가 호출 상한(limit_reached)으로 보류한 것은 그 이유를 유지한다
+        statuses.append(
+            held_error_status(h.task)
+            or Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+        )
         checks.append(f"F3 보류: {h.waiting_for}")
     if checks:
         logger.warning("f4.direction %s: F3가 대비하지 못한 것 %s", unit.unit_id, checks)
@@ -372,6 +392,27 @@ def unit_variables(
     }
 
 
+def _failed_result(
+    unit: JudgmentUnit,
+    limit: ExtractedValue[AmendmentLimit],
+    evidence: list[Evidence],
+    flags: list[Flag],
+    error: Exception,
+) -> DirectionCandidates:
+    """모델 호출이 실패한 묶음의 자리 표시: 후보 0개, 확인되지 않음, 직접 판단 필요."""
+    return DirectionCandidates(
+        unit_id=unit.unit_id,
+        candidates=[],
+        selection=None,
+        amendment_limit=limit,
+        status=failed_status(error),
+        evidence=evidence,
+        needs_recheck=True,
+        recheck_reason=why(error),
+        flags=[Flag.NEEDS_HUMAN_JUDGMENT, *(f for f in flags if f != Flag.NEEDS_HUMAN_JUDGMENT)],
+    )
+
+
 # ---- 단계 진입 ----
 def build_directions(
     inp: F4Input, ctx: RunContext, *, options: F4Options | None = None
@@ -380,7 +421,9 @@ def build_directions(
 
     모델은 단위마다 한 번, 출력 검사 실패 때 한 번 더 부른다.
 
-    모델 호출 실패(출력 검사 두 번 실패, 호출 상한 등)는 결과로 바꾸지 않고 예외를 그대로 던진다.
+    묶음 하나의 모델 호출 실패(출력 검사 두 번 실패, 전송 오류, 호출 상한)는 그 묶음만 후보 0개
+    + 확인되지 않음 + 직접 판단 필요로 남기고 다음 묶음으로 간다 (이유는 recheck_reason).
+    시도한 모든 묶음이 실패하면 단계가 못 돈 것이라 예외를 그대로 던진다 (호출 상한은 제외).
     """
     options = options or load_f4_options()
     if not inp.units:
@@ -406,6 +449,7 @@ def build_directions(
         [NOTICE_KIND_CHECK] if ask_kind else [NOTICE_FINAL_UNLIMITED] if unlimited_final else []
     )
     results: list[DirectionCandidates] = []
+    errors: list[Exception] = []  # 호출 실패로 보류한 묶음의 예외 (호출 상한은 담지 않음)
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         f3 = f3_results(inp, unit)
         bundle = legal_bundle_for(inp, unit)
@@ -446,7 +490,15 @@ def build_directions(
             )
 
         variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)
-        out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
+        try:
+            out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
+        except BUNDLE_ERRORS as e:
+            # 이 묶음만 보류한다: 후보 없이 확인되지 않음 + 이유, 사람이 직접 판단한다
+            logger.warning("f4.direction %s: %s (이 묶음만 보류)", unit.unit_id, why(e))
+            results.append(_failed_result(unit, limit, evidence, flags, e))
+            if not is_limit(e):
+                errors.append(e)
+            continue
         result = build(out)
         if not result.candidates:
             logger.warning(
@@ -454,4 +506,5 @@ def build_directions(
                 unit.unit_id,
             )
         results.append(result)
+    raise_if_all_failed(STEP, len(inp.units), errors)
     return results

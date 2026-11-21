@@ -12,6 +12,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from patent_ai.core.bundle_errors import BUNDLE_ERRORS, failed_status, why
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.directions import f3_results, to_json, unit_variables
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
@@ -70,7 +71,11 @@ class OpinionPart(BaseModel):
 
     sections: list[OpinionSection]  # 모든 묶음이 보류면 빈 목록
     based_on: list[BasedOn]  # 초안을 만든 묶음과 그 후보
-    held_units: list[str]  # 고른 후보가 없어 보류한 묶음 (사람이 고르면 다시 만든다)
+    held_units: list[str]  # 고른 후보가 없거나 모델 호출이 실패해 보류한 묶음
+    # 모델 호출이 실패해(호출 상한 포함) 보류한 묶음과 그 status. 보정 단계가 이유 글을 고르고,
+    # 지휘 결과 status가 이유(limit_reached 등)를 잃지 않게 따로 싣는다
+    failed_reasons: dict[str, str] = Field(default_factory=dict)  # 묶음 -> 이유 글 (why)
+    failed_statuses: list[Status] = Field(default_factory=list)
     status: Status
     evidence: list[Evidence] = Field(default_factory=list)
     flags: list[Flag] = Field(default_factory=list)
@@ -164,7 +169,8 @@ def build_opinion(
     """방향을 고른 묶음마다 의견서 칸을 만들어 order 순으로 잇는다.
 
     고른 후보가 없는 묶음은 held_units에 넣고 건너뛴다 (다른 묶음은 진행).
-    모델 호출 실패는 결과로 바꾸지 않고 예외를 그대로 던진다.
+    묶음 하나의 모델 호출 실패(호출 상한 포함)도 그 묶음만 held_units + failed_reasons로 보류한다.
+    모든 묶음이 실패해도 예외를 올리지 않는다 (단계 전체 실패는 방향 후보 단계가 올림).
     """
     options = options or load_f4_options()
     by_unit = {d.unit_id: d for d in directions}
@@ -180,6 +186,8 @@ def build_opinion(
     per_unit: list[dict[OpinionKey, OpinionSection]] = []
     based_on: list[BasedOn] = []
     held: list[str] = []
+    failed_reasons: dict[str, str] = {}
+    failed_statuses: list[Status] = []
     statuses: list[Status] = []
     evidence: list[Evidence] = []
     legal_unverified = False
@@ -192,7 +200,15 @@ def build_opinion(
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)
         amended = has_amendment(chosen)
         variables = _prompt_variables(inp, unit, chosen, f3, bundle)
-        out = call_with_one_retry(STEP, variables, _checked_schema(amended), ctx)
+        try:
+            out = call_with_one_retry(STEP, variables, _checked_schema(amended), ctx)
+        except BUNDLE_ERRORS as e:
+            # 이 묶음만 보류한다 (사람이 직접 판단). 다음 묶음은 계속 진행
+            logger.warning("f4.opinion %s: %s (이 묶음만 보류)", unit.unit_id, why(e))
+            held.append(unit.unit_id)
+            failed_reasons[unit.unit_id] = why(e)
+            failed_statuses.append(failed_status(e))
+            continue
         per_unit.append(_sections_of(out, amended))
         based_on.append(BasedOn(unit_id=unit.unit_id, candidate_id=chosen.candidate_id))
         # 초안은 고른 후보와 법률 근거 묶음에 기댄다
@@ -211,7 +227,7 @@ def build_opinion(
 
     flags: list[Flag] = []
     if held:
-        flags.append(Flag.NEEDS_HUMAN_JUDGMENT)  # 사람이 방향을 골라야 그 묶음 초안이 나온다
+        flags.append(Flag.NEEDS_HUMAN_JUDGMENT)  # 사람이 방향을 고르거나 직접 판단해야 한다
     if legal_unverified:
         flags.append(Flag.NEEDS_HUMAN_REVIEW)  # 초안에 법률 근거 확인 필요 표시가 남아 있다
     if not sections and inp.units:
@@ -225,6 +241,8 @@ def build_opinion(
         sections=sections,
         based_on=based_on,
         held_units=held,
+        failed_reasons=failed_reasons,
+        failed_statuses=failed_statuses,
         status=status,
         evidence=evidence,
         flags=flags,
@@ -238,10 +256,12 @@ def drafts_from_opinion(
     claims: list[AmendedClaim] | None = None,
     more_statuses: list[Status] | None = None,
     more_flags: list[Flag] | None = None,
+    lead_statuses: list[Status] | None = None,
 ) -> Drafts | None:
     """의견서 부분 결과를 Drafts(OA 하나에 하나)로 묶는다. 보정 청구항 단계가 claims를 끼운다.
 
     의견서 칸이 하나도 없으면(모든 묶음 보류) None. status는 의견서와 more_statuses 중 가장 나쁜 값.
+    lead_statuses(모델 호출 실패 보류)는 같은 등급일 때 이유가 앞서 보이게 맨 앞에 둔다.
     """
     if not part.sections:
         logger.warning("f4 %s: 의견서 칸이 없어 초안(Drafts)을 만들지 않음 (보류)", oa_id)
@@ -253,7 +273,9 @@ def drafts_from_opinion(
         based_on=part.based_on,
         opinion=part.sections,
         claims=claims or [],
-        status=worst_status([part.status, *(more_statuses or [])], ALL_DRAFT_INPUTS_CHECKED),
+        status=worst_status(
+            [*(lead_statuses or []), part.status, *(more_statuses or [])], ALL_DRAFT_INPUTS_CHECKED
+        ),
         evidence=part.evidence,
         flags=flags,
     )

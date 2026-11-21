@@ -329,8 +329,16 @@ def test_한_묶음만_확신_낮음이면_나머지는_진행한다():
 
 
 # ---- 실패는 숨기지 않는다 ----
-def test_단계가_실패하면_예외가_그대로_올라온다():
+def test_방향_후보가_모든_묶음에서_실패하면_예외가_그대로_올라온다():
+    bad = copy.deepcopy(_answer("direction_inventive"))
+    bad["candidates"] = "후보 목록이 아님"
+    with pytest.raises(ModelOutputInvalid):
+        _run(directions=(bad,) * 4)  # 묶음 둘이 모두 실패
+
+
+def test_의견서가_모든_묶음에서_실패해도_방향_후보는_남고_초안만_보류한다():
     bad = copy.deepcopy(_answer("opinion_inventive"))
     bad["response"] = " "
-    with pytest.raises(ModelOutputInvalid):
-        _run(opinions=(bad, bad))
+    out, _ = _run(opinions=(bad,) * 4, amendments=())
+    assert out.drafts is None and len(out.directions) == 2
+    assert out.held_units == [UNIT_INVENTIVE, UNIT_CLARITY]
