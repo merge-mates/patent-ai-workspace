@@ -1,7 +1,7 @@
 // 서버가 주는 영어 코드 → 화면에 보이는 한국어 (docs/api/README.md 2절: 화면에서 한국어로 보여 준다)
 import type { LookupResult } from './types/generated/CaseMaterials'
 import type { NoticeKind, RejectionKind, UnverifiedReason } from './types/generated/OAResult'
-import type { AddedSource, AmendmentKind, AmendmentLimit, RebuttalType } from './types/generated/DirectionCandidates'
+import type { AddedSource, AmendmentKind, AmendmentLimit, CoarseDirection, Confidence, RebuttalType } from './types/generated/DirectionCandidates'
 import type { FurtherReviewWhy, LegalSourceKind, ReviewVerdict, Speaker } from './types/generated/LegalEvidenceBundle'
 import type { RunState } from './types/provisional/case'
 
@@ -132,3 +132,18 @@ export const rebuttalTypeLabel: Record<RebuttalType, string> = {
   clear_from_description: '설명으로 명확',
   other: '그 밖',
 }
+
+// 확신도 3단계 (% 숫자를 쓰지 않는다)
+export const confidenceLabel: Record<Confidence, string> = { high: '높음', medium: '중간', low: '낮음' }
+
+// 대응 방향 큰 갈래: 대응 현황 표 칸에 "어떻게"로 쓴다
+export const coarseLabel: Record<CoarseDirection, string> = {
+  argue_only: '반박',
+  amend_and_argue: '보정+반박',
+  amend_only: '보정',
+}
+
+// "보류" 글자 나누기 (D15, 11/21 재아): 대비(F3) 결과의 보류·확인되지 않음은 "원문 확인 필요",
+// 대응 방향·초안(F4)의 확신 낮음 보류는 "직접 판단 필요". 둘을 같은 "보류"로 쓰지 않는다
+export const COMPARE_UNVERIFIED_TEXT = '원문 확인 필요'
+export const LOW_CONFIDENCE_TEXT = '직접 판단 필요'

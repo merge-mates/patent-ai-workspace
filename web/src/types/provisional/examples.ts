@@ -114,7 +114,7 @@ export const exampleComparisons: Record<string, ComparisonTable> = {
       { label: 'D2', number: 'US20990000001A1', compared: false, skipped_reason: '본문 조회 실패 · 올려 주면 대비', skipped_status: unv('lookup_failed') },
     ],
     rows: [],
-    summary: { kind: 'inventive_step', differences: [], combination: '인용문헌 본문을 받지 못해 대비를 보류함', effect_candidates: [] },
+    summary: { kind: 'inventive_step', differences: [], combination: '인용문헌 본문을 받지 못해 대비하지 못함 · 원문 확인 필요', effect_candidates: [] },
     // 줄이 없으면 확인되지 않음(not_extracted). 대비 안 한 인용이 있어 flags도 단다
     ...common(unv('not_extracted'), [], ['needs_human_review']),
   },
