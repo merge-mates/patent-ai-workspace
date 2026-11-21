@@ -17,7 +17,7 @@
 **어림 크기**: 코드 약 330줄 + 테스트 약 300줄. 400줄을 넘지만 셋이 이어져야 뼈대가 돌아서 PR 하나로 두고, 커밋별 리뷰 순서(task 순서)를 PR 본문에 적는다.
 **걷는 뼈대에서 줄인 것** (design과 다르게, 다음 계획·#29에서 채움):
 - 주장 글은 모델이 쓰지 않는다. 주장 = "거절이유 근거 조문: <조문> (OA 발송일 시행판)" 한 줄, 근거 = 그 조문 조각. 근거 검토를 안 했으므로 `review = null` + `needs_human_review`.
-- 심사기준·판례·심결은 `law-idx-v2`에 조각이 없어 `search`를 부르지 않고 `unverified(body_missing)`로 `search_log`에 남긴다 (design 2절 3단계 그대로).
+- 심사기준·판례·심결은 `law-idx-v2`에 조각이 없어 `search`를 부르지 않고 `search_log` 줄마다 `status = unverified(body_missing)`로 남긴다 (design 2절 3단계 그대로. `SearchLogEntry.status` 칸은 #222 리뷰로 더함).
 - 출원일판 비교, 법령 API 조회(색인에 없는 판), `agent_steps` 도구 단계 기록, 실행 상한은 다음 계획.
 - design 7-1 인터페이스 `research(question, ctx)`와 `impl` 고르기(`split`/`code_only`) 대신 진입 함수 `run_f2(F2Input)` 하나. 답 쓰기·근거 검토가 붙는 #29에서 `research`를 그 뒤에 둔다.
 - 법령 색인 판이 저장소에 없으면(색인을 안 올린 DB) 모든 묶음을 `unverified(body_missing)` + 경고 (리뷰 반영).
@@ -43,11 +43,12 @@ graph LR
 - 합격 기준: #28 1·2
 - 고칠 파일: `src/patent_ai/core/f2_legal_research/tools.py`, `tests/core/f2/test_f2_tools.py`
 - 만들 함수 (모두 코드, 모델 안 씀. 저장소·검색기는 인자로 받음):
-  - `get_article(repo, index_version, ref, as_of) -> ArticleLookup`: 그날 시행 중인 `특허법_*` 판의 그 위치 조각. 판본 모름 조각만 있으면 `unverified(edition_unknown)`, 그 위치 조각이 아예 없으면 `not_found_in_scope`(+ 찾아본 범위), 시행판이 둘 이상이면 `conflict`.
-  - `search_article(searcher, query, as_of, k) -> SearchResult`: `law` 말뭉치 BM25 (질의 = 심사관 논리 글).
-  - `search_guideline(repo, index_version) / search_precedent(repo, index_version)`: 그 유형 조각(`chunk_kind` guideline / judgment)이 0개면 `search`를 부르지 않고 `unverified(body_missing)` 기록. 조각이 있으면 다음 계획이라 `NotImplementedError`가 아니라 같은 `body_missing` + 경고 (#24 전에는 생기지 않는 길).
-  - `check_source(repo, index_version, evidence, as_of) -> bool`: `chunk_id`가 색인에 있고, `raw_text`가 그 조각 글에 공백 빼고 그대로 있고, 판본이 기준일에 시행 중인지. 하나라도 아니면 False (없는 출처 0건).
-- 테스트할 경우: 시행판 고르기(구판·신판 중 기준일 판) / 판본 모름만 → edition_unknown / 조각 없음 → not_found_in_scope / 다른 법(특허법 시행령) 섞이지 않음 / 심사기준·판례 0개 → body_missing / 출처 확인: 있는 조각 통과, 없는 chunk_id·바뀐 인용 글·기준일 밖 판 거부
+  - `get_article(pool, ref, as_of) -> ArticleLookup`: 그날 시행 중인 `특허법_*` 판의 그 위치 조각. 판본 모름 조각만 있으면 `unverified(edition_unknown)`, 그 위치 조각이 아예 없으면 `not_found_in_scope`(+ 찾아본 범위), 시행판이 둘 이상이면 `conflict`.
+  - `search_article(searcher, query, as_of, k) -> SearchResult`: law corpus BM25 (질의 = 심사관 논리 글).
+  - `search_not_indexed(pool, source_kind, as_of)` (심사기준·판례·심결): `search`를 부르지 않고 `status = unverified(body_missing)` 기록 + 경고 (조각 0개여도, 조각이 있어도. 검색은 다음 계획).
+  - `LawPool.load(repo, index_version)`: law corpus를 실행마다 한 번만 읽어 위 도구들이 같이 쓴다 (#222 리뷰).
+  - `check_source(pool, chunk_id, raw_text, as_of) -> bool`: `chunk_id`가 색인에 있고, `raw_text`가 그 조각 글에 공백 빼고 그대로 있고, 판본이 기준일에 시행 중인지. 하나라도 아니면 False (없는 출처 0건).
+- 테스트할 경우: 시행판 고르기(구판·신판 중 기준일 판) / 판본 모름 조각만 → edition_unknown / 다른 판만 있음 → edition_unknown / 어느 판에도 없음 → not_found_in_scope / 다른 법(특허법 시행령) 섞이지 않음 / 심사기준·판례·심결 → body_missing status + 경고 / law corpus 한 번만 읽기 / 출처 확인: 있는 조각 통과, 없는 chunk_id·바뀐 인용 글·기준일 밖 판 거부
 - 확인 방법: `uv run pytest tests/core/f2/test_f2_tools.py`
 - 먼저: task-1
 
@@ -59,7 +60,7 @@ graph LR
   - `run_f2(oa, units, checked_on, *, repo=None) -> F2Result`: 단위마다 묶음 하나 (`bundle_id = lb:<unit_id>`, F4 `legal_bundle_for`가 `unit_id`로 찾음). 기준일 = 발송일(`oa_dispatch_date`), 못 읽으면 조문을 찾지 않고 `unverified(input_unverified)` 묶음. 조문 근거는 출처 확인을 지난 것만 넣는다. repo가 없으면 `make_law_repo()`(Postgres, `DATABASE_URL`).
   - `config/f2.yaml`: `index_version: law-idx-v2` 한 칸 (`search_article` 설정은 run_f2가 쓰기 시작하는 다음 계획에서).
   - 지휘: `run_f2` code_tool 등록, `f2_input` = read_oa + run_f3 units + `checked_on`, F4 입력 `legal` = F2 묶음 (F2가 넘겨졌으면 지금처럼 빈 목록).
-- 테스트할 경우: 진보성·명확성 단위 → 29조 2항·42조 4항 묶음(confirmed 근거 + needs_human_review) / 발송일 못 읽음 → input_unverified 묶음 / 색인에 그 판 없음 → not_found_in_scope 묶음 / 출처 확인에서 빠진 근거는 안 들어감 / 고정 순서 한 바퀴: trace에 run_f2, F4 입력 `legal`이 F2 묶음 / run_f3를 넘기면 run_f2도 input_unverified로 넘김
+- 테스트할 경우: 진보성·명확성 단위 → 29조 2항·42조 4항 묶음(confirmed 근거 + needs_human_review) / 발송일 못 읽음 → input_unverified 묶음 / 그날 판이 색인에 없음 → edition_unknown 묶음, 어느 판에도 없음 → not_found_in_scope 묶음 / 법령 색인 판이 없음 → body_missing 묶음 / 같은 날 시행판 둘 → ambiguous + further_review / 출처 확인에서 빠진 근거는 안 들어감 / 고정 순서 한 바퀴: trace에 run_f2, F4 입력 `legal`이 F2 묶음 / run_f3를 넘기면 run_f2도 input_unverified로 넘김
 - 확인 방법: `uv run pytest tests/core/f2 tests/core/agents`
 - 먼저: task-2
 

@@ -1,3 +1,3 @@
 # F2 법률 근거 조사 설정 (core/f2_legal_research/run.py가 읽는다). 걷는 뼈대 m2-i3: 모델 호출 없음.
-# 법령 색인 판 (law 말뭉치). 심사기준·판례가 들어오는 law-idx-v3(#24) 뒤 이 줄을 바꾼다
+# 법령 색인 판 (law corpus). 심사기준·판례가 들어오는 law-idx-v3(#24) 뒤 이 줄을 바꾼다
 index_version: law-idx-v2

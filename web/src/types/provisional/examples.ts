@@ -153,7 +153,7 @@ const oaQuestion = (text: string, article_refs: string[]): LegalQuestion => ({
 export const exampleLegal: Record<string, LegalEvidenceBundle> = {
   'oa_1:29-1-1:c1': {
     bundle_id: 'le_1', unit_id: 'oa_1:29-1-1:c1', oa_id: 'oa_1', rejection: 1, question: oaQuestion("신규성: 청구항과 인용발명이 실질적으로 같은지 판단하는 기준", ['특허법 제29조제1항제1호']), checked_on: CHECKED_ON, clarifications: [],
-    search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0 }],
+    search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0, status: null }],
     claims: [
       {
         no: 1, text: '신규성은 청구항 발명과 인용발명의 구성이 같은지, 차이가 있어도 실질적으로 같은지로 판단한다.', review: { verdict: 'supported', reason: '심사기준 원문이 주장을 그대로 뒷받침 (예시)' }, ...common(ok('심사기준 원문 대조')),
@@ -171,7 +171,7 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
   },
   'oa_1:29-2:c1': {
     bundle_id: 'le_2', unit_id: 'oa_1:29-2:c1', oa_id: 'oa_1', rejection: 2, question: oaQuestion("진보성: 차이점 확정 뒤 결합 동기와 효과를 보는 기준", ['특허법 제29조제2항']), checked_on: CHECKED_ON, clarifications: [],
-    search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0 }],
+    search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0, status: null }],
     claims: [
       {
         no: 1, text: '진보성은 청구항과 가장 가까운 인용발명의 차이점을 먼저 확정하고, 통상의 기술자가 그 차이를 쉽게 극복할 수 있는지로 본다.', review: { verdict: 'partial', reason: '심사기준은 차이점 확정 순서를 뒷받침하지만 조문 판본을 몰라 일부만 확인' },
@@ -197,7 +197,7 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
   },
   'oa_1:42-4-2:c6': {
     bundle_id: 'le_3', unit_id: 'oa_1:42-4-2:c6', oa_id: 'oa_1', rejection: 3, question: oaQuestion('명확성: 앞에 나오지 않은 "상기" 표현', ['특허법 제42조제4항제2호']), checked_on: CHECKED_ON, clarifications: [],
-    search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0 }],
+    search_log: [{ source_kind: 'statute', index_version: null, as_of: null, queries: 1, hits: 2, skipped_unverified_edition: 0, skipped_unknown_date: 0, status: null }],
     claims: [
       {
         no: 1, text: "청구항에 '상기'로 가리키는 대상이 앞에 없으면 무엇을 가리키는지 불명확해 제42조제4항제2호 거절이유가 된다.", review: { verdict: 'supported', reason: '조문과 심사기준이 주장을 뒷받침 (예시)' }, ...common(ok('심사기준 원문 대조')),
