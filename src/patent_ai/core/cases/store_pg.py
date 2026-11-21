@@ -32,6 +32,7 @@ from patent_ai.core.cases.store import (
     now_utc,
 )
 from patent_ai.core.f1_oa_reader.case_repository import DEFAULT_USER_ID
+from patent_ai.core.runs.state import RESULT_VISIBLE_STATES
 from patent_ai.db.models import OA, Case, CaseEvent, Document, OAResultRow, Run
 
 logger = logging.getLogger(__name__)
@@ -137,8 +138,10 @@ class PostgresCaseAppStore:
         q = select(OA).where(OA.case_id == case_id).order_by(OA.created_at, OA.id)
         return list(self._s.scalars(q))
 
-    def _latest_succeeded_result(self, oa_id: str) -> OAResultRow | None:
-        """이 OA의 가장 최근 succeeded 실행이 낸 OA 정리. 없으면 None.
+    def _latest_visible_result(self, oa_id: str) -> OAResultRow | None:
+        """이 OA에서 보여 줄 실행(succeeded·waiting_for_human)이 낸 가장 최근 OA 정리. 없으면 None.
+
+        결과 엔드포인트와 같은 상태 목록(RESULT_VISIBLE_STATES)을 쓴다.
 
         ①(OA 정리)은 OA마다 고른다 (docs/data-model.md 5절). 사건 전체에서 고르면
         다음 OA를 올린 직후 앞 OA의 거절이유가 이번 OA 것처럼 보인다.
@@ -146,7 +149,10 @@ class PostgresCaseAppStore:
         q = (
             select(OAResultRow)
             .join(Run, OAResultRow.run_id == Run.id)
-            .where(OAResultRow.oa_id == oa_id, Run.state == "succeeded")
+            .where(
+                OAResultRow.oa_id == oa_id,
+                Run.state.in_([st.value for st in RESULT_VISIBLE_STATES]),
+            )
             .order_by(OAResultRow.created_at.desc(), OAResultRow.id.desc())
             .limit(1)
         )
@@ -164,7 +170,7 @@ class PostgresCaseAppStore:
             latest = oas[-1]
             run = self._runs.latest_for_oa(latest.id)
             # 거절이유·status는 가장 최근 OA의 정리에서만 (결과 전이면 []·unverified)
-            result = self._latest_succeeded_result(latest.id)
+            result = self._latest_visible_result(latest.id)
             kinds: list[str] = []
             if result is not None:
                 for r in result.body.get("rejections", []):
