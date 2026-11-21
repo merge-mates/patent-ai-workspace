@@ -27,6 +27,7 @@ from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, Origin, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.direction import AmendmentLimit, Confidence
+from tests.core.f4.legal_fixture import confirmed_legal
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "f4"
 UNIT_INVENTIVE = "oa_1:29-2:c1"
@@ -375,3 +376,91 @@ def test_청구항_글자가_입력에_없으면_결과에_직접_검토_필요�
 def test_청구항_글자가_다_있으면_직접_검토_필요를_붙이지_않는다():
     results, _ = _basic()
     assert all(Flag.NEEDS_HUMAN_REVIEW not in r.flags for r in results)
+
+
+# ---- F3가 대비하지 못한 것을 후보에 옮김 (F4 design 3-1, 이슈 #203) ----
+def _confirmed_legal(inp: F4Input) -> F4Input:
+    """법률 근거가 확인됨인 입력 (F3 쪽 빈틈만 보려고)."""
+    legal = [confirmed_legal(u.unit_id, u.rejection) for u in inp.units]
+    return F4Input.model_validate({**inp.model_dump(mode="json"), "legal": legal})
+
+
+def _run_basic(inp: F4Input):
+    return _run([_text(_answer("direction_inventive")), _text(_answer("direction_clarity"))], inp)
+
+
+def test_F3와_법률_근거가_모두_확인됨이면_후보도_확인됨이고_표시가_없다():
+    results, _ = _run_basic(_confirmed_legal(_case()))
+    first = results[0].candidates[0]
+    assert first.status.value == StatusValue.CONFIRMED
+    assert Flag.NEEDS_HUMAN_REVIEW not in first.flags
+
+
+def test_대비_못_한_인용문헌이_있으면_후보가_확인되지_않음이고_직접_검토_필요(caplog):
+    data = _case_data()
+    table = data["tables"][0]
+    table["citations"].append(
+        {
+            "label": "D2",
+            "number": "US0000002A",
+            "compared": False,
+            "skipped_reason": "미국 문헌 (본문 미확보)",
+            "skipped_status": {"value": "unverified", "reason": "body_missing"},
+        }
+    )
+    table["flags"] = ["needs_human_review"]  # compared=false가 있으면 F3가 붙인다 (스키마 규칙)
+    with caplog.at_level(logging.WARNING):
+        results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive, clarity = results
+    for c in inventive.candidates:
+        assert c.status.value == StatusValue.UNVERIFIED
+        assert c.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+        assert Flag.NEEDS_HUMAN_REVIEW in c.flags
+        assert any("D2" in check and "미국 문헌" in check for check in c.checks)
+    assert Flag.NEEDS_HUMAN_REVIEW in inventive.flags
+    assert inventive.status.value == StatusValue.UNVERIFIED
+    # 다른 묶음(명확성)에는 옮기지 않는다
+    assert all(not any("D2" in k for k in c.checks) for c in clarity.candidates)
+    assert clarity.candidates[0].status.value == StatusValue.CONFIRMED
+    assert "D2" in caplog.text
+
+
+def test_대비표의_직접_검토_필요는_후보_flags로_옮긴다():
+    data = _case_data()
+    data["tables"][0]["flags"] = ["needs_human_review"]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    assert all(Flag.NEEDS_HUMAN_REVIEW in c.flags for c in results[0].candidates)
+    assert all(Flag.NEEDS_HUMAN_REVIEW not in c.flags for c in results[1].candidates)
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        f"f3_compare:{UNIT_INVENTIVE}:claim2",  # 단위 안 청구항 하나를 대비 못 함
+        f"f3_compare:{UNIT_INVENTIVE}:claim2:branch",  # 인용 가지마다 대비 못 함
+        f"f3_compare:{UNIT_INVENTIVE}",  # 대비할 인용문헌이 없음
+    ],
+)
+def test_단위_안_F3_보류는_그_묶음_후보에_보인다(task):
+    data = _case_data()
+    data["held_tasks"] = [{"task": task, "waiting_for": "청구항 2 구성요소 나누기"}]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive, clarity = results
+    for c in inventive.candidates:
+        assert c.status.value == StatusValue.UNVERIFIED
+        assert Flag.NEEDS_HUMAN_REVIEW in c.flags
+        assert "F3 보류: 청구항 2 구성요소 나누기" in c.checks
+    assert clarity.candidates[0].status.value == StatusValue.CONFIRMED
+
+
+def test_다른_단위의_보류는_옮기지_않는다():
+    data = _case_data()
+    data["held_tasks"] = [
+        {"task": f"f3_compare:{UNIT_INVENTIVE}0:claim2", "waiting_for": "다른 단위"},  # c10
+        {"task": "f3_split:oa_1:claim5", "waiting_for": "청구항 5 나누기"},  # 단위 밖 (누락 검사)
+    ]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    for r in results:
+        for c in r.candidates:
+            assert c.status.value == StatusValue.CONFIRMED
+            assert not any(k.startswith("F3 보류") for k in c.checks)

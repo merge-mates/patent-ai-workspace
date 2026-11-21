@@ -5,6 +5,7 @@
 """
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 
@@ -133,3 +134,54 @@ def test_단계_호출_상한이_묶음_수의_두_배보다_작으면_멈춘다
 def test_설정_파일이_없으면_멈춘다(tmp_path):
     with pytest.raises(ModelConfigError):
         load_f4_options(tmp_path)
+
+
+# ---- ④ 연결 키 (F4 design 3-1: unit_id → 거절이유 단위 → 빈 묶음 + 경고) ----
+def _rejection_bundle(inp: F4Input, rejection: int, bundle_id: str) -> LegalEvidenceBundle:
+    """F2가 거절이유 하나마다 만드는 묶음 (unit_id 없음, oa_id·rejection으로 잇는다)."""
+    unit = next(u for u in inp.units if u.rejection == rejection)
+    made = empty_legal_bundle(inp.oa.oa_id, unit, inp.checked_on)
+    return made.model_copy(update={"bundle_id": bundle_id, "unit_id": None})
+
+
+def test_unit_id가_같은_묶음을_거절이유_단위_묶음보다_먼저_쓴다():
+    inp = _case()
+    first = inp.units[0]
+    by_unit = empty_legal_bundle(inp.oa.oa_id, first, inp.checked_on).model_copy(
+        update={"bundle_id": "lb_unit"}
+    )
+    by_rejection = _rejection_bundle(inp, first.rejection, "lb_rej")
+    with_legal = inp.model_copy(update={"legal": [by_rejection, by_unit]})
+    assert legal_bundle_for(with_legal, first).bundle_id == "lb_unit"
+
+
+def test_unit_id가_빈_묶음은_같은_OA_같은_거절이유의_모든_단위가_쓴다():
+    inp = _case()
+    first, second = inp.units  # 거절이유 1(진보성), 2(명확성)
+    extra = first.model_copy(update={"unit_id": "oa_1:29-2:c3", "claims": [3], "order": 3})
+    many = inp.model_copy(update={"units": [first, extra, second]})
+    with_legal = many.model_copy(update={"legal": [_rejection_bundle(inp, 1, "lb_rej1")]})
+    assert legal_bundle_for(with_legal, first).bundle_id == "lb_rej1"
+    assert legal_bundle_for(with_legal, extra).bundle_id == "lb_rej1"
+
+
+def test_다른_OA나_다른_거절이유의_묶음은_쓰지_않고_경고한다(caplog):
+    inp = _case()
+    first, second = inp.units
+    other_oa = _rejection_bundle(inp, 1, "lb_other").model_copy(update={"oa_id": "oa_9"})
+    with_legal = inp.model_copy(update={"legal": [_rejection_bundle(inp, 1, "lb_rej1"), other_oa]})
+    with caplog.at_level(logging.WARNING):
+        made = legal_bundle_for(with_legal, second)  # 거절이유 2 것이 없음
+    assert made.bundle_id == f"lb:{second.unit_id}"
+    assert made.status.reason == UnverifiedReason.NOT_EXTRACTED
+    assert second.unit_id in caplog.text
+    only_other = inp.model_copy(update={"legal": [other_oa]})
+    assert legal_bundle_for(only_other, first).bundle_id == f"lb:{first.unit_id}"
+
+
+def test_법률_근거가_아예_없으면_경고_없이_빈_묶음(caplog):
+    inp = _case()
+    with caplog.at_level(logging.WARNING):
+        made = legal_bundle_for(inp, inp.units[0])
+    assert made.status.value == StatusValue.UNVERIFIED
+    assert caplog.text == ""  # F2를 안 돌린 것은 지금 기본 상태라 경고하지 않는다

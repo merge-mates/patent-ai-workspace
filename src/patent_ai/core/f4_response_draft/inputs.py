@@ -3,10 +3,12 @@
 글자를 입력 모델에 직접 싣는다 (도구 입력이 JSON으로 왕복하고, 모델 호출 캐시 키도 JSON이어야 해서).
 """
 
+import logging
 from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.schemas.case_materials import HeldTask
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.comparison import ClarityReview, ComparisonTable
 from patent_ai.core.schemas.document import PageText
@@ -19,6 +21,8 @@ from patent_ai.core.schemas.legal_evidence import (
     QuestionSource,
 )
 from patent_ai.core.schemas.oa_result import OAResult
+
+logger = logging.getLogger(__name__)
 
 
 class ClaimText(BaseModel):
@@ -41,6 +45,8 @@ class F4Input(BaseModel):
     tables: list[ComparisonTable] = Field(default_factory=list)  # F3 진보성·신규성 대비표
     clarity: list[ClarityReview] = Field(default_factory=list)  # F3 명확성 검토
     legal: list[LegalEvidenceBundle] = Field(default_factory=list)  # F2 결과. 비면 빈 묶음을 씀
+    # F3 보류 (F3Result.held_tasks 그대로). 단위 안 보류를 그 묶음 후보에 표시하려고 받는다
+    held_tasks: list[HeldTask] = Field(default_factory=list)
     claims_text: list[ClaimText]
     spec: PageText | None = None  # 최초 명세서 쪽 글자. 없으면 보정 근거 위치는 보류
     checked_on: date  # 확인 기준일 (실행한 날. 코드가 오늘 날짜를 몰래 읽지 않게 입력으로 받음)
@@ -71,8 +77,28 @@ def empty_legal_bundle(oa_id: str, unit: JudgmentUnit, checked_on: date) -> Lega
 
 
 def legal_bundle_for(inp: F4Input, unit: JudgmentUnit) -> LegalEvidenceBundle:
-    """이 묶음의 법률 근거 묶음. 입력에 있으면 그것, 없으면 빈 묶음(확인되지 않음)."""
+    """이 묶음의 법률 근거 묶음 (F4 design 3-1 ④ 연결 키).
+
+    1. `unit_id`가 같은 묶음
+    2. 없으면 `oa_id`·`rejection`이 같고 `unit_id`가 빈 묶음 (F2는 거절이유 하나마다 만든다:
+       그 거절이유의 모든 판단 단위가 같이 쓴다)
+    3. 없으면 빈 묶음(확인되지 않음). `legal`이 비지 않았는데 못 맞췄으면 경고한다
+    """
     for bundle in inp.legal:
         if bundle.unit_id == unit.unit_id:
             return bundle
+    for bundle in inp.legal:
+        if (
+            bundle.unit_id is None
+            and bundle.oa_id == inp.oa.oa_id
+            and bundle.rejection == unit.rejection
+        ):
+            return bundle
+    if inp.legal:
+        logger.warning(
+            "f4 %s: 법률 근거 %d개 중 이 묶음(거절이유 %d)에 맞는 것이 없어 빈 묶음을 씀",
+            unit.unit_id,
+            len(inp.legal),
+            unit.rejection,
+        )
     return empty_legal_bundle(inp.oa.oa_id, unit, inp.checked_on)
