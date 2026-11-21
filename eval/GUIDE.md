@@ -15,7 +15,7 @@ data/goldsets/
 ├── VERSION                  정수 하나 (지금 2)
 ├── tune/                    개발 중에 보는 세트
 │   ├── f1/                  F1 통지서 읽기: OA 한 통에 JSON 하나 (<출원번호>_<발송번호>.json)
-│   ├── retrieval/           F2·F3 검색: cite_gold.jsonl, law_gold.jsonl, cite_doc_ids.yaml
+│   ├── retrieval/           F2·F3 검색: cite_gold.jsonl, law_gold.jsonl, cite_doc_ids.yaml, cite_pool.yaml·cite_noise_b.jsonl(#178 둘째 점수 범위)
 │   ├── case_full/           받은 사건 묶음 전체 (정답 쪽, AI 입력 아님, #148)
 │   ├── search_v0/           검색 정답을 만든 검수본 (retrieval/ 파일의 재료, 드라이브 이름 `tune_search_v0/`)
 │   └── f4/                  F4 대응 방향 (아직 없음, 6절)
@@ -45,6 +45,15 @@ data/goldsets/
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
 - 검색 정답에서 채점 범위 밖 줄을 빼는 규칙(`exclude`)은 retrieval design 7-1을 따른다. 정답 항목에 맞는 조각이 검색 범위에 하나도 없으면 그 항목을 빼고(모두 없으면 줄째, `excluded_gold_not_in_scope`·`excluded_gold_items_not_in_scope`, #138) 건수를 `failures`에 남긴다. 정답 파일은 고치지 않는다 (채점기가 셈).
+
+### 인용문헌 둘째 점수 풀 표 (`<세트>/retrieval/cite_pool.yaml`, #178)
+- 노이즈 범위(`cite_noise_b.jsonl`)의 재료다. `uv run python -m eval.retrieval.noise_scope`가 이 표와 `cite_gold.jsonl`로 범위를 만든다 (넣는 조건은 [search-gold.md](../docs/evaluation/search-gold.md) 5절). 정답이 아니라서 VERSION과 따로 간다.
+- 칸 (형식 검사는 `eval/retrieval/noise_scope.py` `PoolTable`):
+  - `docs.<doc_id>`: `app_no` = 그 공보의 출원번호(숫자만, 같은 특허 가리기. 비특허는 `null`), `date` = 공개공보는 공개일, 등록공보는 등록공고일 (`YYYY-MM-DD`). 풀 = 여기 적은 문헌 전체.
+  - `oas.<발송번호>`: `app_no` = 그 OA를 받은 출원의 출원번호, `priority_date` = 우선일 (우선권 주장이 없으면 출원일).
+  - 정답 줄의 발송번호·정답 문헌이 표에 없거나, 특허 문헌에 `app_no`가 없으면 멈춘다.
+- 11/21 표(tune v2, 색인 `cite-idx-v1` 문헌 16건, OA 8통)를 만든 법: 공보 PDF 첫 쪽의 (21) 출원번호와 (43) 공개일자·(45) 등록공고일, OA마다 행정이력의 특허출원서 접수일. 8통 모두 출원서에 우선권 주장이 없어 출원일을 우선일로 썼다. 비특허 1건은 날짜를 손으로 넣었다 (비특허는 노이즈로 안 써서 점수 영향 없음). 만드는 스크립트는 #178 T2에서 더한다.
+- 공유: 드라이브 `05_평가정답/tune_search_noise_b_1121/`에 `cite_pool.yaml`·`cite_noise_b.jsonl` (출원번호가 있어 git에 넣지 않음). 받은 사람은 `data/goldsets/tune/retrieval/`에 둔다.
 
 ### report 정답 만드는 법
 - 개발하는 세션(이 저장소에서 프롬프트·설정을 고치는 사람·Claude)은 `report/`를 열지 않는다.

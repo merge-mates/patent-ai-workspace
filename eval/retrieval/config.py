@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from eval.common.config import BaseEvalConfig, load_yaml_config
 from patent_ai.retrieval.schemas import Corpus, Mode
@@ -16,6 +16,15 @@ class RetrievalEvalConfig(BaseEvalConfig):
     k: list[int] = Field(min_length=1)
     gold: str  # <goldsets_root>/<goldset>/ 기준 상대 경로
     law_location_rule: str = "overlap_or_label"  # 법령만 (7-4)
+    # 둘째 점수(이슈 #178): 줄마다 검색 범위 doc_id 목록 파일 (gold와 같은 기준 상대 경로).
+    # 없으면 주 점수(그 인용문헌 안에서만). 만드는 법은 eval/retrieval/noise_scope.py
+    noise_scope: str | None = None
+
+    @model_validator(mode="after")
+    def _노이즈는_인용문헌만(self) -> RetrievalEvalConfig:
+        if self.noise_scope is not None and self.corpus != "cite":
+            raise ValueError("noise_scope는 cite 말뭉치에만 쓴다")
+        return self
 
 
 def load_config(path: str | Path) -> RetrievalEvalConfig:
