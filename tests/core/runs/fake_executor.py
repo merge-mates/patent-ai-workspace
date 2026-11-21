@@ -49,16 +49,6 @@ class MemoryStatusStore(InMemoryRunStore):
         self.step_history[run_id].append(step)
 
 
-class MemorySink:
-    """OAResultSink를 메모리로 흉내 낸다."""
-
-    def __init__(self) -> None:
-        self.saved: list[tuple[str, str, OAResult]] = []
-
-    def save_oa_result(self, oa_id: str, run_id: str, result: OAResult) -> None:
-        self.saved.append((oa_id, run_id, result))
-
-
 class FailingSink:
     def save_oa_result(self, oa_id: str, run_id: str, result: OAResult) -> None:
         raise RuntimeError("저장 실패")

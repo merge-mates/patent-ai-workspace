@@ -15,6 +15,7 @@ from typing import Protocol
 
 from patent_ai.core.cases.store import InMemoryRunStore, now_utc
 from patent_ai.core.runs.state import RunState
+from patent_ai.core.runs.store import OAResultSink
 from patent_ai.core.schemas.oa_result import OAResult
 
 
@@ -24,8 +25,8 @@ class SavedOAResult:
     result: OAResult
 
 
-class OAResultStore(Protocol):
-    def save_oa_result(self, oa_id: str, run_id: str, result: OAResult) -> None: ...
+class OAResultStore(OAResultSink, Protocol):
+    """저장(save_oa_result)은 OAResultSink에서 이어받고, 읽기를 더한다."""
 
     def latest_succeeded_oa_result(self, oa_id: str) -> SavedOAResult | None:
         """그 OA에서 succeeded 실행이 낸 가장 최근 결과. 없으면 None.
@@ -47,6 +48,12 @@ class InMemoryOAResultStore:
     def save_oa_result(self, oa_id: str, run_id: str, result: OAResult) -> None:
         with self._lock:
             self._saved.append((self._clock(), oa_id, run_id, result))
+
+    @property
+    def saved(self) -> list[tuple[str, str, OAResult]]:
+        """저장된 (oa_id, run_id, 결과) 전부. 상태와 상관없이 저장 호출 기록을 본다 (테스트용)."""
+        with self._lock:
+            return [(oa, run, res) for _, oa, run, res in self._saved]
 
     def latest_succeeded_oa_result(self, oa_id: str) -> SavedOAResult | None:
         best = None

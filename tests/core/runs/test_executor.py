@@ -2,13 +2,13 @@
 
 import pytest
 
+from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
 from patent_ai.core.runs.executor import NotConnectedExecutor, Skip, Step
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunNotFound, SkippedStep
 from tests.core.runs.fake_executor import (
     FailingSink,
-    MemorySink,
     MemoryStatusStore,
     cancelling_step,
     load_oa_result,
@@ -35,8 +35,8 @@ def registry() -> CancelRegistry:
 
 
 @pytest.fixture
-def sink() -> MemorySink:
-    return MemorySink()
+def sink(store) -> InMemoryOAResultStore:
+    return InMemoryOAResultStore(store)
 
 
 def test_성공하면_succeeded_이고_OA_정리가_저장된다(store, registry, sink):

@@ -3,7 +3,7 @@
 실행은 서버 안 백그라운드 스레드에서 돈다. 그래서 #56처럼 세션 하나를 받지 않고
 세션 만드는 함수(sessionmaker)를 받아, 메서드를 부를 때마다 새 세션을 열고 바로 커밋한다.
 (커밋해야 화면의 폴링이 바뀐 상태를 바로 본다.)
-마이그레이션 없음: #55에서 만든 표를 그대로 쓴다.
+표는 #55에서 만든 runs·agent_steps를 쓴다 (agent_steps.outcome의 skipped는 별도 마이그레이션).
 """
 
 from __future__ import annotations
@@ -15,7 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from patent_ai.core.cases.store import now_utc
-from patent_ai.core.runs.state import FINISHED_STATES, RunError, RunState, check_transition
+from patent_ai.core.runs.state import (
+    FINISHED_STATES,
+    UNFINISHED_STATES,
+    RunError,
+    RunState,
+    check_transition,
+)
 from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
 from patent_ai.db.models import AgentStep, Run
 
@@ -111,7 +117,7 @@ class PostgresRunStatusStore:
         with self._factory() as s:
             q = (
                 select(Run.id)
-                .where(Run.state.in_([RunState.QUEUED.value, RunState.RUNNING.value]))
+                .where(Run.state.in_([s.value for s in UNFINISHED_STATES]))
                 .order_by(Run.created_at, Run.id)
             )
             return list(s.scalars(q))

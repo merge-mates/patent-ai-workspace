@@ -23,7 +23,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     DEFAULT_USER_ID,
     DuplicateDocumentError,
 )
-from patent_ai.core.runs.state import RunError, RunState, check_transition
+from patent_ai.core.runs.state import UNFINISHED_STATES, RunError, RunState, check_transition
 from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
 from patent_ai.db.ids import new_id
 
@@ -305,9 +305,8 @@ class InMemoryRunStore:
             return list(self._skipped.get(run_id, []))
 
     def unfinished_run_ids(self) -> list[str]:
-        unfinished = {RunState.QUEUED, RunState.RUNNING}
         with self._lock:
-            return [r.id for r in self._rows if self._status[r.id].state in unfinished]
+            return [r.id for r in self._rows if self._status[r.id].state in UNFINISHED_STATES]
 
 
 @dataclass

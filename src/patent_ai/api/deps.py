@@ -91,7 +91,8 @@ def get_run_executor(
     store: Annotated[RunStatusStore, Depends(get_run_status_store)],
 ) -> RunExecutor:
     # 지휘 에이전트가 아직 안 붙었다: 바로 failed(executor_not_connected). 붙으면 여기만 바꾼다.
-    # 붙일 때 결과 받는 곳(sink)은 get_oa_result_store()를 넘긴다 (결과 받기 API가 읽는 저장소)
+    # 붙일 때: 결과 받는 곳(sink)은 get_oa_result_store()를, 취소 표시는 get_cancel_registry()를
+    # 같이 넘긴다 (취소 API가 쓰는 것과 같은 registry여야 취소가 실행기에 닿는다)
     return NotConnectedExecutor(store)
 
 

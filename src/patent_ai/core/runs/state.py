@@ -18,6 +18,9 @@ class RunState(StrEnum):
 
 # 끝난 실행은 더 바뀌지 않는다
 FINISHED_STATES = frozenset({RunState.SUCCEEDED, RunState.FAILED, RunState.CANCELLED})
+# 서버가 켜질 때 failed로 정리할 대상 (돌던 스레드가 사라진 상태).
+# waiting_for_human은 스레드가 없어 뺀다
+UNFINISHED_STATES = frozenset({RunState.QUEUED, RunState.RUNNING})
 # 아직 진행 중인 상태 (같은 OA에 진행 중 실행이 있는지 볼 때 쓴다)
 ACTIVE_STATES = frozenset({RunState.QUEUED, RunState.RUNNING, RunState.WAITING_FOR_HUMAN})
 

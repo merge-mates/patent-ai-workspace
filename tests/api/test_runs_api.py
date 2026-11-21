@@ -18,12 +18,12 @@ from patent_ai.api.deps import (
     get_upload_dir,
 )
 from patent_ai.api.main import create_app
+from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import RunExecutor, Step, StepRunExecutor
 from patent_ai.core.runs.state import RunError, RunState
 from tests.core.runs.fake_executor import (
-    MemorySink,
     cancelling_step,
     load_oa_result,
     raising_step,
@@ -52,7 +52,7 @@ class Env:
         self.runs = InMemoryRunStore()
         self.cases = InMemoryCaseAppStore(runs=self.runs)
         self.registry = CancelRegistry()
-        self.sink = MemorySink()
+        self.sink = InMemoryOAResultStore(self.runs)
         self.steps: list[Step] = [Step("OA 읽는 중", lambda: None)]
         self.launch_enabled = True
         self.launched: list[tuple[str, str]] = []

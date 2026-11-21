@@ -1,6 +1,6 @@
 """실행기가 저장소에 바라는 것만 Protocol로 정의한다.
 
-진짜 저장소(Postgres·InMemory RunStore)는 이 Protocol을 따르게 나중에 붙인다.
+진짜 저장소(Postgres·InMemory RunStore)는 이 Protocol을 따른다.
 """
 
 from dataclasses import dataclass
@@ -68,6 +68,9 @@ class RunStatusStore(Protocol):
 
 
 class OAResultSink(Protocol):
-    """끝난 OA 정리를 받아 저장하는 쪽 (나중에 core/cases의 save_oa_result)."""
+    """끝난 OA 정리를 받아 저장하는 쪽. 실행기가 아는 것은 저장 한 가지뿐이다.
+
+    core/cases/results.py의 OAResultStore가 이 약속을 잇고 읽기를 더한다 (실제 구현은 그쪽).
+    """
 
     def save_oa_result(self, oa_id: str, run_id: str, result: OAResult) -> None: ...
