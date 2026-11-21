@@ -249,6 +249,15 @@ def document_review_items(doc: CaseDocument, index: int) -> list[ReviewItem]:
     return items
 
 
+def _is_grouped(it: ReviewItem) -> bool:
+    """묶을 줄인지: 결과(oa_result[..]·results[..]) 안의 input_unverified 줄만.
+
+    문서 줄(materials.documents[i])은 묶지 않는다
+    (첫 `.` 앞으로 자르면 "materials"가 돼 갈 곳이 없다).
+    """
+    return it.reason == _INPUT_UNVERIFIED and it.target.startswith(("oa_result[", "results["))
+
+
 def _group_input_unverified(items: list[ReviewItem]) -> list[ReviewItem]:
     """이유가 input_unverified인 줄(앞 입력 탓에 생긴 것)을 결과마다 한 줄로 묶는다.
 
@@ -257,7 +266,7 @@ def _group_input_unverified(items: list[ReviewItem]) -> list[ReviewItem]:
     counts: dict[str, int] = {}
     labels: dict[str, str] = {}
     for it in items:
-        if it.reason == _INPUT_UNVERIFIED:
+        if _is_grouped(it):
             result_target = it.target.split(".", 1)[0]  # 예: oa_result[oa_1]
             counts[result_target] = counts.get(result_target, 0) + 1
             m = re.fullmatch(r"oa_result\[(.*)\]", result_target)
@@ -266,7 +275,7 @@ def _group_input_unverified(items: list[ReviewItem]) -> list[ReviewItem]:
     out: list[ReviewItem] = []
     done: set[str] = set()
     for it in items:
-        if it.reason != _INPUT_UNVERIFIED:
+        if not _is_grouped(it):
             out.append(it)
             continue
         result_target = it.target.split(".", 1)[0]

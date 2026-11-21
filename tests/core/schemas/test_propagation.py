@@ -605,3 +605,16 @@ def test_마무리는_입력을_바꾸지_않고_새_6번을_돌려준다():
 def test_마무리_모으다_예외가_나면_삼키지_않고_올린다():
     with pytest.raises(AttributeError):
         finalize_case_materials([object()], _empty_materials())  # type: ignore[list-item]
+
+
+def test_마무리_문서_줄은_결과_묶기에_합치지_않는다():
+    # 묶기는 결과(oa_result[..]·results[..])만. 문서 줄을 묶으면 "materials"로 잘려 갈 곳이 없다
+    m = CaseMaterials(
+        case_id="c_1",
+        documents=[_doc("doc_a", status=INPUT_UNV), _doc("doc_b", status=INPUT_UNV)],
+    )
+    got = finalize_case_materials([ResultBase(status=OK)], m)
+    assert [i.target for i in got.review_items] == [
+        "materials.documents[0]",
+        "materials.documents[1]",
+    ]

@@ -28,6 +28,7 @@ from patent_ai.core.schemas.case_materials import (
 )
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
+from patent_ai.core.schemas.propagation import finalize_case_materials
 
 # --- T1 번호 읽기·정규화 -------------------------------------------------------
 
@@ -778,3 +779,18 @@ def test_key_묶기는_인용문헌_키를_그대로_둔다():
 def test_key_인용문헌이_아닌_자료에_키가_있으면_거부():
     with pytest.raises(ValidationError):
         MaterialInput(document_id="d1", kind="oa", source="uploaded", citation_key=KR_D1)
+
+
+def test_upload_확인_안_된_문서_줄의_순서가_마무리를_다시_돌린_것과_같다():
+    # 같은 입력이면 같은 ⑥ (design 2절): 같은 종류 안에서 문서 줄이 결과 줄보다 앞
+    oa = _fixture_oa()
+    unv = {"value": "unverified", "reason": "body_missing"}
+    oa = OAResult.model_validate(
+        oa.model_dump()
+        | {"status": unv, "response_due": oa.model_dump()["response_due"] | {"status": unv}}
+    )
+    before = finalize_case_materials([oa], _fixture_materials())
+    (g,) = group_materials([_m("doc_up_9", "oa", app=APP, number=None)], CASE)
+    assert g.status.value == StatusValue.UNVERIFIED
+    after = answer_missing(before, "D2 US20990000001A1 본문", g)
+    assert after.review_items == finalize_case_materials([oa], after).review_items

@@ -491,7 +491,10 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     # 문서 줄의 경로(materials.documents[i])는 그대로이고, 새 줄은 끝 위치를 가리킨다
     new_doc_items = document_review_items(doc, len(materials.documents))
     if new_doc_items:
-        items = sort_review_items(items + new_doc_items)
+        # 마무리(finalize)와 같은 순서: 문서 줄(기존 문서 → 새 문서) 뒤에 결과 줄, 그다음 종류 순서
+        old_doc_items = [i for i in items if i.target.startswith("materials.documents[")]
+        rest = [i for i in items if not i.target.startswith("materials.documents[")]
+        items = sort_review_items(old_doc_items + new_doc_items + rest)
     # 새로 만들어 개수 검사를 거친다
     return CaseMaterials.model_validate(
         materials.model_dump()
