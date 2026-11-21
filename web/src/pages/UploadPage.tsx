@@ -35,7 +35,11 @@ export function UploadPage() {
               duration: 8,
               content: (
                 <span>
-                  {text} <Link to={link}>기존 사건 열기</Link>
+                  {/* message는 Router 밖에서 그려져 Link를 못 쓴다: 컴포넌트에서 받은 navigate로 간다 */}
+                  {text}{' '}
+                  <Button type="link" size="small" onClick={() => navigate(link)}>
+                    기존 사건 열기
+                  </Button>
                 </span>
               ),
             },
