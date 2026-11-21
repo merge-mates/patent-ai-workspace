@@ -81,8 +81,8 @@ graph LR
 - [x] task-1
 - [x] task-2
 - [x] task-3
-- [ ] task-4
-- 다음: task-4
+- [x] task-4 (계획 밖: 원문 강조용 가짜 `pages.json`, 화면 mock 사건 `c_4`는 `oa_4`)
+- 다음: 이슈 점검(/check)과 PR
 - 막힌 것: 없음 (PR #137 머지됨)
 
 ### 끝난 뒤 (이슈가 끝난 날)
