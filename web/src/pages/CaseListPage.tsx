@@ -49,7 +49,7 @@ const columns: ColumnsType<CaseSummary> = [
     render: (n: number | null) =>
       n === null ? '모름' : n > 0 ? <Typography.Text strong>{n}건</Typography.Text> : '없음',
   },
-  { title: '마지막으로 연 때', dataIndex: 'last_opened_at', render: dateTimeText },
+  { title: '최근 OA 올린 때', dataIndex: 'updated_at', render: dateTimeText },
 ]
 
 // 사건 목록: 맨 위 통지서 올리기, 아래 사건 표. 줄을 누르면 사건 작업대
