@@ -199,6 +199,64 @@ def test_여러_항을_인용하는_종속항():
     assert result.depends_on_status.value == StatusValue.CONFIRMED
 
 
+def test_인용구_안_번호와_depends_on이_다르면_인용_관계는_확인되지_않음(caplog):
+    # 원문은 "제1항"인데 모델이 depends_on=[2]로 답했다 (인용구 글자는 원문에 있어 글자 대조는 통과)
+    # (청구항 3의 원문을 "제1항에 있어서"로 시작하게 두고, 모델은 앞 번호 2를 인용했다고 답함)
+    wrong = _answer(3, ["상기 물통은 투명한 재질로 이루어진"], [2], "제1항에 있어서")
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(3, [wrong, wrong], claims={**CLAIMS, 3: CLAIM_2})
+    assert len(transport.calls) == 2  # 검사 오류로 한 번 다시 부르고, 또 틀리면 끝
+    assert result.depends_on is None and result.depends_on_quote is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+    assert result.status.value == StatusValue.UNVERIFIED
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_인용구_번호가_다르면_다시_불러_고쳐_오면_통과한다():
+    wrong = _answer(3, ["상기 물통은 투명한 재질로 이루어진"], [2], "제1항에 있어서")
+    good = _answer(3, ["상기 물통은 투명한 재질로 이루어진"], [1], "제1항에 있어서")
+    result, transport = _split(3, [wrong, good], claims={**CLAIMS, 3: CLAIM_2})
+    assert len(transport.calls) == 2
+    assert "검사 오류" in transport.calls[1]["prompt"]
+    assert result.depends_on == [1] and result.status.value == StatusValue.CONFIRMED
+
+
+def test_원문이_제N항으로_시작하는데_독립항으로_답하면_확인되지_않음(caplog):
+    # 인용 문구가 있는 종속항을 모델이 독립항으로 읽었다 (depends_on=[], 인용구 없음)
+    as_independent = _answer(2, ["상기 물통은 투명한 재질로 이루어진"])
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(2, [as_independent, as_independent])
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+    assert result.status.value == StatusValue.UNVERIFIED
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_제N항_또는_제M항_인용은_번호가_같으면_확인됨():
+    answer = _answer(3, ["상기 화분은 받침을 더 포함하는"], [2, 1], "제1항 또는 제2항에 있어서")
+    result, transport = _split(3, answer)
+    assert len(transport.calls) == 1
+    assert result.depends_on == [1, 2] and result.status.value == StatusValue.CONFIRMED
+
+
+def test_내지_범위_인용은_사이_번호까지_펼쳐_비교한다():
+    claims = {1: "가.", 2: "나.", 3: "다.", 4: "제1항 내지 제3항 중 어느 한 항에 있어서, 라 화분."}
+    quote = "제1항 내지 제3항 중 어느 한 항에 있어서"
+    good = _answer(4, ["라 화분"], [1, 2, 3], quote)
+    result, transport = _split(4, good, claims=claims)
+    assert len(transport.calls) == 1 and result.depends_on == [1, 2, 3]
+    short = _answer(4, ["라 화분"], [1, 3], quote)  # 가운데 2가 빠짐
+    result, transport = _split(4, [short, short], claims=claims)
+    assert len(transport.calls) == 2 and result.depends_on is None
+
+
+def test_독립항_원문은_제N항_꼴이_없으므로_독립항_답이_확인됨_그대로다():
+    result, transport = _split(1, GOOD_1)
+    assert len(transport.calls) == 1 and result.depends_on == []
+    assert result.depends_on_status.value == StatusValue.CONFIRMED
+
+
 # ---- 구성요소 0개 ----
 def test_구성요소가_0개면_경고하고_성공으로_숨기지_않는다(caplog):
     empty = _answer(1, [])
