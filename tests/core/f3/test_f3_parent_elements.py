@@ -17,7 +17,7 @@ from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
-from patent_ai.core.schemas.comparison import ParagraphSource
+from patent_ai.core.schemas.comparison import NoveltyVerdict, ParagraphSource
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 from tests.core.f3.fakes import OK, bad, citation, claim_row, oa, paragraph, rejection, split
 
@@ -370,11 +370,15 @@ def _branch_splits():
     }
 
 
-def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_나가지_않고_보류한다():
+def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_나가지_않고_보류한다(caplog):
     result = oa([rejection(1, "29-1-1", [4], [citation("D1", D1)])])
     answer = _answer(4, (1, "disclosed", (P31, FULL31)))
-    out, _, _, _ = _run(result, [answer], splits=_branch_splits())
+    with caplog.at_level(logging.WARNING):
+        out, _, _, _ = _run(result, [answer], splits=_branch_splits())
     (table,) = out.tables
+    # 요약이 "차이 없음"이어도 표 전체는 확인됨이 아니다 (이 전제가 이 테스트의 핵심)
+    assert table.summary.verdict == NoveltyVerdict.NO_DIFFERENCE
+    assert any("인용 가지가 여럿" in r.getMessage() for r in caplog.records)
     assert _locations(table, 4) == ["청구항 4 [구성 4-1]"]
     (row,) = table.rows
     assert row.status.value == StatusValue.UNVERIFIED

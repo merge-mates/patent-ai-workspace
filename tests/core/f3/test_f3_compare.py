@@ -351,6 +351,25 @@ def test_진보성_요약은_어느_문헌에도_개시되지_않은_구성요�
     assert any("효과 후보" in r.getMessage() for r in caplog.records)
 
 
+def test_두_문헌_모두_근거_없는_차이_후보면_찾아본_범위를_세미콜론으로_이어_붙인다():
+    cited = [citation("D1", D1), citation("D2", D2)]
+    answer = _answer(
+        [
+            _row(1, "D1", "difference_candidate"),
+            _row(1, "D2", "difference_candidate"),
+            _row(2, "D1", "disclosed", (P31, "물통은 물을 담아 둔다")),
+            _row(2, "D2", "unclear"),
+        ]
+    )
+    out, _, _ = _run(_inventive(cited), answer)
+    d1_scope = "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2)"
+    d2_scope = "D2 조각 1개 중 hybrid 상위 1 (cite-idx-v2)"
+    assert out.tables[0].summary.differences == [
+        f"청구항 1 [구성 1-1] {SENSOR} "
+        f"(조회 범위 내 없음: {d1_scope}; {d2_scope}, 없다는 판단 아님)"
+    ]
+
+
 # ---- 신규성 ----
 def _novelty(citations):
     return oa([rejection(1, "29-1-1", [1], citations)])
