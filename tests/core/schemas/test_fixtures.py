@@ -103,3 +103,65 @@ def test_보류와_빠진_자료가_서로_맞는다(materials):
 def test_근거에_쪽_없는_값은_없다(oa):
     evidence = collect_evidence(oa, "doc_oa_1")
     assert evidence and all(e.page is not None for e in evidence)
+
+
+# ---- 화면용 네 값 사건 (f5/case_all_statuses): 화면 스크린샷 기준 자료 ----
+ALL_STATUSES_DIR = ROOT / "tests" / "fixtures" / "f5" / "case_all_statuses"
+
+
+@pytest.fixture
+def all_oa() -> OAResult:
+    return OAResult.model_validate_json((ALL_STATUSES_DIR / "oa_result.json").read_text("utf-8"))
+
+
+@pytest.fixture
+def all_materials() -> CaseMaterials:
+    return CaseMaterials.model_validate_json(
+        (ALL_STATUSES_DIR / "case_materials.json").read_text("utf-8")
+    )
+
+
+def test_네_값_사건이_스키마_검사를_통과한다(all_oa, all_materials):
+    assert all_oa.oa_id == "oa_1"
+    assert all_materials.case_id == "c_all_statuses"
+
+
+def test_네_값_사건의_칸마다_정해진_status가_들어_있다(all_oa):
+    # 확인됨: 출원번호
+    assert all_oa.application_number.status.value == StatusValue.CONFIRMED
+    assert all_oa.application_number.status.checked
+    # 확인되지 않음(not_extracted): 제출기일
+    assert all_oa.response_due.status.value == StatusValue.UNVERIFIED
+    assert all_oa.response_due.status.reason == "not_extracted"
+    # 조회 범위 내 없음: 값 하나 (어디까지 찾았는지가 있다)
+    not_found = all_oa.examiner_hints.amendment_note
+    assert not_found.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert not_found.status.searched_scope
+    # 충돌: 발송번호, 후보 둘
+    assert all_oa.dispatch_number.status.value == StatusValue.CONFLICT
+    assert len(all_oa.dispatch_number.candidates) == 2
+    # 날짜 칸: 값은 비우고 원문 글자만
+    assert all_oa.notice_date.value is None and all_oa.notice_date.raw_text
+    # 결과 status는 가장 나쁜 값(충돌)
+    assert all_oa.status.value == StatusValue.CONFLICT
+
+
+def test_네_값_사건에_직접_검토_거절이유_42_3이_있다(all_oa):
+    rej = [r for r in all_oa.rejections if not r.supported]
+    assert [r.article.value for r in rej] == ["42-3"]
+    assert "needs_human_review" in [f.value for f in rej[0].flags]
+
+
+def test_네_값_사건에_빠진_자료_하나와_보류가_있다(all_materials):
+    assert len(all_materials.missing) == 1
+    assert all_materials.missing[0].ask_upload is True
+    assert [h.task for h in all_materials.held_tasks] == ["f3_compare:oa_1:D2"]
+
+
+def test_네_값_사건의_review_items가_마무리_결과와_같다(all_oa, all_materials):
+    # 실패: fixture의 줄이 finalize_case_materials로 다시 만든 값과 다르면
+    expected = finalize_case_materials([all_oa], all_materials)
+    assert all_materials.review_items == expected.review_items
+    assert all_materials.review_items_count == len(expected.review_items) > 0
+    kinds = {r.kind for r in all_materials.review_items}
+    assert {"missing_material", "conflict", "unverified", "needs_human_review"} <= kinds

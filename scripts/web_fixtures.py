@@ -13,12 +13,14 @@ from patent_ai.core.f1_oa_reader.case_grouping import GroupedMaterial, build_cas
 from patent_ai.core.f1_oa_reader.read_oa import read_oa
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
-from patent_ai.core.schemas.case_materials import LookupResult
+from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult
 from patent_ai.core.schemas.common import Status, StatusValue
 from patent_ai.core.schemas.document import PageText
+from patent_ai.core.schemas.oa_result import OAResult
 
 ROOT = Path(__file__).resolve().parents[1]
 F1 = ROOT / "tests" / "fixtures" / "f1"
+ALL_STATUSES = ROOT / "tests" / "fixtures" / "f5" / "case_all_statuses"
 OUT = ROOT / "web" / "src" / "api" / "fixtures"
 STEP = "f1.read_oa"
 
@@ -67,6 +69,14 @@ CASES = [
         "received": set(),
         "failures": {"KR20990000003A": LookupResult.BODY_MISSING},
     },
+    {
+        # 네 status 값이 다 있는 지어낸 사건. 모델 없이 fixture 폴더의 값을 그대로 쓴다
+        "case_id": "c_4",
+        "case_name": "가상의 상태 표시 시연 장치",
+        "last_opened_at": "2099-02-02T10:00:00",
+        "oa_id": "oa_1",
+        "fixture_dir": ALL_STATUSES,
+    },
 ]
 
 
@@ -83,7 +93,29 @@ def _pages(name: str, document_id: str, pairs: dict[str, str]) -> PageText:
     return PageText.model_validate(data)
 
 
+def _from_fixture_dir(c: dict) -> dict:
+    """이미 만들어 둔 fixture 폴더(oa_result·case_materials·pages)를 묶음으로 옮긴다."""
+    d = c["fixture_dir"]
+    oa = OAResult.model_validate_json((d / "oa_result.json").read_text("utf-8"))
+    materials = CaseMaterials.model_validate_json((d / "case_materials.json").read_text("utf-8"))
+    pages = PageText.model_validate_json((d / "pages.json").read_text("utf-8"))
+    review = materials.review_items or []
+    return {
+        "case_id": c["case_id"],
+        "case_name": c["case_name"],
+        "last_opened_at": c["last_opened_at"],
+        "oa_id": c["oa_id"],
+        "run_id": f"r_{c['oa_id']}_{c['case_id']}",
+        "oa_result": oa.model_dump(mode="json"),
+        "materials": materials.model_dump(mode="json"),
+        "review_items": [r.model_dump(mode="json") for r in review],
+        "document": pages.model_dump(mode="json"),
+    }
+
+
 def _run_one(c: dict) -> dict:
+    if "fixture_dir" in c:
+        return _from_fixture_dir(c)
     pairs = c["replace"]
     pages = _pages(c["notice"], c["document_id"], pairs)
     answer = _swap((F1 / "llm" / f"{c['answer']}.json").read_text("utf-8"), pairs)
