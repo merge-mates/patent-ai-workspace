@@ -81,10 +81,12 @@ const httpApi: typeof mockApi = {
     form.append('file', file)
     return postForm<CreatedOA>(`/cases/${encodeURIComponent(caseId)}/oas`, form)
   },
-  // POST /cases/{id}/documents: 조회하지 못한 자료를 올린다 ("올려 주세요"). 응답 모양은 명세에 없다
-  uploadDocument: (caseId, file) => {
+  // POST /cases/{id}/documents: 조회하지 못한 자료를 올린다 ("올려 주세요").
+  // what = 답하는 빠진 자료 (CaseMaterials.missing[].what 글자 그대로). 서버가 이 글자로 빠진 자료를 찾는다
+  uploadDocument: (caseId, file, what) => {
     const form = new FormData()
     form.append('file', file)
+    form.append('what', what)
     return postForm<UploadedDocument>(`/cases/${encodeURIComponent(caseId)}/documents`, form)
   },
   // POST /oas/{oa_id}/runs: 다시 돌리기. 명세에는 "다시 확인 필요가 붙은 판단 단위만" 고르는 말이 있으나
