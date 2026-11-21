@@ -68,9 +68,9 @@ def _go(tmp_path, body: dict, responses=None):
     return out, steps
 
 
-def test_저장소_설정의_순서는_F1_F3_F2_F4이고_plan_기본값은_agent():
+def test_저장소_설정의_순서는_F1_F3_F2_F4이고_plan_기본값은_fixed_order():
     cfg = yaml.safe_load(REAL_CONFIG.read_text("utf-8"))
-    assert cfg["plan"] == "agent"
+    assert cfg["plan"] == "fixed_order"  # M2 걷는 뼈대 (M3에 agent)
     assert cfg["fixed_order"] == ["extract_pages", "read_oa", "run_f3", "run_f2", "run_f4"]
     # F2 도구가 붙어(#28) 도구가 없어 넘겨도 되는 단계는 없다
     assert cfg["skip_if_missing"] == []
@@ -100,7 +100,9 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
     rec = steps.records[-1]
     assert rec.tool_name == "run_later"
     assert rec.outcome != "ok"
-    assert rec.reason == "넘김: " + out.skipped["run_later"]  # DB에 남는 칸(reason)에 이유가 있다
+    assert (
+        rec.outcome == "skipped" and rec.reason == out.skipped["run_later"]
+    )  # DB reason 칸에 이유
     assert rec.result_status == "unverified"
     assert rec.skipped_reason == out.skipped["run_later"]
     # 넘기지 않은 단계에는 이유 칸이 비어 있다

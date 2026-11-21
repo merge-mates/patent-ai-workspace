@@ -24,7 +24,7 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
 from patent_ai.core.agents.step_inputs import InputMissing, f2_input, f3_input, f4_input
-from patent_ai.core.agents.steps import SKIP_PREFIX, StepRecord, StepRecorder
+from patent_ai.core.agents.steps import StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
 from patent_ai.core.agents.tools_f2 import register_f2_tools
 from patent_ai.core.agents.tools_f3 import register_f3_tools
@@ -176,8 +176,8 @@ def run_case(
     def skip(name: str, skipped: dict[str, str], why: str) -> dict[str, str]:
         """단계를 돌리지 않고 넘긴다: 경고 + 단계 기록(확인되지 않음 + 이유). ok로 적지 않는다."""
         logger.warning("run_case %s: %s 단계를 넘김 (확인되지 않음): %s", run_id, name, why)
-        # 넘긴 이유는 reason 칸에 담는다 (새 칸·새 outcome 값은 DB agent_steps를 바꿔야 해서 안 둠)
-        note("code_tool", name, f"{SKIP_PREFIX}{why}", "waiting", StatusValue.UNVERIFIED.value)
+        # outcome skipped + 넘긴 이유. 서버 실행기는 이 줄을 보고 실행 상태에 넘긴 단계를 남긴다
+        note("code_tool", name, why, "skipped", StatusValue.UNVERIFIED.value)
         return {**skipped, name: why}
 
     def model_calls() -> int | None:

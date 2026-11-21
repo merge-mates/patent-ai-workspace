@@ -131,13 +131,59 @@ def f3_results(inp: F4Input, unit: JudgmentUnit) -> list:
     return [*tables, *clarity]
 
 
-def _status_of(f3: list, bundle: LegalEvidenceBundle, unit: JudgmentUnit) -> Status:
-    """후보 status: F3 결과와 법률 근거 묶음이 모두 확인됨이어야 확인됨."""
+def _status_of(
+    f3: list, bundle: LegalEvidenceBundle, unit: JudgmentUnit, gaps: list[Status]
+) -> Status:
+    """후보 status: F3 결과·대비 못 한 것·법률 근거 묶음이 모두 확인됨이어야 확인됨."""
     if not f3:
         # 기대는 F3 결과가 없으면 "영향 없음"이 아니라 확인되지 않음이다
         logger.warning("f4.direction %s: 이 묶음의 F3 결과가 없음 (input_unverified)", unit.unit_id)
         return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.INPUT_UNVERIFIED)
-    return propagate([*(r.status for r in f3), bundle.status])
+    return propagate([*(r.status for r in f3), *gaps, bundle.status])
+
+
+class F3Gaps(BaseModel):
+    """F3가 이 묶음에서 대비하지 못한 것 (F4 design 3-1). 후보 status·flags·확인 사항에 옮긴다."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    statuses: list[Status]  # 후보 status 전파에 더할 값
+    checks: list[str]  # 후보마다 붙일 확인 사항
+    needs_review: bool  # 후보 flags에 needs_human_review
+
+
+def _held_for(task: str, unit_id: str) -> bool:
+    """F3 보류 작업 이름이 이 단위 것인가 (`f3_compare:<unit_id>`, `...:claim2` 등)."""
+    for step in ("f3_compare", "f3_clarity"):
+        head = f"{step}:{unit_id}"
+        if task == head or task.startswith(head + ":"):
+            return True
+    return False
+
+
+def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
+    """대비 못 한 인용문헌(`compared=false`), F3 결과의 직접 검토 필요, 단위 안 보류를 모은다.
+
+    표 status는 대비한 줄만 모으므로, 여기서 따로 옮기지 않으면 F2가 붙은 뒤
+    결합 문헌 하나를 못 읽은 후보가 "확인됨" + 표시 없음이 된다.
+    """
+    statuses: list[Status] = []
+    checks: list[str] = []
+    needs_review = False
+    for result in f3:
+        if Flag.NEEDS_HUMAN_REVIEW in result.flags:
+            needs_review = True
+        for c in getattr(result, "citations", []):
+            if not c.compared and c.skipped_status is not None:
+                statuses.append(c.skipped_status)
+                checks.append(f"인용문헌 {c.label}({c.number}) 대비 못 함: {c.skipped_reason}")
+    held = [h for h in inp.held_tasks if _held_for(h.task, unit.unit_id)]
+    for h in held:
+        statuses.append(Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED))
+        checks.append(f"F3 보류: {h.waiting_for}")
+    if checks:
+        logger.warning("f4.direction %s: F3가 대비하지 못한 것 %s", unit.unit_id, checks)
+    return F3Gaps(statuses=statuses, checks=checks, needs_review=needs_review or bool(checks))
 
 
 def _evidence_of(f3: list) -> list[Evidence]:
@@ -167,6 +213,7 @@ def _build(
     max_candidates: int,
     extra_flags: list[Flag] | None = None,
     extra_checks: list[str] | None = None,
+    candidate_flags: list[Flag] | None = None,
 ) -> DirectionCandidates:
     """모델 답 하나를 DirectionCandidates로 만든다. 규칙을 어기면 ValueError(스키마 검사 포함)."""
     if len(out.candidates) > max_candidates:
@@ -216,7 +263,7 @@ def _build(
                 ),
                 status=status,
                 evidence=evidence,  # F3 결과의 근거만. 모델 답에는 근거 칸이 없다
-                flags=[Flag.NEEDS_HUMAN_JUDGMENT] if low else [],
+                flags=[*([Flag.NEEDS_HUMAN_JUDGMENT] if low else []), *(candidate_flags or [])],
             )
         )
     first = next((c for c in candidates if c.rank == 1), None)
@@ -362,16 +409,40 @@ def build_directions(
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         f3 = f3_results(inp, unit)
         bundle = legal_bundle_for(inp, unit)
-        status, evidence = _status_of(f3, bundle, unit), _evidence_of(f3)
+        gaps = f3_gaps(inp, unit, f3)
+        status, evidence = _status_of(f3, bundle, unit, gaps.statuses), _evidence_of(f3)
+        review = [Flag.NEEDS_HUMAN_REVIEW] if gaps.needs_review else []
+        unit_checks = [*checks, *gaps.checks]
         # 청구항 글자 없이 모델을 부르면 후보가 글자를 못 보고 나온 것이라 사람이 보게 표시한다
         missing = missing_claim_texts(inp, unit)
         if missing:
             logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
-        flags = [Flag.NEEDS_HUMAN_REVIEW] if missing or ask_kind or unlimited_final else []
+        flags = (
+            [Flag.NEEDS_HUMAN_REVIEW]
+            if missing or ask_kind or unlimited_final or gaps.needs_review
+            else []
+        )
 
-        def build(out: DirectionsOut, unit=unit, status=status, evidence=evidence, flags=flags):
+        def build(
+            out: DirectionsOut,
+            unit=unit,
+            status=status,
+            evidence=evidence,
+            flags=flags,
+            unit_checks=unit_checks,
+            review=review,
+        ):
             return _build(
-                out, unit, inp.oa, status, evidence, limit, options.max_candidates, flags, checks
+                out,
+                unit,
+                inp.oa,
+                status,
+                evidence,
+                limit,
+                options.max_candidates,
+                flags,
+                unit_checks,
+                review,
             )
 
         variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)

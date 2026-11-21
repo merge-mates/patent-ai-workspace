@@ -1,7 +1,8 @@
 """F4 한 번 실행의 결과를 한데 담는 모델 (도구 출력).
 
-저장하는 결과 스키마가 아니다: 저장은 안의 directions·drafts를 하나씩 한다.
-결과 스키마(core/schemas)로 올릴 때 이름·칸을 그대로 옮긴다.
+결과 스키마(core/schemas)가 아니라 도구 출력이다. 서버는 이 객체를 통째로 `step_results`(kind f4)에
+저장하고, 결과 API가 안의 directions·drafts를 꺼내 준다 (#191, docs/data-model.md 5절).
+결과 스키마로 올릴 때 이름·칸을 그대로 옮긴다.
 """
 
 from pydantic import BaseModel, ConfigDict, Field

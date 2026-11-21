@@ -20,6 +20,7 @@ from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue
 from patent_ai.core.schemas.oa_result import OAResult, build_rejection
+from tests.core.f4.legal_fixture import confirmed_legal
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "f4"
 UNIT_INVENTIVE = "oa_1:29-2:c1"
@@ -33,47 +34,10 @@ def _case_data() -> dict:
     return data
 
 
-def _confirmed_legal(unit_id: str, rejection: int) -> dict:
-    """F2가 근거를 다 확인한 법률 근거 묶음 (만든 값). 안쪽 표시가 비는 사건을 만들 때 쓴다."""
-    source = {
-        "source_kind": "statute",
-        "identifier": "만든 조문",
-        "evidence": {"document_id": "law_1", "raw_text": "만든 조문 글자", "edition": "2099-01-01"},
-        "status": OK,
-    }
-    claim = {
-        "no": 1,
-        "text": "만든 주장",
-        "sources": [source],
-        # review 없는 주장은 needs_human_review가 필수라 넣는다
-        "review": {
-            "verdict": "supported",
-            "reason": "만든 검토 이유",
-        },
-        "status": {"value": "confirmed", "checked": "모든 근거 원문 대조"},
-    }
-    return {
-        "bundle_id": f"lb:{unit_id}",
-        "unit_id": unit_id,
-        "oa_id": "oa_1",
-        "rejection": rejection,
-        "question": {
-            "text": "만든 질문",
-            "source": "oa_rejection",
-            "as_of": None,
-            "as_of_source": "none",
-            "source_kinds": ["statute"],
-        },
-        "checked_on": "2099-02-01",
-        "claims": [claim],
-        "status": {"value": "confirmed", "checked": "모든 주장 근거 확인"},
-    }
-
-
 def _clean_case() -> dict:
     """앞 단계가 모두 확인됨인 사건: 안쪽에서 올라오는 직접 검토 표시가 없다."""
     data = _case_data()
-    data["legal"] = [_confirmed_legal(UNIT_INVENTIVE, 1), _confirmed_legal(UNIT_CLARITY, 2)]
+    data["legal"] = [confirmed_legal(UNIT_INVENTIVE, 1), confirmed_legal(UNIT_CLARITY, 2)]
     return data
 
 
@@ -272,7 +236,7 @@ def test_세_묶음이_겹쳐_고치면_확인_글의_개수는_초안_수고_�
     unit3 = copy.deepcopy(data["units"][1])
     unit3.update(unit_id=third, order=3, representative_claim=3, claims=[3], read_with=[1, 2])
     data["units"].append(unit3)
-    data["legal"].append(_confirmed_legal(third, 2))
+    data["legal"].append(confirmed_legal(third, 2))
     clarity3 = copy.deepcopy(data["clarity"][0])  # 셋째 묶음도 F3 명확성 결과가 있어야 확인됨
     clarity3.update(unit_id=third, claim=3)
     data["clarity"].append(clarity3)

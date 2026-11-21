@@ -238,6 +238,7 @@ def test_F3_결과와_실행_입력_글자가_F4_입력으로_이어진다(tmp_p
     inp, f3 = seen["inp"], out.results["run_f3"]
     assert inp.oa == wired
     assert (inp.units, inp.tables, inp.clarity) == (f3.units, f3.comparisons, f3.clarity_reviews)
+    assert inp.held_tasks == f3.held_tasks  # 단위 안 보류를 F4가 후보에 표시하려고 받는다
     assert [u.unit_id for u in inp.units] == ["oa_1:29-2:c1", "oa_1:42-4-2:c2"]
     # F2 묶음이 판단 단위마다 하나씩 F4로 간다 (F4는 unit_id로 찾는다)
     assert inp.legal == out.results["run_f2"].bundles
@@ -286,7 +287,7 @@ def test_청구항_글자_입력이_없으면_F3_F4를_input_unverified로_넘�
     assert out.skipped["run_f4"].startswith("input_unverified")
     recs = {r.tool_name: r for r in steps.records}
     for name in ("run_f3", "run_f4"):
-        assert recs[name].outcome == "waiting" and recs[name].result_status == "unverified"
+        assert recs[name].outcome == "skipped" and recs[name].result_status == "unverified"
         assert recs[name].skipped_reason == out.skipped[name]
         assert any(name in r.getMessage() for r in caplog.records)
     assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
@@ -332,4 +333,4 @@ def test_agent_모드에서_넘겼던_단계가_나중에_돌면_넘김_목록�
     assert out.state == "succeeded"
     assert "run_f4" in out.results and "run_f4" not in out.skipped
     # 단계 기록(이력)에는 넘겼던 줄이 그대로 남는다
-    assert any(r.tool_name == "run_f4" and r.reason.startswith("넘김:") for r in steps.records)
+    assert any(r.tool_name == "run_f4" and r.outcome == "skipped" for r in steps.records)

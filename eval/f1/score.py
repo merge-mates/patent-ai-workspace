@@ -256,6 +256,12 @@ def _mean(xs: list[float]) -> float | None:
 RESPONDED_OUTCOMES = ("ok", "invalid_output", "output_truncated")  # 응답을 받은 결과
 
 
+def _sum_known(calls: list[dict], key: str) -> int | None:
+    """토큰 칸 합. 확인되지 않은(None) 줄이 하나라도 있으면 일부만 더한 합 대신 None."""
+    vals = [c[key] for c in calls]
+    return None if any(v is None for v in vals) else sum(vals)
+
+
 def sum_calls(calls: list[dict] | None, n_oa: int | None = None) -> dict:
     """read_oa 실행 호출 기록을 cost 칸으로 합친다. 모르는 키는 안 본다.
 
@@ -293,10 +299,13 @@ def sum_calls(calls: list[dict] | None, n_oa: int | None = None) -> dict:
     # 실제로 외부에 부른 기록: 캐시 적중과, 전송층 앞에서 막힌 limit_exceeded는 뺀다
     real = [c for c in calls if not c["from_cache"] and c["outcome"] != "limit_exceeded"]
     cached = [c for c in calls if c["from_cache"]]
+    # 토큰이 None = 스트림이 끊겨 청구량을 모르는 호출 (#194). 합이 틀릴 수 있어 usd를 비운다
+    unknown = [c for c in real if c["input_tokens"] is None or c["output_tokens"] is None]
+    known = [c for c in real if c not in unknown]
     # 응답을 받았는데 가격이 비어 있으면 합이 틀리므로 usd를 비운다 (응답 없는 줄의 None은 0)
     unpriced = sum(
         1
-        for c in real
+        for c in known
         if c["cost"] is None
         and (c["input_tokens"] > 0 or c["output_tokens"] > 0 or c["outcome"] in RESPONDED_OUTCOMES)
     )
@@ -304,12 +313,18 @@ def sum_calls(calls: list[dict] | None, n_oa: int | None = None) -> dict:
     if unpriced:
         logger.warning("가격 설정이 없어 usd를 비움 (가격 없는 호출 기록 %d줄)", unpriced)
         usd = None
+    if unknown:
+        logger.warning(
+            "토큰이 확인되지 않은 호출 기록 %d줄이 있어 usd와 그 토큰 칸의 합을 비움",
+            len(unknown),
+        )
+        usd = None
     return {
         "usd": usd,
-        "input_tokens": sum(c["input_tokens"] for c in real),
-        "output_tokens": sum(c["output_tokens"] for c in real),
-        "cached_input_tokens": sum(c["input_tokens"] for c in cached),
-        "cached_output_tokens": sum(c["output_tokens"] for c in cached),
+        "input_tokens": _sum_known(real, "input_tokens"),
+        "output_tokens": _sum_known(real, "output_tokens"),
+        "cached_input_tokens": _sum_known(cached, "input_tokens"),
+        "cached_output_tokens": _sum_known(cached, "output_tokens"),
         "external_calls": len(real),
     }
 
@@ -463,8 +478,9 @@ def load_calls(path: Path) -> list[dict]:
         raise EvalError(f"호출 기록 파일({name})이 리스트가 아니다")
     # 필요한 키만 본다. stop_reason·case 같은 모르는 키는 무시
     types: dict[str, tuple[type, ...]] = {
-        "input_tokens": (int,),
-        "output_tokens": (int,),
+        # None = 확인되지 않음 (스트림이 끊긴 호출, #194)
+        "input_tokens": (int, type(None)),
+        "output_tokens": (int, type(None)),
         "cost": (int, float, type(None)),
         "from_cache": (bool,),
         "outcome": (str,),

@@ -283,8 +283,260 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/units:
+    get:
+      summary: Get Units
+      operationId: get_units_oas__oa_id__units_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnitsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/comparisons:
+    get:
+      summary: Get Comparisons
+      operationId: get_comparisons_oas__oa_id__comparisons_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/clarity-reviews:
+    get:
+      summary: Get Clarity Reviews
+      operationId: get_clarity_reviews_oas__oa_id__clarity_reviews_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClarityReviewsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/legal-evidence:
+    get:
+      summary: Get Legal Evidence
+      operationId: get_legal_evidence_oas__oa_id__legal_evidence_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalEvidenceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/directions:
+    get:
+      summary: Get Directions
+      operationId: get_directions_oas__oa_id__directions_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/drafts:
+    get:
+      summary: Get Drafts
+      operationId: get_drafts_oas__oa_id__drafts_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftsOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    AddedSource:
+      type: string
+      enum:
+      - other_dependent
+      - spec
+      - other
+      title: AddedSource
+      description: 부가한 구성이 어디서 왔나.
+    AmendedClaim:
+      properties:
+        claim:
+          type: integer
+          title: Claim
+        unit_id:
+          type: string
+          title: Unit Id
+        before:
+          type: string
+          title: Before
+        ai_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ai Text
+        human_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Human Text
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        spec_basis:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Spec Basis
+        held_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Held Reason
+      additionalProperties: false
+      type: object
+      required:
+      - claim
+      - unit_id
+      - before
+      - ai_text
+      - spec_basis
+      - held_reason
+      title: AmendedClaim
+    AmendmentCore:
+      properties:
+        claim:
+          type: integer
+          title: Claim
+        kind:
+          $ref: '#/components/schemas/AmendmentKind'
+        source:
+          anyOf:
+          - $ref: '#/components/schemas/AddedSource'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - claim
+      - kind
+      title: AmendmentCore
+    AmendmentKind:
+      type: string
+      enum:
+      - unchanged
+      - limit
+      - add
+      - delete
+      - correct_error
+      - clarify
+      title: AmendmentKind
+    AmendmentLimit:
+      type: string
+      enum:
+      - initial
+      - final
+      title: AmendmentLimit
+    AsOfSource:
+      type: string
+      enum:
+      - user_text
+      - user_condition
+      - oa_dispatch_date
+      - none
+      title: AsOfSource
+    BasedOn:
+      properties:
+        unit_id:
+          type: string
+          title: Unit Id
+        candidate_id:
+          type: string
+          title: Candidate Id
+      additionalProperties: false
+      type: object
+      required:
+      - unit_id
+      - candidate_id
+      title: BasedOn
+      description: 이 초안을 만들 때 쓴 선택 (묶음마다 후보 하나).
     Body_add_oa_cases__case_id__oas_post:
       properties:
         file:
@@ -319,6 +571,33 @@ components:
       - file
       - what
       title: Body_upload_missing_document_cases__case_id__documents_post
+    Candidate_AmendmentLimit_:
+      properties:
+        value:
+          anyOf:
+          - $ref: '#/components/schemas/AmendmentLimit'
+          - type: 'null'
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        source:
+          type: string
+          enum:
+          - rule
+          - model
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: Candidate[AmendmentLimit]
     Candidate_NoticeKind_:
       properties:
         value:
@@ -747,6 +1026,273 @@ components:
       - source_doc_number
       - document_id
       title: ClaimVersionOut
+    ClarityReview:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        unit_id:
+          type: string
+          title: Unit Id
+        claim:
+          type: integer
+          title: Claim
+        term:
+          type: string
+          title: Term
+        claim_location:
+          type: string
+          title: Claim Location
+        spec_definition:
+          anyOf:
+          - $ref: '#/components/schemas/Evidence'
+          - type: 'null'
+        note:
+          type: string
+          title: Note
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - unit_id
+      - claim
+      - term
+      - claim_location
+      - note
+      title: ClarityReview
+      description: '명확성 문구 검토: 청구항 하나에서 짚은 문구와 최초 명세서의 정의.'
+    ClarityReviewsOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        empty_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Empty Reason
+        result:
+          items:
+            $ref: '#/components/schemas/ClarityReview'
+          type: array
+          title: Result
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - empty_reason
+      - result
+      title: ClarityReviewsOut
+    CoarseDirection:
+      type: string
+      enum:
+      - argue_only
+      - amend_and_argue
+      - amend_only
+      title: CoarseDirection
+    ComparedCitation:
+      properties:
+        label:
+          type: string
+          title: Label
+        number:
+          type: string
+          title: Number
+        compared:
+          type: boolean
+          title: Compared
+        skipped_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Skipped Reason
+        skipped_status:
+          anyOf:
+          - $ref: '#/components/schemas/Status'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - label
+      - number
+      - compared
+      title: ComparedCitation
+    ComparisonRow:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        claim:
+          type: integer
+          minimum: 1.0
+          title: Claim
+        element:
+          type: string
+          title: Element
+        element_location:
+          type: string
+          title: Element Location
+        citation:
+          type: string
+          title: Citation
+        judgment:
+          $ref: '#/components/schemas/Judgment'
+        paragraph_source:
+          $ref: '#/components/schemas/ParagraphSource'
+        why_retrieved:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Why Retrieved
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - claim
+      - element
+      - element_location
+      - citation
+      - judgment
+      - paragraph_source
+      title: ComparisonRow
+    ComparisonTable:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        unit_id:
+          type: string
+          title: Unit Id
+        rejection_kind:
+          $ref: '#/components/schemas/RejectionKind'
+        citations:
+          items:
+            $ref: '#/components/schemas/ComparedCitation'
+          type: array
+          title: Citations
+        rows:
+          items:
+            $ref: '#/components/schemas/ComparisonRow'
+          type: array
+          title: Rows
+        summary:
+          oneOf:
+          - $ref: '#/components/schemas/InventiveSummary'
+          - $ref: '#/components/schemas/NoveltySummary'
+          title: Summary
+          discriminator:
+            propertyName: kind
+            mapping:
+              inventive_step: '#/components/schemas/InventiveSummary'
+              novelty: '#/components/schemas/NoveltySummary'
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - unit_id
+      - rejection_kind
+      - citations
+      - rows
+      - summary
+      title: ComparisonTable
+    ComparisonsOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        empty_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Empty Reason
+        result:
+          items:
+            $ref: '#/components/schemas/ComparisonTable'
+          type: array
+          title: Result
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - empty_reason
+      - result
+      title: ComparisonsOut
+    Confidence:
+      type: string
+      enum:
+      - high
+      - medium
+      - low
+      title: Confidence
     CreatedCase:
       properties:
         case_id:
@@ -777,6 +1323,267 @@ components:
       - oa_id
       - run_id
       title: CreatedOA
+    DirectionCandidate:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        candidate_id:
+          type: string
+          title: Candidate Id
+        rank:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rank
+        coarse:
+          $ref: '#/components/schemas/CoarseDirection'
+        name:
+          type: string
+          title: Name
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        reason:
+          type: string
+          title: Reason
+        checks:
+          items:
+            type: string
+          type: array
+          title: Checks
+        per_rejection:
+          items:
+            $ref: '#/components/schemas/RejectionResponse'
+          type: array
+          title: Per Rejection
+        amendment_core:
+          items:
+            $ref: '#/components/schemas/AmendmentCore'
+          type: array
+          title: Amendment Core
+        rebuttal:
+          anyOf:
+          - $ref: '#/components/schemas/Rebuttal'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - candidate_id
+      - rank
+      - coarse
+      - name
+      - confidence
+      - reason
+      - checks
+      - per_rejection
+      - amendment_core
+      - rebuttal
+      title: DirectionCandidate
+    DirectionCandidates:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        unit_id:
+          type: string
+          title: Unit Id
+        candidates:
+          items:
+            $ref: '#/components/schemas/DirectionCandidate'
+          type: array
+          title: Candidates
+        selection:
+          anyOf:
+          - $ref: '#/components/schemas/DirectionSelection'
+          - type: 'null'
+        amendment_limit:
+          $ref: '#/components/schemas/ExtractedValue_AmendmentLimit_'
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - unit_id
+      - candidates
+      - selection
+      - amendment_limit
+      title: DirectionCandidates
+    DirectionSelection:
+      properties:
+        candidate_id:
+          type: string
+          title: Candidate Id
+        origin:
+          $ref: '#/components/schemas/Origin'
+      additionalProperties: false
+      type: object
+      required:
+      - candidate_id
+      - origin
+      title: DirectionSelection
+      description: 묶음에서 고른 후보. AI 기본값과 사람 선택을 origin으로 구분한다.
+    DirectionsOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        empty_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Empty Reason
+        result:
+          items:
+            $ref: '#/components/schemas/DirectionCandidates'
+          type: array
+          title: Result
+        rank_notice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rank Notice
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - empty_reason
+      - result
+      - rank_notice
+      title: DirectionsOut
+    Drafts:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        draft_id:
+          type: string
+          title: Draft Id
+        based_on:
+          items:
+            $ref: '#/components/schemas/BasedOn'
+          type: array
+          title: Based On
+        opinion:
+          items:
+            $ref: '#/components/schemas/OpinionSection'
+          type: array
+          title: Opinion
+        claims:
+          items:
+            $ref: '#/components/schemas/AmendedClaim'
+          type: array
+          title: Claims
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - draft_id
+      - based_on
+      - opinion
+      - claims
+      title: Drafts
+    DraftsOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/Drafts'
+          - type: 'null'
+        empty_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Empty Reason
+        held_units:
+          items:
+            type: string
+          type: array
+          title: Held Units
+        legality_notice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Legality Notice
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - result
+      - empty_reason
+      - held_units
+      - legality_notice
+      title: DraftsOut
     Evidence:
       properties:
         document_id:
@@ -839,6 +1646,34 @@ components:
       - allowable_claims
       - amendment_note
       title: ExaminerHints
+    ExtractedValue_AmendmentLimit_:
+      properties:
+        value:
+          anyOf:
+          - $ref: '#/components/schemas/AmendmentLimit'
+          - type: 'null'
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        page:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page
+        status:
+          $ref: '#/components/schemas/Status'
+        candidates:
+          items:
+            $ref: '#/components/schemas/Candidate_AmendmentLimit_'
+          type: array
+          title: Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: ExtractedValue[AmendmentLimit]
     ExtractedValue_NoticeKind_:
       properties:
         value:
@@ -964,6 +1799,39 @@ components:
       - needs_human_judgment
       - needs_human_review
       title: Flag
+    FurtherReview:
+      properties:
+        chunk_id:
+          type: string
+          title: Chunk Id
+        why:
+          $ref: '#/components/schemas/FurtherReviewWhy'
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+        index_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Index Version
+      additionalProperties: false
+      type: object
+      required:
+      - chunk_id
+      - why
+      title: FurtherReview
+      description: 주장에 쓰지 않았지만 사람이 더 볼 만한 색인 조각.
+    FurtherReviewWhy:
+      type: string
+      enum:
+      - opposite_holding
+      - edition_unknown
+      - other_edition
+      - edition_out_of_scope
+      - not_used_candidate
+      title: FurtherReviewWhy
     HTTPValidationError:
       properties:
         detail:
@@ -987,6 +1855,111 @@ components:
       - task
       - waiting_for
       title: HeldTask
+    InventiveSummary:
+      properties:
+        kind:
+          type: string
+          const: inventive_step
+          title: Kind
+        differences:
+          items:
+            type: string
+          type: array
+          title: Differences
+        combination:
+          type: string
+          title: Combination
+        effect_candidates:
+          items:
+            type: string
+          type: array
+          title: Effect Candidates
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - differences
+      - combination
+      - effect_candidates
+      title: InventiveSummary
+      description: '진보성 요약: 차이점 → 결합 → 효과 후보 순.'
+    Judgment:
+      type: string
+      enum:
+      - disclosed
+      - difference_candidate
+      - unclear
+      title: Judgment
+    JudgmentUnit:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        unit_id:
+          type: string
+          title: Unit Id
+        rejection:
+          type: integer
+          title: Rejection
+        rejection_kind:
+          $ref: '#/components/schemas/RejectionKind'
+        unit_kind:
+          $ref: '#/components/schemas/UnitKind'
+        representative_claim:
+          type: integer
+          title: Representative Claim
+        claims:
+          items:
+            type: integer
+          type: array
+          title: Claims
+        read_with:
+          items:
+            type: integer
+          type: array
+          title: Read With
+          default: []
+        order:
+          type: integer
+          title: Order
+        parent_unit_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Unit Id
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - unit_id
+      - rejection
+      - rejection_kind
+      - unit_kind
+      - representative_claim
+      - claims
+      - order
+      title: JudgmentUnit
     LatestRun:
       properties:
         run_id:
@@ -1006,6 +1979,243 @@ components:
       - state
       - current_step
       title: LatestRun
+    LegalClaim:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        'no':
+          type: integer
+          minimum: 1.0
+          title: 'No'
+        text:
+          type: string
+          title: Text
+        sources:
+          items:
+            $ref: '#/components/schemas/LegalSource'
+          type: array
+          title: Sources
+        review:
+          anyOf:
+          - $ref: '#/components/schemas/Review'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - 'no'
+      - text
+      - sources
+      title: LegalClaim
+    LegalEvidenceBundle:
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        evidence:
+          items:
+            $ref: '#/components/schemas/Evidence'
+          type: array
+          title: Evidence
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+        needs_recheck:
+          type: boolean
+          title: Needs Recheck
+          default: false
+        recheck_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Recheck Reason
+        flags:
+          items:
+            $ref: '#/components/schemas/Flag'
+          type: array
+          title: Flags
+        bundle_id:
+          type: string
+          title: Bundle Id
+        unit_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit Id
+        oa_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Oa Id
+        rejection:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Rejection
+        question:
+          $ref: '#/components/schemas/LegalQuestion'
+        checked_on:
+          type: string
+          format: date
+          title: Checked On
+        clarifications:
+          items:
+            type: string
+          type: array
+          title: Clarifications
+        claims:
+          items:
+            $ref: '#/components/schemas/LegalClaim'
+          type: array
+          title: Claims
+        further_review:
+          items:
+            $ref: '#/components/schemas/FurtherReview'
+          type: array
+          title: Further Review
+        search_log:
+          items:
+            $ref: '#/components/schemas/SearchLogEntry'
+          type: array
+          title: Search Log
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - bundle_id
+      - question
+      - checked_on
+      - claims
+      title: LegalEvidenceBundle
+    LegalEvidenceOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        empty_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Empty Reason
+        result:
+          items:
+            $ref: '#/components/schemas/LegalEvidenceBundle'
+          type: array
+          title: Result
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - empty_reason
+      - result
+      title: LegalEvidenceOut
+    LegalQuestion:
+      properties:
+        text:
+          type: string
+          title: Text
+        source:
+          $ref: '#/components/schemas/QuestionSource'
+        as_of:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: As Of
+        as_of_source:
+          $ref: '#/components/schemas/AsOfSource'
+        source_kinds:
+          items:
+            $ref: '#/components/schemas/LegalSourceKind'
+          type: array
+          title: Source Kinds
+        article_refs:
+          items:
+            type: string
+          type: array
+          title: Article Refs
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      - source
+      - as_of_source
+      - source_kinds
+      title: LegalQuestion
+      description: F2가 받은 질문 하나. oa_id·rejection은 묶음 맨 위 칸에 둔다.
+    LegalSource:
+      properties:
+        source_kind:
+          $ref: '#/components/schemas/LegalSourceKind'
+        identifier:
+          type: string
+          title: Identifier
+        evidence:
+          $ref: '#/components/schemas/Evidence'
+        status:
+          $ref: '#/components/schemas/Status'
+        text_kind:
+          anyOf:
+          - $ref: '#/components/schemas/TextKind'
+          - type: 'null'
+        speaker:
+          anyOf:
+          - $ref: '#/components/schemas/Speaker'
+          - type: 'null'
+        decided_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Decided On
+        court:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Court
+      additionalProperties: false
+      type: object
+      required:
+      - source_kind
+      - identifier
+      - evidence
+      - status
+      title: LegalSource
+      description: '법률 근거 하나: 조문·판결·심결·심사기준 절.'
+    LegalSourceKind:
+      type: string
+      enum:
+      - statute
+      - guideline
+      - precedent
+      - trial
+      title: LegalSourceKind
+      description: '자료 종류. 값은 #24 색인의 source_kind와 같다.'
     LookupResult:
       type: string
       enum:
@@ -1044,6 +2254,36 @@ components:
       - unknown
       title: NoticeKind
       description: 통지 종류. 정답 형식(f1-oa-gold.md)과 같은 코드.
+    NoveltySummary:
+      properties:
+        kind:
+          type: string
+          const: novelty
+          title: Kind
+        citation:
+          type: string
+          title: Citation
+        verdict:
+          $ref: '#/components/schemas/NoveltyVerdict'
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - citation
+      - verdict
+      - reason
+      title: NoveltySummary
+      description: '신규성 요약: 인용 하나와만.'
+    NoveltyVerdict:
+      type: string
+      enum:
+      - no_difference
+      - substantially_same_candidate
+      - different
+      title: NoveltyVerdict
     OADetail:
       properties:
         oa_id:
@@ -1183,6 +2423,41 @@ components:
       - status
       - result
       title: OAResultOut
+    OpinionKey:
+      type: string
+      enum:
+      - case_info
+      - points
+      - response
+      - amendment
+      - closing
+      title: OpinionKey
+      description: 의견서 칸. 선언 순서가 의견서 순서다.
+    OpinionSection:
+      properties:
+        key:
+          $ref: '#/components/schemas/OpinionKey'
+        title:
+          type: string
+          title: Title
+        ai_text:
+          type: string
+          title: Ai Text
+        human_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Human Text
+        origin:
+          $ref: '#/components/schemas/Origin'
+          default: ai_generated
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - title
+      - ai_text
+      title: OpinionSection
     Origin:
       type: string
       enum:
@@ -1191,6 +2466,48 @@ components:
       - human_selected
       - human_edited
       title: Origin
+    ParagraphSource:
+      type: string
+      enum:
+      - examiner
+      - ai_found
+      title: ParagraphSource
+    QuestionSource:
+      type: string
+      enum:
+      - oa_rejection
+      - user_question
+      title: QuestionSource
+    Rebuttal:
+      properties:
+        rejection_kind:
+          $ref: '#/components/schemas/RejectionKind'
+        type:
+          $ref: '#/components/schemas/RebuttalType'
+        summary:
+          type: string
+          title: Summary
+      additionalProperties: false
+      type: object
+      required:
+      - rejection_kind
+      - type
+      - summary
+      title: Rebuttal
+    RebuttalType:
+      type: string
+      enum:
+      - difference
+      - no_motivation
+      - combination_difficulty
+      - remarkable_effect
+      - hindsight
+      - not_substantially_same
+      - grace_period
+      - obvious_error
+      - clear_from_description
+      - other
+      title: RebuttalType
     Rejection:
       properties:
         status:
@@ -1257,6 +2574,42 @@ components:
       - other
       title: RejectionKind
       description: 거절이유 종류. 정답 형식(f1-oa-gold.md 4절 `kind`)과 같은 코드.
+    RejectionResponse:
+      properties:
+        rejection:
+          type: integer
+          title: Rejection
+        response:
+          type: string
+          title: Response
+      additionalProperties: false
+      type: object
+      required:
+      - rejection
+      - response
+      title: RejectionResponse
+    Review:
+      properties:
+        verdict:
+          $ref: '#/components/schemas/ReviewVerdict'
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - verdict
+      - reason
+      title: Review
+      description: 주장이 근거로 뒷받침되는지 검토한 결과 (AI 판정, 사람이 확인).
+    ReviewVerdict:
+      type: string
+      enum:
+      - supported
+      - partial
+      - not_supported
+      - undetermined
+      title: ReviewVerdict
     RunCreated:
       properties:
         run_id:
@@ -1337,6 +2690,47 @@ components:
       - code
       - message
       title: RunWarningOut
+    SearchLogEntry:
+      properties:
+        source_kind:
+          $ref: '#/components/schemas/LegalSourceKind'
+        index_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Index Version
+        as_of:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: As Of
+        queries:
+          type: integer
+          minimum: 0.0
+          title: Queries
+        hits:
+          type: integer
+          minimum: 0.0
+          title: Hits
+        skipped_unverified_edition:
+          type: integer
+          minimum: 0.0
+          title: Skipped Unverified Edition
+          default: 0
+        skipped_unknown_date:
+          type: integer
+          minimum: 0.0
+          title: Skipped Unknown Date
+          default: 0
+      additionalProperties: false
+      type: object
+      required:
+      - source_kind
+      - queries
+      - hits
+      title: SearchLogEntry
+      description: 자료 종류 하나를 어떻게 찾았나 (못 찾음 ≠ 없음을 가르는 기록).
     SkippedStepOut:
       properties:
         step:
@@ -1350,6 +2744,13 @@ components:
       - step
       - reason
       title: SkippedStepOut
+    Speaker:
+      type: string
+      enum:
+      - court
+      - party
+      - unknown
+      title: Speaker
     Status:
       properties:
         value:
@@ -1383,6 +2784,43 @@ components:
       - conflict
       title: StatusValue
       description: 상태 네 값. 이 밖의 값은 저장 전에 거부한다.
+    TextKind:
+      type: string
+      enum:
+      - full
+      - summary
+      title: TextKind
+    UnitKind:
+      type: string
+      enum:
+      - independent_group
+      - single_claim
+      title: UnitKind
+    UnitsOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        empty_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Empty Reason
+        result:
+          items:
+            $ref: '#/components/schemas/JudgmentUnit'
+          type: array
+          title: Result
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - empty_reason
+      - result
+      title: UnitsOut
     UnverifiedReason:
       type: string
       enum:
