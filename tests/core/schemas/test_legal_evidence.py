@@ -56,6 +56,8 @@ def claim(no=1, sources=None, status=None, **kw):
         "sources": sources,
         "status": status or summarize_claim_status(sources),
     }
+    if sources:  # 근거가 있으면 검토 결과도 기본으로 붙인다 (없으면 needs_human_review 필요)
+        data["review"] = Review(verdict="supported", reason="근거가 뒷받침")
     data.update(kw)
     return LegalClaim(**data)
 
@@ -431,3 +433,83 @@ def test_SearchLogEntry_개수는_음수_불가_기본_0():
         data = {"source_kind": "precedent", "queries": 1, "hits": 0, name: -1}
         with pytest.raises(ValidationError):
             SearchLogEntry(**data)
+
+
+# ---------- 리뷰 반영 (PR #176) ----------
+
+NOT_FOUND = Status(value="not_found_in_scope", searched_scope="특허법 조문")
+
+
+def test_LegalClaim_물려받은_evidence는_비어_있어야_함():
+    # 실제 근거는 sources[].evidence 한 곳
+    with pytest.raises(ValidationError, match="evidence"):
+        LegalClaim(
+            status=NOT_FOUND,
+            no=1,
+            text="t",
+            sources=[],
+            evidence=[Evidence(document_id="d")],
+        )
+
+
+def test_근거가_있고_review가_없으면_needs_human_review_필수():
+    with pytest.raises(ValidationError, match="review"):
+        claim(review=None, flags=[])
+
+
+def test_근거가_있고_review가_없어도_flag가_있으면_통과():
+    c = claim(review=None, flags=["needs_human_review"])
+    assert c.review is None
+
+
+def test_review가_있으면_supported일_때_flag_없이_통과():
+    c = claim(review=Review(verdict="supported", reason="뒷받침"), flags=[])
+    assert c.flags == []
+
+
+def test_근거_0개_주장은_review_없이_flag_없이_통과():
+    c = claim(sources=[], status=NOT_FOUND)
+    assert c.review is None
+
+
+@pytest.mark.parametrize("kind", ["statute", "guideline", "precedent", "trial"])
+@pytest.mark.parametrize("raw_text", [None, "", "  "])
+def test_confirmed_근거는_raw_text_필수(kind, raw_text):
+    ev = Evidence(
+        document_id="d",
+        location="제29조",
+        raw_text=raw_text,
+        edition="2024-01-01 시행",
+    )
+    with pytest.raises(ValidationError, match="raw_text"):
+        source(kind=kind, evidence=ev)
+
+
+def test_confirmed가_아니면_raw_text_없이_통과():
+    ev = Evidence(document_id="d", edition=None)
+    assert source(evidence=ev, status=UNKNOWN_EDITION).evidence.raw_text is None
+
+
+def test_못_찾음인데_판본_몰라_뺀_조각이_있으면_거부():
+    # 못 찾음 != 없음: 뺀 조각이 있으면 unverified(edition_unknown)
+    for field in ("skipped_unverified_edition", "skipped_unknown_date"):
+        log = SearchLogEntry(source_kind="statute", queries=1, hits=0, **{field: 2})
+        with pytest.raises(ValidationError, match="skipped"):
+            bundle(claims=[], status=NOT_FOUND, search_log=[log])
+
+
+def test_뺀_조각이_있으면_unverified로_통과():
+    log = SearchLogEntry(source_kind="statute", queries=1, hits=0, skipped_unverified_edition=2)
+    b = bundle(claims=[], status=UNKNOWN_EDITION, search_log=[log])
+    assert b.status.reason == "edition_unknown"
+
+
+def test_뺀_조각이_없으면_못_찾음_통과():
+    log = SearchLogEntry(source_kind="statute", queries=1, hits=0)
+    assert bundle(claims=[], status=NOT_FOUND, search_log=[log]).claims == []
+
+
+def test_FurtherReview는_index_version_칸이_있다():
+    f = FurtherReview(chunk_id="c#1", why="other_edition", index_version="law-idx-v2")
+    assert f.index_version == "law-idx-v2"
+    assert FurtherReview(chunk_id="c#1", why="other_edition").index_version is None

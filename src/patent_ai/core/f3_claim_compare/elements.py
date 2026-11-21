@@ -3,11 +3,13 @@
 읽고 나누는 것은 모델이 한다. 코드는 확인만 한다:
 - 구성요소 글자가 청구항 원문에 순서대로 그대로 있는지 (공백 줄이기만 허용)
 - 인용구(depends_on_quote)가 원문에 있고, 인용 번호가 그 사건 청구항 번호이며 자기보다 작은지
-코드가 "제N항"을 정규식으로 읽지 않는다. 확인에 떨어지면 검사 오류를 붙여 한 번 다시 부르고,
+코드는 "제N항"을 정규식으로 읽어 모델 답과 맞는지 확인만 한다 (나누기 자체는 모델).
+확인에 떨어지면 검사 오류를 붙여 한 번 다시 부르고,
 그래도 틀린 것은 버리지 않고 "확인되지 않음"으로 남긴다.
 """
 
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -21,6 +23,28 @@ from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason,
 logger = logging.getLogger(__name__)
 
 STEP = "f3.split_elements"
+
+
+# 인용구 안 "제N항" 또는 "제N항 내지/~ 제M항" (범위는 사이 번호까지 펼친다)
+_CITE = re.compile(r"제\s*(\d+)\s*항(?:\s*(?:내지|~)\s*제?\s*(\d+)\s*항)?")
+# 원문이 맨 앞에서 "제N항에 있어서/의/내지/~"나 쉼표·또는·및·와·과·혹은 이음(_JOINERS)으로
+# 앞 청구항을 인용하는 꼴 (넓히지 않는다)
+_JOINERS = r",|또는|및|와|과|혹은"
+_LEADING_CITE = re.compile(rf"^\s*제\s*\d+\s*항(?=\s*(?:에|의|내지|~|{_JOINERS}))")
+# 원문 맨 앞의 인용 문구 전체: "제1항, 제2항 또는 제5항", "제1항 내지 제3항"처럼
+# 번호 나열이 이어지는 데까지 ("에 있어서" 같은 뒷말 앞에서 끝난다)
+_ONE_CITE = r"제\s*\d+\s*항(?:\s*(?:내지|~)\s*제?\s*\d+\s*항)?"
+_LEADING_LIST = re.compile(rf"^\s*{_ONE_CITE}(?:\s*(?:{_JOINERS})\s*{_ONE_CITE})*")
+
+
+def cited_numbers(quote: str) -> set[int]:
+    """인용구 글자에서 청구항 번호를 뽑는다 (확인용). 못 뽑으면 빈 집합."""
+    numbers: set[int] = set()
+    for m in _CITE.finditer(quote):
+        first = int(m.group(1))
+        last = int(m.group(2)) if m.group(2) else first
+        numbers.update(range(first, max(first, last) + 1))
+    return numbers
 
 
 # ---- 모델이 돌려주는 출력 스키마 ----
@@ -94,7 +118,7 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
         errors.append(f"claim은 {claim}이어야 함 (받은 값 {answer.claim})")
 
     # 1) 인용 관계: 인용구가 원문에 있는지, 번호가 이 사건의 앞 청구항인지만 본다
-    depends_errors = _check_depends_on(answer, claim, claim_numbers)
+    depends_errors = _check_depends_on(answer, claim, claim_numbers, claim_text)
     quote = (answer.depends_on_quote or "").strip()
     quote_at = find_from(quote, squeezed, offsets, 0) if quote else None
     if quote and quote_at is None:
@@ -164,8 +188,13 @@ def _check(answer: ClaimElements, claim: int, claim_text: str, claim_numbers: se
     return _Checked(elements, depends_on, quote_text, status, errors, wrong_claim)
 
 
-def _check_depends_on(answer: ClaimElements, claim: int, claim_numbers: set[int]) -> list[str]:
-    """인용 번호와 인용구가 서로 맞는지. 틀린 점을 글로 돌려준다 (없으면 빈 목록)."""
+def _check_depends_on(
+    answer: ClaimElements, claim: int, claim_numbers: set[int], claim_text: str
+) -> list[str]:
+    """인용 번호와 인용구가 서로 맞는지. 틀린 점을 글로 돌려준다 (없으면 빈 목록).
+
+    오류는 다시 부를 때 모델에 보여 주고, 두 번째 답도 틀리면 인용 관계는 확인되지 않음이 된다.
+    """
     errors: list[str] = []
     has_quote = bool((answer.depends_on_quote or "").strip())
     if answer.depends_on and not has_quote:
@@ -177,6 +206,25 @@ def _check_depends_on(answer: ClaimElements, claim: int, claim_numbers: set[int]
             errors.append(f"depends_on의 {n}은 이 사건의 청구항 번호가 아님")
         elif n >= claim:
             errors.append(f"depends_on의 {n}은 청구항 {claim}보다 앞 번호가 아님")
+    # 인용구 글자 속 번호와 모델이 준 depends_on이 같은지 (인용구가 있을 때)
+    if has_quote and answer.depends_on:
+        in_quote = cited_numbers(answer.depends_on_quote or "")
+        if in_quote and in_quote != set(answer.depends_on):
+            errors.append(
+                f"depends_on {sorted(set(answer.depends_on))}이 인용구 속 청구항 번호 "
+                f"{sorted(in_quote)}와 다름"
+            )
+    # 인용구를 일부만 옮기면 위 대조를 빠져나간다: 원문 맨 앞 인용 문구 전체의 번호와도 비교한다
+    if answer.depends_on and has_quote:
+        lead = _LEADING_LIST.match(claim_text) if _LEADING_CITE.match(claim_text) else None
+        if lead and cited_numbers(lead.group(0)) != set(answer.depends_on):
+            errors.append(
+                f"depends_on {sorted(set(answer.depends_on))}이 원문 맨 앞 인용 문구의 청구항 번호 "
+                f"{sorted(cited_numbers(lead.group(0)))}와 다름 (인용구를 문구 전체로)"
+            )
+    # 인용구 없이 독립항으로 답했는데 원문이 "제N항에 있어서"처럼 시작하면 놓친 것이다
+    if not has_quote and not answer.depends_on and _LEADING_CITE.match(claim_text):
+        errors.append("청구항 원문이 앞 청구항을 인용하며 시작하는데 depends_on이 비어 있음")
     return errors
 
 

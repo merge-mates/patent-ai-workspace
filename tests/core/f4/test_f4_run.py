@@ -1,6 +1,7 @@
 """run_f4 한 바퀴와 누락 검사 테스트: 가짜 사건(fixture) + 가짜 전송층. 진짜 모델 호출 없음.
 
-기대값은 구현 계획 C4, design_f4.md 2·3·4절, product.md 5절 F4 5·7번에서 가져왔다.
+기대값은 구현 계획 C4, `docs/features/F4/design.md`
+2절·3-2절(F4Output·사건 전체 검사), product.md 5절 F4 5·7번에서 가져왔다.
 """
 
 import copy
@@ -13,7 +14,7 @@ import pytest
 from patent_ai.core.f4_response_draft.coverage import unchecked_rejections, uncovered
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.result import F4Output
-from patent_ai.core.f4_response_draft.run import run_f4
+from patent_ai.core.f4_response_draft.run import ALL_F4_CHECKED, run_f4
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -44,6 +45,11 @@ def _confirmed_legal(unit_id: str, rejection: int) -> dict:
         "no": 1,
         "text": "만든 주장",
         "sources": [source],
+        # review 없는 주장은 needs_human_review가 필수라 넣는다
+        "review": {
+            "verdict": "supported",
+            "reason": "만든 검토 이유",
+        },
         "status": {"value": "confirmed", "checked": "모든 근거 원문 대조"},
     }
     return {
@@ -242,6 +248,50 @@ def test_대상_청구항을_못_읽은_거절이유_번호를_따로_낸다():
     assert unchecked_rejections(F4Input.model_validate(_case_data()).oa) == []
 
 
+# ---- 같은 청구항을 여러 묶음이 고침 ----
+def test_뒤_묶음_초안을_싣지_않은_겹침이_결과와_확인_글에_드러난다():
+    both = copy.deepcopy(_answer("amendment_inventive"))
+    extra = copy.deepcopy(_answer("amendment_clarity")["claims"][0])
+    both["claims"].append(extra)  # 진보성 묶음(order 1)이 청구항 2도 고침
+    out, _ = _run(_clean_case(), amendments=(both, "amendment_clarity"))
+    assert [(o.claim, o.kept_unit, o.dropped_unit) for o in out.amendment_overlaps] == [
+        (2, UNIT_INVENTIVE, UNIT_CLARITY)
+    ]
+    assert out.status.checked != ALL_F4_CHECKED
+    assert "같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안 1개를 싣지 않음" in out.status.checked
+    assert "청구항 2" in out.status.checked and "직접 합치기 필요" in out.status.checked
+
+
+def test_세_묶음이_겹쳐_고치면_확인_글의_개수는_초안_수고_청구항은_중복_없이_나온다():
+    first = copy.deepcopy(_answer("amendment_inventive"))
+    first["claims"].append(copy.deepcopy(_answer("amendment_clarity")["claims"][0]))  # 청구항 1·2
+    clarity_both = copy.deepcopy(_answer("amendment_clarity"))
+    clarity_both["claims"].insert(0, copy.deepcopy(_answer("amendment_inventive")["claims"][0]))
+    third = "oa_1:42-4-3:c3"
+    data = _clean_case()
+    unit3 = copy.deepcopy(data["units"][1])
+    unit3.update(unit_id=third, order=3, representative_claim=3, claims=[3], read_with=[1, 2])
+    data["units"].append(unit3)
+    data["legal"].append(_confirmed_legal(third, 2))
+    clarity3 = copy.deepcopy(data["clarity"][0])  # 셋째 묶음도 F3 명확성 결과가 있어야 확인됨
+    clarity3.update(unit_id=third, claim=3)
+    data["clarity"].append(clarity3)
+    out, _ = _run(
+        data,
+        directions=("direction_inventive", "direction_clarity", "direction_clarity"),
+        opinions=("opinion_inventive", "opinion_clarity", "opinion_clarity"),
+        amendments=(first, clarity_both, clarity_both),
+    )
+    assert len(out.amendment_overlaps) == 4
+    # 버린 초안은 4개, 겹친 청구항은 1·2 두 개 (개수는 초안 수, 번호는 중복 없이)
+    assert "뒤 묶음 초안 4개를 싣지 않음(청구항 1, 2, 직접 합치기 필요)" in out.status.checked
+
+
+def test_겹침이_없으면_겹침_목록이_비어_있다():
+    out, _ = _run(_clean_case())
+    assert out.amendment_overlaps == []
+
+
 # ---- 지원 안 하는 거절이유 ----
 def _with_unsupported(data: dict) -> dict:
     """조문은 확인됐지만 지원 표에 없는 거절이유 3을 더한 사건."""
@@ -270,8 +320,12 @@ def test_지원_안_하는_거절이유는_번호를_남기고_status는_나빠�
     out, _ = _run(_with_unsupported(_clean_case()))
     assert out.unsupported_rejections == [3]
     assert out.flags == [Flag.NEEDS_HUMAN_REVIEW]  # 지원 안 하는 거절이유 때문에 새로 붙음
-    assert out.status == plain.status  # 지원 안 하는 거절이유 때문에 달라지지 않음
+    assert out.status.value == plain.status.value  # 값은 달라지지 않음 (글만 달라진다)
     assert out.uncovered == []  # 지원 안 하는 거절이유의 청구항은 누락으로 세지 않는다
+    # status 값은 같아도 확인 글은 "모두 확인됨"이 아니고, 다루지 않은 거절이유가 글로 드러난다
+    assert plain.status.checked == ALL_F4_CHECKED
+    assert out.status.checked != ALL_F4_CHECKED
+    assert "AI가 다루지 않은 거절이유 1개(직접 대응 필요)" in out.status.checked
 
 
 # ---- 확신 낮음 ----

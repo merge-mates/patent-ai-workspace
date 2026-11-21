@@ -200,7 +200,8 @@ def test_1등_후보에서_청구항별_방향을_계산해_정답과_맞춘다(
     assert main(env.args) == 0
     s = env.scores()
     m = s["metrics"]
-    assert m["handled_accuracy"] == 1.0  # ①: 네 줄 모두 다룸
+    # ①층 다룸 지표는 정답 문서에서 정의를 정한 뒤 다시 넣는다 (지금은 출력에 없음)
+    assert "handled_accuracy" not in m
     # ② 주 점수(물려받은 줄 제외): 청구항 1 보정+반박 맞음, 삭제한 청구항 2는 후보에 반박이
     # 있어도 보정만(정답 문서 2절 예시)이라 맞음, 명확성 청구항 2 맞음 -> 3/3
     assert m["direction_top1"] == 1.0
@@ -220,7 +221,6 @@ def test_1등_방향이_정답과_다르면_틀림으로_센다(env):
     # 진보성 줄(청구항 1·2)은 반박만으로 계산돼 틀리고, 명확성 줄만 맞음
     assert m["direction_top1"] == pytest.approx(1 / 3)
     assert m["direction_top1_with_inherited"] == pytest.approx(1 / 4)
-    assert m["handled_accuracy"] == 1.0  # 방향이 틀려도 다룬 것은 맞음
 
 
 def test_scores_json은_공통_스키마를_통과하고_번호를_담지_않는다(env):
@@ -251,9 +251,15 @@ def test_안_다룸_줄은_방향_채점에서_빼고_건수를_남긴다(env):
     s = env.scores()
     assert s["metrics"]["direction_top1"] == 1.0  # 그대로
     assert s["failures"]["excluded_not_handled"] == 1
-    # ①: 정답은 안 다룸, AI는 그 (거절이유, 청구항)을 어느 묶음에도 두지 않음 -> 일치
-    assert s["metrics"]["handled_accuracy"] == 1.0
     assert s["failures"]["uncovered_pairs"] == 1  # 그래도 대상 청구항이 빠진 것은 누락으로 센다
+
+
+def test_안_다룸_줄만_있는_정답이면_빈_점수로_성공하지_않는다(env, capsys):
+    env.put_gold(gold([row(1, 1, None, handled=False), row(2, 1, None, handled=False)]))
+    env.put_pred(*prediction())
+    assert main(env.args) == 1
+    assert "채점한 지표가 없다" in capsys.readouterr().err
+    assert not (env.out / "scores.json").exists()
 
 
 # ---- 누락 ----
@@ -264,7 +270,6 @@ def test_어느_묶음에도_없는_거절이유_청구항_쌍을_누락으로_�
         assert main(env.args) == 0
     s = env.scores()
     assert s["failures"]["uncovered_pairs"] == 1
-    assert s["metrics"]["handled_accuracy"] == pytest.approx(3 / 4)
     # 빠진 줄은 방향도 틀림: 주 점수는 그대로(물려받은 줄이라 제외), 포함 점수는 3/4
     assert s["metrics"]["direction_top1"] == 1.0
     assert s["metrics"]["direction_top1_with_inherited"] == pytest.approx(3 / 4)
@@ -300,7 +305,6 @@ def test_확신_낮은_묶음도_1번_후보가_맞으면_주_지표에서_맞�
     assert s["failures"]["excluded_ranked_only_abstain"] == 1
     assert s["failures"]["no_candidate"] == 0
     assert "direction_top1_strict" not in m
-    assert m["handled_accuracy"] == 1.0
     assert s["failures"]["uncovered_pairs"] == 0
 
 
@@ -472,7 +476,6 @@ def test_예측이_없는_OA는_0점이고_실패_유형에_남는다(env, caplo
     s = env.scores()
     assert s["n"] == 2 and s["failures"]["missing_prediction"] == 1
     # OA 한 통이 한 표: (점수 + 0) / 2
-    assert s["metrics"]["handled_accuracy"] == pytest.approx(0.5)
     assert s["metrics"]["direction_top1"] == pytest.approx(0.5)
     assert "예측이 없는" in caplog.text
 

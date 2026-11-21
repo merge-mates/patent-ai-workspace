@@ -12,7 +12,7 @@
 
 **가설**: 없음. 뼈대(묶음마다 방향 후보 → 의견서 초안 → 보정 청구항 초안)가 진짜 모델로 끝까지 도는지, 형식 검사와 누락 검사를 통과하는지 본다.
 **종류**: 기준선 (점수 없음)
-**설정**: `config/f4.yaml` 그대로 (claude-haiku-5-5, effort medium, max_tokens 64000, 후보 최대 3, `final_rejection_limit: false`).
+**설정**: 실행 당시 `config/f4.yaml` 그대로 (claude-haiku-5-5, effort medium, max_tokens 64000, 후보 최대 3, `final_rejection_limit: false`. 지금 기본값은 true).
 - **점수: 정답 없음.** F4 정답 폴더 `data/goldsets/tune/f4/`가 아직 없다 (사람 검수 뒤 생김). 채점기는 "정답 없음: F4 정답 폴더가 없다 (scores.json을 쓰지 않음)", 종료 코드 3으로 끝났다. 그래서 이 폴더에 scores.json이 없다. 아래는 실행 기록과 형식·누락 검사 결과뿐이다.
 - 1회만 돌렸다 (밤 작업 지시: C 1회).
 - 코드: feat/39-f4-skeleton 1731de3 + 스트리밍 전송층(fix/172 브랜치)을 합친 임시 워크트리.
@@ -61,11 +61,12 @@
 - 후보의 절반(45/91)이 확신 낮음이다. 대부분은 2·3등 후보이고 1등이 낮음인 단위는 2개다. F2 근거가 없는 것이 확신도에 영향을 줬는지는 모른다 (짐작).
 
 ## 남은 것
-- 정답(`data/goldsets/tune/f4/`)이 생기면 첫 점수: `direction_top1`(모델 1번 후보 = 후보 목록 첫째로 보류 묶음도 셈; 확신도별 `direction_top1_conf_*`), `handled_accuracy`, `needs_human_judgment_rate`, 누락 쌍.
+- 정답(`data/goldsets/tune/f4/`)이 생기면 첫 점수: `direction_top1`(모델 1번 후보 = 후보 목록 첫째로 보류 묶음도 셈; 확신도별 `direction_top1_conf_*`), `needs_human_judgment_rate`, 누락 쌍. ①층 다룸 지표는 정답 문서에서 정의를 정한 뒤 다시 넣음 (지금 채점기는 내지 않는다).
+- 첫 점수를 내기 전에, 지금 판(후보 순서 999759a, 판단 단위 e5e83b4 뒤)으로 다시 실행한다. 지금 기록된 결과는 그 앞 판이다. `config/f4.yaml`의 `final_rejection_limit` 기본값이 11/21에 true로 바뀌었으니(이 실행은 false), 다시 실행할 때 스위치 값을 정해 새 실험 폴더의 `config.yaml`에 적는다.
 - 보정 프롬프트에 명세서 전체를 넣는 방식(입력 토큰의 58%)을 줄일지.
 - 같은 설정 2회 이상 돌려 흔들림 재기. `final_rejection_limit` 켬 실행은 하지 않았다 (최후거절이유통지 tune 사건도 없음).
 - F4 입력에 `claims_status`(OA 당시 청구항 판 확인 여부)를 실을 칸이 없다.
 
 ## 다시 내는 법
-- 실행: `uv run python ~/Desktop/project/patent_ai/repo/work/overnight_1120/f4_run.py <out> --workers 4` (git 밖. 스트리밍 전송층이 있는 판에서. F3 결과 폴더 필요)
+- 실행: `uv run python <repo>/work/<실행 폴더>/f4_run.py <out> --workers 4` (git 밖. 스트리밍 전송층이 있는 판에서. F3 결과 폴더 필요)
 - 채점: `uv run python eval/run_eval.py --config experiments/m3-f4-skeleton/config.yaml --predictions <out>` (정답 폴더가 없으면 "정답 없음", 종료 코드 3)

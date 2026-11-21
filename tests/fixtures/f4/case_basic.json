@@ -701,18 +701,7 @@
         "checked": "원문 대조",
         "searched_scope": null
       },
-      "evidence": [
-        {
-          "document_id": "spec_1",
-          "page": 2,
-          "location": "[0012]",
-          "raw_text": "적당한 간격은 1mm 이상 2mm 이하를 말한다",
-          "edition": null,
-          "checked_on": null,
-          "chunk_id": null,
-          "index_version": null
-        }
-      ],
+      "evidence": [],
       "origin": "ai_generated",
       "needs_recheck": false,
       "recheck_reason": null,

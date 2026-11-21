@@ -46,6 +46,7 @@ class PredSearch(_Loose):
     unit_id: str
     claim: int
     element_no: int
+    element_claim: int | None = None  # 구성요소가 있는 청구항 (옛 예측엔 없다)
     doc_id: str
     round: int = 1
     hit_chunk_ids: list[str] = Field(default_factory=list)

@@ -41,6 +41,7 @@ from eval.f3.pred import F3Pred
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import CiteMatcher
+from eval.retrieval.metrics import random_hit, random_recall
 from patent_ai.core.f3_claim_compare.textmatch import find_all_spans
 from patent_ai.retrieval.repository import (
     ChunkRepository,
@@ -110,18 +111,25 @@ def _mean(xs: list[float]) -> float | None:
 # ---- ① 심사관 지정 위치 회수율 ----
 def _chunk_ids(
     pred: F3Pred, rejection: int, claim: int, doc_id: str
-) -> tuple[set[str], set[str], list[int]]:
+) -> tuple[set[str], set[str], list[int], list[list[int]]]:
     """그 거절이유 × 청구항 × 인용문헌에서 찾은 것.
 
-    돌려주는 값: (검색이 가져온 조각, 모델이 고른 조각, 찾은 구성요소 번호).
+    돌려주는 값: (검색이 가져온 조각, 모델이 고른 조각, 이 청구항 자기 구성요소 번호,
+    부모 청구항에서 온 구성요소 [청구항, 번호]).
     """
     units = {u.unit_id for u in pred.units if u.rejection == rejection}
     searched: set[str] = set()
     elements: set[int] = set()
+    parents: set[tuple[int, int]] = set()
     for log in pred.search_log:
         if log.unit_id in units and log.claim == claim and log.doc_id == doc_id:
             searched |= set(log.hit_chunk_ids)
-            elements.add(log.element_no)
+            # 번호는 구성요소가 있는 청구항 안의 순번이라, 부모 것은 청구항을 붙여 따로 둔다.
+            # element_claim이 없는 옛 예측은 자기 것으로 본다
+            if log.element_claim is None or log.element_claim == claim:
+                elements.add(log.element_no)
+            else:
+                parents.add((log.element_claim, log.element_no))
     selected: set[str] = set()
     for table in pred.comparisons:
         if table.unit_id not in units:
@@ -130,7 +138,7 @@ def _chunk_ids(
             if row.claim != claim:
                 continue
             selected |= {e.chunk_id for e in row.evidence if e.document_id == doc_id and e.chunk_id}
-    return searched, selected, sorted(elements)
+    return searched, selected, sorted(elements), [list(p) for p in sorted(parents)]
 
 
 def _score_cite(
@@ -167,14 +175,14 @@ def _score_cite(
         if not kept:
             failures["excluded_gold_not_in_scope"] += 1
             continue
-        marks = per_oa.setdefault(dispatch, {k: [] for k in ("sh", "sr", "lh", "lr")})
+        marks = per_oa.setdefault(dispatch, {k: [] for k in ("sh", "sr", "lh", "lr", "rr", "rh")})
         pred = by_dispatch.get(dispatch)
         if pred is None:
             missing.add(dispatch)
-            searched, selected, elements = set(), set(), []
+            searched, selected, elements, parents = set(), set(), [], []
         else:
-            searched, selected, elements = _chunk_ids(pred, rejection, claim, doc_id)
-            if not elements:
+            searched, selected, elements, parents = _chunk_ids(pred, rejection, claim, doc_id)
+            if not elements and not parents:
                 failures["not_searched_rows"] += 1  # 그 청구항 × 문헌을 찾은 기록이 없다 (0점)
         found_search = sum(1 for m in kept if m & searched)
         found_selected = sum(1 for m in kept if m & selected)
@@ -182,8 +190,18 @@ def _score_cite(
         marks["sr"].append(found_search / len(kept))
         marks["lh"].append(float(found_selected > 0))
         marks["lr"].append(found_selected / len(kept))
-        if pred is not None and found_search == 0:
-            # 못 찾은 질문: 검색 단계가 정답 위치를 하나도 못 덮음
+        # 무작위 기준선: 같은 범위(N개)에서 검색이 가져온 만큼(k)을 아무렇게나 뽑았을 때의 기대값.
+        # 가져온 조각이 0개면 무작위도 0 (함수가 k=0을 막는다)
+        if searched:
+            n_scope, k_got = len(scope), len(searched)
+            marks["rr"].append(random_recall(n_scope, [len(m) for m in kept], k_got))
+            marks["rh"].append(random_hit(n_scope, len(set().union(*kept)), k_got))
+        else:
+            marks["rr"].append(0.0)
+            marks["rh"].append(0.0)
+        if pred is not None and (elements or parents) and found_search == 0:
+            # 못 찾은 질문: 검색을 했는데 정답 위치를 하나도 못 덮음
+            # (검색 기록이 없는 줄은 검색을 안 한 것이라 CQ가 아니다. not_searched_rows로만 센다)
             # (질의·정답 위치가 있어 git 밖에만 쓴다)
             cq.append(
                 {
@@ -195,6 +213,7 @@ def _score_cite(
                     "claim": claim,
                     "doc_id": doc_id,
                     "element_nos": elements,
+                    "parent_element_nos": parents,
                     "query": row.query,
                     "items": [i.model_dump(mode="json") for i in row.items],
                     "found": sorted(searched),
@@ -217,12 +236,18 @@ def _score_cite(
         "sr": "search_recall",
         "lh": "selected_hit",
         "lr": "selected_recall",
+        "rr": "random_search_recall",
+        "rh": "random_search_hit",
     }
     metrics = {
         name: _mean([m for oa in per_oa.values() if (m := _mean(oa[k])) is not None])
         for k, name in names.items()
     }
-    return {k: v for k, v in metrics.items() if v is not None}, set(per_oa), cq
+    metrics = {k: v for k, v in metrics.items() if v is not None}
+    # 검색이 무작위보다 몇 배 나은가 (세트 평균끼리 나눔). 분모가 0이면 score_f3가 뺀다
+    if metrics.get("random_search_recall"):
+        metrics["search_recall_ratio"] = metrics["search_recall"] / metrics["random_search_recall"]
+    return metrics, set(per_oa), cq
 
 
 def _check_not_contaminated(preds: dict[str, F3Pred]) -> None:
@@ -282,7 +307,7 @@ def _novelty(preds: dict[str, F3Pred]) -> tuple[int, int]:
 def _score_clarity(
     golds: list[F1Gold], run: RunInputs, failures: dict[str, int], missing: set[str]
 ) -> tuple[float | None, set[str]]:
-    """(문구 위치 일치율, 채점한 OA 키). 문구 점수 -> OA 평균 -> 세트 평균."""
+    """(문구 검토 일치율, 채점한 OA 키). 문구 점수 -> OA 평균 -> 세트 평균."""
     per_oa: dict[str, list[float]] = {}
     for g in golds:
         key = f"{g.application_number.value}_{g.dispatch_number.value}"
@@ -354,13 +379,23 @@ def score_f3(
     missing: set[str] = set()  # 정답은 있는데 예측이 없는 OA (발송번호). 0점으로 센다
 
     if cite_rows is None:
-        for name in ("search_hit", "search_recall", "selected_hit", "selected_recall"):
+        for name in (
+            "search_hit",
+            "search_recall",
+            "selected_hit",
+            "selected_recall",
+            "random_search_recall",
+            "random_search_hit",
+            "search_recall_ratio",
+        ):
             skipped[name] = NO_GOLD
     else:
         cite_metrics, oas, cq = _score_cite(
             cfg, cite_rows, run.preds, repo, failures, stamp, missing
         )
         metrics.update(cite_metrics)
+        if "search_recall_ratio" not in cite_metrics:
+            skipped["search_recall_ratio"] = "무작위 기준선이 0이라 나눌 수 없음"
         scored |= oas
         failures["cq_candidates"] = len(cq)
 
@@ -371,16 +406,16 @@ def score_f3(
         logger.warning("신규성 대비표 %d개가 인용문헌 하나와만 대비하지 않았다", bad)
 
     if f1_golds is None:
-        skipped["clarity_location_accuracy"] = NO_GOLD
+        skipped["clarity_term_reviewed"] = NO_GOLD
     else:
         accuracy, oas = _score_clarity(f1_golds, run, failures, missing)
         if accuracy is None:
             why = (
                 "청구항 글자 입력 없음" if failures["clarity_no_claim_text"] else "채점할 문구 없음"
             )
-            skipped["clarity_location_accuracy"] = why
+            skipped["clarity_term_reviewed"] = why
         else:
-            metrics["clarity_location_accuracy"] = accuracy
+            metrics["clarity_term_reviewed"] = accuracy
             scored |= {_dispatch(k) for k in oas}
 
     failures["missing_prediction"] = len(missing)

@@ -36,6 +36,7 @@ services:
       - ./alembic.ini:/app/alembic.ini:ro
       - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
+      - ./work:/app/work
     depends_on:
       db:
         condition: service_healthy

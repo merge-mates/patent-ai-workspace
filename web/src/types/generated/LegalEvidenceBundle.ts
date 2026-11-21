@@ -68,8 +68,9 @@ export type ChunkId1 = string
 export type FurtherReviewWhy =
   'opposite_holding' | 'edition_unknown' | 'other_edition' | 'edition_out_of_scope' | 'not_used_candidate'
 export type Note = string | null
-export type FurtherReview = FurtherReview1[]
 export type IndexVersion1 = string | null
+export type FurtherReview = FurtherReview1[]
+export type IndexVersion2 = string | null
 export type AsOf1 = string | null
 export type Queries = number
 export type Hits = number
@@ -169,13 +170,14 @@ export interface FurtherReview1 {
   chunk_id: ChunkId1
   why: FurtherReviewWhy
   note: Note
+  index_version: IndexVersion1
 }
 /**
  * 자료 종류 하나를 어떻게 찾았나 (못 찾음 ≠ 없음을 가르는 기록).
  */
 export interface SearchLogEntry {
   source_kind: LegalSourceKind
-  index_version: IndexVersion1
+  index_version: IndexVersion2
   as_of: AsOf1
   queries: Queries
   hits: Hits

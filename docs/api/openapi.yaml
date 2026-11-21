@@ -1,19 +1,356 @@
-# 서버 코드(이슈 #12·#56)가 생기면 FastAPI가 만든 생성본으로 바꾼다. 손으로 고치지 않는다.
-# 그 전까지는 /health 자리만 둔다.
+# 서버 코드가 만든 생성본이다. 손으로 고치지 않는다: uv run python scripts/export_openapi.py
 openapi: 3.1.0
 info:
-  title: Patent Professional AI Workspace API
+  title: Patent AI Workspace API
   version: 0.1.0
 paths:
   /health:
     get:
-      summary: 서버가 살아 있는지
+      summary: Health
+      description: '서버가 떠 있는지만 본다. DB 확인은 이슈 #55에서 더한다.'
+      operationId: health_health_get
       responses:
-        "200":
-          description: OK
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
+                additionalProperties:
+                  type: string
                 type: object
-                properties:
-                  status: { type: string, example: ok }
+                title: Response Health Health Get
+  /cases:
+    get:
+      summary: List Cases
+      operationId: list_cases_cases_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/CaseSummary'
+                type: array
+                title: Response List Cases Cases Get
+    post:
+      summary: Create Case
+      operationId: create_case_cases_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_create_case_cases_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedCase'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /cases/{case_id}:
+    get:
+      summary: Get Case
+      operationId: get_case_cases__case_id__get
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /cases/{case_id}/oas:
+    post:
+      summary: Add Oa
+      operationId: add_oa_cases__case_id__oas_post
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_add_oa_cases__case_id__oas_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedOA'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}:
+    get:
+      summary: Get Oa
+      operationId: get_oa_oas__oa_id__get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OADetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Body_add_oa_cases__case_id__oas_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_add_oa_cases__case_id__oas_post
+    Body_create_case_cases_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_create_case_cases_post
+    CaseDetail:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        case_name:
+          type: string
+          title: Case Name
+        oas:
+          items:
+            $ref: '#/components/schemas/OARefOut'
+          type: array
+          title: Oas
+      type: object
+      required:
+      - case_id
+      - case_name
+      - oas
+      title: CaseDetail
+    CaseSummary:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        case_name:
+          type: string
+          title: Case Name
+        application_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Application Number
+        latest_oa:
+          $ref: '#/components/schemas/OARefOut'
+        rejection_kinds:
+          items:
+            type: string
+          type: array
+          title: Rejection Kinds
+        run_state:
+          type: string
+          title: Run State
+        status:
+          type: string
+          title: Status
+        review_items_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Review Items Count
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - case_id
+      - case_name
+      - application_number
+      - latest_oa
+      - rejection_kinds
+      - run_state
+      - status
+      - review_items_count
+      - updated_at
+      title: CaseSummary
+    CreatedCase:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - case_id
+      - oa_id
+      - run_id
+      title: CreatedCase
+    CreatedOA:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - oa_id
+      - run_id
+      title: CreatedOA
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LatestRun:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        state:
+          type: string
+          title: State
+        current_step:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Step
+      type: object
+      required:
+      - run_id
+      - state
+      - current_step
+      title: LatestRun
+    OADetail:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        case_id:
+          type: string
+          title: Case Id
+        case_name:
+          type: string
+          title: Case Name
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        latest_run:
+          anyOf:
+          - $ref: '#/components/schemas/LatestRun'
+          - type: 'null'
+        dispatch_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dispatch Number
+      type: object
+      required:
+      - oa_id
+      - case_id
+      - case_name
+      - document_id
+      - latest_run
+      - dispatch_number
+      title: OADetail
+    OARefOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        notice_kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notice Kind
+      type: object
+      required:
+      - oa_id
+      - notice_kind
+      title: OARefOut
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

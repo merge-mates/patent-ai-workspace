@@ -340,11 +340,34 @@ def test_진보성_요약은_어느_문헌에도_개시되지_않은_구성요�
         out, _, _ = _run(_inventive(cited), answer)
     summary = out.tables[0].summary
     assert summary.kind == "inventive_step"
-    assert summary.differences == [f"청구항 1 [구성 1-2] {TANK}"]
+    # 근거 없는 차이 후보는 "조회 범위 내 없음"과 찾아본 범위를 붙인다 (없다는 판단이 아님)
+    assert summary.differences == [
+        f"청구항 1 [구성 1-2] {TANK} "
+        "(조회 범위 내 없음: D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2), 없다는 판단 아님)"
+    ]
     assert summary.combination == "D1에 D2를 결합"  # 심사관 논리 값 그대로
     assert summary.effect_candidates == []
     assert Flag.NEEDS_HUMAN_REVIEW in out.tables[0].flags
     assert any("효과 후보" in r.getMessage() for r in caplog.records)
+
+
+def test_두_문헌_모두_근거_없는_차이_후보면_찾아본_범위를_세미콜론으로_이어_붙인다():
+    cited = [citation("D1", D1), citation("D2", D2)]
+    answer = _answer(
+        [
+            _row(1, "D1", "difference_candidate"),
+            _row(1, "D2", "difference_candidate"),
+            _row(2, "D1", "disclosed", (P31, "물통은 물을 담아 둔다")),
+            _row(2, "D2", "unclear"),
+        ]
+    )
+    out, _, _ = _run(_inventive(cited), answer)
+    d1_scope = "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2)"
+    d2_scope = "D2 조각 1개 중 hybrid 상위 1 (cite-idx-v2)"
+    assert out.tables[0].summary.differences == [
+        f"청구항 1 [구성 1-1] {SENSOR} "
+        f"(조회 범위 내 없음: {d1_scope}; {d2_scope}, 없다는 판단 아님)"
+    ]
 
 
 # ---- 신규성 ----
@@ -483,7 +506,10 @@ def test_청구항_판이_확인되지_않아도_요약에서_차이_후보가_�
     novelty, _, _ = _run(_novelty([citation("D1", D1)]), ONE_DIFFERENT, config)
     assert novelty.tables[0].summary.verdict == NoveltyVerdict.DIFFERENT
     inventive, _, _ = _run(_inventive(), ONE_DIFFERENT, config)
-    assert inventive.tables[0].summary.differences == [f"청구항 1 [구성 1-2] {TANK}"]
+    assert inventive.tables[0].summary.differences == [
+        f"청구항 1 [구성 1-2] {TANK} "
+        "(조회 범위 내 없음: D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2), 없다는 판단 아님)"
+    ]
 
 
 def _splits_with_lost_element():
@@ -603,3 +629,69 @@ def test_모르는_검색_방식_이름은_조용히_바꾸지_않고_설정_오
     settings = config.settings.model_copy(update={"search": search})
     with pytest.raises(ModelConfigError, match="fake"):
         _run(_inventive(), [], config.model_copy(update={"settings": settings}))
+
+
+# ---- 대비할 문헌이 없는 청구항은 기록 없이 빠지지 않는다 ----
+SPLITS_1_3 = {1: SPLITS[1], 3: split(3, [SENSOR], [1])}
+
+
+def test_대비할_문헌이_없는_청구항은_보류와_경고를_남긴다(caplog):
+    # 청구항 3의 줄은 D2만 적용했는데 D2는 JP라 대비할 수 없다
+    result = oa(
+        [rejection(1, "29-2", [1, 3], [citation("D1", D1), citation("D2", "JP1A", country="JP")])],
+        [claim_row(1, 1, ["D1"]), claim_row(3, 1, ["D2"])],
+    )
+    answer = _answer([_row(1, "D1", "unclear"), _row(2, "D1", "unclear")])
+    with caplog.at_level(logging.WARNING):
+        out, _, _ = _run(result, answer, splits=SPLITS_1_3)
+    (table,) = out.tables
+    assert {r.claim for r in table.rows} == {1}
+    held = [h for h in out.held_tasks if h.task.endswith(":claim3")]
+    assert len(held) == 1 and held[0].task == f"f3_compare:{table.unit_id}:claim3"
+    assert "청구항 3" in held[0].waiting_for
+    assert any("청구항 3" in r.getMessage() for r in caplog.records)
+
+
+def test_신규성은_다른_문헌_묶음에서_대비된_청구항은_보류하지_않는다():
+    # 청구항 3은 D2에만 적용: D1 묶음에서는 비지만 D2 묶음에서 대비된다
+    result = oa(
+        [rejection(1, "29-1-1", [1, 3], [citation("D1", D1), citation("D2", D2)])],
+        [claim_row(1, 1, ["D1", "D2"]), claim_row(3, 1, ["D2"])],
+    )
+    answers = [
+        _answer([_row(1, "D1", "unclear"), _row(2, "D1", "unclear")]),
+        _answer([_row(1, "D2", "unclear"), _row(2, "D2", "unclear")]),
+        _answer([_row(1, "D2", "unclear")], claim=3),
+    ]
+    out, _, _ = _run(result, answers, splits=SPLITS_1_3)
+    assert len(out.tables) == 2
+    assert not [h for h in out.held_tasks if h.task.endswith(":claim3")]
+
+
+def test_진보성_차이점_불명은_불명으로_적고_근거_있는_차이_후보는_꾸밈이_없다():
+    unclear = _answer([_row(1, "D1", "disclosed", (P23, FULL23)), _row(2, "D1", "unclear")])
+    out, _, _ = _run(_inventive(), unclear)
+    assert out.tables[0].summary.differences == [f"청구항 1 [구성 1-2] {TANK} (불명)"]
+    with_evidence = _answer(
+        [
+            _row(1, "D1", "disclosed", (P23, FULL23)),
+            _row(2, "D1", "difference_candidate", (P31, "물통은 물을 담아 둔다")),
+        ]
+    )
+    out, _, _ = _run(_inventive(), with_evidence)
+    assert out.tables[0].summary.differences == [f"청구항 1 [구성 1-2] {TANK}"]
+
+
+def test_진보성_차이점은_근거_있는_차이_후보_줄이_하나라도_있으면_꾸밈이_없다():
+    # 구성 1-2: D1은 근거 없는 차이 후보, D2는 근거 있는 차이 후보
+    cited = [citation("D1", D1), citation("D2", D2)]
+    answer = _answer(
+        [
+            _row(1, "D1", "disclosed", (P23, FULL23)),
+            _row(2, "D1", "difference_candidate"),
+            _row(1, "D2", "unclear"),
+            _row(2, "D2", "difference_candidate", (P10, "제어부는 밸브를 연다")),
+        ]
+    )
+    out, _, _ = _run(_inventive(cited), answer)
+    assert out.tables[0].summary.differences == [f"청구항 1 [구성 1-2] {TANK}"]

@@ -1,6 +1,7 @@
 """F4 공용 뼈대 테스트: 입력 모델, 빈 법률 근거 묶음, 설정 읽기.
 
-기대값은 구현 계획 C1과 design_f4.md 1·7·8절에서 가져왔다.
+기대값은 구현 계획 C1과 `docs/features/F4/design.md`
+3-1절(입력·빈 법률 근거)·7-2절(설정)에서 가져왔다.
 """
 
 import json
@@ -77,7 +78,6 @@ def test_저장소_설정의_방향_후보_단계_값():
     assert (cfg.model, cfg.effort, cfg.max_tokens) == ("claude-haiku-5-5", "medium", 64000)
     assert cfg.prompt == "prompts/f4/direction.md"
     options = load_f4_options()
-    assert options.final_rejection_limit is False  # 기본은 끔 (동작은 C7)
     assert options.max_units >= 1 and options.max_candidates >= 1
     assert options.min_basis_chars >= 1  # 명세서 근거 글자 길이 하한
     # 묶음마다 첫 호출 + 다시 한 번
@@ -87,6 +87,10 @@ def test_저장소_설정의_방향_후보_단계_값():
 def _write(tmp_path: Path, body: str) -> Path:
     (tmp_path / "f4.yaml").write_text(body, encoding="utf-8")
     return tmp_path
+
+
+def test_저장소_설정은_최후거절이유_보정_제한_스위치가_기본으로_켜져_있다():
+    assert load_f4_options().final_rejection_limit is True
 
 
 def test_설정_파일에서_스위치와_상한을_읽는다(tmp_path):

@@ -17,7 +17,7 @@ from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
-from patent_ai.core.schemas.comparison import ParagraphSource
+from patent_ai.core.schemas.comparison import NoveltyVerdict, ParagraphSource
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 from tests.core.f3.fakes import OK, bad, citation, claim_row, oa, paragraph, rejection, split
 
@@ -192,9 +192,13 @@ def test_요약은_부모에서_온_구성요소도_그_종속항의_것으로_�
     out, _, _, _ = _run(MIXED, ANSWERS, unit_index=1)
     differences = out.tables[0].summary.differences
     # 청구항 3에서는 부모의 물통이 차이 후보였다. 청구항 5에서는 개시됨이라 빠진다
-    assert f"청구항 1 [구성 1-2] {TANK} (청구항 3에서 인용)" in differences
+    scope = "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v2)"
+    assert (
+        f"청구항 1 [구성 1-2] {TANK} (조회 범위 내 없음: {scope}, 없다는 판단 아님)"
+        " (청구항 3에서 인용)"
+    ) in differences
     assert not any("청구항 5에서 인용" in d for d in differences)
-    assert f"청구항 3 [구성 3-1] {LID}" in differences
+    assert f"청구항 3 [구성 3-1] {LID} (불명)" in differences
 
 
 def test_독립항이_대상_밖이라는_이유로는_경고도_표시도_따로_붙이지_않는다(caplog):
@@ -301,6 +305,8 @@ def test_신규성은_문헌마다_따져_부모가_그_문헌과_대비되지_�
         "청구항 1 [구성 1-2]",
         "청구항 3 [구성 3-1]",
     ]
+    # 가지가 아닌 보통 종속항 표에는 가지 보류 문구가 붙지 않는다
+    assert _BRANCH_NOTE not in d2_table.summary.reason
 
 
 def test_진보성은_종속항에만_붙은_문헌이_있으면_부모_구성요소를_넣는다():
@@ -355,3 +361,49 @@ def test_부모를_나누지_못했으면_경고하고_표를_input_unverified�
     assert table.status.reason == UnverifiedReason.INPUT_UNVERIFIED
     assert Flag.NEEDS_HUMAN_REVIEW in table.flags
     assert any("부모" in r.getMessage() and "청구항 1" in r.getMessage() for r in caplog.records)
+
+
+def _branch_splits():
+    return {
+        1: split(1, [SENSOR, TANK]),
+        2: split(2, [LID], [1]),
+        3: split(3, [BASE], [1]),
+        4: split(4, [HANDLE], [2, 3]),  # 제2항 또는 제3항에 있어서
+    }
+
+
+_BRANCH_NOTE = "부모 청구항 구성요소를 대비하지 않음(인용 가지 여럿), 판단 아님"
+
+
+def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_나가지_않고_보류한다(caplog):
+    result = oa([rejection(1, "29-1-1", [4], [citation("D1", D1)])])
+    answer = _answer(4, (1, "disclosed", (P31, FULL31)))
+    with caplog.at_level(logging.WARNING):
+        out, _, _, _ = _run(result, [answer], splits=_branch_splits())
+    (table,) = out.tables
+    # 요약이 "차이 없음"이어도 표 전체는 확인됨이 아니다 (이 전제가 이 테스트의 핵심)
+    assert table.summary.verdict == NoveltyVerdict.NO_DIFFERENCE
+    assert _BRANCH_NOTE in table.summary.reason
+    assert any("인용 가지가 여럿" in r.getMessage() for r in caplog.records)
+    assert _locations(table, 4) == ["청구항 4 [구성 4-1]"]
+    (row,) = table.rows
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+    assert table.status.value == StatusValue.UNVERIFIED
+    assert [h.task for h in out.held_tasks] == [f"f3_compare:{table.unit_id}:claim4:branch"]
+    assert out.held_tasks[0].waiting_for == "인용 가지마다 대비 (직접 검토 필요)"
+
+
+def test_인용_가지가_여럿이어도_부모가_이미_대비됐으면_보류도_경고도_없다(caplog):
+    result = oa([rejection(1, "29-2", [1, 2, 3, 4], [citation("D1", D1)])])
+    answers = [
+        _answer(1, (1, "unclear"), (2, "unclear")),
+        _answer(2, (1, "unclear")),
+        _answer(3, (1, "unclear")),
+        _answer(4, (1, "unclear")),
+    ]
+    with caplog.at_level(logging.WARNING):
+        out, _, _, _ = _run(result, answers, splits=_branch_splits())
+    assert out.held_tasks == []
+    assert not any("인용 가지가 여럿" in r.getMessage() for r in caplog.records)
+    assert out.tables[0].status.reason != UnverifiedReason.INPUT_UNVERIFIED

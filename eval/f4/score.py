@@ -1,8 +1,7 @@
 """F4 대응 방향 채점 (①②층). 규칙은 docs/evaluation/f4-direction-gold.md 2·3·5절.
 
 채점 단위는 정답 한 줄 = OA 시점 청구항 × 거절이유. 청구항 점수 -> OA 평균 -> 세트 평균.
-- ① 다뤘나: 정답 `handled`와, AI가 그 (거절이유, 청구항)을 묶음에 두고 그 묶음 결과
-  (후보나 직접 판단 필요)를 냈는지가 같은가
+- ① 다뤘나: 지표 없음. 정의를 정답 문서에서 정한 뒤 다시 넣는다 (`handled`는 ② 대상 가르기용)
 - ② 모델 1번 후보 거친 방향 일치율 (주 지표 direction_top1): 모델이 낸 1번 후보 =
   방향 후보 목록의 첫째(candidates[0])의 청구항별 보정 종류에서 계산한 방향이 정답과 같은가.
   확신 낮음(보류) 묶음도 빼지 않고 센다. 후보가 0개인 묶음은 틀림으로 센다.
@@ -137,7 +136,6 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
 class OAScore:
     """OA 한 통의 줄별 맞음/틀림. scores에는 합친 값만 싣는다."""
 
-    handled: list[bool] = field(default_factory=list)  # ①
     direction: list[bool] = field(default_factory=list)  # ② 주 점수 (1번 후보, 물려받은 줄 제외)
     direction_all: list[bool] = field(default_factory=list)  # ② 물려받은 줄 포함
     direction_ranked_only: list[bool] = field(default_factory=list)  # 순위 1 후보, 보류 줄 뺌
@@ -154,8 +152,7 @@ def score_oa(g: F4Gold, pred: F4Pred | None) -> OAScore:
         reading = predicted(pred, row) if pred is not None else None
         if pred is not None and reading is None:
             s.failures["uncovered_pairs"] += 1
-        # ① 다뤘나: 묶음에 있고 결과(후보나 직접 판단 필요)가 있으면 AI는 다룬 것
-        s.handled.append(pred is not None and (reading is not None) == row.handled)
+        # ①층 다룸 지표는 정답 문서에서 정의를 정한 뒤 다시 넣는다 (지금은 재지 않음)
         # ② 거친 방향
         if not row.handled:
             s.failures["excluded_not_handled"] += 1
@@ -233,7 +230,6 @@ def score_f4(
 
     metrics: dict[str, float] = {}
     for metric, name in (
-        ("handled_accuracy", "handled"),
         ("direction_top1", "direction"),
         ("direction_top1_with_inherited", "direction_all"),
         ("direction_top1_ranked_only", "direction_ranked_only"),
@@ -259,9 +255,12 @@ def score_f4(
         {c: sum(len(s.by_confidence[c]) for s in per_oa) for c in CONFIDENCES},
     )
 
-    if "handled_accuracy" not in metrics:
+    if not any(g.claim_rows for g in golds.values()):
         # 정답 줄이 하나도 없으면 잰 것이 없다. 빈 점수로 성공하지 않는다
         raise EvalError("F4 정답 청구항 줄이 0개라 채점한 것이 없다")
+    if not metrics:
+        # 줄은 있어도 전부 안 다룸이면 ② 대상이 없어 지표가 하나도 안 나온다
+        raise EvalError("F4 채점한 지표가 없다 (정답 줄이 모두 안 다룸이라 ② 대상이 0개)")
 
     return {
         "experiment": cfg.experiment,

@@ -160,6 +160,8 @@ class _View:
     parents: list[int] = field(default_factory=list)  # 구성요소를 빌려 온 부모 청구항
     # 빌려 올 부모의 나누기 결과가 비었거나 확인되지 않음: 표를 input_unverified로 둔다
     parent_unverified: bool = False
+    # 인용 가지가 여럿("제2항 또는 제3항")인데 빌려야 할 부모가 남아 못 빌림 (보류를 만든다)
+    branch_blocked: bool = False
 
 
 def _has_branch(claim: int, splits: Mapping[int, SplitClaim]) -> bool:
@@ -183,8 +185,8 @@ def _carried_parents(
     compared: Mapping[int, set[str]],
     labels: set[str],
     splits: Mapping[int, SplitClaim],
-) -> list[int]:
-    """구성요소를 빌려 와야 하는 부모 청구항들 (번호 순).
+) -> tuple[list[int], bool]:
+    """(구성요소를 빌려 와야 하는 부모 청구항들(번호 순), 가지 때문에 못 빌렸는지).
 
     인용을 거슬러 올라간 앞 청구항 중, 이 묶음에서 이미 대비되는 청구항(과 그 앞 청구항들)은 뺀다.
     "이미 대비됨" = 그 부모가 이 묶음에 있고 이 종속항이 대비되는 문헌을 모두 대비받음
@@ -194,19 +196,21 @@ def _carried_parents(
     """
     family = ancestors(claim, splits)
     if not family:
-        return []
-    if _has_branch(claim, splits):
-        # 가지마다 따로 대비하는 일은 아직 없다. 가지 합집합을 한 청구항처럼 대비하지 않는다
-        logger.warning(
-            "compare 청구항 %d: 인용 가지가 여럿이라 부모 구성요소를 넣지 않음 (직접 검토 필요)",
-            claim,
-        )
-        return []
+        return [], False
     covered: set[int] = set()
     for a in family:
         if splits[a].elements and labels <= compared.get(a, set()):
             covered |= {a} | (ancestors(a, splits) or set())
-    return sorted(family - covered)
+    need = sorted(family - covered)
+    if need and _has_branch(claim, splits):
+        # 가지마다 따로 대비하는 일은 아직 없다. 가지 합집합을 한 청구항처럼 대비하지 않고,
+        # 부모 없이 확인됨으로 나가지 않게 "못 빌림"으로 알린다 (부모가 이미 대비됐으면 통과)
+        logger.warning(
+            "compare 청구항 %d: 인용 가지가 여럿이라 부모 구성요소를 넣지 않음 (직접 검토 필요)",
+            claim,
+        )
+        return [], True
+    return need, False
 
 
 def _make_view(
@@ -216,8 +220,8 @@ def _make_view(
     config: F3Config,
 ) -> _View:
     texts = config.inputs.claims_at_oa
-    parents = _carried_parents(split.claim, compared, compared[split.claim], splits)
-    unverified_parent = False
+    parents, blocked = _carried_parents(split.claim, compared, compared[split.claim], splits)
+    unverified_parent = blocked
     for p in parents:
         if not splits[p].elements or splits[p].status.value != StatusValue.CONFIRMED:
             # 조용히 빠지지 않게: 경고를 남기고 표를 확인되지 않음으로 둔다
@@ -236,7 +240,7 @@ def _make_view(
         claim_text = "\n\n".join(shown)
     else:
         claim_text = texts.get(split.claim, "")
-    return _View(split.claim, items, claim_text, parents, unverified_parent)
+    return _View(split.claim, items, claim_text, parents, unverified_parent, blocked)
 
 
 class _CachedSearcher:
@@ -713,6 +717,26 @@ def _element_marks(rows: list[ComparisonRow], lost: set[_Key]) -> dict[_Key, tup
     return marks
 
 
+def _status_note(rows: list[ComparisonRow], key: _Key, mark: Judgment) -> str:
+    """차이점 글 뒤에 붙일 상태. 못 찾음 ≠ 없음이라, 근거 없는 차이 후보와 불명은 그대로 밝힌다.
+
+    근거 있는 차이 후보 줄이 하나라도 있으면 꾸밈 없이 둔다 (덮기 전 줄로 본다).
+    """
+    if mark == Judgment.UNCLEAR:
+        return " (불명)"
+    mine = [
+        r
+        for r in rows
+        if (r.claim, r.element_location) == key and r.judgment == Judgment.DIFFERENCE_CANDIDATE
+    ]
+    if any(r.evidence for r in mine):
+        return ""
+    # 찾아본 범위는 줄 status에 이미 있는 글을 그대로 쓴다 (문헌이 여럿이면 중복 없이 모은다)
+    scopes = list(dict.fromkeys(r.status.searched_scope for r in mine if r.status.searched_scope))
+    where = f": {'; '.join(scopes)}" if scopes else ""
+    return f" (조회 범위 내 없음{where}, 없다는 판단 아님)"
+
+
 def _inventive_summary(
     rows: list[ComparisonRow], lost: set[_Key], rej: Rejection, settings: F3Settings
 ) -> InventiveSummary:
@@ -721,6 +745,7 @@ def _inventive_summary(
     # 확인 못 한 구성요소는 글자를 싣지 않고 대비하지 않았다고만 적는다 (빠뜨리지 않는다)
     differences = [
         f"{location} {_LOST_NOTE if (claim, location) in lost else text}"
+        + ("" if (claim, location) in lost else _status_note(rows, (claim, location), mark))
         # 부모 청구항에서 온 구성요소는 어느 종속항 대비에서 왔는지 덧붙인다
         + ("" if location.startswith(f"청구항 {claim} ") else f" (청구항 {claim}에서 인용)")
         for (claim, location), (text, mark) in marks.items()
@@ -752,8 +777,15 @@ def _differences_only_not_found(rows: list[ComparisonRow]) -> bool:
     )
 
 
+BRANCH_NOTE = "부모 청구항 구성요소를 대비하지 않음(인용 가지 여럿), 판단 아님"
+
+
 def _novelty_summary(
-    rows: list[ComparisonRow], lost: set[_Key], unit: JudgmentUnit, label: str
+    rows: list[ComparisonRow],
+    lost: set[_Key],
+    unit: JudgmentUnit,
+    label: str,
+    branch_blocked: frozenset[int] = frozenset(),
 ) -> NoveltySummary:
     marks = _element_marks(rows, lost)
     names = {
@@ -765,7 +797,11 @@ def _novelty_summary(
     for claim in sorted({c for c, _ in marks}):
         mine = [mark for (c, _), (_, mark) in marks.items() if c == claim]
         counts = ", ".join(f"{name} {mine.count(j)}" for j, name in names.items())
-        told.append(f"청구항 {claim}: 구성요소 {len(mine)}개 중 {counts}")
+        sentence = f"청구항 {claim}: 구성요소 {len(mine)}개 중 {counts}"
+        if claim in branch_blocked:
+            # 인용 가지가 여럿이라 부모 구성요소를 못 빌린 청구항: 부모를 대비하지 않았다고 밝힌다
+            sentence += f". {BRANCH_NOTE}"
+        told.append(sentence)
     # 표시는 대표 청구항의 줄로 정한다 (대표 청구항 줄이 없으면 모든 줄)
     rep = unit.representative_claim
     basis = [mark for (c, _), (_, mark) in marks.items() if c == rep] or [
@@ -839,12 +875,15 @@ def compare_unit(
     # 신규성은 인용문헌 하나씩 따로 (두 문헌을 한 프롬프트·한 표에 섞지 않는다)
     groups = [[c] for c in usable] if novelty else ([usable] if usable else [])
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
+    # 어느 묶음에서든 대비된 청구항 (신규성은 문헌마다 묶음이 따로라 합쳐서 본다)
+    compared_anywhere: set[int] = set()
     for group in groups:
         rows: list[ComparisonRow] = []
         # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
         cites_of = {c: _labels_for(oa, unit.rejection, c, group) for c in unit.claims}
         has_elements = {c for c in unit.claims if c in splits and splits[c].elements}
         compared = {c: {x.label for x in cites_of[c]} for c in has_elements if cites_of[c]}
+        compared_anywhere |= set(compared)
         # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
         views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
         # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
@@ -854,6 +893,14 @@ def compare_unit(
             for i in v.items
             if i.e.status.value != StatusValue.CONFIRMED
         }
+        for c, v in views.items():
+            if v.branch_blocked:
+                # 부모 없이 확인됨으로 나가지 않게: 줄은 input_unverified로 내리고 보류를 남긴다
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{c}:branch",
+                    "인용 가지마다 대비 (직접 검토 필요)",
+                )
         for claim in unit.claims:
             if claim not in has_elements:
                 logger.warning(
@@ -876,7 +923,13 @@ def compare_unit(
         unverified_claims = {c for c, v in views.items() if v.parent_unverified}
         # 요약은 status를 덮기 전의 줄로 모은다 (입력 상태 때문에 차이 후보가 빠지지 않게)
         summary = (
-            _novelty_summary(rows, lost, unit, group[0].label)
+            _novelty_summary(
+                rows,
+                lost,
+                unit,
+                group[0].label,
+                frozenset(c for c, v in views.items() if v.branch_blocked),
+            )
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )
@@ -905,6 +958,22 @@ def compare_unit(
                 flags=[Flag.NEEDS_HUMAN_REVIEW],
             )
         )
+    # 구성요소는 있는데 어느 묶음에서도 대비되지 않은 청구항 (적용 문헌이 대비 불가이거나
+    # 청구항 줄의 인용 라벨이 거절이유 인용 목록과 안 맞음): 기록 없이 빠지지 않게 보류한다
+    if groups:
+        for claim in unit.claims:
+            if claim in splits and splits[claim].elements and claim not in compared_anywhere:
+                logger.warning(
+                    "compare %s: 청구항 %d에 적용된 대비할 수 있는 인용문헌이 없어 건너뜀",
+                    unit.unit_id,
+                    claim,
+                )
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{claim}",
+                    f"청구항 {claim}에 적용된 대비할 수 있는 인용문헌"
+                    " (인용 라벨·본문 확보 직접 확인)",
+                )
     return CompareOutput(
         tables=tables,
         held_tasks=seen.held,

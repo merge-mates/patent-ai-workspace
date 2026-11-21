@@ -9,6 +9,7 @@ import logging
 import pytest
 
 from patent_ai.core.f3_claim_compare.elements import STEP, split_elements
+from patent_ai.core.llm.cache import MemoryCache
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -48,15 +49,29 @@ GOOD_1 = _answer(1, [SENSOR, TANK, CONTROL])
 GOOD_2 = _answer(2, ["상기 물통은 투명한 재질로 이루어진"], [1], "제1항에 있어서")
 
 
-def _split(claim: int, responses, claims: dict[int, str] | None = None):
-    """split_elements를 가짜 전송층으로 돌린다. responses: 답 하나 또는 차례로 낼 목록."""
+def _split(claim: int, responses, claims: dict[int, str] | None = None, ctx=None):
+    """split_elements를 가짜 전송층으로 돌린다. responses: 답 하나 또는 차례로 낼 목록.
+
+    ctx를 넘기면 그 ctx로 부른다 (같은 ctx로 여러 번 부를 때). 그 ctx의 transport를 돌려준다.
+    """
     claims = claims or CLAIMS
-    transport = FakeTransport({STEP: responses})
-    ctx = RunContext(
-        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
-    )
+    if ctx is None:
+        transport = FakeTransport({STEP: responses})
+        ctx = RunContext(
+            run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+        )
+    transport = ctx.transport
     result = split_elements(claim, claims[claim], sorted(claims), ctx=ctx)
     return result, transport
+
+
+def _split_warnings(caplog) -> list[str]:
+    """구성요소 나누기 모듈이 낸 경고만 (llm.config의 price 경고는 매번 나와서 거른다)."""
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING and r.name == "patent_ai.core.f3_claim_compare.elements"
+    ]
 
 
 def _is_unverified(status, reason: UnverifiedReason) -> bool:
@@ -64,9 +79,19 @@ def _is_unverified(status, reason: UnverifiedReason) -> bool:
 
 
 # ---- 같은 입력 → 같은 결과 ----
-def test_같은_입력을_두_번_나누면_결과가_같다():
-    first, _ = _split(1, GOOD_1)
-    second, _ = _split(1, GOOD_1)
+def test_같은_입력을_두_번_나누면_모델은_한_번만_불리고_결과가_같다():
+    # 같은 ctx(같은 메모리 캐시)로 두 번 부른다: 두 번째는 캐시에서 나와 전송이 일어나지 않는다
+    transport = FakeTransport({STEP: GOOD_1})
+    ctx = RunContext(
+        run_id="r_1",
+        budget=CallBudget(),
+        recorder=MemoryRecorder(),
+        transport=transport,
+        cache=MemoryCache(),
+    )
+    first, _ = _split(1, GOOD_1, ctx=ctx)
+    second, _ = _split(1, GOOD_1, ctx=ctx)
+    assert len(transport.calls) == 1
     assert first == second
     assert first.model_dump_json() == second.model_dump_json()
 
@@ -131,7 +156,7 @@ def test_다시_불러도_원문에_없으면_그_구성요소만_확인되지_�
     assert second.element_location == "청구항 1 [구성 1-2]"
     assert CLAIM_1[third.start : third.end] == CONTROL  # 뒤 구성요소는 그대로 찾는다
     assert _is_unverified(result.status, UnverifiedReason.NOT_EXTRACTED)
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert _split_warnings(caplog)
 
 
 def test_원문_순서와_다르게_준_구성요소는_확인되지_않음():
@@ -189,13 +214,71 @@ def test_다시_불러도_인용이_틀리면_인용_관계는_확인되지_않�
     # 구성요소는 인용 관계와 따로 확인한다
     assert result.elements[0].status.value == StatusValue.CONFIRMED
     assert _is_unverified(result.status, UnverifiedReason.NOT_EXTRACTED)
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert _split_warnings(caplog)
 
 
 def test_여러_항을_인용하는_종속항():
     answer = _answer(3, ["상기 화분은 받침을 더 포함하는"], [1, 2], "제1항 또는 제2항에 있어서")
     result, _ = _split(3, answer)
     assert result.depends_on == [1, 2]
+    assert result.depends_on_status.value == StatusValue.CONFIRMED
+
+
+def test_인용구_안_번호와_depends_on이_다르면_인용_관계는_확인되지_않음(caplog):
+    # 원문은 "제1항"인데 모델이 depends_on=[2]로 답했다 (인용구 글자는 원문에 있어 글자 대조는 통과)
+    # (청구항 3의 원문을 "제1항에 있어서"로 시작하게 두고, 모델은 앞 번호 2를 인용했다고 답함)
+    wrong = _answer(3, ["상기 물통은 투명한 재질로 이루어진"], [2], "제1항에 있어서")
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(3, [wrong, wrong], claims={**CLAIMS, 3: CLAIM_2})
+    assert len(transport.calls) == 2  # 검사 오류로 한 번 다시 부르고, 또 틀리면 끝
+    assert result.depends_on is None and result.depends_on_quote is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+    assert result.status.value == StatusValue.UNVERIFIED
+    assert _split_warnings(caplog)
+
+
+def test_인용구_번호가_다르면_다시_불러_고쳐_오면_통과한다():
+    wrong = _answer(3, ["상기 물통은 투명한 재질로 이루어진"], [2], "제1항에 있어서")
+    good = _answer(3, ["상기 물통은 투명한 재질로 이루어진"], [1], "제1항에 있어서")
+    result, transport = _split(3, [wrong, good], claims={**CLAIMS, 3: CLAIM_2})
+    assert len(transport.calls) == 2
+    assert "검사 오류" in transport.calls[1]["prompt"]
+    assert result.depends_on == [1] and result.status.value == StatusValue.CONFIRMED
+
+
+def test_원문이_제N항으로_시작하는데_독립항으로_답하면_확인되지_않음(caplog):
+    # 인용 문구가 있는 종속항을 모델이 독립항으로 읽었다 (depends_on=[], 인용구 없음)
+    as_independent = _answer(2, ["상기 물통은 투명한 재질로 이루어진"])
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(2, [as_independent, as_independent])
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+    assert result.status.value == StatusValue.UNVERIFIED
+    assert _split_warnings(caplog)
+
+
+def test_제N항_또는_제M항_인용은_번호가_같으면_확인됨():
+    answer = _answer(3, ["상기 화분은 받침을 더 포함하는"], [2, 1], "제1항 또는 제2항에 있어서")
+    result, transport = _split(3, answer)
+    assert len(transport.calls) == 1
+    assert result.depends_on == [1, 2] and result.status.value == StatusValue.CONFIRMED
+
+
+def test_내지_범위_인용은_사이_번호까지_펼쳐_비교한다():
+    claims = {1: "가.", 2: "나.", 3: "다.", 4: "제1항 내지 제3항 중 어느 한 항에 있어서, 라 화분."}
+    quote = "제1항 내지 제3항 중 어느 한 항에 있어서"
+    good = _answer(4, ["라 화분"], [1, 2, 3], quote)
+    result, transport = _split(4, good, claims=claims)
+    assert len(transport.calls) == 1 and result.depends_on == [1, 2, 3]
+    short = _answer(4, ["라 화분"], [1, 3], quote)  # 가운데 2가 빠짐
+    result, transport = _split(4, [short, short], claims=claims)
+    assert len(transport.calls) == 2 and result.depends_on is None
+
+
+def test_독립항_원문은_제N항_꼴이_없으므로_독립항_답이_확인됨_그대로다():
+    result, transport = _split(1, GOOD_1)
+    assert len(transport.calls) == 1 and result.depends_on == []
     assert result.depends_on_status.value == StatusValue.CONFIRMED
 
 
@@ -244,7 +327,7 @@ def test_청구항_글자가_비면_모델을_부르지_않고_확인되지_않�
     assert transport.calls == []
     assert result.elements == []
     assert _is_unverified(result.status, UnverifiedReason.INPUT_UNVERIFIED)
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert _split_warnings(caplog)
 
 
 # ---- 같은 문구가 원문에 여러 번 나올 때 (B1 리뷰) ----
@@ -263,7 +346,7 @@ def test_같은_문구가_다음_구성요소_앞에_또_있으면_위치를_정
     assert tank.status.value == StatusValue.CONFIRMED
     assert REPEATED[tank.start : tank.end] == "물통"
     assert result.status.value == StatusValue.UNVERIFIED
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert _split_warnings(caplog)
 
 
 def test_앞뒤_글자를_더_넣어_하나로_정해지면_확인됨():
@@ -310,4 +393,88 @@ def test_두_번_다_다른_청구항_번호로_답하면_그_청구항은_애�
     assert len(transport.calls) == 2
     assert result.claim == 1
     assert _is_unverified(result.status, UnverifiedReason.AMBIGUOUS)
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert _split_warnings(caplog)
+
+
+# ---- 맨 앞 인용 문구 전체의 번호 대조 (인용구를 일부만 옮긴 답) ----
+def test_인용구를_일부만_옮겨_번호가_빠지면_확인되지_않음(caplog):
+    claims = {1: "가.", 2: "나.", 3: "다.", 4: "제1항 내지 제3항 중 어느 한 항에 있어서, 라 화분."}
+    partial = _answer(4, ["라 화분"], [3], "제3항 중 어느 한 항에 있어서")
+    with caplog.at_level(logging.WARNING):
+        result, transport = _split(4, [partial, partial], claims=claims)
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+    assert _split_warnings(caplog)
+
+
+def test_또는_인용에서_인용구가_뒷_항만_옮겨도_확인되지_않음():
+    claims = {1: "가.", 2: "나.", 3: "제1항 또는 제2항에 있어서, 라 화분."}
+    partial = _answer(3, ["라 화분"], [2], "제2항에 있어서")
+    result, transport = _split(3, [partial, partial], claims=claims)
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+
+
+_FIVE = {1: "가.", 2: "나.", 3: "다.", 4: "라.", 5: "마."}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "제1항의 물통은 투명한 화분.",
+        "제1항 또는 제2항에 있어서, 물통은 투명한 화분.",
+        "제1항 내지 제3항 중 어느 한 항에 있어서, 물통은 투명한 화분.",
+        "제1항, 제2항 또는 제5항에 있어서, 물통은 투명한 화분.",
+        "제 1 항에 있어서, 물통은 투명한 화분.",
+        "제1항 및 제2항에 있어서, 물통은 투명한 화분.",
+        "제1항과 제2항에 있어서, 물통은 투명한 화분.",
+        "제1항 혹은 제2항에 있어서, 물통은 투명한 화분.",
+    ],
+)
+def test_맨_앞이_인용인_원문을_독립항으로_답하면_확인되지_않음(text):
+    as_independent = _answer(6, ["물통은 투명한 화분"])
+    claims = {**_FIVE, 6: text}
+    result, transport = _split(6, [as_independent, as_independent], claims=claims)
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+
+
+def test_맨_앞이_인용이_아니고_중간에_제N항이_나오는_독립항은_확인됨():
+    text = "물통을 포함하며 이는 제1항과 다른 화분."
+    answer = _answer(2, ["물통을 포함하며 이는 제1항과 다른 화분"])
+    result, transport = _split(2, answer, claims={1: "가.", 2: text})
+    assert len(transport.calls) == 1
+    assert result.depends_on == []
+    assert result.depends_on_status.value == StatusValue.CONFIRMED
+
+
+def test_쉼표로_나열한_인용은_번호가_전부_맞으면_확인됨():
+    text = "제1항, 제2항 또는 제5항에 있어서, 물통은 투명한 화분."
+    answer = _answer(6, ["물통은 투명한 화분"], [1, 2, 5], "제1항, 제2항 또는 제5항에 있어서")
+    result, transport = _split(6, answer, claims={**_FIVE, 6: text})
+    assert len(transport.calls) == 1
+    assert result.depends_on == [1, 2, 5]
+    assert result.depends_on_status.value == StatusValue.CONFIRMED
+
+
+@pytest.mark.parametrize("joiner", ["및", "과", "혹은"])
+def test_및_과_혹은으로_이은_인용에서_뒷_항만_옮기면_확인되지_않음(joiner):
+    text = f"제1항 {joiner} 제2항에 있어서, 물통은 투명한 화분."
+    partial = _answer(3, ["물통은 투명한 화분"], [2], "제2항에 있어서")
+    result, transport = _split(3, [partial, partial], claims={1: "가.", 2: "나.", 3: text})
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+
+
+@pytest.mark.parametrize("joiner", ["및", "과", "혹은"])
+def test_및_과_혹은으로_이은_인용을_전체로_옮기면_확인됨(joiner):
+    text = f"제1항 {joiner} 제2항에 있어서, 물통은 투명한 화분."
+    full = _answer(3, ["물통은 투명한 화분"], [1, 2], f"제1항 {joiner} 제2항에 있어서")
+    result, transport = _split(3, full, claims={1: "가.", 2: "나.", 3: text})
+    assert len(transport.calls) == 1
+    assert result.depends_on == [1, 2]
+    assert result.depends_on_status.value == StatusValue.CONFIRMED

@@ -12,6 +12,16 @@ from patent_ai.core.schemas.drafts import Drafts
 from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 
 
+class AmendmentOverlap(BaseModel):
+    """같은 청구항을 두 묶음이 다 고쳐서, 앞선 묶음 초안만 싣고 뒤 묶음 초안은 싣지 않은 기록."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim: int  # 겹친 청구항 번호
+    kept_unit: str  # 초안을 실은 묶음 (order가 앞선 쪽)
+    dropped_unit: str  # 초안을 싣지 않은 묶음 (사람이 직접 합쳐야 함)
+
+
 class F4Output(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -24,6 +34,9 @@ class F4Output(BaseModel):
     uncovered: list[tuple[int, int]]  # 판단 단위가 덮지 않은 (거절이유 번호, 청구항 번호)
     # 대상 청구항을 못 읽어 누락 검사를 못 한 거절이유 번호 (uncovered가 비어도 누락 없음이 아님)
     coverage_unchecked: list[int] = Field(default_factory=list)
+    # 같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안을 싣지 않은 기록 (Drafts.flags는 늘 붙어 있어
+    # 구분이 안 되므로 따로 남긴다). 의견서 쪽 겹침은 이 단계에서 다루지 않는다
+    amendment_overlaps: list[AmendmentOverlap] = Field(default_factory=list)
     # 최후거절이유통지 보정 제한을 보정 프롬프트에 넣었나 (스위치 켬 + 통지 종류 final일 때만 true).
     # 제한을 지켰다는 판정이 아니다: 넣었다는 사실만 적는다
     amendment_limit_applied: bool = False

@@ -1,6 +1,6 @@
 {
   "experiment": "m2-f3-skeleton",
-  "commit": "849d18fe91a5dac59b2e84412e9108c451194c42",
+  "commit": "39a843ff1e1164845d3ed37bccdf19a34c57828e",
   "goldset": "tune",
   "goldset_version": 2,
   "gold_sha256": "0fee10d368f3f97c15165576e7ab2d5d8555b10dfa9b7667459022777b90bf38",
@@ -13,8 +13,11 @@
     "search_recall": 0.5836622647634553,
     "selected_hit": 0.37822802197802197,
     "selected_recall": 0.18632835969145492,
+    "random_search_recall": 0.2621650284091545,
+    "random_search_hit": 0.41779017926080736,
+    "search_recall_ratio": 2.226316256997283,
     "novelty_tables": 3,
-    "clarity_location_accuracy": 0.6944444444444445
+    "clarity_term_reviewed": 0.6944444444444445
   },
   "failures": {
     "missing_prediction": 1,
@@ -25,7 +28,7 @@
     "excluded_body_missing": 0,
     "excluded_gold_not_in_scope": 1,
     "excluded_gold_items_not_in_scope": 11,
-    "cq_candidates": 20,
+    "cq_candidates": 14,
     "novelty_multi_citation": 0,
     "clarity_no_claim_text": 0,
     "clarity_gold_term_not_in_claim": 2,
@@ -44,6 +47,6 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "external_calls": 0,
-    "seconds": 2.177
+    "seconds": 2.151
   }
 }

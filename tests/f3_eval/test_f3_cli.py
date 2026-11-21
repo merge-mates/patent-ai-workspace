@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 from f3_eval_builder import (
+    DISPATCH,
+    DOC,
     KEY,
     novelty_table,
     prediction,
@@ -83,6 +85,66 @@ def test_검색_재현율과_고른_문단_재현율을_따로_낸다(run):
     assert scores["failures"]["excluded_no_location"] == 1  # 위치 없음 줄은 뺀다
 
 
+def test_무작위_기준선과_비율을_같이_낸다(run):
+    # 범위 조각 N=4 (14, 20, 80, 81), 맞는 조각 수 [1, 2],
+    # 검색이 가져온 조각 k=2 ({14, 20}).
+    # 항목별 확률: 1 - C(3,2)/C(4,2) = 1/2, 1 - C(2,2)/C(4,2) = 5/6 -> 평균 2/3.
+    # Hit: 합집합 3개 -> 1 - C(1,2)/C(4,2) = 1. search_recall 0.5 / (2/3) = 0.75
+    _, scores, _ = run()
+    m = scores["metrics"]
+    assert m["random_search_recall"] == pytest.approx(2 / 3)
+    assert m["random_search_hit"] == pytest.approx(1.0)
+    assert m["search_recall_ratio"] == pytest.approx(0.75)
+
+
+def test_비율은_줄_OA_세트_순서로_평균한_뒤_나눈다(run, tmp_path):
+    # 범위 조각 N=4 (14, 20, 80, 81). OA 2건, 줄 3개, k(가져온 조각 수)가 줄마다 다르다.
+    # OA A 청구항 1: 정답 {14}(맞는 조각 1), k=1 {14}   -> recall 1, 무작위 1 - C(3,1)/C(4,1) = 1/4
+    # OA A 청구항 3: 정답 {80}(맞는 조각 1), k=2 {14,20} -> recall 0, 무작위 1 - C(3,2)/C(4,2) = 1/2
+    # OA B 청구항 1: 정답 {14}(맞는 조각 1), k=1 {14}   -> recall 1, 무작위 1/4
+    # OA 평균: A recall 1/2, 무작위 3/8 / B recall 1, 무작위 1/4
+    # 세트 평균: search_recall 3/4, random_search_recall 5/16 -> 비율 (3/4)/(5/16) = 2.4
+    # (틀린 방식: 줄마다 비율을 평균하면 (4 + 0 + 4)/3 = 8/3, 줄을 한데 모으면 (2/3)/(1/3) = 2.0)
+    # Hit도 같은 순서: A (1/4 + 1/2)/2 = 3/8, B 1/4 -> 5/16
+    key_b = "1020990000002_952099000000002"
+    dispatch_b = key_b.split("_")[1]
+    para = lambda no: {"kind": "paragraph", "start": no, "end": no, "label": f"[{no:04d}]"}  # noqa: E731
+    base = {"corpus": "cite", "query": "질의 글자", "doc_ids": [DOC]}
+    rows = [
+        {**base, "row_id": f"{DISPATCH}:r1:c1:{DOC}", "items": [para(14)]},
+        {**base, "row_id": f"{DISPATCH}:r1:c3:{DOC}", "items": [para(80)]},
+        {**base, "row_id": f"{dispatch_b}:r1:c1:{DOC}", "items": [para(14)]},
+    ]
+
+    def goldset(root):
+        write_goldset(root, f1=False)
+        text = "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in rows)
+        (root / "tune" / "retrieval" / "cite_gold.jsonl").write_text(text, encoding="utf-8")
+
+    pred_a = prediction(searched=((1, [14]), (2, [14, 20])), selected=())
+    pred_a["search_log"][1]["claim"] = 3  # 두 번째 줄은 청구항 3
+    pred_b = prediction(searched=((1, [14]),), selected=())
+    preds = tmp_path / "preds"
+    write_run(preds, pred_a)
+    write_run(preds, pred_b, key=key_b)
+
+    code, scores, _ = run(goldset=goldset, write=False)
+    assert code == 0
+    m = scores["metrics"]
+    assert m["search_recall"] == pytest.approx(3 / 4)
+    assert m["random_search_recall"] == pytest.approx(5 / 16)
+    assert m["random_search_hit"] == pytest.approx(5 / 16)
+    assert m["search_recall_ratio"] == pytest.approx(2.4)
+
+
+def test_가져온_조각이_없으면_무작위도_0이고_비율은_빼고_이유를_남긴다(run):
+    _, scores, _ = run(prediction(searched=(), selected=()))
+    m = scores["metrics"]
+    assert m["random_search_recall"] == 0.0 and m["random_search_hit"] == 0.0
+    assert "search_recall_ratio" not in m
+    assert "search_recall_ratio" in scores["skipped_metrics"]
+
+
 def test_범위_정답은_그_안_문단_하나라도_가져오면_맞음(run):
     pred = prediction(searched=((1, [81]),), selected=(14, 81))
     _, scores, _ = run(pred)
@@ -113,6 +175,22 @@ def test_검색이_정답_문단을_하나도_못_덮은_질문은_CQ로_쌓는�
     assert {"row_id", "gold_sha256", "index_version", "k", "items", "found", "why"} <= set(line)
 
 
+def test_검색_기록이_없는_줄은_CQ에_넣지_않고_안_찾은_줄로만_센다(run):
+    _, scores, cq = run(prediction(searched=(), selected=()))
+    assert scores["failures"]["not_searched_rows"] == 1
+    assert scores["failures"]["cq_candidates"] == 0 and cq == []
+
+
+def test_CQ의_구성요소_번호는_그_청구항_것만_두고_부모_것은_따로_둔다(run):
+    # 구성요소 2는 부모(청구항 9)에서 온 것: 청구항 1의 1번과 번호가 겹치지 않게 갈라 쓴다
+    pred = prediction(searched=((1, [20]), (2, [20])), selected=(), element_claims={1: 1, 2: 9})
+    _, _, cq = run(pred)
+    (line,) = cq
+    assert line["element_nos"] == [1]
+    assert line["parent_element_nos"] == [[9, 2]]
+    assert line["found"] == ["cite-idx-v2:KR20990000001A:p0020"]  # 부모 검색 조각도 그대로 센다
+
+
 def test_CQ가_0건이면_경고한다(run, caplog):
     with caplog.at_level(logging.WARNING):
         _, scores, cq = run()
@@ -139,24 +217,24 @@ def test_신규성_표가_두_문헌을_합치면_위반으로_센다(run, compa
 # ---- ③ 명확성 문구 위치 ----
 def test_명확성_문구_위치가_청구항_글자와_겹치면_맞음(run):
     _, scores, _ = run()
-    assert scores["metrics"]["clarity_location_accuracy"] == 1.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 1.0
 
 
 def test_명확성_문구_위치가_안_겹치면_틀림(run):
     _, scores, _ = run(prediction(clarity_location="청구항 2 [글자 0-3]"))
-    assert scores["metrics"]["clarity_location_accuracy"] == 0.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 0.0
 
 
 def test_위치를_못_정한_검토는_틀림(run):
     _, scores, _ = run(prediction(clarity_location="청구항 2 (위치 확인되지 않음)"))
-    assert scores["metrics"]["clarity_location_accuracy"] == 0.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 0.0
 
 
 def test_청구항_글자_입력이_없으면_명확성_위치는_건너뛰고_그_사실을_남긴다(run, capsys):
     code, scores, _ = run(inputs=False)
-    assert code == 0 and "clarity_location_accuracy" not in scores["metrics"]
+    assert code == 0 and "clarity_term_reviewed" not in scores["metrics"]
     assert scores["failures"]["clarity_no_claim_text"] == 1
-    assert "clarity_location_accuracy" in scores["skipped_metrics"]
+    assert "clarity_term_reviewed" in scores["skipped_metrics"]
 
 
 # ---- 정답이 없는 지표 ----
@@ -177,7 +255,7 @@ def test_정답_폴더가_없으면_종료_코드_3이고_scores를_쓰지_않�
 def test_검색_정답만_있어도_채점하고_명확성은_건너뛴다(run):
     code, scores, _ = run(goldset=lambda root: write_goldset(root, f1=False))
     assert code == 0 and "search_recall" in scores["metrics"]
-    assert scores["skipped_metrics"]["clarity_location_accuracy"] == "정답 없음"
+    assert scores["skipped_metrics"]["clarity_term_reviewed"] == "정답 없음"
 
 
 # ---- 예측·명령 ----
@@ -259,7 +337,7 @@ def test_심사관_위치_기록만_있어도_오염이라_멈춘다(run, capsys
 
 def test_여러_곳_꼬리가_붙은_위치도_읽는다(run):
     _, scores, _ = run(prediction(clarity_location="청구항 2 [글자 10-19] (2곳 중 첫 자리)"))
-    assert scores["metrics"]["clarity_location_accuracy"] == 1.0
+    assert scores["metrics"]["clarity_term_reviewed"] == 1.0
     assert scores["failures"]["clarity_location_unreadable"] == 0
 
 

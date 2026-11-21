@@ -1,6 +1,7 @@
 """F4 의견서 초안 단계 테스트: 가짜 사건(fixture) + 가짜 전송층(사람이 쓴 답). 진짜 모델 호출 없음.
 
-기대값은 구현 계획 C2, design_f4.md 3·8절, 스키마 검사(drafts.py),
+기대값은 구현 계획 C2, `docs/features/F4/design.md`
+2절 ②·3-2절(선택 값·의견서 칸), 스키마 검사(drafts.py),
 product.md 5절 F4 2·3번에서 가져왔다.
 """
 
@@ -11,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from patent_ai.core.f4_response_draft.amendment import STEP as AMENDMENT_STEP
+from patent_ai.core.f4_response_draft.amendment import assemble_drafts, build_amendments
 from patent_ai.core.f4_response_draft.directions import STEP as DIRECTION_STEP
 from patent_ai.core.f4_response_draft.directions import build_directions
 from patent_ai.core.f4_response_draft.inputs import F4Input
@@ -92,6 +95,62 @@ def test_어느_후보로_만들었는지_남는다():
         (r.unit_id, r.selection.candidate_id) for r in found
     ]
     assert part.held_units == []
+
+
+# ---- 보류 묶음에서 사람이 고른 경로 ----
+def test_보류_묶음에서_사람이_고른_후보로_의견서와_보정이_만들어진다():
+    # 확신 낮은 보정 묶음(clarity)은 AI 기본 선택이 없어 보류된다. 사람이 그중 보정 후보를 고른다
+    transport = FakeTransport(
+        {
+            DIRECTION_STEP: [
+                _text(_answer("direction_inventive")),
+                _text(_answer("direction_low")),
+            ],
+            STEP: [_text(_answer("opinion_inventive")), _text(_answer("opinion_clarity"))],
+            AMENDMENT_STEP: [
+                _text(_answer("amendment_inventive")),
+                _text(_answer("amendment_clarity")),
+            ],
+        }
+    )
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    inp = _case()
+    found = build_directions(inp, ctx)
+    held = next(r for r in found if r.unit_id == UNIT_CLARITY)
+    assert held.selection is None  # AI 기본 선택 없음
+    picked = next(c for c in held.candidates if c.coarse == "amend_only")
+    other = next(c for c in held.candidates if c.candidate_id != picked.candidate_id)
+    # 사람 선택: 화면이 selection만 human_selected로 채워 돌려준 결과
+    data = held.model_dump(mode="json")
+    data["selection"] = {"candidate_id": picked.candidate_id, "origin": "human_selected"}
+    found = [DirectionCandidates.model_validate(data) if r is held else r for r in found]
+
+    opinion = build_opinion(inp, found, ctx)
+    amendment = build_amendments(inp, found, opinion, ctx)
+
+    # (1) 고른 후보만 의견서·보정 프롬프트에 들어간다
+    for step in (STEP, AMENDMENT_STEP):
+        prompt = [c for c in transport.calls if c["step"] == step][1]["prompt"]
+        assert picked.name in prompt
+        assert other.name not in prompt
+    # (2) 어느 묶음·후보로 만들었는지 남는다
+    assert (UNIT_CLARITY, picked.candidate_id) in [
+        (b.unit_id, b.candidate_id) for b in opinion.based_on
+    ]
+    # (3) 보정 초안이 고른 후보의 보정 청구항(2항)으로 만들어진다
+    claim2 = next(c for c in amendment.claims if c.claim == 2)
+    assert claim2.ai_text == _answer("amendment_clarity")["claims"][0]["text"]
+    assert claim2.held_reason is None
+    # (3') 의견서·보정을 묶은 초안에도 그 묶음·후보가 남는다
+    drafts = assemble_drafts(inp.oa.oa_id, opinion, amendment)
+    assert (UNIT_CLARITY, picked.candidate_id) in [
+        (b.unit_id, b.candidate_id) for b in drafts.based_on
+    ]
+    # (4) 보류가 아니다
+    assert opinion.held_units == [] and amendment.held_units == []
+    assert len(opinion.based_on) == 2
 
 
 # ---- 고른 방향으로만 ----

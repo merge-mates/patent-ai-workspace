@@ -45,7 +45,7 @@ class JudgmentUnit(ResultBase):
     claims: list[int]  # 대표 독립항 + 묶음 안 종속항
     read_with: list[int] = []  # 명확성만: 함께 읽을 청구항
     order: int  # 독립항 먼저
-    parent_unit_id: str | None = None  # 무너진 묶음을 나눌 때 원래 단위
+    parent_unit_id: UnitId | None = None  # 무너진 묶음을 나눌 때 원래 단위
 
     @model_validator(mode="after")
     def _검사(self) -> JudgmentUnit:
