@@ -202,10 +202,22 @@ def write_plan(plan: OaPlan, out_root: Path) -> Path:
     return target
 
 
+def oa_dirs(out_root: Path) -> tuple[list[Path], list[Path]]:
+    """`<출원번호>/<발송번호>/` 폴더(두 이름 모두 숫자)와 그 밖의 하위 폴더를 나눈다.
+
+    쪽 텍스트 같은 다른 폴더가 `<출원번호>/` 아래 생겨도 OA 폴더로 세지 않게 한다 (#159).
+    쓰다 멈춘 `<발송번호>.tmp`도 OA 폴더가 아니라 건너뛴 쪽에 든다.
+    """
+    found, skipped = [], []
+    for p in sorted(p for p in out_root.glob("*/*") if p.is_dir()):
+        (found if p.name.isdigit() and p.parent.name.isdigit() else skipped).append(p)
+    return found, skipped
+
+
 def audit(out_root: Path, pub_date: PubDateReader = read_pub_date) -> list[str]:
     """입력 폴더에서 OA 뒤 줄·시점 모를 파일을 찾는다. 문제 한 줄씩 (원문 글자 없음)."""
     problems = []
-    for oa_dir in sorted(p for p in out_root.glob("*/*") if p.is_dir()):
+    for oa_dir in oa_dirs(out_root)[0]:
         app_no, oa_no = oa_dir.parent.name, oa_dir.name
         admin_path = oa_dir / f"{app_no}_{ADMIN}"
         if not admin_path.exists():
@@ -272,7 +284,11 @@ def main(argv: list[str]) -> int:
 
     if args.audit:
         problems = audit(args.audit)
-        n = len([p for p in args.audit.glob("*/*") if p.is_dir()])
+        found, skipped = oa_dirs(args.audit)
+        n = len(found)
+        for p in skipped:
+            rel = p.relative_to(args.audit)
+            print(f"경고: OA 폴더(<출원번호>/<발송번호>/)가 아니라 건너뜀: {rel}", file=sys.stderr)
         for line in problems:
             print(line)
         print(f"검사: OA 폴더 {n}개, 문제 {len(problems)}건")

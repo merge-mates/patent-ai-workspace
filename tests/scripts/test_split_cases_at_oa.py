@@ -434,3 +434,17 @@ def test_several_publications_each_judged_by_date(tmp_path):
     (plan,) = plan_case(case, pub_date=lambda p: dates[p.name])
     assert early in plan.copy_files
     assert dict(plan.dropped_files)[late] == "OA 뒤 공개"
+
+
+def test_audit_skips_non_oa_subfolders_with_warning(tmp_path, capsys):
+    # 쪽 텍스트 같은 하위 폴더가 <출원번호>/ 아래 생겨도 OA 폴더로 세지 않는다 (#159)
+    (plan,) = plan_case(_make_case(tmp_path / "src"))
+    out = tmp_path / "out"
+    write_plan(plan, out)
+    (out / APP / "pages").mkdir()
+    (out / APP / "pages" / "x.txt").write_text("x", encoding="utf-8")
+    assert audit(out) == []
+    assert main(["--audit", str(out)]) == 0
+    captured = capsys.readouterr()
+    assert "OA 폴더 1개" in captured.out
+    assert "건너뜀" in captured.err and "pages" in captured.err
