@@ -1,5 +1,7 @@
 # 지휘 에이전트 설정 (core/agents/orchestrator.py가 읽는다)
-plan: agent                         # agent = 모델이 다음 도구를 고름 / fixed_order = 아래 순서대로
+# agent = 모델이 다음 도구를 고름 / fixed_order = 아래 순서대로.
+# M2 걷는 뼈대는 fixed_order, M3에 agent로 해 본다 (11/21 은진·재아 결정, #191)
+plan: fixed_order
 # plan이 fixed_order일 때 부를 code_tool 순서: F1(extract_pages, read_oa) → F3 → F2 → F4
 fixed_order: [extract_pages, read_oa, run_f3, run_f2, run_f4]
 # 도구가 아직 등록되지 않았으면 "확인되지 않음"으로 넘겨도 되는 단계 (넘긴 이유와 경고가 남는다).
