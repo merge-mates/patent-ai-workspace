@@ -112,7 +112,7 @@ class OAResultRow(Base):
     __table_args__ = (
         CheckConstraint(_STATUS_CHECK, name="ck_oa_results_status"),
         CheckConstraint(_ORIGIN_CHECK, name="ck_oa_results_origin"),
-        # OA마다 가장 최근 결과를 찾는다 (succeeded 거르기는 runs와 이어서, #56)
+        # OA마다 가장 최근 결과를 찾는다 (succeeded 거르기는 runs와 이어서, #57)
         Index("ix_oa_results_oa_id_created_at", "oa_id", "created_at"),
     )
 

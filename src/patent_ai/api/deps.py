@@ -11,6 +11,8 @@ from fastapi import Depends
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from patent_ai.core.cases.results import OAResultStore
+from patent_ai.core.cases.results_pg import PostgresOAResultStore
 from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
 from patent_ai.core.runs.cancel import CancelRegistry
@@ -68,6 +70,12 @@ def get_run_status_store() -> RunStatusStore:
 
 
 @lru_cache
+def get_oa_result_store() -> OAResultStore:
+    """OA 정리 결과 저장소. 결과 받기 API가 읽고, 실행기의 결과 받는 곳(sink)도 이것을 쓴다."""
+    return PostgresOAResultStore(sessionmaker(_engine()))
+
+
+@lru_cache
 def get_cancel_registry() -> CancelRegistry:
     """취소 표시는 메모리에 있어서 앱 하나에 하나만 둔다 (요청마다 새로 만들면 안 보인다)."""
     return CancelRegistry()
@@ -76,7 +84,8 @@ def get_cancel_registry() -> CancelRegistry:
 def get_run_executor(
     store: Annotated[RunStatusStore, Depends(get_run_status_store)],
 ) -> RunExecutor:
-    # 지휘 에이전트가 아직 안 붙었다: 바로 failed(executor_not_connected). 붙으면 여기만 바꾼다
+    # 지휘 에이전트가 아직 안 붙었다: 바로 failed(executor_not_connected). 붙으면 여기만 바꾼다.
+    # 붙일 때 결과 받는 곳(sink)은 get_oa_result_store()를 넘긴다 (결과 받기 API가 읽는 저장소)
     return NotConnectedExecutor(store)
 
 

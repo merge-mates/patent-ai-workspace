@@ -12,6 +12,7 @@ from patent_ai.api.cases import read_pdf
 from patent_ai.api.deps import (
     CaseUnit,
     get_case_unit,
+    get_oa_result_store,
     get_run_launcher,
     get_run_status_store,
     get_upload_dir,
@@ -19,6 +20,7 @@ from patent_ai.api.deps import (
 from patent_ai.api.errors import AppError
 from patent_ai.api.runs import launch_run
 from patent_ai.core.cases import upload
+from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.store import (
     CaseNotFoundError,
     DuplicateDocumentError,
@@ -27,6 +29,7 @@ from patent_ai.core.cases.store import (
 )
 from patent_ai.core.runs.launcher import RunLauncher, mark_launch_failed
 from patent_ai.core.runs.store import RunStatusStore
+from patent_ai.core.schemas.oa_result import OAResult
 
 router = APIRouter()
 
@@ -49,6 +52,13 @@ class OADetail(BaseModel):
     document_id: str | None
     latest_run: LatestRun | None
     dispatch_number: str | None  # 모르면 null (F1이 읽은 뒤 채워진다)
+
+
+class OAResultOut(BaseModel):
+    oa_id: str
+    run_id: str  # 이 결과를 만든 실행 (화면은 latest_run.run_id와 비교해 이전 실행 결과인지 안다)
+    status: str  # result.status.value를 바깥에도 (목록·배지용)
+    result: OAResult  # 결과 스키마 ① 그대로
 
 
 @router.post("/cases/{case_id}/oas", response_model=CreatedOA)
@@ -112,4 +122,24 @@ def get_oa(oa_id: str, unit: Annotated[CaseUnit, Depends(get_case_unit)]) -> OAD
         if run
         else None,
         dispatch_number=row.dispatch_number,
+    )
+
+
+@router.get("/oas/{oa_id}/oa-result", response_model=OAResultOut)
+def get_oa_result(
+    oa_id: str,
+    unit: Annotated[CaseUnit, Depends(get_case_unit)],
+    results: Annotated[OAResultStore, Depends(get_oa_result_store)],
+) -> OAResultOut:
+    if unit.store.get_oa(oa_id) is None:
+        raise AppError(404, "oa_not_found", "OA를 찾을 수 없습니다")
+    # succeeded 실행이 낸 가장 최근 결과만. 진행 중·실패·취소된 실행의 결과는 주지 않는다
+    saved = results.latest_succeeded_oa_result(oa_id)
+    if saved is None:
+        raise AppError(404, "result_not_ready", "OA 정리 결과가 아직 없습니다")
+    return OAResultOut(
+        oa_id=oa_id,
+        run_id=saved.run_id,
+        status=saved.result.status.value.value,
+        result=saved.result,
     )
