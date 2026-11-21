@@ -78,12 +78,12 @@ graph LR
 - 문서(F1 requirements·architecture·product)의 "F3 대비" 글: 사람 말이라 그대로 둔다.
 
 ### 진행
-- [ ] task-1
+- [x] task-1
 - [ ] task-2
 - [ ] task-3
 - [ ] task-4
-- 다음: task-1
-- 막힌 것: PR #137 머지 기다림 (그 뒤 최신 main에서 시작)
+- 다음: task-2
+- 막힌 것: 없음 (PR #137 머지됨)
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
