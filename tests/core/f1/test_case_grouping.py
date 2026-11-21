@@ -10,13 +10,21 @@ from patent_ai.core.f1_oa_reader.case_grouping import (
     AS_FILED_VERSION,
     HistoryEvent,
     MaterialInput,
+    MissingNotFoundError,
+    UploadNotAskedError,
+    answer_missing,
     build_case_materials,
     group_materials,
     normalize_receipt_number,
     read_number,
     select_examined_version,
 )
-from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult
+from patent_ai.core.schemas.case_materials import (
+    CaseMaterials,
+    HeldTask,
+    LookupResult,
+    MissingMaterial,
+)
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
 
@@ -442,7 +450,7 @@ def _fixture_grouped(oa: OAResult):
     )
 
 
-def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같은_구조():
+def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같다():
     oa = _fixture_oa()
     got = build_case_materials(
         "c_1",
@@ -452,20 +460,15 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같은_구조
         lookup_failures={US_D2: LookupResult.BODY_MISSING},
     )
     want = CaseMaterials.model_validate(json.loads((FIXTURE / "case_materials.json").read_text()))
-    assert got.case_id == want.case_id
-    assert got.documents == want.documents
-    # 빠진 자료 이름은 fixture가 손으로 쓴 글자라 글자 대신 구조를 비교한다
-    assert len(got.missing) == len(want.missing) == 1
+    # 공유 fixture의 빠진 자료 이름이 실제 출력과 같으니 글자 그대로 비교한다 (#16 T8)
+    assert got == want
     (m,) = got.missing
     assert m.what == "D2 US20990000001A1 본문"
     assert (m.lookup_result, m.ask_upload) == (LookupResult.BODY_MISSING, True)
     # 보류는 없는 인용문헌의 F3 대비만, 그 작업은 빠진 자료를 기다린다
-    assert len(got.held_tasks) == len(want.held_tasks) == 1
     (h,) = got.held_tasks
-    assert h.waiting_for == m.what
+    assert (h.task, h.waiting_for) == ("F3 대비: D2 US20990000001A1", m.what)
     assert m.depends_on_tasks == [h.task]
-    assert h.task == "F3 대비: D2 US20990000001A1"
-    assert got.review_items_count == want.review_items_count
 
 
 def test_materials_빠진_것이_없으면_missing_held_비어_있음():
@@ -598,3 +601,53 @@ def test_materials_확인_안_된_자료는_목록에_두고_검토할_사항에
     )
     assert "d_other" in [d.document_id for d in got.documents]
     assert got.review_items_count == base.review_items_count + 1
+
+
+# --- 빠진 자료 올리기 (T7) ----------------------------------------------------------
+
+
+def _fixture_materials() -> CaseMaterials:
+    return CaseMaterials.model_validate(json.loads((FIXTURE / "case_materials.json").read_text()))
+
+
+def _uploaded_citation(doc_id="doc_up_1"):
+    (g,) = group_materials([_m(doc_id, "citation", app=None)], CASE)
+    return g
+
+
+def test_upload_빠진_자료에_답하면_missing과_그_보류만_빠지고_문서가_더해진다():
+    before = _fixture_materials()
+    after = answer_missing(before, "D2 US20990000001A1 본문", _uploaded_citation())
+    assert after.missing == [] and after.held_tasks == []
+    assert after.documents[:-1] == before.documents
+    added = after.documents[-1]
+    assert (added.document_id, added.kind, added.source) == ("doc_up_1", "citation", "uploaded")
+    assert added.status.value == StatusValue.CONFIRMED
+    # 검토할 사항: 빠진 인용문헌 한 줄이 빠지고 직접 검토 한 줄만 남는다
+    assert after.review_items_count == before.review_items_count - 1 == 1
+    assert before.missing  # 원래 값은 바꾸지 않는다
+
+
+def test_upload_다른_보류_작업은_남는다():
+    before = _fixture_materials()
+    other = HeldTask(task="F3 대비: D3 X", waiting_for="D3 X 본문")
+    before = before.model_copy(update={"held_tasks": [*before.held_tasks, other]})
+    after = answer_missing(before, "D2 US20990000001A1 본문", _uploaded_citation())
+    assert after.held_tasks == [other]
+
+
+def test_upload_빠진_자료가_아니면_오류():
+    with pytest.raises(MissingNotFoundError):
+        answer_missing(_fixture_materials(), "D9 없는 문헌 본문", _uploaded_citation())
+
+
+def test_upload_올려_달라고_하지_않은_자료면_오류():
+    before = _fixture_materials()
+    jp = MissingMaterial(
+        what="D3 JP2099000001A 본문",
+        lookup_result=LookupResult.UNSUPPORTED_COUNTRY,
+        ask_upload=False,
+    )
+    before = before.model_copy(update={"missing": [jp]})
+    with pytest.raises(UploadNotAskedError):
+        answer_missing(before, jp.what, _uploaded_citation())

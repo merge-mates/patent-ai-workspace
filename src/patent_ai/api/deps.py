@@ -16,6 +16,8 @@ from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
 from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
+from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
+from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import NotConnectedExecutor, RunExecutor
 from patent_ai.core.runs.launcher import RunLauncher, ThreadLauncher
@@ -58,6 +60,33 @@ def get_case_unit() -> Iterator[CaseUnit]:
 
 def get_upload_dir() -> Path:
     return Path(get_settings().upload_dir)
+
+
+class CaseRepositoryUnit(Protocol):
+    """사건 저장소(#16 묶기 결과) + 트랜잭션 끝내기. 저장소는 flush까지만, 커밋은 라우터가."""
+
+    repo: CaseRepository
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
+
+
+class _PgRepositoryUnit:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self.repo: CaseRepository = PostgresCaseRepository(session)
+
+    def commit(self) -> None:
+        self._session.commit()
+
+    def rollback(self) -> None:
+        self._session.rollback()
+
+
+def get_case_repository_unit() -> Iterator[CaseRepositoryUnit]:
+    with Session(_engine()) as session:
+        yield _PgRepositoryUnit(session)
 
 
 # --- 실행 (이슈 #57) ---------------------------------------------------------------

@@ -71,7 +71,7 @@ def test_검토할_사항은_빠진_인용문헌_하나와_직접_검토_하나(
         ReviewItem(
             kind="missing_material",
             target="materials.missing[0]",
-            label="US 2099/0000001 본문",
+            label="D2 US20990000001A1 본문",
             reason="body_missing",
         ),
     ]
@@ -85,7 +85,7 @@ def test_보류와_빠진_자료가_서로_맞는다(materials):
     missing = materials.missing[0]
     assert missing.ask_upload is True
     assert materials.held_tasks == [
-        HeldTask(task="F3 대비: US 2099/0000001", waiting_for="US 2099/0000001 본문")
+        HeldTask(task="F3 대비: D2 US20990000001A1", waiting_for="D2 US20990000001A1 본문")
     ]
     assert materials.held_tasks[0].task in missing.depends_on_tasks
 

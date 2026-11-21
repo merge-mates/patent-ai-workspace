@@ -10,16 +10,22 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from patent_ai.core.f1_oa_reader.case_grouping import read_number
+from patent_ai.core.f1_oa_reader.case_grouping import GroupedMaterial, read_number
 from patent_ai.core.f1_oa_reader.case_repository import (
     AI_INPUT_KINDS,
     CaseRecord,
     CaseStoreError,
     ClaimVersionRow,
     DuplicateDocumentError,
+    EventRow,
+    OAVersionRow,
+    StoredFile,
+    UnknownCaseError,
     examined_from_version,
     oa_result_row,
     plan_case_rows,
+    sorted_events,
+    uploaded_document_row,
 )
 from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.common import ExtractedValue
@@ -80,6 +86,58 @@ class PostgresCaseRepository:
     def load_case_materials(self, case_id: str) -> CaseMaterials | None:
         row = self._s.get(CaseMaterialsRow, case_id)
         return CaseMaterials.model_validate(row.body) if row else None
+
+    def case_application_number(self, case_id: str) -> str | None:
+        case = self._s.get(Case, case_id)
+        return case.application_number if case else None
+
+    def add_document(
+        self, case_id: str, document: GroupedMaterial, file: StoredFile, materials: CaseMaterials
+    ) -> None:
+        row = self._s.get(CaseMaterialsRow, case_id)
+        if row is None:
+            raise UnknownCaseError(f"저장된 사건이 없음: {case_id}")
+        doc = uploaded_document_row(case_id, document, file)
+        try:
+            with self._s.begin_nested():  # 실패하면 이 문서 줄만 되돌린다
+                self._s.add(Document(**vars(doc)))
+                self._s.flush()
+        except IntegrityError as e:
+            name = getattr(getattr(e.orig, "diag", None), "constraint_name", None)
+            if name == "uq_documents_case_sha256":
+                raise DuplicateDocumentError("같은 사건에 같은 파일이 이미 있음") from e
+            raise CaseStoreError(f"저장 실패: {name or e.orig}") from e
+        # 자료만 더했으니 실행 id는 비운다 (CaseMaterialsRow 주석)
+        row.body = materials.model_dump(mode="json")
+        row.run_id = None
+        self._s.flush()
+
+    def events(self, case_id: str) -> list[EventRow]:
+        q = select(CaseEvent).where(CaseEvent.case_id == case_id)
+        rows = [
+            EventRow(e.id, e.case_id, e.kind, e.doc_number, e.seq)
+            for e in self._s.scalars(q.order_by(CaseEvent.id))
+        ]
+        return sorted_events(rows)
+
+    def oa_versions(self, case_id: str) -> list[OAVersionRow]:
+        q = (
+            select(OA, CaseEvent)
+            .join(CaseEvent, OA.case_event_id == CaseEvent.id)
+            .where(OA.case_id == case_id)
+        )
+        pairs = sorted(self._s.execute(q).all(), key=lambda p: (p[1].seq is None, p[1].seq or 0))
+        out = []
+        for oa, event in pairs:
+            version = None
+            if oa.examined_claim_version_id is not None:
+                version = _to_row(self._s.get(ClaimVersion, oa.examined_claim_version_id))
+            out.append(
+                OAVersionRow(
+                    oa.id, event.doc_number, examined_from_version(version), oa.document_id
+                )
+            )
+        return out
 
     def claim_versions(self, case_id: str) -> list[ClaimVersionRow]:
         q = select(ClaimVersion).where(ClaimVersion.case_id == case_id)

@@ -26,9 +26,9 @@
   ],
   "missing": [
     {
-      "what": "US 2099/0000001 본문",
+      "what": "D2 US20990000001A1 본문",
       "depends_on_tasks": [
-        "F3 대비: US 2099/0000001"
+        "F3 대비: D2 US20990000001A1"
       ],
       "lookup_result": "body_missing",
       "ask_upload": true
@@ -36,8 +36,8 @@
   ],
   "held_tasks": [
     {
-      "task": "F3 대비: US 2099/0000001",
-      "waiting_for": "US 2099/0000001 본문"
+      "task": "F3 대비: D2 US20990000001A1",
+      "waiting_for": "D2 US20990000001A1 본문"
     }
   ],
   "review_items_count": 2
