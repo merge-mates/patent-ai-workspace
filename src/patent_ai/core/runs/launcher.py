@@ -43,3 +43,26 @@ class ThreadLauncher:
                 )
             except InvalidRunTransition, RunNotFound:
                 logger.warning("실행 %s는 이미 끝나 있어 failed로 바꾸지 않는다", run_id)
+
+
+class LaunchFailedError(Exception):
+    """실행기에 넘기지 못했다 (API는 500 launch_failed). 실행은 이미 failed로 남겼다."""
+
+
+def mark_launch_failed(store: RunStatusStore, run_id: str, message: str) -> None:
+    """실행기에 못 넘긴 실행을 failed(launch_failed)로 남긴다. queued로 두면 그 OA가
+    영영 409 run_in_progress로 막힌다. 이미 바뀐 실행은 건드리지 않는다."""
+    try:
+        store.transition(run_id, RunState.FAILED, error=RunError("launch_failed", message))
+    except InvalidRunTransition, RunNotFound:
+        logger.warning("실행 %s는 이미 바뀌어 있어 launch_failed로 바꾸지 않는다", run_id)
+
+
+def launch_or_fail(launch: RunLauncher, store: RunStatusStore, run_id: str, oa_id: str) -> None:
+    """launch를 부르고, 예외가 나면 실행을 failed로 남긴 뒤 LaunchFailedError를 던진다."""
+    try:
+        launch(run_id, oa_id)
+    except Exception as exc:
+        logger.exception("실행 %s를 실행기에 넘기지 못함", run_id)
+        mark_launch_failed(store, run_id, f"실행을 시작하지 못했습니다: {exc}")
+        raise LaunchFailedError(run_id) from exc

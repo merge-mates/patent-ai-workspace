@@ -71,11 +71,14 @@ def save_with_commit[T](
     write_db: Callable[[str], T],
     commit: Callable[[], None],
     rollback: Callable[[], None],
+    on_finalize_failed: Callable[[T], None] | None = None,
 ) -> T:
     """임시 파일 → DB 쓰기·커밋 → 이름 바꾸기. POST /cases와 POST /cases/{id}/oas가 같이 쓴다.
 
     write_db(path)는 DB 줄을 만들고 결과를 돌려준다. 저장소가 던진 오류(중복 등)는
     임시 파일을 지운 뒤 그대로 올려 보낸다. 그 밖의 실패는 UploadFailedError.
+    on_finalize_failed(created): DB 커밋은 됐는데 이름 바꾸기가 실패했을 때 부른다
+    (실행기에 못 넘길 실행이 queued로 남지 않게 부르는 쪽이 정리한다).
     """
     target = final_path(upload_dir, case_id, sha256)
     tmp: Path | None = None
@@ -98,5 +101,7 @@ def save_with_commit[T](
         # DB에는 이미 들어갔다. 파일이 없는 줄이 남으므로 로그로 알린다
         logger.exception("DB 커밋 뒤 파일 이름 바꾸기 실패: %s", target)
         discard(tmp)
+        if on_finalize_failed is not None:
+            on_finalize_failed(created)
         raise UploadFailedError("이름 바꾸기 실패") from e
     return created

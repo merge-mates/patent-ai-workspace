@@ -3,7 +3,10 @@
 launcher는 그 자리에서 바로 도는 것을 끼운다 (진짜 앱은 백그라운드 스레드).
 """
 
+from typing import Annotated
+
 import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from patent_ai.api.deps import (
@@ -17,7 +20,7 @@ from patent_ai.api.deps import (
 from patent_ai.api.main import create_app
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
 from patent_ai.core.runs.cancel import CancelRegistry
-from patent_ai.core.runs.executor import NotConnectedExecutor, Step, StepRunExecutor
+from patent_ai.core.runs.executor import RunExecutor, Step, StepRunExecutor
 from patent_ai.core.runs.state import RunError, RunState
 from tests.core.runs.fake_executor import (
     MemorySink,
@@ -59,11 +62,19 @@ class Env:
         app.dependency_overrides[get_run_status_store] = lambda: self.runs
         app.dependency_overrides[get_cancel_registry] = lambda: self.registry
         if executor_kind == "fake":
-            self.executor = self._fake_executor
-        else:  # 앱 기본 실행기(NotConnectedExecutor) 그대로
-            self.executor = lambda: NotConnectedExecutor(self.runs)
-        app.dependency_overrides[get_run_executor] = lambda: self.executor()
-        app.dependency_overrides[get_run_launcher] = lambda: self._launch
+            app.dependency_overrides[get_run_executor] = self._fake_executor
+            app.dependency_overrides[get_run_launcher] = lambda: self._launch
+        else:
+            # 앱 기본 실행기: get_run_executor를 override하지 않고 deps의 것을 그대로 받는다.
+            # 그래서 누가 deps 기본 실행기를 바꾸면 이 모드의 테스트가 깨진다
+            def inline_launcher(executor: Annotated[RunExecutor, Depends(get_run_executor)]):
+                def launch(run_id, oa_id):
+                    self.launched.append((run_id, oa_id))
+                    executor.execute(run_id, oa_id)
+
+                return launch
+
+            app.dependency_overrides[get_run_launcher] = inline_launcher
         self.app = app
         self.client = TestClient(app, raise_server_exceptions=False)
 
@@ -80,7 +91,7 @@ class Env:
         """그 자리에서 바로 돈다. launch_enabled가 꺼져 있으면 queued로 둔다."""
         self.launched.append((run_id, oa_id))
         if self.launch_enabled:
-            self.executor().execute(run_id, oa_id)
+            self._fake_executor().execute(run_id, oa_id)
 
     def upload(self):
         return self.client.post("/cases", files={"file": ("oa.pdf", PDF, "application/pdf")}).json()
@@ -247,3 +258,46 @@ def test_끝난_뒤에는_다시_실행을_만들_수_있다(env):
     created = env.upload()
     env.runs.transition(created["run_id"], RunState.FAILED, error=RunError("x", "y"))
     assert env.client.post(f"/oas/{created['oa_id']}/runs").status_code == 200
+
+
+def _boom_launcher(run_id, oa_id):
+    raise RuntimeError("스레드를 못 띄움")
+
+
+def test_launch가_실패하면_그_실행은_failed_launch_failed로_남고_다시_만들_수_있다(env):
+    env.launch_enabled = False
+    created = env.upload()
+    env.runs.transition(created["run_id"], RunState.FAILED, error=RunError("x", "y"))
+    env.app.dependency_overrides[get_run_launcher] = lambda: _boom_launcher
+    res = env.client.post(f"/oas/{created['oa_id']}/runs")
+    assert res.status_code == 500 and set(res.json()) == {"code", "message"}
+    latest = env.cases.get_oa(created["oa_id"]).latest_run
+    status = env.runs.get_status(latest.id)
+    assert latest.id != created["run_id"]
+    assert status.state == RunState.FAILED and status.error["code"] == "launch_failed"
+    # queued로 남지 않았으니 이 OA는 409로 막히지 않는다
+    env.app.dependency_overrides[get_run_launcher] = lambda: env._launch
+    assert env.client.post(f"/oas/{created['oa_id']}/runs").status_code == 200
+
+
+def test_업로드_뒤_launch가_실패해도_실행이_queued로_남지_않는다(env):
+    env.app.dependency_overrides[get_run_launcher] = lambda: _boom_launcher
+    res = env.client.post("/cases", files={"file": ("oa.pdf", PDF, "application/pdf")})
+    assert res.status_code == 500
+    (row,) = [env.cases.get_oa(o).latest_run for o in env.cases._oas]
+    assert env.runs.get_status(row.id).error["code"] == "launch_failed"
+
+
+def test_업로드_파일_마무리가_실패해도_실행이_queued로_남지_않는다(env, monkeypatch):
+    env.launch_enabled = False
+
+    def broken_finalize(tmp, target):
+        raise OSError("디스크 오류")
+
+    monkeypatch.setattr("patent_ai.core.cases.upload.finalize", broken_finalize)
+    res = env.client.post("/cases", files={"file": ("oa.pdf", PDF, "application/pdf")})
+    assert res.status_code == 500 and res.json()["code"] == "upload_failed"
+    (row,) = [env.cases.get_oa(o).latest_run for o in env.cases._oas]
+    status = env.runs.get_status(row.id)
+    assert status.state == RunState.FAILED and status.error["code"] == "launch_failed"
+    assert env.launched == []  # 실행기에는 넘기지 않았다

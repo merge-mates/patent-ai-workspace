@@ -9,8 +9,15 @@ from fastapi import APIRouter, Depends, UploadFile
 from pydantic import BaseModel
 
 from patent_ai.api.cases import read_pdf
-from patent_ai.api.deps import CaseUnit, get_case_unit, get_run_launcher, get_upload_dir
+from patent_ai.api.deps import (
+    CaseUnit,
+    get_case_unit,
+    get_run_launcher,
+    get_run_status_store,
+    get_upload_dir,
+)
 from patent_ai.api.errors import AppError
+from patent_ai.api.runs import launch_run
 from patent_ai.core.cases import upload
 from patent_ai.core.cases.store import (
     CaseNotFoundError,
@@ -18,7 +25,8 @@ from patent_ai.core.cases.store import (
     NewDocument,
     now_utc,
 )
-from patent_ai.core.runs.launcher import RunLauncher
+from patent_ai.core.runs.launcher import RunLauncher, mark_launch_failed
+from patent_ai.core.runs.store import RunStatusStore
 
 router = APIRouter()
 
@@ -50,6 +58,7 @@ def add_oa(
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     upload_dir: Annotated[Path, Depends(get_upload_dir)],
     launch: Annotated[RunLauncher, Depends(get_run_launcher)],
+    status_store: Annotated[RunStatusStore, Depends(get_run_status_store)],
 ) -> CreatedOA:
     # 없는 사건이면 파일을 읽기 전에 404
     if unit.store.get_case(case_id) is None:
@@ -66,6 +75,9 @@ def add_oa(
             ),
             unit.commit,
             unit.rollback,
+            lambda c: mark_launch_failed(
+                status_store, c.run_id, "파일 저장을 마치지 못해 실행하지 않았습니다"
+            ),
         )
     except CaseNotFoundError:
         raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다") from None
@@ -81,7 +93,7 @@ def add_oa(
         ) from None
     except upload.UploadFailedError:
         raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None
-    launch(created.run_id, created.oa_id)  # 커밋 뒤에 실행기에 넘긴다
+    launch_run(launch, status_store, created.run_id, created.oa_id)  # 커밋 뒤에 실행기에 넘긴다
     return CreatedOA(oa_id=created.oa_id, run_id=created.run_id)
 
 

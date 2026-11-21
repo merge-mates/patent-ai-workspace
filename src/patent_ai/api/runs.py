@@ -17,7 +17,7 @@ from patent_ai.api.deps import (
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases.start_run import OANotFoundError, RunInProgressError, create_run_for_oa
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
-from patent_ai.core.runs.launcher import RunLauncher
+from patent_ai.core.runs.launcher import LaunchFailedError, RunLauncher, launch_or_fail
 from patent_ai.core.runs.store import RunNotFound, RunStatus, RunStatusStore
 
 router = APIRouter()
@@ -52,11 +52,20 @@ def _out(s: RunStatus) -> RunStatusOut:
     )
 
 
+def launch_run(launch: RunLauncher, store: RunStatusStore, run_id: str, oa_id: str) -> None:
+    """커밋 뒤에 실행기에 넘긴다. 못 넘기면 실행을 failed로 남기고 500 launch_failed."""
+    try:
+        launch_or_fail(launch, store, run_id, oa_id)
+    except LaunchFailedError:
+        raise AppError(500, "launch_failed", "실행을 시작하지 못했습니다") from None
+
+
 @router.post("/oas/{oa_id}/runs", response_model=RunCreated)
 def create_run(
     oa_id: str,
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     launch: Annotated[RunLauncher, Depends(get_run_launcher)],
+    status_store: Annotated[RunStatusStore, Depends(get_run_status_store)],
 ) -> RunCreated:
     try:
         run = create_run_for_oa(unit.store, oa_id)
@@ -65,7 +74,7 @@ def create_run(
     except RunInProgressError:
         raise AppError(409, "run_in_progress", "이미 진행 중인 실행이 있습니다") from None
     unit.commit()  # 커밋해야 실행기(다른 세션)가 이 줄을 본다
-    launch(run.id, oa_id)
+    launch_run(launch, status_store, run.id, oa_id)
     return RunCreated(run_id=run.id)
 
 
