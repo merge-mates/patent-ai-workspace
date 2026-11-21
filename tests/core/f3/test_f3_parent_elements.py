@@ -355,3 +355,41 @@ def test_부모를_나누지_못했으면_경고하고_표를_input_unverified�
     assert table.status.reason == UnverifiedReason.INPUT_UNVERIFIED
     assert Flag.NEEDS_HUMAN_REVIEW in table.flags
     assert any("부모" in r.getMessage() and "청구항 1" in r.getMessage() for r in caplog.records)
+
+
+def _branch_splits():
+    return {
+        1: split(1, [SENSOR, TANK]),
+        2: split(2, [LID], [1]),
+        3: split(3, [BASE], [1]),
+        4: split(4, [HANDLE], [2, 3]),  # 제2항 또는 제3항에 있어서
+    }
+
+
+def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_나가지_않고_보류한다():
+    result = oa([rejection(1, "29-1-1", [4], [citation("D1", D1)])])
+    answer = _answer(4, (1, "disclosed", (P31, FULL31)))
+    out, _, _, _ = _run(result, [answer], splits=_branch_splits())
+    (table,) = out.tables
+    assert _locations(table, 4) == ["청구항 4 [구성 4-1]"]
+    (row,) = table.rows
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+    assert table.status.value == StatusValue.UNVERIFIED
+    assert [h.task for h in out.held_tasks] == [f"f3_compare:{table.unit_id}:claim4:branch"]
+    assert out.held_tasks[0].waiting_for == "인용 가지마다 대비 (직접 검토 필요)"
+
+
+def test_인용_가지가_여럿이어도_부모가_이미_대비됐으면_보류도_경고도_없다(caplog):
+    result = oa([rejection(1, "29-2", [1, 2, 3, 4], [citation("D1", D1)])])
+    answers = [
+        _answer(1, (1, "unclear"), (2, "unclear")),
+        _answer(2, (1, "unclear")),
+        _answer(3, (1, "unclear")),
+        _answer(4, (1, "unclear")),
+    ]
+    with caplog.at_level(logging.WARNING):
+        out, _, _, _ = _run(result, answers, splits=_branch_splits())
+    assert out.held_tasks == []
+    assert not any("인용 가지가 여럿" in r.getMessage() for r in caplog.records)
+    assert out.tables[0].status.reason != UnverifiedReason.INPUT_UNVERIFIED

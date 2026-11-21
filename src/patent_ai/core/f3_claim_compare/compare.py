@@ -160,6 +160,8 @@ class _View:
     parents: list[int] = field(default_factory=list)  # 구성요소를 빌려 온 부모 청구항
     # 빌려 올 부모의 나누기 결과가 비었거나 확인되지 않음: 표를 input_unverified로 둔다
     parent_unverified: bool = False
+    # 인용 가지가 여럿("제2항 또는 제3항")인데 빌려야 할 부모가 남아 못 빌림 (보류를 만든다)
+    branch_blocked: bool = False
 
 
 def _has_branch(claim: int, splits: Mapping[int, SplitClaim]) -> bool:
@@ -183,8 +185,8 @@ def _carried_parents(
     compared: Mapping[int, set[str]],
     labels: set[str],
     splits: Mapping[int, SplitClaim],
-) -> list[int]:
-    """구성요소를 빌려 와야 하는 부모 청구항들 (번호 순).
+) -> tuple[list[int], bool]:
+    """(구성요소를 빌려 와야 하는 부모 청구항들(번호 순), 가지 때문에 못 빌렸는지).
 
     인용을 거슬러 올라간 앞 청구항 중, 이 묶음에서 이미 대비되는 청구항(과 그 앞 청구항들)은 뺀다.
     "이미 대비됨" = 그 부모가 이 묶음에 있고 이 종속항이 대비되는 문헌을 모두 대비받음
@@ -194,19 +196,21 @@ def _carried_parents(
     """
     family = ancestors(claim, splits)
     if not family:
-        return []
-    if _has_branch(claim, splits):
-        # 가지마다 따로 대비하는 일은 아직 없다. 가지 합집합을 한 청구항처럼 대비하지 않는다
-        logger.warning(
-            "compare 청구항 %d: 인용 가지가 여럿이라 부모 구성요소를 넣지 않음 (직접 검토 필요)",
-            claim,
-        )
-        return []
+        return [], False
     covered: set[int] = set()
     for a in family:
         if splits[a].elements and labels <= compared.get(a, set()):
             covered |= {a} | (ancestors(a, splits) or set())
-    return sorted(family - covered)
+    need = sorted(family - covered)
+    if need and _has_branch(claim, splits):
+        # 가지마다 따로 대비하는 일은 아직 없다. 가지 합집합을 한 청구항처럼 대비하지 않고,
+        # 부모 없이 확인됨으로 나가지 않게 "못 빌림"으로 알린다 (부모가 이미 대비됐으면 통과)
+        logger.warning(
+            "compare 청구항 %d: 인용 가지가 여럿이라 부모 구성요소를 넣지 않음 (직접 검토 필요)",
+            claim,
+        )
+        return [], True
+    return need, False
 
 
 def _make_view(
@@ -216,8 +220,8 @@ def _make_view(
     config: F3Config,
 ) -> _View:
     texts = config.inputs.claims_at_oa
-    parents = _carried_parents(split.claim, compared, compared[split.claim], splits)
-    unverified_parent = False
+    parents, blocked = _carried_parents(split.claim, compared, compared[split.claim], splits)
+    unverified_parent = blocked
     for p in parents:
         if not splits[p].elements or splits[p].status.value != StatusValue.CONFIRMED:
             # 조용히 빠지지 않게: 경고를 남기고 표를 확인되지 않음으로 둔다
@@ -236,7 +240,7 @@ def _make_view(
         claim_text = "\n\n".join(shown)
     else:
         claim_text = texts.get(split.claim, "")
-    return _View(split.claim, items, claim_text, parents, unverified_parent)
+    return _View(split.claim, items, claim_text, parents, unverified_parent, blocked)
 
 
 class _CachedSearcher:
@@ -854,6 +858,14 @@ def compare_unit(
             for i in v.items
             if i.e.status.value != StatusValue.CONFIRMED
         }
+        for c, v in views.items():
+            if v.branch_blocked:
+                # 부모 없이 확인됨으로 나가지 않게: 줄은 input_unverified로 내리고 보류를 남긴다
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{c}:branch",
+                    "인용 가지마다 대비 (직접 검토 필요)",
+                )
         for claim in unit.claims:
             if claim not in has_elements:
                 logger.warning(
