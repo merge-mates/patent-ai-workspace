@@ -35,6 +35,27 @@ export const API_MODE = import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'ser
 // 서버 모드면 옛 mock 값(고른 방향·고친 초안·실행 흉내)이 브라우저에 남아 있지 않게 모듈을 불러올 때 지운다 (D6)
 if (API_MODE === 'server') clearMockKeys()
 
+// F3·F4 결과 응답 모양 (#191): {oa_id, run_id, result, empty_reason}. result에 결과 스키마가 들어 있다.
+// 단계를 넘겼거나 해당 거절이유가 없으면 result가 비고 empty_reason에 이유가 온다 (넘김: … / 보류: …)
+interface ResultEnvelope<T> {
+  oa_id: string
+  run_id: string
+  result: T
+  empty_reason: string | null
+}
+
+// 결과 목록 받기: 화면은 지금처럼 목록만 쓴다. 빈 이유는 서버 응답에 남아 있다 (화면 표시는 다음 이슈)
+const getResult = async <T>(path: string): Promise<T> => (await getJson<ResultEnvelope<T>>(path)).result
+
+// 초안 받기: 초안이 없으면(모든 묶음 보류·F4 넘김) 지어내지 않고 "아직 없음"으로 알리며 이유를 싣는다
+const getDraftsResult = async (oaId: string): Promise<DraftsWithCheck> => {
+  const body = await getJson<ResultEnvelope<DraftsWithCheck | null>>(`/oas/${oaId}/drafts`)
+  if (body.result === null) {
+    throw new ApiError('result_not_ready', body.empty_reason ?? '초안이 없습니다', 200)
+  }
+  return body.result
+}
+
 const httpApi: typeof mockApi = {
   listCases: () => getJson<CaseSummary[]>('/cases'),
   // API v0 사건 목록에 제출기일 글자·단계·직접 할 일 칸이 없다. 빈 목록 = 모든 사건의 칸이 "모름"
@@ -49,10 +70,10 @@ const httpApi: typeof mockApi = {
     throw new ApiError('not_in_api_v0', '검토할 사항 목록은 API v0에 아직 없음', 0)
   },
   getDocument: (documentId) => getJson<PageText>(`/documents/${documentId}`),
-  getUnits: (oaId) => getJson<JudgmentUnit[]>(`/oas/${oaId}/units`),
-  getComparisons: (oaId) => getJson<ComparisonTable[]>(`/oas/${oaId}/comparisons`),
-  getClarityReviews: (oaId) => getJson<ClarityReview[]>(`/oas/${oaId}/clarity-reviews`),
-  getLegalEvidence: (oaId) => getJson<LegalEvidenceBundle[]>(`/oas/${oaId}/legal-evidence`),
+  getUnits: (oaId) => getResult<JudgmentUnit[]>(`/oas/${oaId}/units`),
+  getComparisons: (oaId) => getResult<ComparisonTable[]>(`/oas/${oaId}/comparisons`),
+  getClarityReviews: (oaId) => getResult<ClarityReview[]>(`/oas/${oaId}/clarity-reviews`),
+  getLegalEvidence: (oaId) => getResult<LegalEvidenceBundle[]>(`/oas/${oaId}/legal-evidence`),
   // 법률 질문 (필드는 F2 설계 때 바뀔 수 있음): chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
   // (질문마다 새 대화를 만들면 두 번째 질문부터 앞 맥락이 끊긴다)
   askLegal: async (q, chatId): Promise<LegalAnswer> => {
@@ -60,13 +81,13 @@ const httpApi: typeof mockApi = {
     const answer = await postJson<LegalEvidenceBundle>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
     return { chat_id: id, answer }
   },
-  getDirections: (oaId) => getJson<DirectionCandidates[]>(`/oas/${oaId}/directions`),
+  getDirections: (oaId) => getResult<DirectionCandidates[]>(`/oas/${oaId}/directions`),
   selectDirection: (unitId, candidateId) =>
     sendJson<DirectionCandidates>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, {
       candidate_id: candidateId,
     }),
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
-  getDrafts: (oaId) => getJson<DraftsWithCheck>(`/oas/${oaId}/drafts`),
+  getDrafts: (oaId) => getDraftsResult(oaId),
   patchDraft: (draftId, patch) => sendJson<DraftsWithCheck>('PATCH', `/drafts/${draftId}`, patch),
   getRun: (runId) => getJson<RunStatus>(`/runs/${encodeURIComponent(runId)}`),
   cancelRun: (runId) => postJson<RunStatus>(`/runs/${encodeURIComponent(runId)}/cancel`, {}),
@@ -81,10 +102,12 @@ const httpApi: typeof mockApi = {
     form.append('file', file)
     return postForm<CreatedOA>(`/cases/${encodeURIComponent(caseId)}/oas`, form)
   },
-  // POST /cases/{id}/documents: 조회하지 못한 자료를 올린다 ("올려 주세요"). 응답 모양은 명세에 없다
-  uploadDocument: (caseId, file) => {
+  // POST /cases/{id}/documents: 조회하지 못한 자료를 올린다 ("올려 주세요").
+  // what = 답하는 빠진 자료 (CaseMaterials.missing[].what 글자 그대로). 서버가 이 글자로 빠진 자료를 찾는다
+  uploadDocument: (caseId, file, what) => {
     const form = new FormData()
     form.append('file', file)
+    form.append('what', what)
     return postForm<UploadedDocument>(`/cases/${encodeURIComponent(caseId)}/documents`, form)
   },
   // POST /oas/{oa_id}/runs: 다시 돌리기. 명세에는 "다시 확인 필요가 붙은 판단 단위만" 고르는 말이 있으나

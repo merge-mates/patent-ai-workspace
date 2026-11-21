@@ -44,6 +44,12 @@ def _warn_no_recorder(run_id: str, step: str) -> None:
         logger.warning("%s: recorder가 없어 호출 기록이 빠짐 (run_id=%s)", step, run_id)
 
 
+def _input_tokens_upper_bound(prompt: str) -> int:
+    """청구된 입력 토큰을 모를 때 budget에 셀 양. 토큰 하나는 1바이트 이상이라
+    프롬프트의 UTF-8 바이트 수는 입력 토큰 수보다 작지 않다 (적게 세지 않게)."""
+    return len(prompt.encode("utf-8"))
+
+
 class ModelResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -132,24 +138,37 @@ def call_model(
         transport = AnthropicTransport()
 
     # 가격 설정이 둘 다 있을 때만 비용을 계산한다 (캐시 적중은 과금 없음)
-    def cost_of(resp: TransportResponse, from_cache: bool) -> float | None:
+    # 토큰 하나라도 모르면(None, 끊긴 스트림) 비용도 확인되지 않음 (#194)
+    def cost_of_tokens(in_tok: int | None, out_tok: int | None, from_cache: bool) -> float | None:
         if from_cache:
             return 0.0
         if cfg.price_per_mtok_input is None or cfg.price_per_mtok_output is None:
             return None
-        return (
-            resp.input_tokens * cfg.price_per_mtok_input
-            + resp.output_tokens * cfg.price_per_mtok_output
-        ) / 1_000_000
+        if in_tok is None or out_tok is None:
+            return None
+        return (in_tok * cfg.price_per_mtok_input + out_tok * cfg.price_per_mtok_output) / 1_000_000
+
+    def cost_of(resp: TransportResponse, from_cache: bool) -> float | None:
+        return cost_of_tokens(resp.input_tokens, resp.output_tokens, from_cache)
 
     # 호출마다 기록 한 줄 (적중·실패 포함)
-    def record(resp, elapsed_ms, from_cache, outcome, transport_try):
+    # 전송 중 실패한 호출: usage = 끊기기 전에 받은 토큰 (출력은 None일 수 있음),
+    # usage_unknown=True = 청구된 토큰을 아예 모름 -> 토큰·비용을 None(확인되지 않음)
+    def record(
+        resp, elapsed_ms, from_cache, outcome, transport_try, usage=None, usage_unknown=False
+    ):
         if recorder is None:
             _warn_no_recorder(run_id, step)
             return
-        in_tok = resp.input_tokens if resp else 0
-        out_tok = resp.output_tokens if resp else 0
-        cost = cost_of(resp, from_cache) if resp else None
+        if usage_unknown:
+            in_tok = out_tok = cost = None
+        elif usage is not None:
+            in_tok, out_tok = usage.input_tokens, usage.output_tokens
+            cost = cost_of_tokens(in_tok, out_tok, from_cache)
+        else:
+            in_tok = resp.input_tokens if resp else 0
+            out_tok = resp.output_tokens if resp else 0
+            cost = cost_of(resp, from_cache) if resp else None
         recorder.record(
             CallRecord(
                 run_id=run_id,
@@ -198,14 +217,17 @@ def call_model(
                 raise  # 녹화 없음·설정 잘못은 감싸지 않고 그대로 멈춘다
             except Exception as e:
                 # TransportError 말고 모르는 예외도 기록하고 세고 ModelCallFailed로 감싼다
-                budget.add(run_id, step, 0)
-                record(
-                    None,
-                    int((time.monotonic() - try_start) * 1000),
-                    False,
-                    "transport_error",
-                    n + 1,
-                )
+                # 스트림이 중간에 끊겨도 입력·부분 출력은 청구됐을 수 있다 (#194)
+                usage = e.usage if isinstance(e, TransportError) else None
+                failed_ms = int((time.monotonic() - try_start) * 1000)
+                if usage is None:
+                    # 받은 usage가 없음: 기록은 "확인되지 않음", budget은 위 한계로 센다
+                    budget.add(run_id, step, _input_tokens_upper_bound(prompt))
+                    record(None, failed_ms, False, "transport_error", n + 1, usage_unknown=True)
+                else:
+                    budget.add(run_id, step, usage.input_tokens)
+                    # 입력 토큰은 message_start에서 받아 안다. 출력은 모를 수 있다 (None)
+                    record(None, failed_ms, False, "transport_error", n + 1, usage=usage)
                 known_retryable = isinstance(e, TransportError) and e.retryable
                 if not known_retryable or n == retries:
                     raise ModelCallFailed(f"{step}: {e} (시도 {n + 1}번)") from e

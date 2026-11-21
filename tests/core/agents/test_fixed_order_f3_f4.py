@@ -188,7 +188,7 @@ def test_고정_순서_한_바퀴가_돌고_F2를_넘긴_이유가_남는다(tmp
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
         ("run_f3", "ok"),
-        ("run_f2", "waiting"),
+        ("run_f2", "skipped"),
         ("run_f4", "ok"),
     ]
     # F2: 결과 없음 + 넘긴 이유 + 경고 (성공으로 보이지 않는다)
@@ -269,7 +269,7 @@ def test_청구항_글자_입력이_없으면_F3_F4를_input_unverified로_넘�
     assert out.skipped["run_f4"].startswith("input_unverified")
     recs = {r.tool_name: r for r in steps.records}
     for name in ("run_f3", "run_f4"):
-        assert recs[name].outcome == "waiting" and recs[name].result_status == "unverified"
+        assert recs[name].outcome == "skipped" and recs[name].result_status == "unverified"
         assert recs[name].skipped_reason == out.skipped[name]
         assert any(name in r.getMessage() for r in caplog.records)
     assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
@@ -315,4 +315,4 @@ def test_agent_모드에서_넘겼던_단계가_나중에_돌면_넘김_목록�
     assert out.state == "succeeded"
     assert "run_f4" in out.results and "run_f4" not in out.skipped
     # 단계 기록(이력)에는 넘겼던 줄이 그대로 남는다
-    assert any(r.tool_name == "run_f4" and r.reason.startswith("넘김:") for r in steps.records)
+    assert any(r.tool_name == "run_f4" and r.outcome == "skipped" for r in steps.records)

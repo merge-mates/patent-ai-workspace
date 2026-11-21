@@ -16,12 +16,12 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 - 결과 상태(확인됨 / 확인되지 않음 / 조회 범위 내 없음 / 충돌)는 200 응답 안의 `status`로 준다. HTTP 오류 코드는 요청이 잘못됐을 때만 쓴다.
 - 응답 바깥 `status`는 `result.status.value`를 복사한다(기준은 result). `result.status`는 객체 `{value, reason, checked, searched_scope}`다.
 - `status`·`origin` 값은 [데이터 모델](../data-model.md) 3절의 영어 코드(`confirmed`·`ai_generated` 등)를 쓴다. 화면에서 한국어로 보여 준다.
-- 결과 엔드포인트는 `succeeded` 또는 `waiting_for_human`(사람 기다림) 실행이 낸 가장 최근 결과를 준다. 사람 기다림 중에도 그때까지의 정리를 볼 수 있다. 결과가 아직 없으면(실행 전·실행 중, 또는 가장 최근 실행이 failed·cancelled이고 앞에 보여 줄 실행이 없을 때) 404 `{code: "result_not_ready"}`다. 화면은 응답 `run_id`와 `latest_run`으로 이 경우들을 가른다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다.
+- 결과 엔드포인트는 `succeeded` 또는 `waiting_for_human`(사람 기다림) 실행이 낸 가장 최근 결과를 준다. 사람 기다림 중에도 그때까지의 정리를 볼 수 있다. 결과가 아직 없으면(실행 전·실행 중, 또는 가장 최근 실행이 failed·cancelled이고 앞에 보여 줄 실행이 없을 때) 404 `{code: "result_not_ready"}`다. 화면은 응답 `run_id`와 `latest_run`으로 이 경우들을 가른다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다. F3·F4 결과(`units`·`comparisons`·`clarity-reviews`·`legal-evidence`·`directions`·`drafts`) 응답은 `{oa_id, run_id, result, empty_reason}`이고 `result`에 결과 스키마 목록(`drafts`는 `Drafts` 하나 또는 null)을 담는다. `run_id`는 OA 정리(`oa-result`)와 같은 실행이다. 단계를 넘겼으면 `empty_reason`이 `넘김: <이유>`다 (예: F2 `넘김: tool_missing: …`, 청구항 판을 못 찾은 F3·F4 `넘김: input_unverified: …`). 저장한 결과를 지금 모델로 못 읽으면(칸이 바뀐 옛 줄) `확인되지 않음: 저장된 결과를 읽지 못함 (다시 실행 필요)`, 사람 확인을 기다리느라 그 단계 전에 멈췄으면 `보류: 사람 확인을 기다림 (<기다리는 것>)`, 이유를 모르면 `확인되지 않음: 이 실행에 결과가 없음`이다. `directions`는 `rank_notice`, `drafts`는 `held_units`·`legality_notice`를 같이 준다.
 - 오류 본문은 한 형식이다: `{code, message}`. 오류에 따라 칸을 더 담을 수 있다 (예: 409 `document_already_exists`는 `case_id`·`oa_id`).
 - 오래 걸리는 AI 실행은 만들기 → 상태 보기(폴링) → 결과 받기 순서다.
 - 실행 취소(`POST /runs/{id}/cancel`): queued·waiting_for_human은 바로 `cancelled`로 답한다. running은 취소 표시만 하고 응답 `state`는 `running` 그대로이니, 화면은 폴링으로 `cancelled`를 확인한다.
 - 실행 관련 오류: 409 `run_in_progress`(같은 OA에 진행 중인 실행이 있음), 409 `run_already_finished`(이미 끝난 실행을 취소), 500 `launch_failed`(실행을 시작하지 못함. 그 실행은 failed로 남는다), 404 `run_not_found`.
-- 실행이 `failed`일 때 `error.code`는 `executor_not_connected`(지휘 에이전트 연결 전) · `server_restarted`(서버가 다시 켜져 중단) · `step_failed`(단계 예외) · `result_save_failed`(결과 저장 실패) · `executor_crashed`(실행기가 예상 밖으로 죽음) · `launch_failed`(시작 실패) 중 하나다.
+- 실행이 `failed`일 때 `error.code`는 `server_restarted`(서버가 다시 켜져 중단) · `step_failed`(단계 실패) · `oa_already_exists`(이미 올린 OA) · `max_steps`·`invalid_tool_choice`·`no_oa_result`(지휘가 끝내지 못함) · `result_save_failed`(결과 저장 실패) · `executor_crashed`(실행기가 예상 밖으로 죽음) · `launch_failed`(시작 실패) 중 하나다. `error.message`에는 어느 단계에서 어떤 종류로 실패했는지만 담고 예외 원문은 담지 않는다 (원문은 서버 로그). 서버는 실행을 한 번에 하나만 돌리고, 뒤에 온 실행은 `queued`로 기다린다.
 - 평가(평가 세트 채점)는 API를 거치지 않고 스크립트가 `core/`를 직접 부른다.
 
 ## 3. 엔드포인트
@@ -57,7 +57,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/oas/{oa_id}/clarity-reviews` | 명확성 문구 검토 (스키마는 F3 설계 때) |
 | GET | `/oas/{oa_id}/legal-evidence` | ④ 법률 근거 묶음 (OA 흐름에서 지휘 에이전트가 자동으로 찾은 것) |
 | GET | `/oas/{oa_id}/directions` | ⑤ 대응 방향 후보 |
-| GET | `/oas/{oa_id}/drafts` | 의견서·보정 청구항 초안 + 초안 검사 결과 (스키마는 F4 설계 때) |
+| GET | `/oas/{oa_id}/drafts` | 의견서·보정 청구항 초안. 초안 검사 결과(누락·번호 불일치)는 #40 전까지 응답에 없다 |
 | GET | `/oas/{oa_id}/case-check` | 사건 전체 검사 (스키마는 F4 설계 때) |
 
 ### 사람이 하는 것

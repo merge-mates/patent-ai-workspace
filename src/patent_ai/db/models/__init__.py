@@ -10,6 +10,7 @@ from patent_ai.db.models.results import (
     RejectionCitation,
     RejectionClaim,
     ResultInput,
+    StepResultRow,
 )
 from patent_ai.db.models.runs import AgentStep, ApiCache, Run
 
@@ -33,5 +34,6 @@ __all__ = [
     "RejectionClaim",
     "ResultInput",
     "Run",
+    "StepResultRow",
     "User",
 ]

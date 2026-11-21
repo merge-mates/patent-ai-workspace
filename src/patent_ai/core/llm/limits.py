@@ -51,8 +51,9 @@ class CallRecord:
     run_id: str
     step: str
     model: str
-    input_tokens: int
-    output_tokens: int
+    # None = 확인되지 않음 (스트림이 끊겨 usage를 못 받음, #194). 0과 다르다: 0은 청구 없음을 앎
+    input_tokens: int | None
+    output_tokens: int | None
     cost: float | None
     elapsed_ms: int
     from_cache: bool
