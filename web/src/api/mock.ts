@@ -286,7 +286,7 @@ export const mockApi = {
     return { oa_id: b.oa_id, run_id: runOf(b).run_id }
   },
   // 파일을 읽어 자료로 만들 수 없어서 지어내지 않고 오류로 (화면은 mock에서 이 버튼을 막아 둔다)
-  async uploadDocument(_caseId: string, _file: File): Promise<UploadedDocument> {
+  async uploadDocument(_caseId: string, _file: File, _what: string): Promise<UploadedDocument> {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다

@@ -1,0 +1,138 @@
+{
+  "application_number": {
+    "value": "10-2099-0000001",
+    "raw_text": "10-2099-0000001",
+    "page": 1,
+    "ambiguous": false
+  },
+  "dispatch_number": {
+    "value": "9-5-2099-000000001",
+    "raw_text": "9-5-2099-000000001",
+    "page": 1,
+    "ambiguous": false
+  },
+  "rejections": [
+    {
+      "article": {
+        "value": "29-2",
+        "raw_text": "특허법 제29조제2항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제1항 내지 제2항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "citations": [
+        {
+          "number": {
+            "value": "공개특허공보 제10-2099-0000001호",
+            "raw_text": "공개특허공보 제10-2099-0000001호",
+            "page": 2,
+            "ambiguous": false
+          },
+          "cited_paragraphs": {
+            "value": null,
+            "raw_text": "식별번호 [0023]",
+            "page": 2,
+            "ambiguous": false
+          }
+        }
+      ],
+      "examiner_reasoning": {
+        "value": "센서 구성이 인용발명 1에 개시되어 있다고 봄",
+        "raw_text": "청구항 1의 센서 구성은 인용발명 1에 개시되어 있습니다",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "article": {
+        "value": null,
+        "raw_text": "특허법 제42조제4항제2호",
+        "page": 3,
+        "ambiguous": false
+      },
+      "claims": {
+        "value": null,
+        "raw_text": "제2항",
+        "page": 3,
+        "ambiguous": false
+      },
+      "citations": [],
+      "examiner_reasoning": {
+        "value": "'적당한 간격'의 뜻이 분명하지 않다고 봄",
+        "raw_text": "청구항 2의 '적당한 간격'은 그 범위가 불명확합니다",
+        "page": 3,
+        "ambiguous": false
+      }
+    }
+  ],
+  "allowable_claims": {
+    "value": null,
+    "raw_text": "제3항",
+    "page": 3,
+    "ambiguous": false
+  },
+  "amendment_note": {
+    "value": "제3항의 구성을 제1항에 더하면 거절이유가 해소될 수 있음",
+    "raw_text": "제3항의 구성을 제1항에 부가하는 보정을 참고하시기 바랍니다",
+    "page": 3,
+    "ambiguous": false
+  },
+  "examined_claims": {
+    "value": null,
+    "raw_text": "제1항 내지 제3항",
+    "page": 1,
+    "ambiguous": false
+  },
+  "claim_rows": [
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "제1항 내지 제2항",
+        "page": 2,
+        "ambiguous": false
+      },
+      "rejection": 1,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "이 출원의 청구항 제1항 내지 제2항은 특허법 제29조제2항에 해당하여 특허를 받을 수 없습니다.",
+        "page": 2,
+        "ambiguous": false
+      }
+    },
+    {
+      "claims": {
+        "value": null,
+        "raw_text": "청구항 2",
+        "page": 3,
+        "ambiguous": false
+      },
+      "rejection": 2,
+      "citations": [],
+      "same_as": [],
+      "clarity_terms": [
+        {
+          "value": null,
+          "raw_text": "적당한 간격",
+          "page": 3,
+          "ambiguous": false
+        }
+      ],
+      "clarity_reason": null,
+      "judgment": {
+        "value": null,
+        "raw_text": "청구항 2의 '적당한 간격'은 그 범위가 불명확합니다",
+        "page": 3,
+        "ambiguous": false
+      }
+    }
+  ]
+}

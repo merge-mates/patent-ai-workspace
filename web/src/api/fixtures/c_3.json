@@ -766,7 +766,8 @@
           "reason": null,
           "checked": "출원번호 대조",
           "searched_scope": null
-        }
+        },
+        "citation_key": null
       }
     ],
     "missing": [
@@ -776,7 +777,8 @@
           "F3 대비: D1 KR20990000003A"
         ],
         "lookup_result": "body_missing",
-        "ask_upload": true
+        "ask_upload": true,
+        "citation_key": "KR20990000003A"
       },
       {
         "what": "D2 US20990000001A1 본문",
@@ -784,7 +786,8 @@
           "F3 대비: D2 US20990000001A1"
         ],
         "lookup_result": "lookup_failed",
-        "ask_upload": true
+        "ask_upload": true,
+        "citation_key": "US20990000001A1"
       }
     ],
     "held_tasks": [

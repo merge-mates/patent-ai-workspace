@@ -125,6 +125,29 @@ class OAResultRow(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class StepResultRow(Base):
+    """F3·F4 결과 (실행 하나에 단계마다 한 줄). 본문은 도구 출력 그대로 jsonb (#191).
+
+    F3 = F3Result(판단 단위·대비표·명확성 검토), F4 = F4Output(대응 방향 후보·초안).
+    결과 API는 OA의 가장 최근 보여 줄 실행(oa_results와 같은 실행)을 골라 이 표에서 읽는다.
+    """
+
+    __tablename__ = "step_results"
+    __table_args__ = (
+        CheckConstraint("kind IN ('f3', 'f4')", name="ck_step_results_kind"),
+        CheckConstraint(_STATUS_CHECK, name="ck_step_results_status"),
+        UniqueConstraint("run_id", "kind", name="uq_step_results_run_kind"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("sres"))
+    oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    body: Mapped[dict[str, Any]] = mapped_column(JSONB)  # model_dump(mode="json")
+    status: Mapped[str] = mapped_column(Text)  # body.status.value (거르는 칸)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class CaseMaterialsRow(Base):
     """⑥ CaseMaterials. 사건마다 최신 한 줄 (실행이 끝날 때·자료가 더해질 때 다시 쓴다)."""
 

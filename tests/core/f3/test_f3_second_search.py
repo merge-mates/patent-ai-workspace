@@ -107,8 +107,8 @@ def _tank_row(out):
     return row
 
 
-def test_기본_설정은_끔():
-    assert load_f3_settings().second_search is False
+def test_기본_설정은_켬():
+    assert load_f3_settings().second_search is True
 
 
 def test_끄면_한_번만_찾고_모델도_한_번만_부른다():

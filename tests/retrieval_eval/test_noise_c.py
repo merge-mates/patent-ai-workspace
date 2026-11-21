@@ -106,6 +106,9 @@ def test_청구항_낱말을_자주_나온_순으로_고른다():
 # --- 명령: 저장해 둔 응답 폴더 + 풀 표 + 질의 표 → C안을 더한 새 풀 표 ---
 
 
+POOL = "retrieval/cite_pool.yaml"  # 테스트 풀 표 이름 (기본값은 tune 30건 cite_pool_t30.yaml)
+
+
 @pytest.fixture
 def setroot(tmp_path):
     root = tmp_path / "goldsets"
@@ -136,7 +139,7 @@ def setroot(tmp_path):
 
 def test_명령은_C안을_더한_새_풀_표를_쓴다(setroot):
     root, resp = setroot
-    argv = ["--goldsets-root", str(root), "--responses", str(resp)]
+    argv = ["--goldsets-root", str(root), "--responses", str(resp), "--pool", POOL]
     assert main(argv) == 0
     out = root / "tune" / "retrieval" / "cite_pool_bc.yaml"
     table = PoolTable.model_validate(yaml.safe_load(out.read_text(encoding="utf-8")))
@@ -150,7 +153,7 @@ def test_명령은_C안을_더한_새_풀_표를_쓴다(setroot):
 def test_응답_파일이_없는_OA가_있으면_멈춘다(setroot):
     root, resp = setroot
     (resp / "OA1.xml").unlink()
-    assert main(["--goldsets-root", str(root), "--responses", str(resp)]) == 1
+    assert main(["--goldsets-root", str(root), "--responses", str(resp), "--pool", POOL]) == 1
     assert not (root / "tune" / "retrieval" / "cite_pool_bc.yaml").exists()
 
 
@@ -251,3 +254,70 @@ def test_공개공보는_공개전문_등록공보는_공고전문을_부른다(
     assert fulltext_kind("KR991234567B1") == "ann"
     with pytest.raises(RetrievalEvalError):
         fulltext_kind("US20990000003A1")
+
+
+def test_명령은_이미_있는_C안_풀_표를_덮지_않는다(setroot):
+    root, resp = setroot
+    argv = ["--goldsets-root", str(root), "--responses", str(resp), "--pool", POOL]
+    assert main(argv) == 0
+    assert main(argv) == 1  # 두 번째는 cite_pool_bc.yaml이 있어 멈춘다
+
+
+def test_같은_특허는_OA가_달라도_한_번만_고른다(tmp_path):
+    # #217 리뷰: OA 사이 중복 선택. 먼저 고른 OA(발송번호 순)에만 들어간다
+    from eval.retrieval.noise_c import CQuery, add_c_docs
+
+    pool = PoolTable.model_validate(
+        {
+            "docs": {"KR20980000001A": {"app_no": "PG", "date": "2009-01-01"}},
+            "oas": {
+                "OA1": {"app_no": "PA", "priority_date": "2015-01-01"},
+                "OA2": {"app_no": "PB", "priority_date": "2016-01-01"},
+            },
+        }
+    )
+    resp = tmp_path / "r"
+    resp.mkdir()
+    same = item("P4", "9920990000004", "20110101")
+    (resp / "OA1.xml").write_text(xml(same), encoding="utf-8")
+    (resp / "OA2.xml").write_text(
+        xml(same, item("P5", "9920990000005", "20110101")), encoding="utf-8"
+    )
+    q = {k: CQuery(ipc="G06T 7/11", words=["영상"]) for k in ("OA1", "OA2")}
+    new, rep = add_c_docs(pool, resp, q)
+    assert new.docs["KR20990000004A"].only_oas == ["OA1"]
+    assert new.docs["KR20990000005A"].only_oas == ["OA2"]
+    assert rep["added"] == 2
+
+
+# --- 받기 스크립트: HTTP 200 오류 응답 (#217 리뷰) ---
+
+
+def _load_fetch_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "fetch_noise_c_candidates.py"
+    spec = importlib.util.spec_from_file_location("fetch_noise_c_candidates", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _Resp:
+    def __init__(self, text: str):
+        self.text, self.status_code = text, 200
+
+
+def test_받기는_HTTP_200이어도_오류_코드면_저장하지_않고_실패로_끝난다(tmp_path, monkeypatch):
+    mod = _load_fetch_script()
+    qp = tmp_path / "q.yaml"
+    qp.write_text(
+        yaml.safe_dump({"OA1": {"ipc": "G06T 7/11", "words": ["영상"]}}), encoding="utf-8"
+    )
+    monkeypatch.setenv("KIPRIS_PLUS_API_KEY", "fake-key")
+    monkeypatch.setattr(mod, "load_dotenv", lambda: None)  # 진짜 .env를 읽지 않는다
+    monkeypatch.setattr(mod.requests, "get", lambda *a, **k: _Resp(xml(code="30")))
+    out = tmp_path / "out"
+    assert mod.main(["--queries", str(qp), "--out", str(out)]) == 1
+    assert not (out / "OA1.xml").exists()  # 다음 실행이 다시 부른다

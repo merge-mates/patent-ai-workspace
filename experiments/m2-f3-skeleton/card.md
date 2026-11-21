@@ -34,6 +34,7 @@
 | 걸린 시간 | 사건 합 1,386초 (4건씩 병렬) |
 
 - 예측이 없는 case10을 0점으로 넣은 값이다 (n=10).
+- 이 점수는 second_search 끔으로 잰 값이다. 지금 기본값은 켬 (11/21, chore/30)
 - 재지 않은 지표 (정답 없음, scores.json `skipped_metrics`): clarity_definition_recall, clarity_issue_type, novelty_difference_recall, novelty_timing, element_judgment_accuracy.
 
 실행 요약 (git 밖 `work/overnight_1120/f3/run1/summary.json`)

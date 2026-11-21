@@ -790,7 +790,8 @@
           "reason": null,
           "checked": "출원번호 대조",
           "searched_scope": null
-        }
+        },
+        "citation_key": null
       }
     ],
     "missing": [
@@ -800,7 +801,8 @@
           "F3 대비: D2 JP2099000001A"
         ],
         "lookup_result": "unsupported_country",
-        "ask_upload": false
+        "ask_upload": false,
+        "citation_key": "JP2099000001A"
       }
     ],
     "held_tasks": [
