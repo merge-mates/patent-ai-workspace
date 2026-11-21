@@ -175,7 +175,7 @@ function UploadProgress({ data }: { data: OALoaderData }) {
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', paddingTop: 8 }}>
         <span className="body2 t2" style={{ flex: '1 1 320px' }}>
-          실행이 끝나면 결과가 열려요.
+          {!ended && '실행이 끝나면 결과가 열려요.'}
         </span>
         <Button type="primary" size="large" disabled={!ready.summary} onClick={() => navigate(`/oas/${oa.oa_id}`)}>
           정리부터 보기
