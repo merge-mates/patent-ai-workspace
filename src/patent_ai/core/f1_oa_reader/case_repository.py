@@ -23,6 +23,9 @@ from patent_ai.core.f1_oa_reader.case_grouping import (
     AS_FILED_VERSION,
     GroupedMaterial,
     HistoryEvent,
+    MaterialInput,
+    answer_missing,
+    group_materials,
     read_number,
     select_examined_version,
 )
@@ -51,6 +54,10 @@ class CaseStoreError(ValueError):
 
 class DuplicateDocumentError(CaseStoreError):
     """같은 사건에 같은 파일(sha256)이 두 번. API는 409로 돌려준다 (T7)."""
+
+
+class UnknownCaseError(CaseStoreError):
+    """저장된 사건(묶기 결과)이 없음. API는 404로 돌려준다 (T7)."""
 
 
 # --- 저장할 입력 ------------------------------------------------------------------
@@ -156,6 +163,15 @@ class OAResultRowData:
     body: dict[str, Any]
     status: str
     origin: str
+
+
+@dataclass(frozen=True)
+class OAVersionRow:
+    """사건 보기(GET /cases/{id})의 OA별 심사 대상 판 한 줄."""
+
+    oa_id: str
+    dispatch_number: str | None
+    examined_claim_version: ExtractedValue[str]
 
 
 @dataclass(frozen=True)
@@ -404,6 +420,53 @@ def examined_from_version(version: ClaimVersionRow | None) -> ExtractedValue[str
     )
 
 
+def uploaded_document_row(case_id: str, document: GroupedMaterial, file: StoredFile) -> DocumentRow:
+    """올린 자료 한 건의 문서 줄. 인용문헌은 이력 줄에 잇지 않고 그 사건에 둔다."""
+    if document.key is not None:
+        # 이력 줄(OA·보정서)에 잇는 자료는 이 길로 더하지 않는다 (판·OA 줄도 다시 계산해야 함)
+        raise CaseStoreError(f"이력 줄에 잇는 자료는 더할 수 없음: {document.document_id}")
+    return DocumentRow(
+        id=document.document_id,
+        case_id=case_id,
+        case_event_id=None,
+        kind=document.kind,
+        path=file.path,
+        sha256=file.sha256,
+        source=document.source,
+        received_at=file.received_at,
+    )
+
+
+def sorted_events(events: list[EventRow]) -> list[EventRow]:
+    """이력 순서(seq)대로, seq 없는 줄은 뒤에 (넣은 순서 그대로)."""
+    return sorted(events, key=lambda e: (e.seq is None, e.seq or 0))
+
+
+def upload_missing_material(
+    repo: CaseRepository,
+    case_id: str,
+    what: str,
+    file: StoredFile,
+    document_id: str | None = None,
+) -> CaseMaterials:
+    """빠진 자료 `what`에 올린 파일로 답한다: 묶기 → 사건 자료 고치기 → 저장 (T7).
+
+    지금 빠진 자료는 인용문헌 본문만 만든다 (build_case_materials). 그래서 올린 자료 종류는
+    citation으로 둔다. 커밋은 부르는 쪽(API)이 한다.
+    """
+    application_number = repo.case_application_number(case_id)
+    materials = repo.load_case_materials(case_id)
+    if application_number is None or materials is None:
+        raise UnknownCaseError(f"저장된 사건이 없음: {case_id}")
+    material = MaterialInput(
+        document_id=document_id or new_id("doc"), kind="citation", source="uploaded"
+    )
+    (grouped,) = group_materials([material], application_number)
+    updated = answer_missing(materials, what, grouped)
+    repo.add_document(case_id, grouped, file, updated)
+    return updated
+
+
 # --- 저장소 인터페이스와 메모리 fake -----------------------------------------------
 
 
@@ -416,6 +479,27 @@ class CaseRepository(Protocol):
 
     def load_case_materials(self, case_id: str) -> CaseMaterials | None:
         """사건 자료. 없는 사건이면 None (API는 404)."""
+        ...
+
+    def case_application_number(self, case_id: str) -> str | None:
+        """저장된 사건의 출원번호(숫자만). 없는 사건이면 None."""
+        ...
+
+    def add_document(
+        self, case_id: str, document: GroupedMaterial, file: StoredFile, materials: CaseMaterials
+    ) -> None:
+        """이미 저장된 사건에 자료 한 건을 더하고 사건 자료를 새 값으로 바꾼다 (T7 올리기).
+
+        없는 사건은 UnknownCaseError, 같은 사건에 같은 파일이면 DuplicateDocumentError.
+        """
+        ...
+
+    def events(self, case_id: str) -> list[EventRow]:
+        """사건 이력 줄. 이력 순서(seq)대로, 자료로만 온 줄(seq 없음)은 뒤에."""
+        ...
+
+    def oa_versions(self, case_id: str) -> list[OAVersionRow]:
+        """OA마다 심사 대상 판 (이력 순서대로)."""
         ...
 
     def claim_versions(self, case_id: str) -> list[ClaimVersionRow]: ...
@@ -456,6 +540,47 @@ class InMemoryCaseRepository:
     def load_case_materials(self, case_id: str) -> CaseMaterials | None:
         rows = self._cases.get(case_id)
         return CaseMaterials.model_validate(rows.materials_body) if rows else None
+
+    def case_application_number(self, case_id: str) -> str | None:
+        rows = self._cases.get(case_id)
+        return rows.case.application_number if rows else None
+
+    def add_document(
+        self, case_id: str, document: GroupedMaterial, file: StoredFile, materials: CaseMaterials
+    ) -> None:
+        rows = self._cases.get(case_id)
+        if rows is None:
+            raise UnknownCaseError(f"저장된 사건이 없음: {case_id}")
+        if any(d.sha256 == file.sha256 for d in rows.documents):
+            raise DuplicateDocumentError("같은 사건에 같은 파일이 이미 있음")
+        doc = uploaded_document_row(case_id, document, file)
+        self._cases[case_id] = replace(
+            rows,
+            documents=[*rows.documents, doc],
+            materials_body=materials.model_dump(mode="json"),
+        )
+
+    def events(self, case_id: str) -> list[EventRow]:
+        rows = self._cases.get(case_id)
+        return sorted_events(list(rows.events)) if rows else []
+
+    def oa_versions(self, case_id: str) -> list[OAVersionRow]:
+        rows = self._cases.get(case_id)
+        if rows is None:
+            return []
+        events = {e.id: e for e in rows.events}
+        versions = {v.id: v for v in rows.claim_versions}
+        order = {e.id: i for i, e in enumerate(sorted_events(list(rows.events)))}
+        return [
+            OAVersionRow(
+                oa_id=o.id,
+                dispatch_number=events[o.case_event_id].doc_number,
+                examined_claim_version=examined_from_version(
+                    versions.get(o.examined_claim_version_id or "")
+                ),
+            )
+            for o in sorted(rows.oas, key=lambda o: order[o.case_event_id])
+        ]
 
     def claim_versions(self, case_id: str) -> list[ClaimVersionRow]:
         rows = self._cases.get(case_id)

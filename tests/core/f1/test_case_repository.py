@@ -12,6 +12,7 @@ from patent_ai.core.f1_oa_reader.case_grouping import (
     AS_FILED_VERSION,
     HistoryEvent,
     MaterialInput,
+    MissingNotFoundError,
     build_case_materials,
     group_materials,
 )
@@ -22,8 +23,10 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     DuplicateDocumentError,
     InMemoryCaseRepository,
     StoredFile,
+    UnknownCaseError,
     oa_result_row,
     plan_case_rows,
+    upload_missing_material,
 )
 from patent_ai.core.schemas.common import Origin, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
@@ -359,3 +362,81 @@ def test_CaseDocument_묶기_상태는_꼭_있음():
         status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),
     )
     assert ok.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+# --- 빠진 자료 올리기·사건 보기 (T7) -----------------------------------------------
+
+
+def _saved_repo() -> InMemoryCaseRepository:
+    repo = InMemoryCaseRepository()
+    repo.save_case(_record())
+    return repo
+
+
+def test_빠진_자료를_올리면_다시_열어도_그대로():
+    repo = _saved_repo()
+    before = repo.load_case_materials(CASE_ID)
+    what = before.missing[0].what
+    got = upload_missing_material(repo, CASE_ID, what, _file("up"), document_id="doc_up")
+    again = repo.load_case_materials(CASE_ID)
+    assert again == got
+    assert what not in {m.what for m in again.missing}
+    assert what not in {h.waiting_for for h in again.held_tasks}
+    assert again.documents[-1].document_id == "doc_up"
+    assert again.documents[-1].source == "uploaded"
+
+
+def test_올린_자료는_문서_줄로_그_사건에_남는다():
+    repo = _saved_repo()
+    what = repo.load_case_materials(CASE_ID).missing[0].what
+    upload_missing_material(repo, CASE_ID, what, _file("up"), document_id="doc_up")
+    rows = repo._cases[CASE_ID]
+    (doc,) = [d for d in rows.documents if d.id == "doc_up"]
+    assert (doc.case_id, doc.case_event_id, doc.kind) == (CASE_ID, None, "citation")
+
+
+def test_같은_사건에_같은_파일을_올리면_중복_오류이고_자료는_안_바뀜():
+    repo = _saved_repo()
+    before = repo.load_case_materials(CASE_ID)
+    what = before.missing[0].what
+    with pytest.raises(DuplicateDocumentError):
+        # 이미 저장된 OA 문서와 같은 파일
+        upload_missing_material(repo, CASE_ID, what, _file("x", sha="sha-doc_oa1"))
+    assert repo.load_case_materials(CASE_ID) == before
+
+
+def test_저장된_사건이_없으면_올리기_오류():
+    with pytest.raises(UnknownCaseError):
+        upload_missing_material(InMemoryCaseRepository(), "c_none", "x", _file("up"))
+
+
+def test_빠진_자료가_아닌_것을_올리면_오류이고_자료는_안_바뀜():
+    repo = _saved_repo()
+    before = repo.load_case_materials(CASE_ID)
+    with pytest.raises(MissingNotFoundError):
+        upload_missing_material(repo, CASE_ID, "D9 없는 문헌 본문", _file("up"))
+    assert repo.load_case_materials(CASE_ID) == before
+
+
+def test_사건_보기_이력은_순서대로_OA별_심사_대상_판():
+    repo = _saved_repo()
+    events = [(e.kind, e.doc_number, e.seq) for e in repo.events(CASE_ID)]
+    assert events[:3] == [
+        ("oa", "952099000000001", 1),
+        ("amendment", "112099000000112", 2),
+        ("oa", "952099000000002", 3),
+    ]
+    assert all(seq is None for _, _, seq in events[3:])  # 자료로만 온 줄은 뒤에
+    versions = [
+        (v.dispatch_number, v.examined_claim_version.value) for v in repo.oa_versions(CASE_ID)
+    ]
+    assert versions == [
+        ("952099000000001", AS_FILED_VERSION),
+        ("952099000000002", "112099000000112"),
+    ]
+
+
+def test_없는_사건은_이력_판_빈_목록():
+    repo = InMemoryCaseRepository()
+    assert repo.events("c_none") == [] and repo.oa_versions("c_none") == []
+    assert repo.case_application_number("c_none") is None
