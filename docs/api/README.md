@@ -19,6 +19,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 - 결과가 아직 없으면(실행 전·실행 중) 404 `{code: "result_not_ready"}`다. 실행이 끝났는데 목록이 비면 200 + 빈 목록 + `empty_reason`(해당 거절이유 없음 / 보류: 기다리는 자료)을 준다. 보류는 사건 자료·보류 목록(⑥)의 "보류한 작업"과 같은 항목을 가리킨다. 빈 목록을 이유 없이 돌려주지 않는다.
 - 오류 본문은 한 형식이다: `{code, message}`. 오류에 따라 칸을 더 담을 수 있다 (예: 409 `document_already_exists`는 `case_id`·`oa_id`).
 - 오래 걸리는 AI 실행은 만들기 → 상태 보기(폴링) → 결과 받기 순서다.
+- 실행 취소(`POST /runs/{id}/cancel`): queued·waiting_for_human은 바로 `cancelled`로 답한다. running은 취소 표시만 하고 응답 `state`는 `running` 그대로이니, 화면은 폴링으로 `cancelled`를 확인한다.
+- 실행 관련 오류: 409 `run_in_progress`(같은 OA에 진행 중인 실행이 있음), 409 `run_already_finished`(이미 끝난 실행을 취소), 500 `launch_failed`(실행을 시작하지 못함. 그 실행은 failed로 남는다), 404 `run_not_found`.
+- 실행이 `failed`일 때 `error.code`는 `executor_not_connected`(지휘 에이전트 연결 전) · `server_restarted`(서버가 다시 켜져 중단) · `step_failed`(단계 예외) · `result_save_failed`(결과 저장 실패) · `executor_crashed`(실행기가 예상 밖으로 죽음) · `launch_failed`(시작 실패) 중 하나다.
 - 평가(평가 세트 채점)는 API를 거치지 않고 스크립트가 `core/`를 직접 부른다.
 
 ## 3. 엔드포인트
