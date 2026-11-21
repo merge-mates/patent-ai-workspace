@@ -1,6 +1,6 @@
 """판 문서 글자 → 청구항 번호별 원문 (이슈 #205 T1). 모델 호출 없는 코드 도구."""
 
-from patent_ai.core.cases.claim_texts import claims_at_version
+from patent_ai.core.cases.claim_texts import claim_region, claims_at_version
 from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
 
 # 출원서(출원 때 판) 글자 모양: 실제 PDF 글자 층과 같은 머리 줄
@@ -138,3 +138,40 @@ def test_claim_texts_모르는_보정방법이면_unverified():
 def test_claim_texts_판_문서가_없으면_unverified():
     got = claims_at_version([])
     assert got.status.value == StatusValue.UNVERIFIED
+
+
+def test_claim_texts_이미_있는_청구항을_추가하면_unverified():
+    # 덮어쓰지 않는다 (리뷰 #215)
+    wrong = "【보정대상항목】 청구항 2\n【보정방법】 추가\n【보정내용】\n【청구항 2】\n새 화분."
+    got = claims_at_version([APPLICATION, wrong])
+    assert got.status.value == StatusValue.UNVERIFIED
+
+
+def test_claim_texts_없는_청구항을_정정하면_unverified():
+    # 번호가 빈 채 새 항이 생기지 않게 한다 (리뷰 #215)
+    wrong = "【보정대상항목】 청구항 7\n【보정방법】 정정\n【보정내용】\n【청구항 7】\n새 화분."
+    got = claims_at_version([APPLICATION, wrong])
+    assert got.status.value == StatusValue.UNVERIFIED
+
+
+def test_claim_texts_보정서_끝_첨부서류는_마지막_청구항에_붙지_않는다():
+    tail = AMENDMENT + "\n【첨부서류】 1. 위임장 1통"
+    got = claims_at_version([APPLICATION, tail])
+    assert got.claims[4] == "제1항에 있어서, 바퀴를 더 포함하는 화분."
+
+
+def test_claim_region_출원서는_청구범위_구간이다():
+    begin, end = claim_region(APPLICATION, first=True)
+    assert APPLICATION[begin:end].strip().startswith("【청구항 1】")
+    assert "요약" not in APPLICATION[begin:end]
+
+
+def test_claim_region_보정서는_첫_청구항_항목부터_마지막_청구항_항목까지():
+    begin, end = claim_region(AMENDMENT, first=False)
+    assert AMENDMENT[begin:].startswith("【보정대상항목】 청구항 1")
+    assert AMENDMENT[begin:end].endswith("바퀴를 더 포함하는 화분.")
+    assert "별지와 같음" not in AMENDMENT[begin:end]
+
+
+def test_claim_region_청구항이_없으면_None():
+    assert claim_region("【발명의 설명】\n【0001】 화분.", first=True) is None

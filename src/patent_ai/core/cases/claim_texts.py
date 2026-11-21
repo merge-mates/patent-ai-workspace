@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 _CLAIM_HEAD = re.compile(r"【\s*청구항\s*(\d+)\s*】")
 _CLAIMS_START = re.compile(r"【\s*청구범위\s*】")
 # 청구범위 다음에 오는 구간 머리 줄 (여기서 청구항 글이 끝난다)
-_CLAIMS_END = re.compile(r"【\s*(요약서|요약|도면|대표도)\s*】")
+_CLAIMS_END = re.compile(r"【\s*(요약서|요약|도면|대표도|첨부서류)\s*】")
+# 보정서 끝에 붙는 서류 머리 줄 (마지막 항목의 보정내용이 여기서 끝난다)
+_TRAILER = re.compile(r"【\s*첨부서류\s*】")
 _ITEM = re.compile(r"【\s*보정대상항목\s*】")
 _METHOD = re.compile(r"【\s*보정방법\s*】")
 _CONTENT = re.compile(r"【\s*보정내용\s*】")
@@ -73,15 +75,49 @@ def _split_claims(text: str) -> _Parsed:
     return out
 
 
-def _claim_section(text: str) -> str:
-    """【청구범위】부터 요약서·도면 머리 줄 앞까지. 【청구범위】가 없으면 첫 【청구항】부터."""
+def _section_bounds(text: str) -> tuple[int, int] | None:
+    """【청구범위】부터 요약서·도면 머리 줄 앞까지의 위치. 【청구범위】가 없으면 첫 청구항부터."""
     start = _CLAIMS_START.search(text)
     first = _CLAIM_HEAD.search(text)
     if first is None:
-        return ""
+        return None
     begin = start.end() if start and start.start() <= first.start() else first.start()
     end = _CLAIMS_END.search(text, begin)
-    return text[begin : end.start() if end else len(text)]
+    return begin, end.start() if end else len(text)
+
+
+def _claim_section(text: str) -> str:
+    bounds = _section_bounds(text)
+    return text[bounds[0] : bounds[1]] if bounds else ""
+
+
+def _claim_items(text: str) -> list[tuple[int, int, str]]:
+    """보정서의 항목마다 (시작, 끝, 대상 글자). 끝은 다음 항목 앞 또는 첨부서류 머리 줄 앞."""
+    items = list(_ITEM.finditer(text))
+    out = []
+    for i, m in enumerate(items):
+        end = items[i + 1].start() if i + 1 < len(items) else len(text)
+        trailer = _TRAILER.search(text, m.end(), end)
+        end = trailer.start() if trailer else end
+        method_m = _METHOD.search(text, m.end(), end)
+        target = text[m.end() : method_m.start() if method_m else end].strip()
+        out.append((m.start(), end, target))
+    return out
+
+
+def claim_region(text: str, *, first: bool) -> tuple[int, int] | None:
+    """이 모듈이 그 문서에서 청구항으로 읽는 글자 범위 (시작, 끝). 못 찾으면 None.
+
+    부르는 쪽(texts_source)이 이 범위에 글자 층 없는 쪽이 끼었는지 보려고 쓴다.
+    first=True는 출원 때 판 문서(청구항 묶음 전체), False는 보정서.
+    """
+    items = [] if first else _claim_items(text)
+    if not items:
+        return _section_bounds(text)
+    claim_items = [(s, e) for s, e, target in items if target.startswith("청구")]
+    if not claim_items:
+        return None
+    return claim_items[0][0], claim_items[-1][1]
 
 
 def _parse_full_set(text: str) -> _Parsed:
@@ -101,7 +137,7 @@ def _parse_full_set(text: str) -> _Parsed:
 
 def _apply_amendment(prev: dict[int, str], text: str) -> tuple[dict[int, str], Status | None]:
     """보정서 하나를 앞 판에 적용한다. 돌려주는 것은 (새 판, 문제 상태 또는 None)."""
-    items = list(_ITEM.finditer(text))
+    items = _claim_items(text)
     if not items:
         # 보정대상항목이 없으면 따로 올린 보정 청구항(청구항 묶음 전체)으로 본다
         whole = _parse_full_set(text)
@@ -110,11 +146,9 @@ def _apply_amendment(prev: dict[int, str], text: str) -> tuple[dict[int, str], S
     claims = dict(prev)
     touched = 0  # 청구항을 건드린 항목 수 (0이면 이 판의 청구항을 읽지 못한 것)
     bad = _unverified(UnverifiedReason.NOT_EXTRACTED)
-    for i, m in enumerate(items):
-        end = items[i + 1].start() if i + 1 < len(items) else len(text)
-        block = text[m.end() : end]
+    for start, end, target in items:
+        block = text[start:end]
         method_m = _METHOD.search(block)
-        target = (block[: method_m.start()] if method_m else block).strip()
         if not target.startswith("청구"):
             continue  # 표지("별지와 같음")·식별번호·도면 같은 다른 항목
         if method_m is None:
@@ -140,10 +174,14 @@ def _apply_amendment(prev: dict[int, str], text: str) -> tuple[dict[int, str], S
             logger.warning("claim_texts: 보정대상항목을 알아볼 수 없음 (%s)", target)
             return claims, bad
         number = int(number_m.group(1))
+        # 삭제·정정은 앞 판에 있는 번호만, 추가는 없는 번호만 (덮어쓰거나 번호가 비지 않게)
+        if method in ("삭제", "정정") and number not in claims:
+            logger.warning("claim_texts: 앞 판에 없는 청구항 %d을 %s함", number, method)
+            return claims, bad
+        if method == "추가" and number in claims:
+            logger.warning("claim_texts: 앞 판에 이미 있는 청구항 %d을 추가함", number)
+            return claims, bad
         if method == "삭제":
-            if number not in claims:
-                logger.warning("claim_texts: 없는 청구항 %d을 삭제함", number)
-                return claims, bad
             del claims[number]
         elif method in ("정정", "추가"):
             parsed = _split_claims(content)
