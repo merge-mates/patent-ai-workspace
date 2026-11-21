@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     # 기본값은 각자 맥의 로컬 compose DB (compose.yaml 기본 계정).
     # 컨테이너 안에서는 compose가 db 서비스 주소로 바꿔 넘긴다.
     database_url: str = "postgresql+psycopg://patent:patent@localhost:5432/patent_ai"
+    # 올린 OA PDF 원본을 두는 곳 (git 밖). 컨테이너에서는 compose가 ./work를 /app/work로 마운트한다
+    upload_dir: str = "work/uploads"
 
 
 @lru_cache
