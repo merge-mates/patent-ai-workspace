@@ -80,9 +80,9 @@ graph LR
 ### 진행
 - [x] task-1
 - [x] task-2
-- [ ] task-3
+- [x] task-3
 - [ ] task-4
-- 다음: task-3 (task-4는 task-3 뒤에, 같은 fixture 파일)
+- 다음: task-4
 - 막힌 것: 없음 (PR #137 머지됨)
 
 ### 끝난 뒤 (이슈가 끝난 날)
