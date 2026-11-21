@@ -3,6 +3,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import { HumanCheckTag } from '../components/Marks'
 import { StatusTag } from '../components/StatusTag'
+import { rejectionKindLabel } from '../labels'
 import type { CasesLoaderData } from '../loaders'
 import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
 import type { CaseSummary } from '../types/provisional/case'
@@ -56,9 +57,24 @@ const columns: ColumnsType<Row> = [
     ),
   },
   {
+    title: '거절이유',
+    width: 200,
+    // 최근 OA의 거절이유 종류. 비면 "없음"
+    render: (_, { c }) =>
+      c.rejection_kinds.length > 0 ? c.rejection_kinds.map((k) => rejectionKindLabel[k]).join(' · ') : '없음',
+  },
+  {
     title: '지금 단계',
     width: 160,
-    render: (_, { extra }) => (extra?.stage ? stageLabel[extra.stage] : '모름'),
+    // 실행이 실패한 사건은 단계보다 먼저 알린다
+    render: (_, { c, extra }) =>
+      c.run_state === 'failed' ? (
+        <span style={{ color: 'var(--fg-negative-text)', fontWeight: 600 }}>실패</span>
+      ) : extra?.stage ? (
+        stageLabel[extra.stage]
+      ) : (
+        '모름'
+      ),
   },
   {
     title: '직접 할 일',
