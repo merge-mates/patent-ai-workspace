@@ -121,11 +121,18 @@ MIXED = oa(
     ]
 )
 # 진보성 단위의 모델 답: 청구항 3(부모 1의 구성요소 2개 + 자기 1개), 4(자기 것만),
-# 5(부모 2개 + 자기)
+# 5(부모 2개 + 자기). 독립항 먼저 대비하므로(이슈 #30) 대표 청구항 3이 모두 개시됨이어야
+# 4·5를 대비한다. 청구항 5에서는 부모의 물통이 차이 후보다
+FULL40 = "뚜껑 아래 수조가 있다"
 ANSWERS = [
-    _answer(3, (1, "disclosed", (P23, FULL23)), (2, "difference_candidate"), (3, "unclear")),
+    _answer(
+        3,
+        (1, "disclosed", (P23, FULL23)),
+        (2, "disclosed", (P31, FULL31)),
+        (3, "disclosed", (P40, FULL40)),
+    ),
     _answer(4, (1, "unclear")),
-    _answer(5, (1, "disclosed", (P23, FULL23)), (2, "disclosed", (P31, FULL31)), (3, "unclear")),
+    _answer(5, (1, "disclosed", (P23, FULL23)), (2, "difference_candidate"), (3, "unclear")),
 ]
 
 
@@ -193,14 +200,14 @@ def test_여러_단계로_인용하면_거슬러_올라간_부모를_모두_넣�
 def test_요약은_부모에서_온_구성요소도_그_종속항의_것으로_센다():
     out, _, _, _ = _run(MIXED, ANSWERS, unit_index=1)
     differences = out.tables[0].summary.differences
-    # 청구항 3에서는 부모의 물통이 차이 후보였다. 청구항 5에서는 개시됨이라 빠진다
+    # 청구항 5에서는 부모의 물통이 차이 후보였다. 청구항 3에서는 개시됨이라 빠진다
     scope = "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v2)"
     assert (
         f"청구항 1 [구성 1-2] {TANK} (조회 범위 내 없음: {scope}, 없다는 판단 아님)"
-        " (청구항 3에서 인용)"
+        " (청구항 5에서 인용)"
     ) in differences
-    assert not any("청구항 5에서 인용" in d for d in differences)
-    assert f"청구항 3 [구성 3-1] {LID} (불명)" in differences
+    assert not any("청구항 3에서 인용" in d for d in differences)
+    assert f"청구항 5 [구성 5-1] {BASE} (불명)" in differences
 
 
 def test_독립항이_대상_밖이라는_이유로는_경고도_표시도_따로_붙이지_않는다(caplog):
@@ -318,7 +325,9 @@ def test_진보성은_종속항에만_붙은_문헌이_있으면_부모_구성�
         [claim_row(1, 1, ["D1"]), claim_row(3, 1, ["D1", "D2"])],
     )
     both = [(n, label) for n in (1, 2, 3) for label in ("D1", "D2")]
-    out, _ = _run_two_docs(result, [_raw(1, [(1, "D1"), (2, "D1")]), _raw(3, both)])
+    # 독립항 먼저: 청구항 1이 모두 개시됨이어야 청구항 3을 대비한다
+    first = _answer(1, (1, "disclosed", (P23, FULL23)), (2, "disclosed", (P23, FULL23)))
+    out, _ = _run_two_docs(result, [first, _raw(3, both)])
     (table,) = out.tables
     assert list(dict.fromkeys(_locations(table, 3)))[:2] == [
         "청구항 1 [구성 1-1]",
@@ -399,7 +408,7 @@ def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_�
 def test_인용_가지가_여럿이어도_부모가_이미_대비됐으면_보류도_경고도_없다(caplog):
     result = oa([rejection(1, "29-2", [1, 2, 3, 4], [citation("D1", D1)])])
     answers = [
-        _answer(1, (1, "unclear"), (2, "unclear")),
+        _answer(1, (1, "disclosed", (P23, FULL23)), (2, "disclosed", (P31, FULL31))),
         _answer(2, (1, "unclear")),
         _answer(3, (1, "unclear")),
         _answer(4, (1, "unclear")),

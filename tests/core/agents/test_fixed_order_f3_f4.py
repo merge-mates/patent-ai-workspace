@@ -197,8 +197,9 @@ def test_고정_순서_한_바퀴가_돌고_F2를_넘긴_이유가_남는다(tmp
     f2 = steps.records[4]
     assert f2.result_status == "unverified" and f2.skipped_reason == out.skipped["run_f2"]
     assert any("run_f2" in r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
-    # 모델을 부른 단계는 F3·F4뿐
-    assert [r.model_call_count for r in steps.records] == [0, 0, 0, 5, None, 6]
+    # 모델을 부른 단계는 F3·F4뿐 (F3: 나누기 2 + 독립항 대비 1 + 명확성 1, 독립항에 차이가
+    # 있어 종속항 대비는 건너뜀)
+    assert [r.model_call_count for r in steps.records] == [0, 0, 0, 4, None, 6]
 
 
 def test_단계_결과가_결과_스키마로_담긴다(tmp_path, wired):

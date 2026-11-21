@@ -477,6 +477,20 @@ def test_명확성_F3_보류도_그_묶음_후보에_보인다(task):
     assert inventive.candidates[0].status.value == StatusValue.CONFIRMED
 
 
+def test_독립항_때문에_종속항을_대비하지_않은_보류는_확인_사항에만_싣고_status는_낮추지_않는다():
+    data = _case_data()
+    waiting = "청구항 2: 대표 청구항 1에 차이 후보·불명 구성요소가 있어 종속항을 대비하지 않음"
+    data["held_tasks"] = [
+        {"task": f"f3_compare:{UNIT_INVENTIVE}:claim2:dependent", "waiting_for": waiting}
+    ]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive = results[0]
+    for c in inventive.candidates:
+        assert c.status.value == StatusValue.CONFIRMED
+        assert Flag.NEEDS_HUMAN_REVIEW not in c.flags
+        assert f"F3 보류: {waiting}" in c.checks  # 건너뛴 사실은 확인 사항으로 보인다
+
+
 def test_다른_단위의_보류는_옮기지_않는다():
     data = _case_data()
     data["held_tasks"] = [

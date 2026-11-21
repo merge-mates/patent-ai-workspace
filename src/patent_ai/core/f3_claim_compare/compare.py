@@ -19,7 +19,12 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from patent_ai.core.bundle_errors import BUNDLE_ERRORS, hold_for_error, is_limit
+from patent_ai.core.bundle_errors import (
+    BUNDLE_ERRORS,
+    DEPENDENT_SKIPPED,
+    hold_for_error,
+    is_limit,
+)
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation, resolve_citations
 from patent_ai.core.f3_claim_compare.elements import ClaimElement, SplitClaim
 from patent_ai.core.f3_claim_compare.examiner import (
@@ -744,7 +749,10 @@ def _status_note(rows: list[ComparisonRow], key: _Key, mark: Judgment) -> str:
 
 
 def _inventive_summary(
-    rows: list[ComparisonRow], lost: set[_Key], rej: Rejection, settings: F3Settings
+    rows: list[ComparisonRow],
+    lost: set[_Key],
+    rej: Rejection,
+    settings: F3Settings,
 ) -> InventiveSummary:
     marks = _element_marks(rows, lost)
     # 차이점: 대비한 어느 문헌에서도 개시됨 줄이 없는 구성요소.
@@ -829,6 +837,48 @@ def _novelty_summary(
     if lost_here:
         reason += f". 확인 못 한 구성요소 {len(lost_here)}개 (대비하지 않음)"
     return NoveltySummary(kind="novelty", citation=label, verdict=verdict, reason=reason)
+
+
+# ---- 진보성: 독립항 먼저 ----
+
+
+def _lost_elements(views: Mapping[int, _View]) -> set[_Key]:
+    """나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)."""
+    return {
+        (v.claim, i.e.element_location)
+        for v in views.values()
+        for i in v.items
+        if i.e.status.value != StatusValue.CONFIRMED
+    }
+
+
+def _covered_by_rep(
+    claim: int,
+    rep: int,
+    cites_of: Mapping[int, list[ResolvedCitation]],
+    splits: Mapping[int, SplitClaim],
+) -> bool:
+    """대표 청구항의 차이점 때문에 이 종속항 대비를 건너뛰어도 되나.
+
+    둘 다 맞아야 한다: (1) 이 청구항이 대표 청구항을 거슬러 올라가 인용해 대표의 구성요소를 다
+    가진다 (인용 가지가 여럿이면 어느 가지에 대표가 있는지 몰라 아님), (2) 이 청구항에 붙은
+    인용문헌이 모두 대표 청구항에도 붙어 있다.
+    """
+    family = ancestors(claim, splits)
+    if not family or rep not in family or _has_branch(claim, splits):
+        return False
+    return {c.label for c in cites_of[claim]} <= {c.label for c in cites_of.get(rep, [])}
+
+
+def _independent_collapsed(rows: list[ComparisonRow], lost: set[_Key], rep: int) -> bool | None:
+    """독립항(대표 청구항) 줄이 모두 개시됨이면 True (무너짐). 줄이 없으면 None (알 수 없음).
+
+    기준은 design 3-3의 지금 규칙 그대로다. 못 가린 것(불명)도 개시됨이 아니라 무너짐이 아니다.
+    """
+    marks = _element_marks([r for r in rows if r.claim == rep], lost)
+    if not marks:
+        return None
+    return all(mark == Judgment.DISCLOSED for _, mark in marks.values())
 
 
 # ---- 단위 하나 ----
@@ -919,21 +969,6 @@ def _compare_unit(
         compared_anywhere |= set(compared)
         # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
         views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
-        # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
-        lost: set[tuple[int, str]] = {
-            (v.claim, i.e.element_location)
-            for v in views.values()
-            for i in v.items
-            if i.e.status.value != StatusValue.CONFIRMED
-        }
-        for c, v in views.items():
-            if v.branch_blocked:
-                # 부모 없이 확인됨으로 나가지 않게: 줄은 input_unverified로 내리고 보류를 남긴다
-                _hold(
-                    seen,
-                    f"f3_compare:{unit.unit_id}:claim{c}:branch",
-                    "인용 가지마다 대비 (직접 검토 필요)",
-                )
         for claim in unit.claims:
             if claim not in has_elements:
                 logger.warning(
@@ -944,9 +979,54 @@ def _compare_unit(
                     f"f3_compare:{unit.unit_id}:claim{claim}",
                     f"청구항 {claim} 구성요소 나누기",
                 )
-            elif claim in views:
-                rows += _compare_claim(
-                    unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+        # 진보성은 독립항(대표 청구항)을 먼저 대비한다. 독립항 줄이 모두 개시됨(무너짐)일 때만
+        # 나머지 종속항을 대비하고, 아니면 종속항은 대비하지 않고 이유를 보류로 남긴다.
+        # 신규성은 청구항마다 따로 판정하므로 이 순서를 쓰지 않는다
+        rep = unit.representative_claim
+        in_order = [c for c in unit.claims if c in views]
+        staged = unit.rejection_kind == RejectionKind.INVENTIVE_STEP and rep in views
+        first = [rep] if staged else in_order
+        later = [c for c in in_order if c not in first]
+        for claim in first:
+            rows += _compare_claim(
+                unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+            )
+        if later:
+            lost_first = _lost_elements({c: views[c] for c in first})
+            collapsed = _independent_collapsed(rows, lost_first, rep)
+            for claim in later:
+                # 독립항 줄이 하나도 없으면(대비 불가) 무너졌는지 모르므로 그대로 대비한다.
+                # 무너지지 않았어도 대표 청구항의 구성요소를 다 갖지 않았거나 대표에 없는
+                # 인용문헌이 더 붙은 종속항은 건너뛰지 않는다 (대표 대비로 그 구성요소·문헌이
+                # 가려지지 않음, 11/21 부모 구성요소 결정)
+                if collapsed is not False or not _covered_by_rep(claim, rep, cites_of, splits):
+                    rows += _compare_claim(
+                        unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+                    )
+                    continue
+                logger.warning(
+                    "compare %s: 대표 청구항 %d에 차이점이 있어 청구항 %d는 대비하지 않음",
+                    unit.unit_id,
+                    rep,
+                    claim,
+                )
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{claim}:{DEPENDENT_SKIPPED}",
+                    f"청구항 {claim}: 대표 청구항 {rep}에 차이 후보·불명 구성요소가"
+                    " 있어 종속항을 대비하지 않음 (필요하면 직접 요청)",
+                )
+                views.pop(claim)
+        # 실제로 대비한 청구항만 아래에서 센다
+        # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
+        lost = _lost_elements(views)
+        for c, v in views.items():
+            if v.branch_blocked:
+                # 부모 없이 확인됨으로 나가지 않게: 줄은 input_unverified로 내리고 보류를 남긴다
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{c}:branch",
+                    "인용 가지마다 대비 (직접 검토 필요)",
                 )
         if not rows:
             labels = "·".join(c.label for c in group)

@@ -17,6 +17,7 @@ from patent_ai.core.bundle_errors import (
     BUNDLE_ERRORS,
     failed_status,
     held_error_status,
+    is_dependent_skip,
     is_limit,
     raise_if_all_failed,
     why,
@@ -183,6 +184,7 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
     """
     statuses: list[Status] = []
     checks: list[str] = []
+    notes: list[str] = []  # status를 낮추지 않는 확인 사항 (종속항 건너뜀)
     needs_review = False
     for result in f3:
         if Flag.NEEDS_HUMAN_REVIEW in result.flags:
@@ -196,6 +198,11 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
                 checks.append(f"인용문헌 {c.label}({c.number}) 대비 못 함: {c.skipped_reason}")
     held = [h for h in inp.held_tasks if _held_for(h.task, unit.unit_id)]
     for h in held:
+        if is_dependent_skip(h.task):
+            # 독립항에 차이점이 있어 종속항을 대비하지 않은 정해진 건너뜀: 확인 사항 글만 싣고
+            # status·needs_human_review에는 넣지 않는다
+            notes.append(f"F3 보류: {h.waiting_for}")
+            continue
         # F3가 호출 상한(limit_reached)으로 보류한 것은 그 이유를 유지한다
         statuses.append(
             held_error_status(h.task)
@@ -204,7 +211,9 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
         checks.append(f"F3 보류: {h.waiting_for}")
     if checks:
         logger.warning("f4.direction %s: F3가 대비하지 못한 것 %s", unit.unit_id, checks)
-    return F3Gaps(statuses=statuses, checks=checks, needs_review=needs_review or bool(checks))
+    return F3Gaps(
+        statuses=statuses, checks=[*checks, *notes], needs_review=needs_review or bool(checks)
+    )
 
 
 def _evidence_of(f3: list) -> list[Evidence]:

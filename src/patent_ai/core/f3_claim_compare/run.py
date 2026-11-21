@@ -11,7 +11,11 @@
 
 import logging
 
-from patent_ai.core.bundle_errors import held_error_status, raise_if_all_failed
+from patent_ai.core.bundle_errors import (
+    held_error_status,
+    is_dependent_skip,
+    raise_if_all_failed,
+)
 from patent_ai.core.f3_claim_compare.clarity import review_clarity_units
 from patent_ai.core.f3_claim_compare.compare import (
     f3_query_embedder,
@@ -152,7 +156,9 @@ def run_f3(
         [u.status for u in units] + [t.status for t in tables] + [r.status for r in clarity.reviews]
     )
     # 보류한 작업이 있으면 그만큼 결과를 못 만든 것이다. 확인됨으로 모으지 않는다
-    statuses += [_held_status(h, oa_id) for h in held]
+    # (독립항에 차이점이 있어 종속항을 대비하지 않은 보류는 이유를 남길 뿐 status를 낮추지 않는다:
+    #  기다리는 자료가 없는 정해진 건너뜀이다)
+    statuses += [s for h in held if (s := _held_status(h, oa_id)) is not None]
     # 대비표·명확성 검토가 하나도 안 나온 단위도 마찬가지 (보류로 안 잡힌 경우까지)
     done = {t.unit_id for t in tables} | {r.unit_id for r in clarity.reviews}
     empty = [u.unit_id for u in units if u.unit_id not in done]
@@ -174,12 +180,14 @@ def run_f3(
     )
 
 
-def _held_status(held: HeldTask, oa_id: str) -> Status:
+def _held_status(held: HeldTask, oa_id: str) -> Status | None:
     """보류한 작업 하나가 결과 전체 status에 주는 값.
 
     인용문헌 본문을 기다리는 보류(`f3_compare:<oa_id>:D2`)는 본문 미확보,
     그 밖(청구항 글자·대상 청구항·짚은 문구·대비할 구성요소가 없음)은 못 뽑음.
     """
+    if is_dependent_skip(held.task):
+        return None  # 독립항에 차이점이 있어 종속항을 대비하지 않음 (결과 status를 낮추지 않음)
     error_status = held_error_status(held.task)  # 모델 호출 실패·호출 상한 보류
     if error_status is not None:
         return error_status
