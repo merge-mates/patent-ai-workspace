@@ -8,6 +8,9 @@ scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건�
       [--pages <폴더>] [--calls <호출 기록 JSON>]
 - 예측: <폴더>/<출원번호>_<발송번호>.json (read_oa가 낸 OAResult JSON)
 - 쪽 글자: <폴더>/<출원번호>_<발송번호>.pages.json (extract_pages가 낸 PageText JSON)
+- 호출 기록: JSON 리스트, 한 줄 = core/llm/limits.py CallRecord를 dict로
+  (선택 키 case = 사건 이름표). input_tokens·output_tokens·cost·from_cache·outcome만 읽고
+  stop_reason 같은 다른 키는 무시한다.
 """
 
 import argparse
@@ -253,15 +256,43 @@ def _mean(xs: list[float]) -> float | None:
 RESPONDED_OUTCOMES = ("ok", "invalid_output", "output_truncated")  # 응답을 받은 결과
 
 
-def sum_calls(calls: list[dict] | None) -> dict:
-    """read_oa 실행 호출 기록을 cost 칸(usd·토큰·호출 수)으로 합친다. 모르는 키는 안 본다."""
+def sum_calls(calls: list[dict] | None, n_oa: int | None = None) -> dict:
+    """read_oa 실행 호출 기록을 cost 칸으로 합친다. 모르는 키는 안 본다.
+
+    호출 수·토큰·usd는 모두 실제로 외부에 부른 호출만 센다 (한 칸 안에서 기준을 맞춘다).
+    캐시 적중 토큰은 과금이 없으니 cached_input_tokens·cached_output_tokens에 따로 둔다.
+    n_oa(채점한 OA 수)를 주면 기록의 사건(case) 수가 그보다 적을 때 경고한다.
+    """
+    zero = {
+        "usd": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_input_tokens": 0,
+        "cached_output_tokens": 0,
+        "external_calls": 0,
+    }
     if calls is None:
         logger.warning("실행 호출 기록(--calls)이 없어 cost에 채점기 비용만 씀")
-        return {"usd": 0, "input_tokens": 0, "output_tokens": 0, "external_calls": 0}
+        return zero
     if not calls:
         logger.warning("실행 호출 기록이 0줄 (cost를 0으로 씀)")
+        return zero
+    # 파일을 두 번 이어 붙이면 똑같은 줄이 생긴다 (재시도는 attempt·transport_try가 달라 안 걸림)
+    seen = [json.dumps(c, sort_keys=True, ensure_ascii=False) for c in calls]
+    dup = len(seen) - len(set(seen))
+    if dup:
+        logger.warning("호출 기록에 똑같이 겹친 줄 %d개 (파일을 두 번 합쳤는지 확인)", dup)
+    # 일부 사건만 담긴 기록이면 비용이 덜 잡힌다. case 이름은 예측 키와 꼴이 달라 수만 본다
+    cases = {c["case"] for c in calls if "case" in c}
+    if cases and n_oa is not None and len(cases) < n_oa:
+        logger.warning(
+            "호출 기록의 사건 %d개가 채점한 OA %d건보다 적다 (비용이 덜 잡혔을 수 있음)",
+            len(cases),
+            n_oa,
+        )
     # 실제로 외부에 부른 기록: 캐시 적중과, 전송층 앞에서 막힌 limit_exceeded는 뺀다
     real = [c for c in calls if not c["from_cache"] and c["outcome"] != "limit_exceeded"]
+    cached = [c for c in calls if c["from_cache"]]
     # 응답을 받았는데 가격이 비어 있으면 합이 틀리므로 usd를 비운다 (응답 없는 줄의 None은 0)
     unpriced = sum(
         1
@@ -269,14 +300,16 @@ def sum_calls(calls: list[dict] | None) -> dict:
         if c["cost"] is None
         and (c["input_tokens"] > 0 or c["output_tokens"] > 0 or c["outcome"] in RESPONDED_OUTCOMES)
     )
-    usd: float | None = sum(c["cost"] or 0.0 for c in calls)
+    usd: float | None = sum(c["cost"] or 0.0 for c in real)
     if unpriced:
         logger.warning("가격 설정이 없어 usd를 비움 (가격 없는 호출 기록 %d줄)", unpriced)
         usd = None
     return {
         "usd": usd,
-        "input_tokens": sum(c["input_tokens"] for c in calls),
-        "output_tokens": sum(c["output_tokens"] for c in calls),
+        "input_tokens": sum(c["input_tokens"] for c in real),
+        "output_tokens": sum(c["output_tokens"] for c in real),
+        "cached_input_tokens": sum(c["input_tokens"] for c in cached),
+        "cached_output_tokens": sum(c["output_tokens"] for c in cached),
         "external_calls": len(real),
     }
 
@@ -360,7 +393,7 @@ def score_f1(
         "failures": failures,
         # 채점은 모델을 부르지 않는다. 읽기 비용은 예측을 만든 실행의 호출 기록(--calls)에서 온다.
         # seconds는 채점기 시간만 (실행 시간은 합치지 않는다)
-        "cost": {**sum_calls(calls), "seconds": round(time.monotonic() - started, 3)},
+        "cost": {**sum_calls(calls, len(golds)), "seconds": round(time.monotonic() - started, 3)},
     }
 
 

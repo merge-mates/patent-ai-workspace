@@ -356,14 +356,57 @@ def test_호출_기록이_있으면_토큰_호출수_usd를_합친다():
     ]
     c = _cost(calls)
     assert c["external_calls"] == 3
-    assert c["input_tokens"] == 400  # 100 + 200 + 캐시 적중 100 (기록 합)
-    assert c["output_tokens"] == 40
+    # 토큰도 실제로 부른 호출만 (100 + 200 + 전송 오류 0). 캐시 적중 토큰은 따로 칸
+    assert c["input_tokens"] == 300
+    assert c["output_tokens"] == 30
+    assert c["cached_input_tokens"] == 100
+    assert c["cached_output_tokens"] == 10
     assert c["usd"] == 0.75
+
+
+def test_캐시_적중만_있으면_호출_토큰_usd가_0이다():
+    c = _cost([_rec(from_cache=True, outcome="cache_hit", cost=0.0, transport_try=0)])
+    assert (c["external_calls"], c["input_tokens"], c["output_tokens"], c["usd"]) == (0, 0, 0, 0)
+    assert c["cached_input_tokens"] == 100
+
+
+def test_같은_기록이_겹치면_경고(caplog):
+    _cost([_rec(), _rec()])
+    assert "겹친" in caplog.text
+
+
+def test_다른_시도는_겹침으로_보지_않는다(caplog):
+    _cost([_rec(), _rec(attempt=2, transport_try=1, elapsed_ms=7)])
+    assert "겹친" not in caplog.text
+
+
+def test_기록의_사건_수가_채점한_OA보다_적으면_경고(caplog):
+    d2 = _gold_dict()
+    d2["application_number"]["value"] = "1020990000002"
+    g1, g2 = _gold(), _gold(d2)
+    score_f1(
+        CFG,
+        [g1, g2],
+        {oa_key(g1): _pred(_pred_dict())},
+        None,
+        commit="abc",
+        gold_sha256="0" * 64,
+        calls=[_rec(case="a")],
+    )
+    assert "사건 1개" in caplog.text and "OA 2건" in caplog.text
+
+
+def test_기록에_case가_없으면_사건_수를_보지_않는다(caplog):
+    rec = _rec()
+    del rec["case"]
+    _cost([rec])
+    assert "사건" not in caplog.text
 
 
 def test_호출_기록이_없으면_0과_경고(caplog):
     c = _cost(None)
     assert (c["usd"], c["input_tokens"], c["output_tokens"], c["external_calls"]) == (0, 0, 0, 0)
+    assert (c["cached_input_tokens"], c["cached_output_tokens"]) == (0, 0)
     assert "--calls" in caplog.text
 
 
