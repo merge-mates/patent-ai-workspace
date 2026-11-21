@@ -321,3 +321,22 @@ def test_받기는_HTTP_200이어도_오류_코드면_저장하지_않고_실패
     out = tmp_path / "out"
     assert mod.main(["--queries", str(qp), "--out", str(out)]) == 1
     assert not (out / "OA1.xml").exists()  # 다음 실행이 다시 부른다
+
+
+def test_받기는_정상_코드면_저장하고_키를_가린다(tmp_path, monkeypatch):
+    # #217 리뷰 참고: 성공 경우. 응답에 키가 섞여 와도 저장 파일에는 ***로 남는다
+    mod = _load_fetch_script()
+    qp = tmp_path / "q.yaml"
+    qp.write_text(
+        yaml.safe_dump({"OA1": {"ipc": "G06T 7/11", "words": ["영상"]}}), encoding="utf-8"
+    )
+    monkeypatch.setenv("KIPRIS_PLUS_API_KEY", "fake-key")
+    monkeypatch.setattr(mod, "load_dotenv", lambda: None)
+    body = xml(item("P4", "9920990000004", "20110101")).replace(
+        "</response>", "fake-key</response>"
+    )
+    monkeypatch.setattr(mod.requests, "get", lambda *a, **k: _Resp(body))
+    out = tmp_path / "out"
+    assert mod.main(["--queries", str(qp), "--out", str(out)]) == 0
+    saved = (out / "OA1.xml").read_text(encoding="utf-8")
+    assert "fake-key" not in saved and "***" in saved
