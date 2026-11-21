@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 from f3_eval_builder import (
+    DISPATCH,
+    DOC,
     KEY,
     novelty_table,
     prediction,
@@ -93,6 +95,46 @@ def test_무작위_기준선과_비율을_같이_낸다(run):
     assert m["random_search_recall"] == pytest.approx(2 / 3)
     assert m["random_search_hit"] == pytest.approx(1.0)
     assert m["search_recall_ratio"] == pytest.approx(0.75)
+
+
+def test_비율은_줄_OA_세트_순서로_평균한_뒤_나눈다(run, tmp_path):
+    # 범위 조각 N=4 (14, 20, 80, 81). OA 2건, 줄 3개, k(가져온 조각 수)가 줄마다 다르다.
+    # OA A 청구항 1: 정답 {14}(맞는 조각 1), k=1 {14}   -> recall 1, 무작위 1 - C(3,1)/C(4,1) = 1/4
+    # OA A 청구항 3: 정답 {80}(맞는 조각 1), k=2 {14,20} -> recall 0, 무작위 1 - C(3,2)/C(4,2) = 1/2
+    # OA B 청구항 1: 정답 {14}(맞는 조각 1), k=1 {14}   -> recall 1, 무작위 1/4
+    # OA 평균: A recall 1/2, 무작위 3/8 / B recall 1, 무작위 1/4
+    # 세트 평균: search_recall 3/4, random_search_recall 5/16 -> 비율 (3/4)/(5/16) = 2.4
+    # (틀린 방식: 줄마다 비율을 평균하면 (4 + 0 + 4)/3 = 8/3, 줄을 한데 모으면 (2/3)/(1/3) = 2.0)
+    # Hit도 같은 순서: A (1/4 + 1/2)/2 = 3/8, B 1/4 -> 5/16
+    key_b = "1020990000002_952099000000002"
+    dispatch_b = key_b.split("_")[1]
+    para = lambda no: {"kind": "paragraph", "start": no, "end": no, "label": f"[{no:04d}]"}  # noqa: E731
+    base = {"corpus": "cite", "query": "질의 글자", "doc_ids": [DOC]}
+    rows = [
+        {**base, "row_id": f"{DISPATCH}:r1:c1:{DOC}", "items": [para(14)]},
+        {**base, "row_id": f"{DISPATCH}:r1:c3:{DOC}", "items": [para(80)]},
+        {**base, "row_id": f"{dispatch_b}:r1:c1:{DOC}", "items": [para(14)]},
+    ]
+
+    def goldset(root):
+        write_goldset(root, f1=False)
+        text = "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in rows)
+        (root / "tune" / "retrieval" / "cite_gold.jsonl").write_text(text, encoding="utf-8")
+
+    pred_a = prediction(searched=((1, [14]), (2, [14, 20])), selected=())
+    pred_a["search_log"][1]["claim"] = 3  # 두 번째 줄은 청구항 3
+    pred_b = prediction(searched=((1, [14]),), selected=())
+    preds = tmp_path / "preds"
+    write_run(preds, pred_a)
+    write_run(preds, pred_b, key=key_b)
+
+    code, scores, _ = run(goldset=goldset, write=False)
+    assert code == 0
+    m = scores["metrics"]
+    assert m["search_recall"] == pytest.approx(3 / 4)
+    assert m["random_search_recall"] == pytest.approx(5 / 16)
+    assert m["random_search_hit"] == pytest.approx(5 / 16)
+    assert m["search_recall_ratio"] == pytest.approx(2.4)
 
 
 def test_가져온_조각이_없으면_무작위도_0이고_비율은_빼고_이유를_남긴다(run):
