@@ -6,9 +6,10 @@
 
 from pathlib import Path
 
+from patent_ai.core.cases.store import InMemoryRunStore
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import Step, StepRunExecutor, WaitForHuman
-from patent_ai.core.runs.state import RunError, RunState, check_transition
+from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunStatus
 from patent_ai.core.schemas.oa_result import OAResult
 
@@ -21,44 +22,30 @@ def load_oa_result() -> OAResult:
     return OAResult.model_validate_json(FIXTURE.read_text("utf-8"))
 
 
-class MemoryStatusStore:
-    """RunStatusStore를 메모리로 흉내 낸다. transition은 check_transition을 꼭 거친다."""
+class MemoryStatusStore(InMemoryRunStore):
+    """앱의 메모리 저장소(InMemoryRunStore)를 그대로 쓴다 (전이 규칙도 같은 코드).
+
+    테스트 편의로 run_id를 정해 만드는 add()와 단계 기록 step_history만 더한다.
+    """
 
     def __init__(self) -> None:
-        self.runs: dict[str, RunStatus] = {}
+        super().__init__()
         self.step_history: dict[str, list[str]] = {}
 
     def add(self, run_id: str, oa_id: str = "oa_1", state: RunState = RunState.QUEUED) -> None:
-        self.runs[run_id] = RunStatus(run_id=run_id, oa_id=oa_id, state=state)
+        self._id_maker = lambda: run_id
+        self.create_queued(oa_id)
+        if state != RunState.QUEUED:  # 규칙을 거치지 않고 바로 그 상태로 시작 (테스트 준비용)
+            with self._lock:
+                self._put(self._status[run_id].model_copy(update={"state": state}))
         self.step_history[run_id] = []
 
-    def get_status(self, run_id: str) -> RunStatus | None:
-        return self.runs.get(run_id)
-
-    def transition(
-        self,
-        run_id: str,
-        new: RunState,
-        *,
-        current_step: str | None = None,
-        waiting_for: str | None = None,
-        error: RunError | None = None,
-    ) -> RunStatus:
-        cur = self.runs[run_id]
-        check_transition(cur.state, new, error=error, waiting_for=waiting_for)
-        updated = cur.model_copy(
-            update={
-                "state": new,
-                "current_step": current_step if current_step is not None else cur.current_step,
-                "waiting_for": waiting_for,
-                "error": error.to_dict() if error else None,
-            }
-        )
-        self.runs[run_id] = updated
-        return updated
+    @property
+    def runs(self) -> dict[str, RunStatus]:
+        return self._status
 
     def set_current_step(self, run_id: str, step: str) -> None:
-        self.runs[run_id] = self.runs[run_id].model_copy(update={"current_step": step})
+        super().set_current_step(run_id, step)
         self.step_history[run_id].append(step)
 
 

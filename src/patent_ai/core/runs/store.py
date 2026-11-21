@@ -45,6 +45,10 @@ class RunStatusStore(Protocol):
 
     def set_current_step(self, run_id: str, step: str) -> None: ...
 
+    def unfinished_run_ids(self) -> list[str]:
+        """queued·running인 실행 id (켜질 때 failed로 바꿀 대상). waiting_for_human은 뺀다."""
+        ...
+
 
 class OAResultSink(Protocol):
     """끝난 OA 정리를 받아 저장하는 쪽 (나중에 core/cases의 save_oa_result)."""
