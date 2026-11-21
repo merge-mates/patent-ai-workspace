@@ -801,21 +801,51 @@ def test_upload_확인_안_된_문서_줄의_순서가_마무리를_다시_돌�
 # --- OA 전부·글자 추출 상태·보류 작업 이름 (#140 task-3) --------------------------------
 
 
+US_D3 = "US20990000002A1"  # 지어낸 번호: 둘째 OA에만 나오는 인용문헌
+
+
 def _second_oa(oa: OAResult) -> OAResult:
-    # 두 번째 OA: 같은 내용에 oa_id만 다른 지어낸 값
-    return oa.model_copy(update={"oa_id": "oa_2"})
+    # 같은 사건의 다음 통지: 발송번호가 다르다 (지어낸 값). 첫 OA에서 D2였던 US_D2를 D1로 부르고,
+    # 이 OA에만 나오는 인용문헌(US_D3)을 D2로 부른다
+    d = oa.model_dump(mode="json")
+    d["oa_id"] = "oa_2"
+    d["dispatch_number"]["value"] = "952099000000002"
+    d["dispatch_number"]["raw_text"] = "9-5-2099-000000002"
+    cites = d["rejections"][0]["citations"]
+    d1 = dict(cites[1], label="D1")  # US_D2를 다른 라벨로
+    d2 = dict(cites[1], label="D2", number=dict(cites[1]["number"], value=US_D3))
+    d["rejections"][0]["citations"] = [d1, d2]
+    return OAResult.model_validate(d)
 
 
-def test_oas_두_OA의_같은_빠진_자료는_한_줄이고_보류는_OA마다_남는다():
+def test_oas_두_OA가_같은_문헌을_다른_라벨로_불러도_빠진_자료는_한_줄이다():
     oa1 = _fixture_oa()
     oa2 = _second_oa(oa1)
     got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
-    # 같은 인용문헌 본문은 사건에서 한 번만 올리면 되니 빠진 자료는 한 줄
+    # 번호(US_D2)가 같으면 한 줄 (첫 OA의 라벨 이름), OA2에만 있는 US_D3은 따로 한 줄
+    m_d2, m_d3 = got.missing
+    assert m_d2.what == "D2 US20990000001A1 본문"
+    assert m_d2.depends_on_tasks == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D1"]
+    assert m_d3.what == "D2 US20990000002A1 본문"
+    assert m_d3.depends_on_tasks == ["f3_compare:oa_2:D2"]
+    # 보류 이름은 OA마다 자기 라벨. waiting_for는 합친 줄의 이름
+    assert [(h.task, h.waiting_for) for h in got.held_tasks] == [
+        ("f3_compare:oa_1:D2", m_d2.what),
+        ("f3_compare:oa_2:D1", m_d2.what),
+        ("f3_compare:oa_2:D2", m_d3.what),
+    ]
+
+
+def test_oas_같은_문헌이_아니면_합치지_않는다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    # US_D2는 받았고 OA2에만 있는 US_D3만 빠짐: OA1 쪽 줄은 생기지 않는다
+    got = build_case_materials(
+        "c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1, US_D2}
+    )
     (m,) = got.missing
-    assert m.what == "D2 US20990000001A1 본문"
-    assert m.depends_on_tasks == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D2"]
-    assert [h.task for h in got.held_tasks] == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D2"]
-    assert all(h.waiting_for == m.what for h in got.held_tasks)
+    assert m.what == "D2 US20990000002A1 본문"
+    assert [h.task for h in got.held_tasks] == ["f3_compare:oa_2:D2"]
 
 
 def test_oas_두_OA의_결과_줄이_다_남는다():
@@ -835,7 +865,9 @@ def test_oas_올리면_두_OA의_보류가_다_사라진다():
     oa2 = _second_oa(oa1)
     got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
     after = answer_missing(got, "D2 US20990000001A1 본문", _uploaded_citation())
-    assert after.missing == [] and after.held_tasks == []
+    # 다른 라벨(oa_2의 D1)로 기다리던 보류도 같이 사라지고, OA2에만 있는 문헌 것은 남는다
+    assert [m.what for m in after.missing] == ["D2 US20990000002A1 본문"]
+    assert [h.task for h in after.held_tasks] == ["f3_compare:oa_2:D2"]
 
 
 def test_text_status_스캔본은_문서의_text_status만_정하고_묶기_status는_그대로():

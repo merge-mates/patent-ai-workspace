@@ -367,7 +367,9 @@ def build_case_materials(
         g.citation_key for g in grouped if g.kind == "citation" and g.citation_key is not None
     }
 
-    missing: dict[str, MissingMaterial] = {}  # 이름(what)마다 한 줄
+    # 빠진 자료는 문헌마다 한 줄: 열쇠는 인용문헌 번호(없으면 이름). OA마다 라벨이 달라도
+    # (OA1 D2 = OA2 D1) 같은 번호면 한 줄로 합친다. 줄 이름(what)은 먼저 나온 OA의 라벨
+    missing: dict[str, MissingMaterial] = {}
     held: list[HeldTask] = []
     for oa in oas:
         citations = _oa_citations(oa)
@@ -380,11 +382,12 @@ def build_case_materials(
             if reason is None:
                 continue
             what = f"{_citation_name(c)} 본문"
-            # 보류 작업 이름은 OA마다 다르다 (design 3-2절)
+            # 보류 작업 이름은 OA마다 자기 라벨 (design 3-2절)
             task = f"f3_compare:{oa.oa_id}:{c.label}"
-            prev = missing.get(what)
+            key = c.number.value or what
+            prev = missing.get(key)
             if prev is None:
-                missing[what] = MissingMaterial(
+                missing[key] = MissingMaterial(
                     what=what,
                     depends_on_tasks=[task],
                     lookup_result=reason,
@@ -392,10 +395,13 @@ def build_case_materials(
                     citation_key=c.number.value,  # 번호를 못 읽었으면 None
                 )
             else:
-                # 다른 OA가 같은 문헌을 인용: 빠진 자료는 그대로 한 줄, 기다리는 작업만 더한다
-                missing[what] = prev.model_copy(
-                    update={"depends_on_tasks": [*prev.depends_on_tasks, task]}
+                # 다른 OA가 같은 문헌을 인용: 줄은 그대로, 기다리는 작업만 더한다
+                missing[key] = MissingMaterial.model_validate(
+                    prev.model_dump() | {"depends_on_tasks": [*prev.depends_on_tasks, task]}
                 )
+                what = (
+                    prev.what
+                )  # waiting_for는 합친 줄의 이름 (answer_missing이 이 이름으로 보류를 뺌)
             held.append(HeldTask(task=task, waiting_for=what))
 
     materials = CaseMaterials(
