@@ -134,7 +134,7 @@ class StepResultRow(Base):
 
     __tablename__ = "step_results"
     __table_args__ = (
-        CheckConstraint("kind IN ('f3', 'f4')", name="ck_step_results_kind"),
+        CheckConstraint("kind IN ('f2', 'f3', 'f4')", name="ck_step_results_kind"),
         CheckConstraint(_STATUS_CHECK, name="ck_step_results_status"),
         UniqueConstraint("run_id", "kind", name="uq_step_results_run_kind"),
     )

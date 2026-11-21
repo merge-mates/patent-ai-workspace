@@ -7,6 +7,7 @@ from patent_ai.core.cases.step_results import (
     InMemoryStepResultStore,
     kind_of,
 )
+from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
 from tests.core.run_case_fakes import real_outcome
@@ -48,3 +49,13 @@ def test_step_results_같은_실행_같은_단계를_두_번_저장하면_거부
 def test_step_results_F3_F4가_아닌_객체는_TypeError(outcome):
     with pytest.raises(TypeError):
         kind_of(outcome.results["read_oa"])
+
+
+def test_step_results_F2_법률_근거도_저장하고_다시_읽으면_같은_객체(outcome):
+    store = InMemoryStepResultStore()
+    f2 = outcome.results["run_f2"]
+    assert kind_of(f2) == "f2"
+    store.save_step_result("oa_1", "r_1", f2)
+    got = store.step_result("r_1", "f2")
+    assert isinstance(got, F2Result) and got == f2
+    assert got.bundles and got.bundles[0].claims[0].sources[0].evidence.chunk_id

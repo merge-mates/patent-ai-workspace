@@ -135,13 +135,26 @@ def test_results_api_실행이_끝나면_F3_F4_결과가_같은_실행에서_열
     assert body["directions"]["rank_notice"]
 
 
-def test_results_api_F2_결과는_아직_저장하지_않아_빈_목록과_이유(env):
-    # F2는 돌지만(#28) 결과 저장 칸이 아직 없다: 이유 없이 비우지 않는다
-    oa_id = env.upload()["oa_id"]
+def test_results_api_F2_법률_근거를_저장하고_다시_열_수_있다(env):
+    # 걷는 뼈대(#28): F2 묶음도 같은 실행으로 저장되어 다시 열면 같은 결과가 나온다
+    created = env.upload()
+    oa_id = created["oa_id"]
     legal = env.get(oa_id, "legal-evidence")
     assert legal.status_code == 200
-    assert legal.json()["result"] == []
-    assert legal.json()["empty_reason"] == "확인되지 않음: 이 실행에 결과가 없음"
+    body = legal.json()
+    assert body["run_id"] == created["run_id"] and body["empty_reason"] is None
+    units = env.get(oa_id, "units").json()["result"]
+    assert [b["unit_id"] for b in body["result"]] == [u["unit_id"] for u in units]
+    first = body["result"][0]["claims"][0]["sources"][0]
+    assert first["identifier"] == "특허법 제29조제2항" and first["evidence"]["chunk_id"]
+    assert env.get(oa_id, "legal-evidence").json() == body  # 다시 열기
+
+
+def test_results_api_F2를_넘기면_빈_목록과_넘긴_이유(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    env = Env(tmp_path, with_texts=False)  # 글자가 없어 F3를 넘기면 F2도 입력이 없다
+    legal = env.get(env.upload()["oa_id"], "legal-evidence").json()
+    assert legal["result"] == [] and legal["empty_reason"].startswith("넘김: input_unverified")
 
 
 def test_results_api_청구항_판을_못_찾으면_F3_F4는_빈_목록과_input_unverified(
@@ -187,10 +200,10 @@ def test_results_api_저장한_결과를_못_읽으면_500이_아니라_빈_결�
     # M3에서 F3·F4 결과 칸이 바뀌어 옛 줄을 못 읽는 경우를 흉내 낸다 (#206 리뷰)
     created = env.upload()
     oa_id, run_id = created["oa_id"], created["run_id"]
-    for kind in ("f3", "f4"):
+    for kind in ("f2", "f3", "f4"):
         oa, _ = env.steps._rows[(run_id, kind)]
         env.steps._rows[(run_id, kind)] = (oa, {"옛_칸": 1})
-    for n in ("units", "comparisons", "clarity-reviews", "directions", "drafts"):
+    for n in ("units", "comparisons", "clarity-reviews", "legal-evidence", "directions", "drafts"):
         r = env.get(oa_id, n)
         assert r.status_code == 200, n
         body = r.json()
