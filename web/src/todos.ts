@@ -26,8 +26,8 @@ export interface TodoInput {
   reviewItems: ReviewItem[] | null
   materials: CaseMaterials | null
   oaResult: { result: OAResult } | null
-  // 결과가 아직 없으면 []
-  directions: DirectionCandidates[]
+  // 대응 방향 결과를 못 받았으면 null → 방향 고르기를 셀 수 없어 개수도 모름
+  directions: DirectionCandidates[] | null
 }
 
 // target은 `oa_result[0].rejections[3]` 꼴과 `oa_result[<oa_id>].rejections[3]` 꼴이 섞여 있다. 둘 다 받는다
@@ -40,8 +40,6 @@ const missingIndex = (target: string): number | null => {
   const m = /^materials\.missing\[(\d+)\]$/.exec(target)
   return m ? Number(m[1]) : null
 }
-// 판단 단위 ID(`oa_1:42-4-2:c7`)는 target 맨 끝 대괄호 안에 있다 (`directions[oa_1:42-4-2:c7]`)
-const unitIdOf = (target: string): string | null => /\[([^\]]+)\]$/.exec(target)?.[1] ?? null
 
 // `oa_1:42-4-2:c7` → "제42조제4항제2호 · 청구항 7" (모양이 다르면 ID 그대로)
 function unitText(unitId: string): string {
@@ -51,7 +49,7 @@ function unitText(unitId: string): string {
 
 export function directTodos(input: TodoInput): DirectTodo[] | null {
   const { reviewItems, materials, oaResult, directions } = input
-  if (reviewItems === null) return null
+  if (reviewItems === null || directions === null) return null
   const r = oaResult?.result ?? null
   const todos: DirectTodo[] = []
 
@@ -99,19 +97,20 @@ export function directTodos(input: TodoInput): DirectTodo[] | null {
           go: { kind: 'anchor', id: rej ? `rejection-${rej.no}` : 'rejections', label: '거절이유 보기' },
         })
       }
-    } else if (item.kind === 'needs_human_judgment') {
-      // 방향을 이미 고른 묶음은 셈에서 뺀다 (사람이 판단을 끝냈다)
-      const unitId = unitIdOf(item.target)
-      const unit = unitId === null ? undefined : directions.find((d) => d.unit_id === unitId)
-      if (unit && unit.selection !== null) return
-      todos.push({
-        key: `j-${i}`,
-        title: `방향 고르기: ${unitId ? unitText(unitId) : item.label}`,
-        desc: '확신이 낮아 미리 고르지 않았어요',
-        go: { kind: 'route', path: '/directions', label: '고르러 가기' },
-      })
     }
   })
+
+  // 방향 고르기: 서버 검토할 사항 줄(모양이 다름)을 쓰지 않고 대응 방향 결과에서 바로 센다.
+  // 직접 판단 표시가 있고 아직 안 고른(selection === null) 묶음마다 한 줄
+  for (const d of directions) {
+    if (!d.flags.includes('needs_human_judgment') || d.selection !== null) continue
+    todos.push({
+      key: `j-${d.unit_id}`,
+      title: `방향 고르기: ${unitText(d.unit_id)}`,
+      desc: '확신이 낮아 미리 고르지 않았어요',
+      go: { kind: 'route', path: '/directions', label: '고르러 가기' },
+    })
+  }
   return todos
 }
 

@@ -2,6 +2,7 @@ import { Button, Steps } from 'antd'
 import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
 import { CaseInfo } from '../components/CaseInfo'
+import { HumanCheckTag } from '../components/Marks'
 import { SourceContext } from '../components/sourceContext'
 import { SourcePanel } from '../components/SourcePanel'
 import { StatusTag } from '../components/StatusTag'
@@ -50,6 +51,12 @@ export function CaseShell() {
   const openSource = (page: number | null, text: string | null) => {
     if (page !== null) setSource({ page, text })
     setSrcOpen(true)
+    // 판 안에서는 강조 줄(없으면 판)로, 좁은 화면에서 판이 본문 아래면 화면도 거기로 (effect 없이 그린 뒤 한 번)
+    requestAnimationFrame(() =>
+      (document.getElementById('source-highlight') ?? document.getElementById('source-panel'))?.scrollIntoView({
+        block: 'nearest',
+      }),
+    )
   }
 
   return (
@@ -66,9 +73,11 @@ export function CaseShell() {
             {/* 제출기일은 통지서에서 읽은 글자만. 남은 날 계산은 하지 않는다 */}
             <span className="body2 t3">
               {r
-                ? `${r.notice_kind.value ? noticeKindLabel[r.notice_kind.value] : (r.notice_kind.raw_text ?? '통지 종류 모름')} · 제출기일 ${r.response_due.raw_text ?? '직접 확인'}`
+                ? `${r.notice_kind.value ? noticeKindLabel[r.notice_kind.value] : (r.notice_kind.raw_text ?? '통지 종류 모름')} · 제출기일 ${r.response_due.raw_text ?? '모름'}`
                 : `정리 결과 없음 · ${runStateLabel[data.oa.latest_run.state]}`}
             </span>
+            {r && <HumanCheckTag />}
+            {r && r.response_due.status.value !== 'confirmed' && <StatusTag status={r.response_due.status} />}
             {r && r.status.value !== 'confirmed' && <StatusTag status={r.status} />}
             {r && (
               <Button type="text" size="small" onClick={() => setInfoOpen(!infoOpen)}>

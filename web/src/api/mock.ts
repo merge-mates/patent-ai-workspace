@@ -140,17 +140,16 @@ export const mockApi = {
   async getReviewItems(caseId: string): Promise<ReviewItem[]> {
     const b = await byCase(caseId)
     if (!b.review_items) throw new ApiError('result_not_ready', '검토할 사항 목록이 아직 없습니다', 404)
-    return [...b.review_items, ...judgmentItems(b.oa_id)]
+    return b.review_items
   },
   // 사건 목록에 더 보이는 값 (fixture·예시에서 채운다). 서버 모드는 비어 있어 "모름"
   async listCaseExtras(): Promise<CaseListExtra[]> {
     return (await bundles()).map((b) => {
-      const items = b.review_items === null ? null : [...b.review_items, ...judgmentItems(b.oa_id)]
       const todos = directTodos({
-        reviewItems: items,
+        reviewItems: b.review_items,
         materials: b.materials,
         oaResult: { result: b.oa_result },
-        directions: directions[b.oa_id] ?? [],
+        directions: directions[b.oa_id] ?? null,
       })
       return {
         case_id: b.case_id,
@@ -242,20 +241,6 @@ export const mockApi = {
 // mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)
 const directions: Record<string, DirectionCandidates[]> = structuredClone(exampleDirections)
 const drafts: Record<string, DraftsWithCheck> = structuredClone(exampleDrafts)
-
-// ⑤ 대응 방향에서 사람이 판단해야 하는 묶음마다 "직접 판단 필요" 줄 하나.
-// fixture의 review_items에는 이 줄이 없어서 서버 ⑥(collect_review_items)처럼 mock이 더한다.
-// target 끝 대괄호에 판단 단위 ID를 둔다 (화면이 고른 묶음을 셈에서 빼려고)
-function judgmentItems(oaId: string): ReviewItem[] {
-  return (directions[oaId] ?? [])
-    .filter((d) => d.flags.includes('needs_human_judgment'))
-    .map((d): ReviewItem => ({
-      kind: 'needs_human_judgment',
-      target: `directions[${d.unit_id}]`,
-      label: d.unit_id,
-      reason: '직접 판단 필요',
-    }))
-}
 
 // 지금 단계(mock 짐작): 결과가 있는 가장 뒤 단계
 function stageOf(oaId: string): CaseStage {

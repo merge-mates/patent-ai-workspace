@@ -71,3 +71,29 @@ body {
   font-weight: 600;
   color: var(--fg-neutral-secondary);
 }
+
+/* 원문 판: 넓은 화면에서는 화면 위에 붙어 따라온다 (쪽 링크를 눌렀을 때 화면 밖에 그려지지 않게).
+   좁은 화면(본문 아래로 내려갈 때)은 그냥 본문 흐름 */
+.source-panel {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+/* 접힌 막대는 화면 높이만큼 세로로 */
+.source-panel-closed {
+  height: 100vh;
+}
+@media (max-width: 899px) {
+  .source-panel-closed {
+    height: auto;
+    min-height: 48px;
+  }
+  .source-panel {
+    position: static;
+    align-self: stretch;
+    max-height: none;
+    overflow-y: visible;
+  }
+}

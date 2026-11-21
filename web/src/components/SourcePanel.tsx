@@ -26,6 +26,8 @@ export function SourcePanel({ open, page, highlight, document, onToggle }: Props
   if (!open) {
     return (
       <aside
+        id="source-panel"
+        className="source-panel source-panel-closed"
         style={{
           flex: '0 0 48px',
           background: 'var(--bg-neutral-secondary)',
@@ -60,6 +62,8 @@ export function SourcePanel({ open, page, highlight, document, onToggle }: Props
 
   return (
     <aside
+      id="source-panel"
+      className="source-panel"
       style={{
         flex: '1 1 440px',
         minWidth: 0,
@@ -110,7 +114,7 @@ export function SourcePanel({ open, page, highlight, document, onToggle }: Props
                 ) : (
                   <>
                     {text.slice(0, at)}
-                    <span style={highlightStyle}>{highlight}</span>
+                    <span id="source-highlight" style={highlightStyle}>{highlight}</span>
                     {text.slice(at + highlight.length)}
                   </>
                 )}

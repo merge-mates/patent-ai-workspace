@@ -1,6 +1,7 @@
 import { Button, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Link, useLoaderData, useNavigate } from 'react-router'
+import { HumanCheckTag } from '../components/Marks'
 import { StatusTag } from '../components/StatusTag'
 import type { CasesLoaderData } from '../loaders'
 import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
@@ -28,7 +29,14 @@ const columns: ColumnsType<Row> = [
     title: '제출기일',
     width: 140,
     // 통지서에서 읽은 글자 그대로. 남은 날 계산은 하지 않는다
-    render: (_, { extra }) => <span style={{ fontWeight: 600 }}>{extra?.response_due_raw ?? '—'}</span>,
+    render: (_, { extra }) =>
+      extra?.response_due_raw ? (
+        <span style={{ fontWeight: 600 }}>
+          {extra.response_due_raw} <HumanCheckTag />
+        </span>
+      ) : (
+        '모름'
+      ),
   },
   {
     title: '사건',
@@ -96,7 +104,7 @@ export function CaseListPage() {
                 {focus.case.case_name}
               </Link>
               <span className="body2 t2">
-                제출기일 {focusExtra?.response_due_raw ?? '직접 확인'} · 직접 할 일 {focusExtra?.todo_count}개:{' '}
+                제출기일 {focusExtra?.response_due_raw ?? '모름'} <HumanCheckTag /> · 직접 할 일 {focusExtra?.todo_count}개:{' '}
                 {focus.titles.join(', ')}
                 {(focusExtra?.todo_count ?? 0) > focus.titles.length ? ' …' : ''}
               </span>

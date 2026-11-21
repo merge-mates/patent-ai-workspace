@@ -52,8 +52,8 @@ export interface OALoaderData {
   reviewItems: ReviewItem[] | null
   // 원문 쪽 글자를 못 받으면 null (원문 보기에서 알린다)
   document: PageText | null
-  // 대응 방향 묶음 (직접 할 일에서 방향을 이미 고른 묶음을 빼려고). 결과가 아직 없으면 []
-  directions: DirectionCandidates[]
+  // 대응 방향 묶음 (직접 할 일의 방향 고르기를 세려고). 결과가 아직 없으면 null (모름)
+  directions: DirectionCandidates[] | null
 }
 
 export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> {
@@ -75,11 +75,8 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
       return notReadyAsNull(e)
     }),
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
-    // 방향 결과가 아직 없으면 빈 목록 (고른 묶음이 없는 것으로 본다)
-    api.getDirections(oa.oa_id).catch((e: unknown) => {
-      if (isNotReady(e)) return []
-      throw e
-    }),
+    // 방향 결과가 아직 없으면 null: 0개로 보이지 않게 직접 할 일 개수는 모름
+    api.getDirections(oa.oa_id).catch(notReadyAsNull),
   ])
   return { oa, oaResult, materials, reviewItems, document, directions }
 }
