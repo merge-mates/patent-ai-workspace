@@ -218,6 +218,14 @@ def test_agent_steps_outcome_covers_both_records():
     outcomes = _check_values("agent_steps", "ck_agent_steps_outcome")
     assert set(get_args(StepRecord.model_fields["outcome"].annotation)) <= outcomes
     assert {"ok", "cache_hit", "transport_error", "limit_exceeded", "invalid_output"} <= outcomes
+    # 잘린 답(stop_reason = max_tokens)은 모양이 틀린 답과 다른 이유로 남는다 (#172)
+    assert "output_truncated" in outcomes
+
+
+def test_agent_steps_has_stop_reason_for_model_calls():
+    # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 옛 기록은 NULL (#172)
+    col = _table("agent_steps").c["stop_reason"]
+    assert col.nullable
 
 
 def test_result_inputs_point_to_result_or_document():

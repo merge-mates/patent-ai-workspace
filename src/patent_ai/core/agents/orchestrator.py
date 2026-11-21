@@ -142,7 +142,8 @@ def run_case(
         records = getattr(ctx.recorder, "records", None)
         if records is None:
             return None
-        sent = ("ok", "invalid_output", "transport_error")  # cache_hit·limit_exceeded는 안 셈
+        # 전송층을 실제로 부른 기록만 센다 (cache_hit·limit_exceeded는 안 셈)
+        sent = ("ok", "invalid_output", "output_truncated", "transport_error")
         return sum(1 for r in records if r.run_id == run_id and r.outcome in sent)
 
     def calls_since(before: int | None) -> int | None:

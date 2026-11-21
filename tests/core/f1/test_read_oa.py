@@ -361,6 +361,8 @@ def test_첫_답이_잘려도_지금처럼_한_번_더_부르고_경고_로그�
     (warn,) = [m for m in caplog.messages if "한 번 더 부름" in m]
     assert "잘림=True" in warn
     assert "stop_reason=max_tokens" in warn
+    # 호출 기록에도 잘린 호출이 다른 이유로 남는다
+    assert [r.outcome for r in rec.records] == ["output_truncated", "ok"]
 
 
 def test_두_번_다_잘리면_ModelOutputInvalid가_잘림을_알려_준다():
