@@ -124,7 +124,7 @@ async function refresh(runId: string, force: boolean) {
     const run: LatestRun = { run_id: next.run_id, state: next.state, current_step: next.current_step }
     const stepChanged = run.current_step !== prev.current_step
     const justEnded = isRunEnded(run.state) && !isRunEnded(prev.state)
-    const reason = next.error ?? null
+    const reason = next.error?.message ?? null
     if (!sameRun(prev, run) || e.snap.error !== null || e.snap.reason !== reason) {
       e.snap = { run, error: null, reason }
       notify(e)

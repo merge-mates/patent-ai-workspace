@@ -22,7 +22,8 @@ export interface LatestRun {
 // GET /runs/{id}: 실행 상태 + "지금 하는 주요 작업" 한 줄 (current_step은 자유 글이라 파싱하지 않는다)
 export interface RunStatus extends LatestRun {
   oa_id: string
-  error?: string | null
+  // 실패한 실행의 이유 (docs/api/README.md GET /runs/{id}). 실패가 아니면 null
+  error: { code: string; message: string } | null
 }
 
 // POST /oas/{oa_id}/runs (다시 돌리기) 응답: 명세에 모양이 없음(임시). POST /cases 처럼 새 실행 ID만 있다고 가정한다.
