@@ -133,6 +133,12 @@ def test_검색이_정답_문단을_하나도_못_덮은_질문은_CQ로_쌓는�
     assert {"row_id", "gold_sha256", "index_version", "k", "items", "found", "why"} <= set(line)
 
 
+def test_검색_기록이_없는_줄은_CQ에_넣지_않고_안_찾은_줄로만_센다(run):
+    _, scores, cq = run(prediction(searched=(), selected=()))
+    assert scores["failures"]["not_searched_rows"] == 1
+    assert scores["failures"]["cq_candidates"] == 0 and cq == []
+
+
 def test_CQ가_0건이면_경고한다(run, caplog):
     with caplog.at_level(logging.WARNING):
         _, scores, cq = run()

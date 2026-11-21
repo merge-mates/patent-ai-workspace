@@ -192,8 +192,9 @@ def _score_cite(
         else:
             marks["rr"].append(0.0)
             marks["rh"].append(0.0)
-        if pred is not None and found_search == 0:
-            # 못 찾은 질문: 검색 단계가 정답 위치를 하나도 못 덮음
+        if pred is not None and elements and found_search == 0:
+            # 못 찾은 질문: 검색을 했는데 정답 위치를 하나도 못 덮음
+            # (검색 기록이 없는 줄은 검색을 안 한 것이라 CQ가 아니다. not_searched_rows로만 센다)
             # (질의·정답 위치가 있어 git 밖에만 쓴다)
             cq.append(
                 {
