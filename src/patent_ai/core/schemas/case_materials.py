@@ -72,8 +72,9 @@ ReviewKind = Literal[
 ]
 
 
+# propagation.py가 이 파일을 import하므로 ReviewItem 정의는 여기에 둔다 (거꾸로 두면 순환).
 class ReviewItem(BaseModel):
-    """사람이 봐야 할 것 하나. (propagation.py가 이 파일을 import하므로 정의는 여기에 둔다)"""
+    """사람이 봐야 할 것 하나."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

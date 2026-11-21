@@ -2652,7 +2652,7 @@ components:
       - label
       - reason
       title: ReviewItem
-      description: 사람이 봐야 할 것 하나. (propagation.py가 이 파일을 import하므로 정의는 여기에 둔다)
+      description: 사람이 봐야 할 것 하나.
     ReviewVerdict:
       type: string
       enum:
