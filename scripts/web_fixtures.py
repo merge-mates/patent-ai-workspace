@@ -1,4 +1,4 @@
-"""화면 mock용 fixture를 만든다: git에 있는 가짜 통지서 + 기록된 모델 응답으로 read_oa를 돌린다.
+"""화면 mock용 fixture를 만든다: git에 있는 가짜 통지서 + 가짜 응답으로 read_oa를 돌린다.
 
 네트워크·API 키 없이 돈다 (FakeTransport). 결과는 web/src/api/fixtures/ 에 JSON으로 쓴다.
 실제 사건 JSON은 여기서 다루지 않는다 (시연용은 git 밖 web/.demo/).
@@ -23,7 +23,7 @@ F1 = ROOT / "tests" / "fixtures" / "f1"
 OUT = ROOT / "web" / "src" / "api" / "fixtures"
 STEP = "f1.read_oa"
 
-# 사건 셋. 칸: 사건 ID·이름·마지막으로 연 때, OA ID, 문서 ID, 통지서 fixture, 기록된 응답,
+# 사건 셋. 칸: 사건 ID·이름·마지막으로 연 때, OA ID, 문서 ID, 통지서 fixture, 가짜 응답,
 # 번호 바꾸기, 받은 인용문헌(키 꼴), 못 받은 인용문헌의 이유.
 # 번호 바꾸기는 같은 가짜 통지서를 다른 사건처럼 보이게 쪽 글자와 응답에 똑같이 적용한다.
 CASES = [
@@ -88,7 +88,7 @@ def _run_one(c: dict) -> dict:
     pairs = c["replace"]
     pages = _pages(c["notice"], c["document_id"], pairs)
     answer = _swap((F1 / "llm" / f"{c['answer']}.json").read_text("utf-8"), pairs)
-    # 기록된 응답 하나를 가짜 전송층으로 돌려준다 (모델 호출 없음)
+    # 가짜 응답 하나를 가짜 전송층으로 돌려준다 (모델 호출 없음)
     transport = FakeTransport({STEP: TransportResponse(answer, 100, 50)})
     run_id = f"r_{c['oa_id']}"
     ctx = RunContext(

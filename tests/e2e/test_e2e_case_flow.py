@@ -5,9 +5,9 @@
   합치기)로 읽고, 그 결과가 그대로 F3·F4 입력으로 이어진다. #180의 한 바퀴 테스트는 read_oa 자리에
   F4 fixture의 OA를 끼웠는데, 여기서는 끼우지 않는다. 바꿔 끼우는 것은 두 곳뿐이다:
   extract_pages(한글 PDF를 테스트에서 못 만들어 쪽 글자 fixture로)와 F3 검색 자원(DB·임베딩 대신
-  메모리 저장소). 모델 답은 기록된 응답(FakeTransport).
+  메모리 저장소). 모델 답은 가짜 응답(FakeTransport).
 - 통지서는 F4 fixture 사건(fixtures/f4/case_basic.json)과 같은 사건으로 지었다: 청구항 1~3,
-  진보성(청구항 1·2, D1) + 명확성(청구항 2 '적당한 간격'). 그래서 F3·F4 기록된 응답을 같이 쓴다.
+  진보성(청구항 1·2, D1) + 명확성(청구항 2 '적당한 간격'). 그래서 F3·F4 가짜 응답을 같이 쓴다.
 - 서버 단계(올리기 → 실행 → 폴링 → 다시 열기)는 아래 test_server_* 에 기대하는 모양만 적어 두고
   건너뛴다. run_case를 서버 실행기에 잇는 것, F3·F4 결과 저장·다시 열기 API가 아직 없다.
 """
@@ -27,7 +27,7 @@ from patent_ai.core.schemas.common import StatusValue
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
 
-# F3·F4 기록된 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것을 쓴다 (같은 사건이라 한 곳에)
+# F3·F4 가짜 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것을 쓴다 (같은 사건이라 한 곳에)
 from tests.core.agents.test_fixed_order_f3_f4 import CHECKED_ON, _real_config, _responses, _texts
 from tests.core.f3 import scenario
 

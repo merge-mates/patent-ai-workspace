@@ -247,7 +247,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 
 ## 9. 테스트 방법
 - 경계: AI 모듈 입력 → 출력 (`run_f4(F4Input) -> F4Output`)과 단계 함수 셋. 채점기는 `eval/f4/score.py`의 `score_f4`.
-- 가짜 응답 / 녹화 응답: 기록된 모델 응답 `tests/fixtures/f4/llm/direction_inventive.json`·`direction_clarity.json`·`direction_low.json`·`opinion_*.json`·`amendment_*.json`. 네트워크·키 없이 돈다.
+- 가짜 응답 / 기록된 모델 응답: 사람이 쓴 가짜 응답 `tests/fixtures/f4/llm/direction_inventive.json`·`direction_clarity.json`·`direction_low.json`·`opinion_*.json`·`amendment_*.json`. 네트워크·키 없이 돈다.
 - 상태마다 나오는 경우 (`tests/core/f4/`, `tests/f4_eval/test_f4_score.py`):
   - 확인됨: 앞 단계가 모두 확인됨이면 결과도 확인됨이고 검토 표시가 없다 (`test_f4_run.py`).
   - 확인되지 않음: 빈 법률 근거 / F3 결과 없음 / 명세서 없음(`body_missing`) / 근거 대조 탈락(`evidence_rejected`) / 후보 0개 / 통지 종류 모름.

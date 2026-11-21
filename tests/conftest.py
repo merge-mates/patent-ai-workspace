@@ -16,7 +16,7 @@ def _진짜_모델_호출_막기(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    # 진짜 전송층을 만드는 순간 예외 (테스트는 가짜·녹화 전송층만 쓴다)
+    # 진짜 전송층을 만드는 순간 예외 (테스트는 가짜·기록된 응답 전송층만 쓴다)
     def blocked(self, *args, **kwargs):
         raise RuntimeError("테스트에서 진짜 전송층을 만들 수 없음 (진짜 호출 막힘)")
 

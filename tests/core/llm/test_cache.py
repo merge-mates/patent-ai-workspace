@@ -1,4 +1,4 @@
-"""task-2: 캐시와 녹화 응답 (가짜·녹화 전송층, 임시 폴더만. 네트워크·API 키 없음)."""
+"""task-2: 캐시와 기록된 모델 응답 (가짜·기록된 응답 전송층, 임시 폴더만. 네트워크·API 키 없음)."""
 
 import json
 import shutil
@@ -113,8 +113,8 @@ def test_attempt가_다르면_성공한_답도_캐시를_안_쓴다(cache):
 
 def test_녹화_답을_읽는다(tmp_path):
     rec = tmp_path / "rec"
-    live = fake("녹화된 답")
-    # 가짜 전송층이 받은 호출 그대로 녹화 파일을 만든다
+    live = fake("기록된 답")
+    # 가짜 전송층이 받은 호출 그대로 기록 파일을 만든다
     run(live, None)
     c = live.calls[0]
     save_recording(
@@ -136,7 +136,7 @@ def test_녹화_답을_읽는다(tmp_path):
         "step",
     }
     r = run(RecordedTransport(rec), None)
-    assert r.text == "녹화된 답"
+    assert r.text == "기록된 답"
     assert (r.input_tokens, r.output_tokens) == (10, 5)
 
 

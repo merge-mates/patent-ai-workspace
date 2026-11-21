@@ -24,7 +24,7 @@ requirements: ./requirements.md
 | 9 하이브리드 Hit@k | 7-4 |
 | 10 세 방식 표 | 7-5 비교 카드 (`score --rows-out` 줄별 결과 + `eval/retrieval/compare.py`) |
 | 11 벡터 색인 | 7-3 색인 단계 (`core/index_embed`가 같은 글은 한 번만), 비용은 호출 기록 |
-| 12 조용히 안 뺌 | `vector` impl이 이미 멈춤(벡터 없는 조각, 녹화에 없는 질의), 하이브리드도 그대로 올림 |
+| 12 조용히 안 뺌 | `vector` impl이 이미 멈춤(벡터 없는 조각, 기록된 모델 응답(질의 벡터)에 없는 질의), 하이브리드도 그대로 올림 |
 
 ## 2. 흐름
 ```mermaid
@@ -123,7 +123,7 @@ flowchart LR
     tokenizer: kiwi
     pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
     bm25: {method: lucene, k1: 1.5, b: 0.75}
-    query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 녹화
+    query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 기록된 모델 응답(질의 벡터)
     hybrid:
       rrf_k: 60
       weights: {bm25: 0.5, vector: 0.5}
@@ -132,7 +132,7 @@ flowchart LR
 - RRF: 조각마다 `Σ w_m / (rrf_k + rank_m)` (m = bm25, vector). 한쪽 결과에 없는 조각은 그쪽 항이 0. 기본 `rrf_k = 60`, `w = 0.5 / 0.5` (11/20 재아가 추천대로 고름, 값은 실험 config `settings.hybrid`). 정렬은 `(-점수, chunk_id)` (계약).
 - 섞기 전 깊이: 위 안쪽 `k`로 두 검색기 모두 범위 안 전체 순위를 받는다 (문헌 하나가 조각 수백 개 아래라 작음, 판단). BM25는 0점 조각을 안 돌려주므로 BM25 쪽은 겹치는 낱말이 있는 조각만 들어간다.
 - 상태: 두 쪽 모두 `body_missing`이면 그대로, 섞은 hit가 0개면 `not_found_in_scope`. `skipped_unverified_edition`은 두 쪽 중 큰 값 (인용문헌은 판본 칸이 `not_applicable`이라 0).
-- 모델 호출: 없음 (질의 벡터는 7-3 녹화 파일).
+- 모델 호출: 없음 (질의 벡터는 7-3 기록된 모델 응답(질의 벡터) 파일).
 
 ### 7-5. 비교 카드
 - 같은 지문에서 비교: 채점기는 "지문이 다른 실험끼리는 점수를 비교하지 않는다"(`eval/retrieval/score.py` 지문 주석). v1과 v2는 `chunk_id` 앞말이 달라 지문이 다르므로, BM25도 `cite-idx-v2`로 다시 채점한다 (법령 `m2-i2-law-bm25-v2`와 같은 방식). v2 BM25 점수가 v1 기준선과 같은지도 카드에 한 줄.
@@ -166,6 +166,6 @@ flowchart LR
 ## 9. 테스트 방법
 - 경계: `PageExtractor.extract` 뒤(줄 목록 → 조각)와 정답 변환(JSON → gold 줄), bm25 impl(메모리 저장소 → `SearchResult`).
 - PDF 글자 추출은 지어낸 작은 PDF 하나(테스트가 만들거나 fixture)로 한 번만. 나머지는 줄 목록 fixture.
-- 벡터·하이브리드 (11/20): 메모리 저장소 + 지어낸 벡터 fixture + 녹화 질의 벡터로. RRF 계산(두 목록에 다 있는 조각이 위로, 한쪽에만 있는 조각, 같은 점수는 `chunk_id` 순, 바깥 k=1이어도 1위가 같음), 한쪽만 `not_found_in_scope`일 때, 둘 다 `body_missing`일 때, `settings.hybrid` 빠짐 → `ValueError`, 래퍼가 `hybrid`를 받음, `index_embed`가 cite 판을 받고 판 앞말만 바뀜, DB 넣기 cite 검사(`@pytest.mark.db`), `--rows-out` 줄 수 = n, `compare.py` 한국/논문 나눔과 `row_id` 집합 다름 → 종료 1. 진짜 임베딩 호출은 테스트에 없음.
+- 벡터·하이브리드 (11/20): 메모리 저장소 + 지어낸 벡터 fixture + 기록된 모델 응답(질의 벡터)로. RRF 계산(두 목록에 다 있는 조각이 위로, 한쪽에만 있는 조각, 같은 점수는 `chunk_id` 순, 바깥 k=1이어도 1위가 같음), 한쪽만 `not_found_in_scope`일 때, 둘 다 `body_missing`일 때, `settings.hybrid` 빠짐 → `ValueError`, 래퍼가 `hybrid`를 받음, `index_embed`가 cite 판을 받고 판 앞말만 바뀜, DB 넣기 cite 검사(`@pytest.mark.db`), `--rows-out` 줄 수 = n, `compare.py` 한국/논문 나눔과 `row_id` 집합 다름 → 종료 1. 진짜 임베딩 호출은 테스트에 없음.
 - 경우: 지어낸 3쪽 공보에서 머리말·쪽 번호가 빠지고 본문 줄은 남음 / 쪽을 넘는 문단이 이어짐 / 청구항·요약·도면 설명 조각 / 미국 문헌 건너뜀 경고 / 식별번호 0개 경고 / 정답 범위 펼치기·같은이유·위치 없음·질의 없음 / 두 번 색인 같음 / bm25 같은 점수 순서.
 - Postgres 쓰기는 `@pytest.mark.db`.

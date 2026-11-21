@@ -1,4 +1,4 @@
-"""#13 리뷰 반영: 진짜 호출 막기·녹화 위치·프롬프트·설정 검사·캐시 규칙."""
+"""#13 리뷰 반영: 진짜 호출 막기·기록 위치·프롬프트·설정 검사·캐시 규칙."""
 
 import importlib.util
 import logging
@@ -243,7 +243,7 @@ def test_JSON으로_못_바꾸는_변수는_ModelConfigError():
         call(fake(), MemoryCache(), variables={"lines": {1, 2}, "text": "x"})
 
 
-# ---- 1. 녹화 스크립트 ----
+# ---- 1. 기록 스크립트 ----
 def load_script():
     spec = importlib.util.spec_from_file_location(
         "record_llm", REPO_ROOT / "scripts" / "record_llm.py"

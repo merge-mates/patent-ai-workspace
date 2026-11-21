@@ -1,6 +1,6 @@
 """고정 순서 한 바퀴 F1 → F3 → F2(없음) → F4 테스트 (이슈 #166 T2). 네트워크·키·DB 없음.
 
-- 모델 답은 기록된 응답(FakeTransport), F3 검색은 메모리 저장소 + 가짜 임베딩(f3/scenario.py).
+- 모델 답은 가짜 응답(FakeTransport), F3 검색은 메모리 저장소 + 가짜 임베딩(f3/scenario.py).
 - F1 결과는 F4 fixture 사건(fixtures/f4/case_basic.json)의 OA 정리 결과를 read_oa 자리에 끼운다.
   명확성 검토까지 돌도록 청구항 2 줄에 OA가 짚은 문구('적당한 간격')만 더했다
   (F1 자체는 test_scenario.py가 진짜 코드로 본다. 여기서는 단계 사이 잇기를 본다).
@@ -79,7 +79,7 @@ def _f4(*names) -> list[TransportResponse]:
 
 
 def _responses() -> dict:
-    """단계마다 차례로 낼 기록된 모델 응답 (F3 셋 + F4 셋)."""
+    """단계마다 차례로 낼 가짜 응답 (F3 셋 + F4 셋)."""
     return {
         "f3.split_elements": [
             _split(1, [SENSOR, COVER]),
