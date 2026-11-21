@@ -12,7 +12,7 @@
 - 사람이 읽는 문서는 전부 `docs/`. 무엇을 어디에 둘지는 [`docs/README.md`](docs/README.md) 표를 따른다. 새 문서를 만들기 전에 그 표를 본다.
 - `experiments/<실험>/` 비교 실험 하나: `card.md`, `config.yaml`, `scores.json`. `experiments/index.md`는 스크립트가 만든다. 손으로 고치지 않는다.
 - `eval/` 채점기. 평가 세트(정답)는 git 밖 `data/goldsets/`에 둔다. 앱 코드는 `data/goldsets/`를 불러오지 않는다 (채점기만 읽는다. 예외: `scripts/split_cases_at_oa.py`가 AI 입력을 만들려고 `tune/case_full/`을 읽는다).
-- `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 Claude가 읽지 않는다 (채점기만 읽는다). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
+- `data/raw/`(받은 원본, Claude는 직접 안 고침) → 스크립트 → `data/processed/`. `data/goldsets/report/`는 개발하는 세션(사람·Claude)이 읽지 않는다 (채점기만 읽는다). report 정답은 저장소·프로젝트 기록과 떨어진 세션이 만들고 사람이 일부 검수한다 (`eval/GUIDE.md`). 데이터를 다루기 전에 `docs/data/<출처>.md` 데이터 카드를 본다.
 - `data/`, `work/`는 git 제외. 원본 데이터·비공개 샘플·API 키는 어떤 커밋에도 넣지 않는다.
 - DB는 각자 로컬 Postgres + pgvector(docker compose)다. 스키마는 Alembic 마이그레이션으로만 바꾸고, DB를 SQL로 손으로 고치지 않는다. 자세한 건 `src/patent_ai/db/CLAUDE.md`.
 - 공유 자원(DB 마이그레이션, 검색 색인 스크립트·설정, 평가 세트, 데이터 카드, 결과 스키마 `core/schemas/`)은 PR로만 바꾸고 상대가 리뷰한다.
@@ -31,7 +31,7 @@
 2. 테스트 먼저: 합격 기준에서 테스트를 쓰고, 실패를 확인하고(로컬에서만), 구현한다. 커밋은 통과한 뒤 테스트와 구현을 함께 한다 (`.claude/rules/git.md`). 기대값은 구현 계획·예시에서 가져오고 구현을 보고 정하지 않는다. (예외: 프롬프트 문구, 실험 스크립트)
    - 테스트 범위: 정해진 일을 하는 코드 도구와 꼭 지킬 선(사람 승인·누락 검사 등)은 테스트를 촘촘히 둔다. AI 품질은 테스트가 아니라 tune 세트 점수로 본다. 앱은 주요 API 테스트와 끝에서 끝까지(E2E) 하나. 프롬프트 문구·화면 스냅샷은 테스트하지 않는다.
 3. 커밋 전에 그 폴더 전체 테스트를 통과시킨다.
-4. "끝났다" = 합격 기준 테스트 통과 + 돌려 볼 명령 한 줄 + (AI 동작을 바꾼 이슈면) tune 세트 점수 한 줄 + 상대 PR 승인. 마일스톤 끝에는 report 세트로 한 번.
+4. "끝났다" = 합격 기준 테스트 통과 + 돌려 볼 명령 한 줄 + (AI 동작을 바꾼 이슈면) tune 세트 점수 한 줄 + 상대 PR 승인. report 세트는 M3 끝(11/26 오전 `m3` 판)에 한 번만 (`m1`·`m2`는 tune 점수).
 
 ## 특허 도메인 규칙
 - 기획 기준은 `docs/product.md` 맨 위 `기준:`에 적힌 판 하나다. 다른 문서(작업 문서, 개인 노트)는 그 판을 대체하지 않는다. 합의와 제안이 다르면 `docs/decisions/`의 상태를 본다. 제안을 확정 기능처럼 구현하지 않는다.

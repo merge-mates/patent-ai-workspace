@@ -11,7 +11,6 @@ from typing import Protocol, get_args
 
 from patent_ai.retrieval.errors import (
     IndexVersionMismatchError,
-    ModeNotSupportedError,
     SearchContractViolationError,
     UnknownImplError,
     UnknownIndexVersionError,
@@ -86,8 +85,6 @@ class CheckedSearcher:
         # None만 "전체"다. 빈 목록은 실수로 보고 막는다
         if doc_ids is not None and len(doc_ids) == 0:
             raise ValueError("doc_ids가 빈 목록이다 (전체는 None)")
-        if mode == "hybrid":
-            raise ModeNotSupportedError("hybrid는 아직 지원하지 않는다 (bm25, vector만)")
         if not self._repo.has_index_version(corpus, self._index_version):
             raise UnknownIndexVersionError(f"{corpus} 표에 색인 판 {self._index_version!r}이 없다")
 

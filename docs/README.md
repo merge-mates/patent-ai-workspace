@@ -2,7 +2,7 @@
 
 ## 지금
 <!-- 프로젝트 전체 위치만 3줄. 기능 진행은 각 features/<기능>/tasks.md에. 결정이 나는 PR에서만 고친다. -->
-- 단계: 기획 완료, M1~M3(3주) 준비. 기능 폴더 만들기 전 (2026-11-17)
+- 단계: M2 걷는 뼈대(~11/21, F1~F4 끝에서 끝까지) → M3 다듬기와 평가(~11/26) ([product.md](product.md) 9절, 11/20 회의 [team/meetings/2026-11-20.md](team/meetings/2026-11-20.md))
 - 기준 기획: [product/service_plan_v3.1.md](product/service_plan_v3.1.md). 3주 PRD: [product.md](product.md)
 - 정함: 기술 구조 [ADR 0003](decisions/0003-tech-stack.md), 전체 설계 [architecture.md](architecture.md)·[data-model.md](data-model.md), API 명세 v0 [api/README.md](api/README.md). 다음: 코드 뼈대(이슈 #12)와 기능 문서 틀(이슈 #10·#11). 지원 거절이유는 진보성·명확성·신규성 (11/17 신규성 추가, [product.md](product.md) 3.2절). 대응 방향은 순위·이유·확신도까지 제시하기로 보완 ([ADR 0001](decisions/0001-ai-amended-claim-draft.md)). 지식 그래프는 M2에 벡터·BM25로 못 찾은 질문(CQ)을 모은 뒤 M3에 조건부로 넣기로 보완, 범위는 줄이지 않음 (11/18, [ADR 0002](decisions/0002-first-build-scope.md))
 
@@ -39,7 +39,7 @@
 | F4 대응 방향 후보와 초안 | | M3 | PRD | | | |
 | F5 근거·상태 표시와 진행·보류 | 은진 | M1 | 문서 초안, 구현 계획 초안 | [requirements](features/F5/requirements.md) | [design](features/F5/design.md) | [tasks](features/F5/tasks.md) |
 | F2·F3 공통 검색 계약 (이슈 #65) | 재아 | M2 | requirements·design 초안 | [requirements](features/retrieval/requirements.md) | [design](features/retrieval/design.md) | |
-| F3 인용문헌 문단 검색 기준선 (이슈 #67) | 재아 | M2 | m2-i1 BM25 구현 (벡터 남음) | [requirements](features/cite-search/requirements.md) | [design](features/cite-search/design.md) | [tasks](features/cite-search/tasks.md) |
+| F3 인용문헌 문단 검색 기준선 (이슈 #67) | 재아 | M2 | m2-i2 BM25·벡터·하이브리드 비교 (채택 전) | [requirements](features/cite-search/requirements.md) | [design](features/cite-search/design.md) | [tasks](features/cite-search/tasks.md) |
 
 기능 번호·합격 기준은 [product.md](product.md) 5절. 기능 폴더(`features/<기능>/`)는 PRD 승인 뒤 만든다. 기술·경쟁사 조사, 선행기술 조사는 기획서에만 있다 (기획서 9절).
 
