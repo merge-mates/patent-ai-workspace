@@ -9,7 +9,10 @@ import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
 import { noticeKindLabel, runStateLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
+import { refreshRun, isRunEnded } from '../runPoll'
 import { directTodos } from '../todos'
+import { useRunSnapshot } from '../useRunSnapshot'
+import type { LatestRun } from '../types/provisional/case'
 
 // 사건 안의 단계 4개 (디자인 B 고친 판). 단계마다 주소가 있어 새로고침·뒤로 가기가 된다
 const STEPS = [
@@ -18,6 +21,42 @@ const STEPS = [
   { key: 'directions', label: '대응 방향', path: '/directions' },
   { key: 'drafts', label: '초안', path: '/drafts' },
 ]
+
+type StepItem = { title: string; description?: React.ReactNode; status?: 'wait' | 'process' | 'finish' | 'error'; disabled?: boolean }
+
+// 단계 막대 항목 (D5). 단계 상태는 "결과가 있나"(로더가 받은 값)로 정한다. current_step은 자유 글이라 파싱하지 않고 그대로 보인다.
+// 실행 중: 결과 있는 단계 "끝남", 결과 없는 첫 단계 "찾는 중", 그 뒤 "대기". 실행이 끝났으면 지금까지처럼 (정리에 직접 할 일 N)
+function stepItems(run: LatestRun, ready: boolean[], todoText: string): StepItem[] {
+  const ended = isRunEnded(run.state)
+  const firstMissing = ready.indexOf(false) // 결과 없는 첫 단계 (모두 있으면 -1)
+  const stepText = run.current_step ? (
+    <div className="label2 t3">{run.current_step}</div>
+  ) : undefined
+  return STEPS.map((s, i) => {
+    const base: StepItem = { title: s.label }
+    // 끝난 실행이 아니고 결과도 없는 단계는 눌러 가 봐야 빈 화면이라 막는다
+    if (ended && run.state !== 'failed' && run.state !== 'cancelled') {
+      if (run.state === 'waiting_for_human') {
+        // 사람 기다림: 정리 결과가 없으면 정리 단계, 있으면 방향 단계가 기다리는 자리
+        const waitAt = ready[0] ? 2 : 0
+        if (i === waitAt) return { ...base, description: '고르기 기다림', status: 'process' }
+      }
+      return { ...base, description: i === 0 && ready[0] ? `직접 할 일 ${todoText}` : undefined }
+    }
+    if (run.state === 'failed' || run.state === 'cancelled') {
+      if (ready[i]) return { ...base, description: i === 0 ? `직접 할 일 ${todoText}` : '끝남' }
+      if (i === firstMissing)
+        return run.state === 'failed'
+          ? { ...base, description: <><div>멈춤</div>{stepText}</>, status: 'error', disabled: true }
+          : { ...base, description: '취소됨', status: 'wait', disabled: true }
+      return { ...base, status: 'wait', disabled: true }
+    }
+    // queued · running
+    if (ready[i]) return { ...base, description: '끝남', status: 'finish' }
+    if (i === firstMissing) return { ...base, description: <><div>찾는 중</div>{stepText}</>, status: 'process', disabled: true }
+    return { ...base, description: '대기', status: 'wait', disabled: true }
+  })
+}
 
 // 사건 틀: 머리(이름·통지 종류·제출기일·사건 정보) → 단계 막대 + 직접 할 일·원문 버튼 → 본문(왼쪽) + 참고 원문 판(오른쪽).
 // 원문 판 상태와 "지금 연 원문"을 여기서 들고 있어서 단계를 옮겨도 접힘·쪽이 유지된다.
@@ -46,6 +85,9 @@ export function CaseShell() {
   const r = data.oaResult?.result ?? null
   const todos = directTodos(data)
   const todoText = todos === null ? '모름' : String(todos.length)
+  // 실행 상태는 폴링 값 (loader가 준 값에서 시작해 2.5초마다 GET /runs/{id}만 부른다)
+  const { run, error: runError } = useRunSnapshot(data.oa.latest_run)
+  const ready = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
   const reviewCount = data.reviewItems?.length ?? data.materials?.review_items_count ?? null
 
   // 아무것도 안 골랐으면 통지서 첫 거절이유가 있는 쪽을 기본으로 (없으면 1쪽)
@@ -99,7 +141,7 @@ export function CaseShell() {
             <span className="body2 t3">
               {r
                 ? `${r.notice_kind.value ? noticeKindLabel[r.notice_kind.value] : (r.notice_kind.raw_text ?? '통지 종류 모름')} · 제출기일 ${r.response_due.raw_text ?? '모름'}`
-                : `정리 결과 없음 · ${runStateLabel[data.oa.latest_run.state]}`}
+                : `정리 결과 없음 · ${runStateLabel[run.state]}`}
             </span>
             {r && <HumanCheckTag />}
             {r && r.response_due.status.value !== 'confirmed' && <StatusTag status={r.response_due.status} />}
@@ -128,12 +170,17 @@ export function CaseShell() {
               size="small"
               current={stepIdx}
               onChange={(i) => navigate(base + STEPS[i].path)}
-              items={STEPS.map((s) => ({
-                title: s.label,
-                // 진행 상태 표시는 다음 조각. 지금은 정리 단계에 직접 할 일 개수만
-                description: s.key === 'summary' ? `직접 할 일 ${todoText}` : undefined,
-              }))}
+              items={stepItems(run, ready, todoText)}
             />
+            {/* 실행이 도는 동안: 상태를 못 받았으면 알리고, 직접 새로 받는 버튼 */}
+            {(!isRunEnded(run.state) || runError !== null) && (
+              <div className="label2 t3" style={{ marginTop: 8 }}>
+                {runError !== null && <span>상태를 받지 못했어요 · </span>}
+                <Button type="link" size="small" onClick={() => void refreshRun(run.run_id)}>
+                  새로 보기
+                </Button>
+              </div>
+            )}
           </div>
           <span style={{ flex: '1 1 auto' }} />
           <Button type={todoOpen ? 'primary' : 'default'} onClick={() => setTodoOpen(!todoOpen)}>

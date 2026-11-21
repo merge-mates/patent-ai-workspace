@@ -1,12 +1,15 @@
-import { Button, Result, Space, Typography } from 'antd'
+import { Alert, App, Button, Popconfirm, Result, Space, Typography } from 'antd'
 import { useState } from 'react'
-import { useLocation, useRouteLoaderData } from 'react-router'
+import { useLocation, useNavigate, useRouteLoaderData } from 'react-router'
 import { ReviewPanel } from '../../components/ReviewPanel'
 import { StatusTag } from '../../components/StatusTag'
 import { TodoRows } from '../../components/TodoList'
 import { runStateLabel } from '../../labels'
 import type { OALoaderData } from '../../loaders'
+import { api } from '../../api'
+import { isRunEnded, refreshRun } from '../../runPoll'
 import { directTodos } from '../../todos'
+import { useRunSnapshot } from '../../useRunSnapshot'
 import { MaterialsCard } from './MaterialsCard'
 import { RejectionsCard } from './RejectionsCard'
 
@@ -16,6 +19,11 @@ export function WorkbenchPage() {
   const data = useRouteLoaderData('oa') as OALoaderData
   const { oa, oaResult, materials, reviewItems } = data
   const location = useLocation()
+  const navigate = useNavigate()
+  const { message } = App.useApp()
+  // 실행 상태는 폴링 값 (단계 막대와 같은 값을 구독한다)
+  const { run } = useRunSnapshot(oa.latest_run)
+  const running = !isRunEnded(run.state)
   // 검토할 사항 펼침: "전체 보기"로 #review-items 주소로 왔으면 펼쳐 있고, 직접 누른 것이 그 뒤면 그게 이긴다.
   // 눌렀을 때의 주소 key를 같이 적어 두어, 같은 주소로 다시 와도(새 key) 주소 쪽을 따른다 (effect 없이 계산)
   const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
@@ -23,7 +31,6 @@ export function WorkbenchPage() {
 
   if (oaResult === null) {
     // 결과가 없으면 빈 표 대신 실행 상태를 보인다. 실패·취소를 "정리 중"으로 보이지 않게 나눈다
-    const run = oa.latest_run
     const step = run.current_step ? ` · ${run.current_step}` : ''
     if (run.state === 'failed') {
       return <Result status="error" title="정리하지 못했습니다" subTitle={`${runStateLabel[run.state]}${step}`} />
@@ -37,8 +44,32 @@ export function WorkbenchPage() {
   const todos = directTodos(data)
   const reviewCount = reviewItems?.length ?? materials?.review_items_count ?? null
 
+  // 실행 취소: 확인을 받고 취소한 뒤 화면 데이터를 다시 받는다
+  const cancel = async () => {
+    try {
+      await api.cancelRun(run.run_id)
+      await refreshRun(run.run_id)
+    } catch (e) {
+      message.error(`취소하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   return (
     <>
+      {/* 정리는 끝났고 뒤 단계가 아직 도는 중: 먼저 보라고 알린다 */}
+      {running && (
+        <Alert
+          type="info"
+          showIcon
+          message="인용발명 대비와 법률 근거를 찾는 중이에요. 정리는 끝났으니 먼저 보세요."
+          description={`지금 하는 일: ${run.current_step ?? '준비 중'}. 끝나면 위 단계에 표시돼요.`}
+          action={
+            <Popconfirm title="실행을 취소할까요?" description="지금까지 끝난 결과는 남아요." okText="취소하기" cancelText="계속 두기" onConfirm={cancel}>
+              <Button size="small">실행 취소</Button>
+            </Popconfirm>
+          }
+        />
+      )}
       {/* 사람이 해야 할 일. 목록을 모르면 개수도 모름 (0으로 그리지 않는다) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <h2 className="heading2" style={{ marginBottom: 8 }}>
@@ -77,6 +108,13 @@ export function WorkbenchPage() {
           </Button>
         </div>
         {showReview && <ReviewPanel items={reviewItems} count={reviewCount} />}
+      </div>
+
+      {/* 다음 단계: 대비 결과가 없으면 열지 못한다 (실행 중이면 끝나면 열린다고 알림) */}
+      <div>
+        <Button type="primary" size="large" disabled={!data.ready.compare} onClick={() => navigate(`/oas/${oa.oa_id}/compare`)}>
+          {!data.ready.compare && running ? '대비가 끝나면 열려요' : '인용발명 대비로'}
+        </Button>
       </div>
     </>
   )
