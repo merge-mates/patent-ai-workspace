@@ -111,6 +111,14 @@ class MaterialInput(BaseModel):
     application_number_text: str | None = None
     doc_number_text: str | None = None  # OA는 발송번호, 보정서·의견서는 접수번호
     date_text: str | None = None  # 보이기용. 묶기에는 쓰지 않는다 (날짜만으로 합치지 않음)
+    # 인용문헌 본문이면 어느 인용문헌인지 (OA 인용문헌 번호 값 꼴, #201). 인용문헌에만 둔다
+    citation_key: str | None = None
+
+    @model_validator(mode="after")
+    def _인용문헌_키는_인용문헌에만(self) -> MaterialInput:
+        if self.citation_key is not None and self.kind != "citation":
+            raise ValueError(f"citation_key는 인용문헌 자료에만: kind={self.kind}")
+        return self
 
 
 class GroupedMaterial(BaseModel):
@@ -125,6 +133,7 @@ class GroupedMaterial(BaseModel):
     doc_number: ExtractedValue[str] | None  # 이력 사건만
     key: str | None  # 예: "oa:952099012345678". confirmed인 이력 사건만
     status: Status
+    citation_key: str | None = None  # 인용문헌 본문의 번호 키 (MaterialInput 그대로, #201)
 
 
 def _conflict() -> Status:
@@ -135,7 +144,7 @@ def _group_one(m: MaterialInput, case_application_number: str) -> GroupedMateria
     """자료 한 건의 번호를 읽고 상태·열쇠를 정한다."""
     if m.kind in _NOT_THIS_APPLICATION:
         return GroupedMaterial(
-            **m.model_dump(include={"document_id", "kind", "source"}),
+            **m.model_dump(include={"document_id", "kind", "source", "citation_key"}),
             application_number=None,
             doc_number=None,
             key=None,
@@ -344,6 +353,11 @@ def build_case_materials(
       + confirmed가 아닌 자료 수 (조용히 섞이지 않게).
     """
     lookup_failures = lookup_failures or {}
+    # 저장된 인용문헌 문서(올린 것 포함)에 키가 있으면 본문을 받은 것으로 친다 (#201).
+    # 그래서 올린 뒤 다시 만들어도 같은 빠진 자료가 다시 생기지 않는다
+    received_citations = received_citations | {
+        g.citation_key for g in grouped if g.kind == "citation" and g.citation_key is not None
+    }
     citations = _oa_citations(oa)
     if not citations:
         logger.warning("build_case_materials: OA 인용문헌이 0건 (빠진 자료 검사 없음)")
@@ -362,6 +376,7 @@ def build_case_materials(
                 depends_on_tasks=[task],
                 lookup_result=reason,
                 ask_upload=reason != LookupResult.UNSUPPORTED_COUNTRY,
+                citation_key=c.number.value,  # 번호를 못 읽었으면 None
             )
         )
         held.append(HeldTask(task=task, waiting_for=what))
@@ -369,7 +384,13 @@ def build_case_materials(
     materials = CaseMaterials(
         case_id=case_id,
         documents=[
-            CaseDocument(document_id=g.document_id, kind=g.kind, source=g.source, status=g.status)
+            CaseDocument(
+                document_id=g.document_id,
+                kind=g.kind,
+                source=g.source,
+                status=g.status,
+                citation_key=g.citation_key,
+            )
             for g in _one_per_key(grouped)
         ],
         missing=missing,
@@ -435,7 +456,8 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     """빠진 자료 `what`에 올린 자료 `document`로 답한다. 새 CaseMaterials를 돌려준다.
 
     - 그 빠진 자료 줄과, 그 자료를 기다리던 보류 작업만 뺀다 (다른 보류는 그대로).
-    - 올린 자료는 documents 끝에 더한다 (묶기 상태 그대로).
+    - 올린 자료는 documents 끝에 더한다 (묶기 상태 그대로). 그 빠진 자료의 인용문헌 키를
+      문서에 남겨 어느 인용문헌 본문인지 다시 열어도 알 수 있게 한다 (#201).
     - 검토할 사항 수는 빠진 자료 한 줄만큼 줄인다 (collect_review_items가 빠진 자료마다 한 줄).
     - 빠진 자료가 아니거나 올려 달라고 하지 않은 것이면 오류 (조용히 더하지 않는다).
     """
@@ -445,7 +467,11 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
         kind=document.kind,
         source=document.source,
         status=document.status,
+        citation_key=hit.citation_key,
     )
+    if hit.citation_key is None:
+        # 번호를 못 읽은 인용문헌: 올린 문서가 어느 키인지 몰라 F3가 키로 찾지 못한다
+        logger.warning("answer_missing: 인용문헌 키를 몰라 키 없이 더함 (%s)", what)
     return materials.model_copy(
         update={
             "documents": [*materials.documents, doc],

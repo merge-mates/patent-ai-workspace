@@ -185,7 +185,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
     api.getUnits(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getComparisons(oaId).catch(notReadyAsNull),
-    api.getCaseCheck(oaId).catch(notReadyAsNull),
+    api.getCaseCheck(oaId).catch(missingAsNull),
   ])
   if (units === null || directions === null) return null
   return { units, directions, comparisons: comparisons ?? [], caseCheck }
@@ -205,7 +205,7 @@ export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<Draf
   const [drafts, directions, caseCheck] = await Promise.all([
     api.getDrafts(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
-    api.getCaseCheck(oaId).catch(notReadyAsNull),
+    api.getCaseCheck(oaId).catch(missingAsNull),
   ])
   // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
   if (directions === null) return null
