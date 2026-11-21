@@ -9,6 +9,9 @@ from types import SimpleNamespace
 import anthropic
 import httpx2
 import pytest
+from anthropic.lib.streaming._messages import accumulate_event
+from anthropic.types import RawMessageStreamEvent
+from pydantic import TypeAdapter
 
 from patent_ai.core.llm.transport import (
     AnthropicTransport,
@@ -158,26 +161,78 @@ def test_답을_받는_중_연결이_끊기면_다시_부를_만한_TransportErr
 
 
 # ---- #194 스트림이 끊길 때 받은 usage ----
-def _snapshot(input_tokens=1200, output_tokens=37):
-    return SimpleNamespace(
-        usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
+# snapshot은 진짜 SDK의 accumulate_event로 이벤트를 차례대로 쌓아 만든다 (손으로 토큰을 넣지 않음).
+# SDK는 출력 토큰을 답 끝의 message_delta에서만 고치므로, 그 전에 끊기면 출력 토큰을 모른다.
+_EVENTS = TypeAdapter(RawMessageStreamEvent)
+
+
+def _sdk_snapshot(n_text=500, message_delta=False):
+    """message_start(입력 1200, 출력 1) -> 글 n_text조각 -> (있으면) message_delta(출력 37)."""
+    events = [
+        {
+            "type": "message_start",
+            "message": {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "m",
+                "content": [],
+                "stop_reason": None,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 1200, "output_tokens": 1},
+            },
+        },
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+        *[
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": "가나다"},
+            }
+        ]
+        * n_text,
+    ]
+    if message_delta:
+        events.append(
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                "usage": {"output_tokens": 37},
+            }
+        )
+    snapshot = None
+    for ev in events:
+        snapshot = accumulate_event(
+            event=_EVENTS.validate_python(ev), current_snapshot=snapshot, json_bufs={}
+        )
+    return snapshot
+
+
+def test_글을_받는_중_끊기면_입력_토큰만_싣고_출력_토큰은_확인되지_않음():
+    messages = _FakeStreamingMessages(
+        on_read=httpx2.ReadError("끊김"), snapshot=_sdk_snapshot(message_delta=False)
     )
+    with pytest.raises(TransportError) as e:
+        _transport(messages).complete(**KW)
+    assert e.value.usage == TransportUsage(1200, None)
 
 
-def test_답을_받는_중_끊기면_그때까지_받은_usage를_오류에_싣는다():
-    messages = _FakeStreamingMessages(on_read=httpx2.ReadError("끊김"), snapshot=_snapshot())
+def test_message_delta를_받은_뒤_끊기면_출력_토큰도_싣는다():
+    messages = _FakeStreamingMessages(
+        on_read=httpx2.ReadError("끊김"), snapshot=_sdk_snapshot(message_delta=True)
+    )
     with pytest.raises(TransportError) as e:
         _transport(messages).complete(**KW)
     assert e.value.usage == TransportUsage(1200, 37)
 
 
-def test_스트림_중_오류_이벤트도_받은_usage를_싣는다():
+def test_글을_받는_중_오류_이벤트면_출력_토큰은_확인되지_않음():
     messages = _FakeStreamingMessages(
-        on_read=_status_error(200, "overloaded_error"), snapshot=_snapshot(800, 5)
+        on_read=_status_error(200, "overloaded_error"), snapshot=_sdk_snapshot(n_text=3)
     )
     with pytest.raises(TransportError) as e:
         _transport(messages).complete(**KW)
-    assert e.value.usage == TransportUsage(800, 5)
+    assert e.value.usage == TransportUsage(1200, None)
 
 
 def test_message_start_전에_끊기면_usage는_확인되지_않음():

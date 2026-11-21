@@ -511,6 +511,16 @@ def test_끊긴_호출에_받은_usage가_있으면_토큰과_비용을_기록�
     assert r.cost == pytest.approx((1200 * 3.0 + 37 * 15.0) / 1_000_000)
 
 
+def test_출력_토큰을_모르면_입력만_기록하고_비용은_확인되지_않음(tmp_path):
+    cfg = make_config(tmp_path, max_input_tokens=1200, max_retries=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportError("끊김", retryable=True, usage=TransportUsage(1200, None)), OK)
+    with pytest.raises(ModelCallLimitExceeded):  # 받은 입력 토큰은 budget에 센다
+        run(t, cfg, CallBudget(), rec)
+    r = rec.records[0]
+    assert (r.input_tokens, r.output_tokens, r.cost) == (1200, None, None)
+
+
 def test_끊긴_호출에_usage가_없으면_토큰과_비용은_확인되지_않음(tmp_path):
     cfg = make_config(tmp_path)
     rec = MemoryRecorder()

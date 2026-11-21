@@ -17,10 +17,14 @@ class TransportResponse:
 
 @dataclass(frozen=True)
 class TransportUsage:
-    """실패한 호출에서 청구됐을 토큰 수 (스트림이 끊기기 전까지 받은 usage)."""
+    """실패한 호출에서 청구됐을 토큰 수 (스트림이 끊기기 전까지 받은 usage).
+
+    output_tokens가 None이면 출력 토큰은 확인되지 않음: SDK는 출력 토큰을 답 끝의
+    message_delta에서만 고치므로, 글을 받는 중에 끊기면 message_start 때 값(보통 1)이 남는다.
+    """
 
     input_tokens: int
-    output_tokens: int
+    output_tokens: int | None
 
 
 # 서버가 요청을 거절한 오류(429·5xx·4xx 상태): 모델이 돌지 않아 청구가 없다
@@ -81,7 +85,8 @@ class AnthropicTransport:
         # effort는 output_config로 넘긴다. temperature는 API에서 빠져 넘기지 않는다 (#134).
         # SDK 예외를 TransportError로 바꿔 던진다. 요청은 with에 들어갈 때 나가고 답은
         # get_final_message에서 받으므로 둘 다 try 안에 둔다.
-        # 스트림이 중간에 끊기면 그때까지 받은 usage(입력·부분 출력 토큰)를 오류에 싣는다 (#194).
+        # 스트림이 중간에 끊기면 그때까지 받은 usage를 오류에 싣는다 (#194). 입력 토큰은
+        # message_start에서 오고, 출력 토큰은 답 끝 message_delta를 받아야 안다 (_partial_usage).
         stream = None  # with에 들어가기 전에 실패하면 None으로 남는다
         try:
             with self._client.messages.stream(
@@ -117,7 +122,10 @@ def _partial_usage(stream) -> TransportUsage | None:
     usage = getattr(snapshot, "usage", None)
     if usage is None:
         return None
-    return TransportUsage(usage.input_tokens or 0, usage.output_tokens or 0)
+    # stop_reason은 message_delta에서야 채워진다. 없으면 출력 토큰은 아직 고쳐지지 않은 값이라
+    # 쓰지 않고 확인되지 않음(None)으로 둔다 (적게 잡힌 비용이 확정 값처럼 남지 않게)
+    out_tok = usage.output_tokens if snapshot.stop_reason is not None else None
+    return TransportUsage(usage.input_tokens or 0, out_tok)
 
 
 # 스트림 중 오류 이벤트의 종류 가운데 다시 불러 볼 만한 것 (서버 쪽 사정)
