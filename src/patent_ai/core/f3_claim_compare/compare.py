@@ -777,8 +777,15 @@ def _differences_only_not_found(rows: list[ComparisonRow]) -> bool:
     )
 
 
+BRANCH_NOTE = "부모 청구항 구성요소를 대비하지 않음(인용 가지 여럿), 판단 아님"
+
+
 def _novelty_summary(
-    rows: list[ComparisonRow], lost: set[_Key], unit: JudgmentUnit, label: str
+    rows: list[ComparisonRow],
+    lost: set[_Key],
+    unit: JudgmentUnit,
+    label: str,
+    branch_blocked: frozenset[int] = frozenset(),
 ) -> NoveltySummary:
     marks = _element_marks(rows, lost)
     names = {
@@ -790,7 +797,11 @@ def _novelty_summary(
     for claim in sorted({c for c, _ in marks}):
         mine = [mark for (c, _), (_, mark) in marks.items() if c == claim]
         counts = ", ".join(f"{name} {mine.count(j)}" for j, name in names.items())
-        told.append(f"청구항 {claim}: 구성요소 {len(mine)}개 중 {counts}")
+        sentence = f"청구항 {claim}: 구성요소 {len(mine)}개 중 {counts}"
+        if claim in branch_blocked:
+            # 인용 가지가 여럿이라 부모 구성요소를 못 빌린 청구항: 부모를 대비하지 않았다고 밝힌다
+            sentence += f". {BRANCH_NOTE}"
+        told.append(sentence)
     # 표시는 대표 청구항의 줄로 정한다 (대표 청구항 줄이 없으면 모든 줄)
     rep = unit.representative_claim
     basis = [mark for (c, _), (_, mark) in marks.items() if c == rep] or [
@@ -912,7 +923,13 @@ def compare_unit(
         unverified_claims = {c for c, v in views.items() if v.parent_unverified}
         # 요약은 status를 덮기 전의 줄로 모은다 (입력 상태 때문에 차이 후보가 빠지지 않게)
         summary = (
-            _novelty_summary(rows, lost, unit, group[0].label)
+            _novelty_summary(
+                rows,
+                lost,
+                unit,
+                group[0].label,
+                frozenset(c for c, v in views.items() if v.branch_blocked),
+            )
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )

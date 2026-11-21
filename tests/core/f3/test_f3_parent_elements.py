@@ -305,6 +305,8 @@ def test_신규성은_문헌마다_따져_부모가_그_문헌과_대비되지_�
         "청구항 1 [구성 1-2]",
         "청구항 3 [구성 3-1]",
     ]
+    # 가지가 아닌 보통 종속항 표에는 가지 보류 문구가 붙지 않는다
+    assert _BRANCH_NOTE not in d2_table.summary.reason
 
 
 def test_진보성은_종속항에만_붙은_문헌이_있으면_부모_구성요소를_넣는다():
@@ -370,6 +372,9 @@ def _branch_splits():
     }
 
 
+_BRANCH_NOTE = "부모 청구항 구성요소를 대비하지 않음(인용 가지 여럿), 판단 아님"
+
+
 def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_나가지_않고_보류한다(caplog):
     result = oa([rejection(1, "29-1-1", [4], [citation("D1", D1)])])
     answer = _answer(4, (1, "disclosed", (P31, FULL31)))
@@ -378,6 +383,7 @@ def test_인용_가지가_여럿이고_부모를_못_빌리면_확인됨으로_�
     (table,) = out.tables
     # 요약이 "차이 없음"이어도 표 전체는 확인됨이 아니다 (이 전제가 이 테스트의 핵심)
     assert table.summary.verdict == NoveltyVerdict.NO_DIFFERENCE
+    assert _BRANCH_NOTE in table.summary.reason
     assert any("인용 가지가 여럿" in r.getMessage() for r in caplog.records)
     assert _locations(table, 4) == ["청구항 4 [구성 4-1]"]
     (row,) = table.rows
