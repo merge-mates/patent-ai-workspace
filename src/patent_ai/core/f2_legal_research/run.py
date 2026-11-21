@@ -5,25 +5,24 @@
 2. 거절이유 조문을 그날 시행판에서 ID 조회 (`get_article`).
 3. 출처 확인(코드, 무조건): 통과한 근거만 주장에 넣는다. 근거 검토(모델)는 #29라서
    주장에 review가 없고 `needs_human_review`를 단다.
-4. 심사기준·판례는 색인 전이라 `search_log`에 body_missing으로 남긴다 (못 찾음 ≠ 없음).
+4. 심사기준·판례·심결은 색인 전이라 `search_log`에 status unverified(body_missing)로 남긴다
+   (못 찾음 ≠ 없음). law corpus는 실행마다 한 번만 읽는다 (`LawPool`).
 주장 글은 "어느 조문이 근거인가"만 적는다. 이 사건에 적용된다는 판단은 쓰지 않는다.
 """
 
 import logging
-from collections.abc import Callable
 from datetime import date
-from functools import cache
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from patent_ai.core.f2_legal_research.refs import article_ref, parse_dispatch_date
+from patent_ai.core.f2_legal_research.refs import ArticleRef, article_ref, parse_dispatch_date
 from patent_ai.core.f2_legal_research.tools import (
+    LawPool,
     check_source,
     get_article,
-    search_guideline,
-    search_precedent,
+    search_not_indexed,
 )
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
@@ -46,7 +45,6 @@ from patent_ai.core.schemas.legal_evidence import (
     LegalSource,
     LegalSourceKind,
     QuestionSource,
-    SearchLogEntry,
     summarize_bundle_status,
     summarize_claim_status,
 )
@@ -68,7 +66,7 @@ _ALL_BUNDLES = "모든 판단 단위의 법률 근거 묶음 확인"
 class F2Settings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    index_version: str  # 법령 색인 판 (law 말뭉치)
+    index_version: str  # 법령 색인 판 (law corpus)
 
 
 class F2Input(BaseModel):
@@ -152,14 +150,14 @@ def _unverified(reason: UnverifiedReason) -> Status:
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
 
 
-# 기준일 -> 심사기준·판례 찾아본 기록 (같은 실행 안에서는 한 번만 센다)
-SideLogs = Callable[[date], tuple[SearchLogEntry, ...]]
+# 심사기준·판례·심결: 검색이 아직 없어 body_missing으로 기록만 남기는 유형 (law-idx-v3 뒤 검색)
+_NOT_SEARCHED = (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL)
 
 
-def _bundle(
-    unit: JudgmentUnit, inp: F2Input, repo: ChunkRepository, side_logs: SideLogs
-) -> LegalEvidenceBundle:
-    oa, checked_on, iv = inp.oa, inp.checked_on, inp.settings.index_version
+def _question_of(
+    unit: JudgmentUnit, oa: OAResult
+) -> tuple[Rejection | None, date | None, ArticleRef | None, LegalQuestion]:
+    """판단 단위 -> (거절이유, 기준일, 조문, 질문). 묶음을 만드는 모든 길이 이 하나를 쓴다."""
     rej = next((r for r in oa.rejections if r.no == unit.rejection), None)
     if rej is None:
         # F3 단위가 가리키는 거절이유가 OA에 없으면 앞 입력이 어긋난 것
@@ -170,12 +168,20 @@ def _bundle(
             as_of_source=AsOfSource.NONE,
             source_kinds=_ALL_KINDS,
         )
-        return _empty(unit, oa, q, checked_on, _unverified(UnverifiedReason.INPUT_UNVERIFIED))
-
-    ref = article_ref(rej.article.value)
+        return None, None, None, q
     nd = oa.notice_date
     as_of = parse_dispatch_date(nd.raw_text) if nd.status.value == StatusValue.CONFIRMED else None
-    question = _question(rej, as_of, ref.label if ref else None)
+    ref = article_ref(rej.article.value)
+    return rej, as_of, ref, _question(rej, as_of, ref.label if ref else None)
+
+
+def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBundle:
+    oa, checked_on = inp.oa, inp.checked_on
+    rej, as_of, ref, question = _question_of(unit, oa)
+    if rej is None:
+        return _empty(
+            unit, oa, question, checked_on, _unverified(UnverifiedReason.INPUT_UNVERIFIED)
+        )
     if as_of is None or ref is None:
         # 기준일을 모르면 판이 갈려 조문을 고를 수 없다. 사람이 날짜를 확인해야 한다
         why = "발송일" if as_of is None else "조문"
@@ -184,8 +190,8 @@ def _bundle(
             unit, oa, question, checked_on, _unverified(UnverifiedReason.INPUT_UNVERIFIED)
         )
 
-    found = get_article(repo, iv, ref, as_of)
-    logs = [found.log, *side_logs(as_of)]
+    found = get_article(pool, ref, as_of)
+    logs = [found.log, *(search_not_indexed(pool, kind, as_of) for kind in _NOT_SEARCHED)]
     if found.chunk is None:
         # 같은 날 시행판이 둘이면 고르지 않고, 겹친 조각을 사람이 볼 수 있게 남긴다
         further = [
@@ -210,7 +216,7 @@ def _bundle(
         index_version=chunk.index_version,
     )
     # 출처 확인: 색인에 있고, 글이 그대로이고, 기준일 판인 근거만 쓴다 (없는 출처 0건)
-    if not check_source(repo, iv, evidence.chunk_id, evidence.raw_text, as_of):
+    if not check_source(pool, evidence.chunk_id, evidence.raw_text, as_of):
         logger.warning("run_f2 %s: %s 근거가 출처 확인에서 빠짐", oa.oa_id, chunk.chunk_id)
         return _empty(
             unit, oa, question, checked_on, _unverified(UnverifiedReason.EVIDENCE_REJECTED), logs
@@ -244,21 +250,8 @@ def _bundle(
 
 def _missing_index(unit: JudgmentUnit, inp: F2Input, status: Status) -> LegalEvidenceBundle:
     """색인이 없을 때의 묶음: 질문은 남기고 주장은 비운다."""
-    oa = inp.oa
-    rej = next((r for r in oa.rejections if r.no == unit.rejection), None)
-    nd = oa.notice_date
-    as_of = parse_dispatch_date(nd.raw_text) if nd.status.value == StatusValue.CONFIRMED else None
-    if rej is None:
-        q = LegalQuestion(
-            text=f"거절이유 {unit.rejection} 법률 근거",
-            source=QuestionSource.OA_REJECTION,
-            as_of_source=AsOfSource.NONE,
-            source_kinds=_ALL_KINDS,
-        )
-    else:
-        ref = article_ref(rej.article.value)
-        q = _question(rej, as_of, ref.label if ref else None)
-    return _empty(unit, oa, q, inp.checked_on, status)
+    *_, question = _question_of(unit, inp.oa)
+    return _empty(unit, inp.oa, question, inp.checked_on, status)
 
 
 def run_f2(inp: F2Input, *, repo: ChunkRepository | None = None) -> F2Result:
@@ -275,13 +268,9 @@ def run_f2(inp: F2Input, *, repo: ChunkRepository | None = None) -> F2Result:
         bundles = [_missing_index(u, inp, missing) for u in inp.units]
         return F2Result(oa_id=inp.oa.oa_id, bundles=bundles, status=missing)
 
-    @cache
-    def side_logs(as_of: date) -> tuple[SearchLogEntry, ...]:
-        _, guide = search_guideline(repo, iv, as_of)
-        _, prec = search_precedent(repo, iv, as_of)
-        return guide, prec
-
-    bundles = [_bundle(u, inp, repo, side_logs) for u in inp.units]
+    # law corpus를 실행마다 한 번만 읽는다 (도구마다 다시 읽지 않게, #222 리뷰)
+    pool = LawPool.load(repo, iv)
+    bundles = [_bundle(u, inp, pool) for u in inp.units]
     return F2Result(
         oa_id=inp.oa.oa_id,
         bundles=bundles,
