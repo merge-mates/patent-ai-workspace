@@ -35,7 +35,13 @@ from patent_ai.core.llm.embed import query_embedder
 from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.case_materials import HeldTask
-from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import (
+    Evidence,
+    Flag,
+    Status,
+    StatusValue,
+    UnverifiedReason,
+)
 from patent_ai.core.schemas.comparison import (
     ComparisonRow,
     ComparisonTable,
@@ -149,34 +155,79 @@ class _View:
 
     claim: int
     items: list[_Item]
-    claim_text: (
-        str  # 모델에 보여 줄 청구항 글자 (부모에서 온 구성요소가 있으면 그 부모 청구항 글자도)
-    )
+    # 모델에 보여 줄 청구항 글자 (부모에서 온 구성요소가 있으면 그 부모 청구항 글자도)
+    claim_text: str
     parents: list[int] = field(default_factory=list)  # 구성요소를 빌려 온 부모 청구항
+    # 빌려 올 부모의 나누기 결과가 비었거나 확인되지 않음: 표를 input_unverified로 둔다
+    parent_unverified: bool = False
 
 
-def _carried_parents(claim: int, unit_claims: list[int], splits: Mapping[int, SplitClaim]):
+def _has_branch(claim: int, splits: Mapping[int, SplitClaim]) -> bool:
+    """인용 경로 어디엔가 앞 청구항을 둘 이상 인용하는 청구항("제2항 또는 제3항")이 있나."""
+    seen: set[int] = set()
+    todo = [claim]
+    while todo:
+        c = todo.pop()
+        if c in seen:
+            continue
+        seen.add(c)
+        depends = splits[c].depends_on or []
+        if len(depends) > 1:
+            return True
+        todo += depends
+    return False
+
+
+def _carried_parents(
+    claim: int,
+    compared: Mapping[int, set[str]],
+    labels: set[str],
+    splits: Mapping[int, SplitClaim],
+) -> list[int]:
     """구성요소를 빌려 와야 하는 부모 청구항들 (번호 순).
 
-    인용을 거슬러 올라간 앞 청구항 중, 같은 단위 안에서 이미 대비되는 청구항(과 그 앞 청구항들)은
-    뺀다. 인용 관계를 모르는 청구항(ancestors가 None)이면 아무것도 빌리지 않는다: 단위가
+    인용을 거슬러 올라간 앞 청구항 중, 이 묶음에서 이미 대비되는 청구항(과 그 앞 청구항들)은 뺀다.
+    "이미 대비됨" = 그 부모가 이 묶음에 있고 이 종속항이 대비되는 문헌을 모두 대비받음
+    (신규성은 문헌마다 표가 따로라, 부모가 다른 문헌과 대비됐다고 이 문헌 대비를 건너뛰면 안 된다).
+    인용 관계를 모르는 청구항(ancestors가 None)이면 아무것도 빌리지 않는다: 단위가
     확인되지 않음으로 남고 대비표에도 자기 구성요소만 들어간다.
     """
     family = ancestors(claim, splits)
     if not family:
         return []
+    if _has_branch(claim, splits):
+        # 가지마다 따로 대비하는 일은 아직 없다. 가지 합집합을 한 청구항처럼 대비하지 않는다
+        logger.warning(
+            "compare 청구항 %d: 인용 가지가 여럿이라 부모 구성요소를 넣지 않음 (직접 검토 필요)",
+            claim,
+        )
+        return []
     covered: set[int] = set()
     for a in family:
-        if a in unit_claims and splits[a].elements:  # 단위 안에서 줄이 만들어지는 부모
+        if splits[a].elements and labels <= compared.get(a, set()):
             covered |= {a} | (ancestors(a, splits) or set())
     return sorted(family - covered)
 
 
 def _make_view(
-    split: SplitClaim, unit_claims: list[int], splits: Mapping[int, SplitClaim], config: F3Config
+    split: SplitClaim,
+    compared: Mapping[int, set[str]],
+    splits: Mapping[int, SplitClaim],
+    config: F3Config,
 ) -> _View:
     texts = config.inputs.claims_at_oa
-    parents = _carried_parents(split.claim, unit_claims, splits)
+    parents = _carried_parents(split.claim, compared, compared[split.claim], splits)
+    unverified_parent = False
+    for p in parents:
+        if not splits[p].elements or splits[p].status.value != StatusValue.CONFIRMED:
+            # 조용히 빠지지 않게: 경고를 남기고 표를 확인되지 않음으로 둔다
+            logger.warning(
+                "compare 청구항 %d: 부모 청구항 %d의 구성요소 나누기가 비었거나 확인되지 않아"
+                " 부모 구성요소를 온전히 대비하지 못함",
+                split.claim,
+                p,
+            )
+            unverified_parent = True
     elements = [e for p in parents for e in splits[p].elements] + list(split.elements)
     items = [_Item(n, e) for n, e in enumerate(elements, start=1)]
     if parents:
@@ -185,7 +236,7 @@ def _make_view(
         claim_text = "\n\n".join(shown)
     else:
         claim_text = texts.get(split.claim, "")
-    return _View(split.claim, items, claim_text, parents)
+    return _View(split.claim, items, claim_text, parents, unverified_parent)
 
 
 class _CachedSearcher:
@@ -671,7 +722,7 @@ def _inventive_summary(
     differences = [
         f"{location} {_LOST_NOTE if (claim, location) in lost else text}"
         # 부모 청구항에서 온 구성요소는 어느 종속항 대비에서 왔는지 덧붙인다
-        + ("" if location.startswith(f"청구항 {claim} ") else f" (청구항 {claim}이 인용)")
+        + ("" if location.startswith(f"청구항 {claim} ") else f" (청구항 {claim}에서 인용)")
         for (claim, location), (text, mark) in marks.items()
         if mark != Judgment.DISCLOSED
     ]
@@ -788,24 +839,23 @@ def compare_unit(
     # 신규성은 인용문헌 하나씩 따로 (두 문헌을 한 프롬프트·한 표에 섞지 않는다)
     groups = [[c] for c in usable] if novelty else ([usable] if usable else [])
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
-    # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
-    views = {
-        claim: _make_view(splits[claim], unit.claims, splits, config)
-        for claim in unit.claims
-        if claim in splits and splits[claim].elements
-    }
-    # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
-    lost: set[tuple[int, str]] = {
-        (v.claim, i.e.element_location)
-        for v in views.values()
-        for i in v.items
-        if i.e.status.value != StatusValue.CONFIRMED
-    }
     for group in groups:
         rows: list[ComparisonRow] = []
+        # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
+        cites_of = {c: _labels_for(oa, unit.rejection, c, group) for c in unit.claims}
+        has_elements = {c for c in unit.claims if c in splits and splits[c].elements}
+        compared = {c: {x.label for x in cites_of[c]} for c in has_elements if cites_of[c]}
+        # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
+        views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
+        # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
+        lost: set[tuple[int, str]] = {
+            (v.claim, i.e.element_location)
+            for v in views.values()
+            for i in v.items
+            if i.e.status.value != StatusValue.CONFIRMED
+        }
         for claim in unit.claims:
-            view = views.get(claim)
-            if view is None:
+            if claim not in has_elements:
                 logger.warning(
                     "compare %s: 청구항 %d의 구성요소가 없어 건너뜀", unit.unit_id, claim
                 )
@@ -814,21 +864,29 @@ def compare_unit(
                     f"f3_compare:{unit.unit_id}:claim{claim}",
                     f"청구항 {claim} 구성요소 나누기",
                 )
-                continue
-            cites = _labels_for(oa, unit.rejection, claim, group)
-            if cites:
-                rows += _compare_claim(unit, view, cites, oa, config, ctx, searcher, repo, seen)
+            elif claim in views:
+                rows += _compare_claim(
+                    unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+                )
         if not rows:
             labels = "·".join(c.label for c in group)
             logger.warning("compare %s: %s 대비 줄이 0개라 표를 만들지 않음", unit.unit_id, labels)
             _hold(seen, f"f3_compare:{unit.unit_id}:{labels}", "대비할 청구항 구성요소")
             continue
+        unverified_claims = {c for c, v in views.items() if v.parent_unverified}
         # 요약은 status를 덮기 전의 줄로 모은다 (입력 상태 때문에 차이 후보가 빠지지 않게)
         summary = (
             _novelty_summary(rows, lost, unit, group[0].label)
             if novelty
             else _inventive_summary(rows, lost, rej, settings)
         )
+        if unverified_claims:
+            # 부모 구성요소를 온전히 대비하지 못한 종속항의 줄은 확인되지 않음으로 낮춘다
+            bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
+            rows = [
+                r.model_copy(update={"status": bad}) if r.claim in unverified_claims else r
+                for r in rows
+            ]
         if not input_ok:
             # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
             bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
