@@ -7,10 +7,8 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from patent_ai.core.f4_response_draft.config import F4Options
-from patent_ai.core.f4_response_draft.directions import NOTICE_KIND_CHECK
+from patent_ai.core.f4_response_draft.directions import NOTICE_FINAL_UNLIMITED, NOTICE_KIND_CHECK
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.run import FINAL_LIMIT_PROMPT, run_f4
 from patent_ai.core.llm.config import REPO_ROOT
@@ -104,17 +102,28 @@ def test_켬_최초_통지면_제한이_없다():
     assert all(NOTICE_KIND_CHECK not in checks for checks in _checks(out))
 
 
-@pytest.mark.parametrize("notice_kind", ["final", "unknown"])
-def test_끔이면_통지_종류와_상관없이_지금_동작_그대로(notice_kind):
-    out, prompts = _run(notice_kind, OFF)
+def test_끔_통지_종류를_모르면_지금_동작_그대로():
+    out, prompts = _run("unknown", OFF)
     assert all(_limit_text() not in p for p in prompts)
     assert out.amendment_limit_applied is False
     assert all(NOTICE_KIND_CHECK not in checks for checks in _checks(out))
-    # 보정 제한 칸은 스위치와 상관없이 통지 종류 사실 그대로
-    expected = AmendmentLimit.FINAL if notice_kind == "final" else None
-    assert all(d.amendment_limit.value == expected for d in out.directions)
-
-
-def test_끔_최후_통지면_직접_검토_표시를_더하지_않는다():
-    out, _ = _run("final", OFF)
+    assert all(NOTICE_FINAL_UNLIMITED not in checks for checks in _checks(out))
+    assert all(d.amendment_limit.value is None for d in out.directions)
     assert all(Flag.NEEDS_HUMAN_REVIEW not in d.flags for d in out.directions)
+
+
+def test_끔_최후_통지면_제한을_넣지_않고_직접_검토_표시를_더한다():
+    out, prompts = _run("final", OFF)
+    assert all(_limit_text() not in p for p in prompts)
+    assert out.amendment_limit_applied is False
+    # 보정 제한 칸은 스위치와 상관없이 통지 종류 사실 그대로
+    assert all(d.amendment_limit.value == AmendmentLimit.FINAL for d in out.directions)
+    assert all(NOTICE_KIND_CHECK not in checks for checks in _checks(out))
+    # 제한을 안 넣은 초안이라는 사실을 후보마다 확인 사항과 직접 검토 표시로 남긴다
+    assert all(NOTICE_FINAL_UNLIMITED in checks for checks in _checks(out))
+    assert all(Flag.NEEDS_HUMAN_REVIEW in d.flags for d in out.directions)
+
+
+def test_켬_최후_통지면_제한_없음_표시를_붙이지_않는다():
+    out, _ = _run("final", ON)
+    assert all(NOTICE_FINAL_UNLIMITED not in checks for checks in _checks(out))

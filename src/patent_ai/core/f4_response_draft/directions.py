@@ -54,6 +54,8 @@ STEP = "f4.direction"
 RANK_NOTICE = "순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"
 # 보정 제한 스위치가 켜져 있는데 통지 종류를 모를 때 후보마다 붙이는 확인 사항
 NOTICE_KIND_CHECK = "통지 종류 확인 필요 (최후거절이유통지이면 보정할 수 있는 범위가 제한됨)"
+# 보정 제한 스위치가 꺼져 있는데 통지 종류가 최후일 때 후보마다 붙이는 확인 사항
+NOTICE_FINAL_UNLIMITED = "보정 제한을 적용하지 않은 초안 (최후거절이유통지, 직접 검토 필요)"
 
 
 # ---- 모델 출력 모양 (결과 스키마와 따로 둔다: status·근거·origin·ID는 코드가 채운다) ----
@@ -346,7 +348,13 @@ def build_directions(
     ask_kind = options.final_rejection_limit and limit.value is None
     if ask_kind:
         logger.warning("f4.direction %s: 통지 종류를 몰라 보정 제한 확인 필요", inp.oa.oa_id)
-    checks = [NOTICE_KIND_CHECK] if ask_kind else []
+    # 스위치를 껐는데 최후통지면 제한 없이 만든 초안이라는 사실을 확인 사항과 표시로 남긴다
+    unlimited_final = not options.final_rejection_limit and limit.value == AmendmentLimit.FINAL
+    if unlimited_final:
+        logger.warning("f4.direction %s: 최후통지인데 보정 제한을 적용하지 않음", inp.oa.oa_id)
+    checks = (
+        [NOTICE_KIND_CHECK] if ask_kind else [NOTICE_FINAL_UNLIMITED] if unlimited_final else []
+    )
     results: list[DirectionCandidates] = []
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         f3 = f3_results(inp, unit)
@@ -356,7 +364,7 @@ def build_directions(
         missing = missing_claim_texts(inp, unit)
         if missing:
             logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
-        flags = [Flag.NEEDS_HUMAN_REVIEW] if missing or ask_kind else []
+        flags = [Flag.NEEDS_HUMAN_REVIEW] if missing or ask_kind or unlimited_final else []
 
         def build(out: DirectionsOut, unit=unit, status=status, evidence=evidence, flags=flags):
             return _build(
