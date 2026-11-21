@@ -3,13 +3,12 @@ import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
 import { CaseInfo } from '../components/CaseInfo'
 import { HumanCheckTag } from '../components/Marks'
-import { type OpenEvidence, type OpenSource, SourceContext } from '../components/sourceContext'
-import { SourcePanel } from '../components/SourcePanel'
+import { type OpenCite, type OpenEvidence, type OpenSource, SourceContext } from '../components/sourceContext'
+import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
 import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
 import { noticeKindLabel, runStateLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
-import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
 import { directTodos } from '../todos'
 
 // 사건 안의 단계 4개 (디자인 B 고친 판). 단계마다 주소가 있어 새로고침·뒤로 가기가 된다
@@ -37,7 +36,7 @@ export function CaseShell() {
   const [srcOpen, setSrcOpen] = useState(true)
   const [source, setSource] = useState<{ page: number; text: string | null } | null>(null)
   // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다 (둘 중 하나만 열린다)
-  const [evidence, setEvidence] = useState<{ source: LegalSource; checkedOn: string } | null>(null)
+  const [evidence, setEvidence] = useState<PanelEvidence | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
 
@@ -66,13 +65,20 @@ export function CaseShell() {
   }
   // 법률 근거 열기: 근거 글(raw_text)을 판에 보인다
   const openEvidence: OpenEvidence = (src, checkedOn) => {
-    setEvidence({ source: src, checkedOn })
+    setEvidence({ kind: 'legal', source: src, checkedOn })
+    setSrcOpen(true)
+    scrollToPanel()
+  }
+
+  // 대비 줄·후보 근거 열기: 공통 근거 위치를 판에 보인다
+  const openCite: OpenCite = (ref) => {
+    setEvidence({ kind: 'cite', ref })
     setSrcOpen(true)
     scrollToPanel()
   }
 
   return (
-    <SourceContext value={{ openPage: openSource, openEvidence }}>
+    <SourceContext value={{ openPage: openSource, openEvidence, openCite }}>
       {/* 자리 이동(#materials 등)을 단계가 바뀐 뒤에도 해 준다 */}
       <ScrollRestoration />
       <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto' }}>

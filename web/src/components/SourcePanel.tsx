@@ -3,6 +3,7 @@ import { sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
 import type { PageText } from '../types/generated/PageText'
 import { StatusTag } from './StatusTag'
+import type { CiteRef } from './sourceContext'
 
 // 근거 글자를 찾으면 왼쪽 파란 선 + 옅은 파랑 바탕 (디자인 B 고친 판)
 const highlightStyle = {
@@ -13,6 +14,11 @@ const highlightStyle = {
   boxDecorationBreak: 'clone',
 } as const
 
+// 판에 연 근거: 법률 근거 또는 공통 근거 위치(대비 줄·후보 근거)
+export type PanelEvidence =
+  | { kind: 'legal'; source: LegalSource; checkedOn: string }
+  | { kind: 'cite'; ref: CiteRef }
+
 interface Props {
   open: boolean
   page: number
@@ -20,7 +26,7 @@ interface Props {
   // 원문을 못 받았으면 null
   document: PageText | null
   // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다
-  evidence: { source: LegalSource; checkedOn: string } | null
+  evidence: PanelEvidence | null
   onToggle: () => void
 }
 
@@ -62,6 +68,47 @@ function EvidenceBody({ s, checkedOn }: { s: LegalSource; checkedOn: string }) {
         <Alert type="info" showIcon message="이 근거의 원문 글자를 받지 못했어요" />
       )}
       {s.evidence.location && <span className="label1 t3">원문 위치: {s.evidence.location}</span>}
+      <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
+    </>
+  )
+}
+
+// 공통 근거 위치 하나(들)의 판 안 모양: 상태 → 근거 글(강조) → 위치 → 덧붙임
+function CiteBody({ r }: { r: CiteRef }) {
+  return (
+    <>
+      {r.status.value === 'confirmed' ? (
+        <span className="label1" style={{ color: 'var(--fg-positive-text)' }}>
+          확인됨{r.status.checked ? ` · ${r.status.checked}` : ''}
+        </span>
+      ) : (
+        <div>
+          <StatusTag status={r.status} />
+        </div>
+      )}
+      {r.items.map((e, i) => (
+        <div key={`${e.document_id}-${e.location}-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {e.raw_text ? (
+            <p
+              className="body2r"
+              style={{ margin: 0, color: 'var(--fg-neutral-secondary)', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
+            >
+              <span id={i === 0 ? 'source-highlight' : undefined} style={highlightStyle}>
+                {e.raw_text}
+              </span>
+            </p>
+          ) : (
+            <Alert type="info" showIcon message="이 근거의 원문 글자를 받지 못했어요" />
+          )}
+          <span className="label1 t3">
+            {[e.location ? `원문 위치: ${e.location}` : null, e.page !== null ? `${e.page}쪽` : null, `문서 ${e.document_id}`, e.edition]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </div>
+      ))}
+      {r.items.length === 0 && <Alert type="info" showIcon message="이 줄에 연결된 근거 위치가 없어요" />}
+      {r.note && <span className="label1 t2">{r.note}</span>}
       <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
     </>
   )
@@ -125,7 +172,7 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span className="label2 t3">참고 원문</span>
-          <span className="headline2">{evidence ? evidence.source.identifier : `통지서 ${page}쪽`}</span>
+          <span className="headline2">{evidence ? (evidence.kind === 'legal' ? evidence.source.identifier : evidence.ref.title) : `통지서 ${page}쪽`}</span>
         </div>
         {!evidence && document && document.status.value !== 'confirmed' && <StatusTag status={document.status} detail={false} />}
         <Button type="text" onClick={onToggle}>
@@ -133,7 +180,11 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
         </Button>
       </div>
       {evidence ? (
-        <EvidenceBody s={evidence.source} checkedOn={evidence.checkedOn} />
+        evidence.kind === 'legal' ? (
+          <EvidenceBody s={evidence.source} checkedOn={evidence.checkedOn} />
+        ) : (
+          <CiteBody r={evidence.ref} />
+        )
       ) : document === null ? (
         // 원문이 없어도 빈 판으로 두지 않는다
         <Alert type="info" showIcon message="원문을 받지 못했어요" />

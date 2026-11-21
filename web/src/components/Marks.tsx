@@ -32,3 +32,15 @@ export function ExampleDataMark() {
     </Tooltip>
   )
 }
+
+// 단계 화면 왼쪽 위 "핵심" 한 덩어리의 머리: 글자 "핵심" + 보라 "AI 제안" 꼬리표 (판 머리 "AI 결과"를 대신한다)
+export function CoreLabel() {
+  return (
+    <span className="label2 t3" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      핵심
+      <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>
+        AI 제안
+      </Tag>
+    </span>
+  )
+}

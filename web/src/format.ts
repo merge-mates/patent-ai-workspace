@@ -30,3 +30,8 @@ export function claimsText(v: ExtractedValueListInt): string {
 export function dateTimeText(iso: string): string {
   return iso.replace('T', ' ').slice(0, 16)
 }
+
+// 문장 끝에 마침표가 없으면 붙인다 (서버 글 뒤에 안내 문장을 이어 붙이려고)
+export function sentence(s: string): string {
+  return /[.!?요다]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`
+}
