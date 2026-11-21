@@ -45,9 +45,9 @@ export async function caseLoader({ params }: LoaderFunctionArgs) {
 
 export interface OALoaderData {
   oa: OADetail
-  // 실행이 아직 안 끝났으면 null (404 result_not_ready)
+  // 실행이 아직 안 끝났거나(404 result_not_ready) 서버에 엔드포인트가 아직 없으면 null
   oaResult: OAResultResponse | null
-  // 사건 자료 목록이 아직 없으면 null
+  // 사건 자료 목록이 아직 없거나 서버에 엔드포인트가 아직 없으면 null
   materials: CaseMaterials | null
   // API v0에 목록이 없거나 아직 없으면 null (개수만, 또는 모름)
   reviewItems: ReviewItem[] | null
@@ -78,18 +78,16 @@ export function uploadLoader({ request }: LoaderFunctionArgs): Promise<OALoaderD
 async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
-  seedRun(oa.latest_run)
+  if (oa.latest_run) seedRun(oa.latest_run)
   const [oaResult, materials, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
-    api.getOAResult(oa.oa_id).catch((e: unknown) => {
-      if (isNotReady(e)) return null
-      throw e
-    }),
-    api.getMaterials(oa.case_id).catch(notReadyAsNull),
+    api.getOAResult(oa.oa_id).catch(missingAsNull),
+    api.getMaterials(oa.case_id).catch(missingAsNull),
     // 목록 엔드포인트가 API v0에 없거나 아직 없을 때만 null. 다른 오류는 오류 화면으로
     api.getReviewItems(oa.case_id).catch((e: unknown) => {
       if (e instanceof ApiError && e.code === 'not_in_api_v0') return null
-      return notReadyAsNull(e)
+      return missingAsNull(e)
     }),
+    // 원문 쪽 글자는 어떤 오류든 null (원문 보기에서 "받지 못함"으로 알린다)
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
     // 방향 결과가 아직 없으면 null: 0개로 보이지 않게 직접 할 일 개수는 모름
     probe(api.getDirections(oa.oa_id)),
@@ -132,9 +130,16 @@ async function probe<T>(p: Promise<T>): Promise<Probe<T>> {
   }
 }
 
-// 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다
+// 결과가 아직 없음(404 result_not_ready)만 null로 받고, 다른 오류는 그대로 올린다 (대비·초안 화면용)
 function notReadyAsNull(e: unknown): null {
   if (isNotReady(e)) return null
+  throw e
+}
+
+// "아직 없음"만 null로 받고, 다른 오류는 그대로 올린다 (조용히 삼키지 않는다).
+// 아직 없음 = 404 result_not_ready, 또는 서버에 그 엔드포인트가 아직 없어서 나는 404 (code not_found)
+function missingAsNull(e: unknown): null {
+  if (isNotReady(e) || (e instanceof ApiError && e.code === 'not_found')) return null
   throw e
 }
 

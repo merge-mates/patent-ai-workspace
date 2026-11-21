@@ -268,8 +268,25 @@ def test_status가_안쪽과_다르면_거부():
 
 
 def test_보정제한_status도_모은다():
+    # 도우미 값만이 아니라 DirectionCandidates가 실제로 그 값과 다른 status를 거부하는지 잰다
     lim = ExtractedValue[AmendmentLimit](value=None, status=BAD)
     assert summarize_direction_status([cand()], lim).value == StatusValue.UNVERIFIED
+    with pytest.raises(ValidationError, match="status"):
+        group(limit=lim, status=OK)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        Status(value="not_found_in_scope", searched_scope="최초 통지"),
+        Status(value="confirmed", checked="대조"),
+    ],
+)
+def test_보정제한_값_없으면_unverified만(status):
+    # 값을 모르면 "없음"이 아니라 모름: not_found_in_scope도 거부
+    lim = ExtractedValue[AmendmentLimit](value=None, status=status)
+    with pytest.raises(ValidationError, match="amendment_limit"):
+        group(limit=lim, status=BAD)
 
 
 # ---------- 모양 ----------

@@ -22,8 +22,8 @@ export function WorkbenchPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   // 실행 상태는 폴링 값 (단계 막대와 같은 값을 구독한다)
-  const { run } = useRunSnapshot(oa.latest_run)
-  const running = !isRunEnded(run.state)
+  const run = useRunSnapshot(oa.latest_run)?.run ?? null
+  const running = run !== null && !isRunEnded(run.state)
   // 검토할 사항 펼침: "전체 보기"로 #review-items 주소로 왔으면 펼쳐 있고, 직접 누른 것이 그 뒤면 그게 이긴다.
   // 눌렀을 때의 주소 key를 같이 적어 두어, 같은 주소로 다시 와도(새 key) 주소 쪽을 따른다 (effect 없이 계산)
   const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
@@ -31,6 +31,9 @@ export function WorkbenchPage() {
 
   if (oaResult === null) {
     // 결과가 없으면 빈 표 대신 실행 상태를 보인다. 실패·취소를 "정리 중"으로 보이지 않게 나눈다
+    if (run === null) {
+      return <Result status="info" title="아직 정리를 시작하지 않았습니다" subTitle="실행 기록이 아직 없습니다" />
+    }
     const step = run.current_step ? ` · ${run.current_step}` : ''
     if (run.state === 'failed') {
       return <Result status="error" title="정리하지 못했습니다" subTitle={`${runStateLabel[run.state]}${step}`} />
@@ -46,6 +49,7 @@ export function WorkbenchPage() {
 
   // 실행 취소: 확인을 받고 취소한 뒤 화면 데이터를 다시 받는다
   const cancel = async () => {
+    if (run === null) return
     try {
       await api.cancelRun(run.run_id)
       await refreshRun(run.run_id)

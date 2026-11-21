@@ -109,7 +109,7 @@ function summaryOf(b: Bundle): CaseSummary {
     run_state: runOf(b).state,
     status: r.status.value,
     review_items_count: b.review_items?.length ?? null,
-    last_opened_at: b.last_opened_at,
+    updated_at: b.last_opened_at,
   }
 }
 

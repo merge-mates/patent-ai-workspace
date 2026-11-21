@@ -1,0 +1,26 @@
+{
+  "candidates": [
+    {
+      "rank": 1,
+      "coarse": "amend_and_argue",
+      "name": "청구항 3의 구성을 청구항 1에 더하고 차이점 주장",
+      "confidence": "high",
+      "reason": "심사관이 청구항 3을 특허 가능한 청구항으로 적었음",
+      "checks": ["청구항 3의 구성을 더하면 권리범위가 김 서림 방지 막이 있는 장치로 줄어듦"],
+      "per_rejection": [{"rejection": 1, "response": "김 서림 방지 막은 인용발명 1에 나와 있지 않다고 주장"}],
+      "amendment_core": [{"claim": 1, "kind": "add", "source": "other_dependent"}],
+      "rebuttal": {"type": "difference", "summary": "보정한 청구항 1의 김 서림 방지 막은 인용발명 1과 다름"}
+    },
+    {
+      "rank": 2,
+      "coarse": "argue_only",
+      "name": "보정 없이 투명 덮개 차이 주장",
+      "confidence": "medium",
+      "reason": "대비표에서 투명 덮개가 차이 후보로 남음",
+      "checks": ["보정하지 않으므로 권리범위는 그대로임", "투명 여부가 인용발명 1 도면에서 읽히는지 확인"],
+      "per_rejection": [{"rejection": 1, "response": "투명 덮개는 인용발명 1에 적혀 있지 않다고 주장"}],
+      "amendment_core": [{"claim": 1, "kind": "unchanged"}],
+      "rebuttal": {"type": "difference", "summary": "덮개가 투명하다는 점이 인용발명 1과 다름"}
+    }
+  ]
+}

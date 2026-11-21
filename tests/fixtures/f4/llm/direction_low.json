@@ -1,0 +1,26 @@
+{
+  "candidates": [
+    {
+      "rank": null,
+      "coarse": "argue_only",
+      "name": "명세서 기재로 뜻이 분명하다고 주장",
+      "confidence": "low",
+      "reason": "명세서 정의가 청구항 문구에 그대로 닿는지 자료만으로는 가리기 어려움",
+      "checks": ["보정하지 않으므로 권리범위는 그대로임"],
+      "per_rejection": [{"rejection": 2, "response": "명세서 [0012]를 들어 뜻이 분명하다고 주장"}],
+      "amendment_core": [],
+      "rebuttal": {"type": "clear_from_description", "summary": "명세서에 간격 범위가 적혀 있음"}
+    },
+    {
+      "rank": null,
+      "coarse": "amend_only",
+      "name": "'적당한 간격'을 명세서의 범위로 명확화",
+      "confidence": "low",
+      "reason": "범위를 적는 보정이 받아들여질지 자료만으로는 가리기 어려움",
+      "checks": ["범위를 적으면 권리범위가 그 범위로 줄어듦"],
+      "per_rejection": [{"rejection": 2, "response": "'적당한 간격'을 수치 범위로 고쳐 적음"}],
+      "amendment_core": [{"claim": 2, "kind": "clarify"}],
+      "rebuttal": null
+    }
+  ]
+}

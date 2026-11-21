@@ -70,10 +70,17 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
             <StatusLine status={c.status} />
             {c.flags.includes('needs_human_review') && <HumanCheckTag>직접 검토 필요</HumanCheckTag>}
           </div>
-          {c.review && (
+          {c.review ? (
             <span className="label1 t3" style={{ marginTop: 4 }}>
               {reviewVerdictLabel[c.review.verdict]} · {c.review.reason}
             </span>
+          ) : (
+            // 근거는 있는데 검토 결과가 없으면 "검토 안 함"을 드러낸다 (조용히 확인됨으로 보이지 않게)
+            c.sources.length > 0 && (
+              <span className="label1 t3" style={{ marginTop: 4 }}>
+                검토 안 함
+              </span>
+            )
           )}
           {c.sources.map((s, i) => (
             <SourceRow key={`${s.identifier}-${s.evidence.chunk_id ?? i}`} s={s} />

@@ -74,6 +74,8 @@ function UploadProgress({ data }: { data: OALoaderData }) {
   const navigate = useNavigate()
   const { oaResult, materials, ready, oa } = data
   const snap = useRunSnapshot(oa.latest_run)
+  // 실행 줄이 아직 없으면 진행을 그릴 수 없다: 짧게 알린다
+  if (snap === null) return <p className="body2 t2">아직 정리를 시작하지 않았습니다</p>
   const { run, error: runError } = snap
   const r = oaResult?.result ?? null
   const ended = isRunEnded(run.state)

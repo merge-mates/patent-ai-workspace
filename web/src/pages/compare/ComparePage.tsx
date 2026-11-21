@@ -24,8 +24,8 @@ export function ComparePage() {
   const { oa, oaResult, ready } = useRouteLoaderData('oa') as OALoaderData
   const navigate = useNavigate()
   // 실행 중이면 대응 방향 결과가 아직 없을 수 있다 (없는 화면을 열면 result_not_ready 오류가 뜨던 곳)
-  const { run } = useRunSnapshot(oa.latest_run)
-  const running = !isRunEnded(run.state)
+  const run = useRunSnapshot(oa.latest_run)?.run ?? null
+  const running = run !== null && !isRunEnded(run.state)
   // 고른 묶음은 주소(?unit=)에 둔다: 새로고침·다시 열기 뒤에도 같은 묶음
   const [params, setParams] = useSearchParams()
 
