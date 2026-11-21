@@ -15,6 +15,7 @@ import type {
   CaseSummary,
   CreatedCase,
   CreatedOA,
+  LegalAnswer,
   LegalChatView,
   UploadedDocument,
   OADetail,
@@ -52,10 +53,12 @@ const httpApi: typeof mockApi = {
   getComparisons: (oaId) => getJson<ComparisonTable[]>(`/oas/${oaId}/comparisons`),
   getClarityReviews: (oaId) => getJson<ClarityReview[]>(`/oas/${oaId}/clarity-reviews`),
   getLegalEvidence: (oaId) => getJson<LegalEvidenceBundle[]>(`/oas/${oaId}/legal-evidence`),
-  // 법률 질문: 대화를 만들고 질문을 보낸다 (필드는 F2 설계 때 바뀔 수 있음)
-  askLegal: async (q) => {
-    const chat = await postJson<{ chat_id: string }>('/legal-chats', {})
-    return postJson<LegalEvidenceBundle>(`/legal-chats/${chat.chat_id}/messages`, q)
+  // 법률 질문 (필드는 F2 설계 때 바뀔 수 있음): chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
+  // (질문마다 새 대화를 만들면 두 번째 질문부터 앞 맥락이 끊긴다)
+  askLegal: async (q, chatId): Promise<LegalAnswer> => {
+    const id = chatId ?? (await postJson<{ chat_id: string }>('/legal-chats', {})).chat_id
+    const answer = await postJson<LegalEvidenceBundle>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
+    return { chat_id: id, answer }
   },
   getDirections: (oaId) => getJson<DirectionCandidates[]>(`/oas/${oaId}/directions`),
   selectDirection: (unitId, candidateId) =>

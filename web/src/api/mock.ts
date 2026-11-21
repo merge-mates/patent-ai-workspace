@@ -11,6 +11,7 @@ import type {
   CreatedCase,
   CreatedOA,
   LatestRun,
+  LegalAnswer,
   LegalChatView,
   OADetail,
   OAResultResponse,
@@ -192,8 +193,9 @@ export const mockApi = {
     gate(await byOA(oaId), PHASE.compare)
     return ofOA(exampleLegal, oaId)
   },
-  async askLegal(q: LegalQuestion): Promise<LegalEvidenceBundle> {
-    return exampleLegalAnswer(q)
+  // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
+  async askLegal(q: LegalQuestion, chatId?: string): Promise<LegalAnswer> {
+    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q) }
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<DirectionCandidates[]> {
@@ -302,6 +304,8 @@ const RUN_STEPS = [
 const STEP_MS = 3000 // 단계마다 약 3초 (판단)
 // 결과가 "열리는" 단계 번호: 그 단계를 지나면(번호 이상이면) 결과 엔드포인트가 200
 const PHASE = { materials: 2, summary: 3, compare: 4, directions: 5 }
+
+const MOCK_CHAT_ID = 'mock_chat_1'
 
 interface MockRun {
   startedAt: number

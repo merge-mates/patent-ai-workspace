@@ -27,6 +27,8 @@ export function LegalPage() {
   const [asOf, setAsOf] = useState<string | null>(null) // null = 현행
   const [kinds, setKinds] = useState<LegalSourceKind[]>([]) // 비면 모든 유형
   const [turns, setTurns] = useState<Turn[]>([])
+  // 첫 답에서 받은 대화 ID: 다음 질문에 넘겨 같은 대화로 잇는다. null이면 다음 질문이 새 대화
+  const [chatId, setChatId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,8 +39,9 @@ export function LegalPage() {
     setBusy(true)
     setError(null)
     try {
-      const answer = await api.askLegal({ text: q, as_of: when === 'pick' ? asOf : null, source_kinds: kinds })
-      setTurns([...turns, { text: q, answer }])
+      const res = await api.askLegal({ text: q, as_of: when === 'pick' ? asOf : null, source_kinds: kinds }, chatId ?? undefined)
+      setChatId(res.chat_id)
+      setTurns([...turns, { text: q, answer: res.answer }])
       setText('')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -159,6 +162,20 @@ export function LegalPage() {
               onChange={(v) => setKinds(v as LegalSourceKind[])}
             />
             <span className="label2 t3">아무것도 안 고르면 모든 유형</span>
+            {/* 앞 질문 맥락을 끊고 새 대화로 시작한다 */}
+            {turns.length > 0 && (
+              <Button
+                type="link"
+                size="small"
+                onClick={() => {
+                  setTurns([])
+                  setChatId(null)
+                  setError(null)
+                }}
+              >
+                새 질문 시작
+              </Button>
+            )}
           </div>
         </div>
       </div>
