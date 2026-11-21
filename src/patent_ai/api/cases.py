@@ -202,10 +202,7 @@ def get_case(
             )
             for o in row.oas
         ],
-        events=[
-            CaseEventOut(kind=e.kind, doc_number=e.doc_number, seq=e.seq)
-            for e in view.events
-        ],
+        events=[CaseEventOut(kind=e.kind, doc_number=e.doc_number, seq=e.seq) for e in view.events],
         claim_versions=[
             ClaimVersionOut(
                 version=v.version,
