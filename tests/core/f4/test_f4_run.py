@@ -1,6 +1,7 @@
 """run_f4 한 바퀴와 누락 검사 테스트: 가짜 사건(fixture) + 가짜 전송층. 진짜 모델 호출 없음.
 
-기대값은 구현 계획 C4, design_f4.md 2·3·4절, product.md 5절 F4 5·7번에서 가져왔다.
+기대값은 구현 계획 C4, `docs/features/F4/design.md`
+2절·3-2절(F4Output·사건 전체 검사), product.md 5절 F4 5·7번에서 가져왔다.
 """
 
 import copy

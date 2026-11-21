@@ -1,6 +1,7 @@
 """최후거절이유통지 보정 제한 스위치(final_rejection_limit) 테스트. 진짜 모델 호출 없음.
 
-기대값은 구현 계획 C7, design_f4.md 6절, product.md 5절 F4 6번에서 가져왔다.
+기대값은 구현 계획 C7, `docs/features/F4/design.md`
+4절(보정 제한)·7-2절(final_rejection_limit), product.md 5절 F4 6번에서 가져왔다.
 코드는 제한 문구를 프롬프트에 넣고 표시만 한다. 보정이 제한 안인지 밖인지는 판정하지 않는다.
 """
 

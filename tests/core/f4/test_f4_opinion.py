@@ -1,6 +1,7 @@
 """F4 의견서 초안 단계 테스트: 가짜 사건(fixture) + 가짜 전송층(사람이 쓴 답). 진짜 모델 호출 없음.
 
-기대값은 구현 계획 C2, design_f4.md 3·8절, 스키마 검사(drafts.py),
+기대값은 구현 계획 C2, `docs/features/F4/design.md`
+2절 ②·3-2절(선택 값·의견서 칸), 스키마 검사(drafts.py),
 product.md 5절 F4 2·3번에서 가져왔다.
 """
 

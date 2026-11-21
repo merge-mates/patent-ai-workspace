@@ -2,7 +2,8 @@
 
 진짜 모델 호출 없음.
 
-기대값은 구현 계획 C1, design_f4.md 3·4·6·7절, 스키마 검사(direction.py),
+기대값은 구현 계획 C1, `docs/features/F4/design.md`
+2절 ①·3-1절(빈 법률 근거)·3-2절 ⑤·4절(보정 제한), 스키마 검사(direction.py),
 product.md 5절 F4에서 가져왔다.
 """
 
