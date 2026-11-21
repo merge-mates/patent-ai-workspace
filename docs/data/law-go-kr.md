@@ -59,7 +59,7 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
 - 받기 스크립트:
   - `scripts/fetch_exam_guidelines_versions.py`: 심사기준 옛 판 메타 JSON
   - `scripts/fetch_exam_guideline_attachments.py`: 심사기준 판별 본문 첨부(PDF 우선, 없으면 HWP)
-  - 위 두 스크립트는 옛 위치 기준이다 (`RAW_DIR = data/raw`, 11/18에 돌림). 심사기준 JSON이 이제 `data/raw/law/`에 있어서 그대로 다시 돌리면 attachments 스크립트가 JSON을 0개 찾고 경고 없이 빈 기록으로 끝난다. 다시 받을 일이 생기면 `RAW_DIR`의 JSON 경로를 `data/raw/law`로 바꾸고 0개면 멈추게 고친 뒤 돌린다. 지금은 다시 돌릴 계획이 없어 고치지 않았다.
+  - 위 두 스크립트는 옛 위치 기준이다 (`RAW_DIR = data/raw`, 11/18에 돌림). 심사기준 JSON이 이제 `data/raw/law/`에 있어서 그대로 다시 돌리면 attachments 스크립트가 JSON을 0개 찾고 경고 없이 빈 기록으로 끝난다. 다시 받을 일이 생기면 JSON을 읽는 경로(40줄 glob)만 `data/raw/law`로 바꾸고 0개면 멈추게 고친 뒤 돌린다. `RAW_DIR` 자체를 바꾸면 저장 위치(`OUT_DIR = RAW_DIR / "exam_guideline_versions"`)도 같이 옮겨지니 바꾸지 않는다. 지금은 다시 돌릴 계획이 없어 고치지 않았다.
   - `scripts/fetch_prec_novelty.py`: 신규성 판례 1차
   - `scripts/fetch_prec_novelty_refill.py`: 본문에 제29조 제1항이 있는 사건만으로 다시 채우기
   - 이 PR에 없는 것: 법령 판 받기 `fetch_law_versions.py`와 심사기준 현행 판 받기 `fetch_exam_guidelines.py`·`fetch_exam_guidelines_body.py`는 은진 로컬 `feat/law-chunker` 브랜치에만 있다(원격에 안 올림). 법령 목록·본문 받기 `list_patent_laws.py`·`fetch_law_body.py`는 원격 `feat/law-rag-demo` 브랜치에 있다. 진보성·명확성 판례(11/16)는 스크립트로 남지 않았고, 받은 방법은 `data/raw/DOWNLOAD_1116.md` 1절에 있다.
