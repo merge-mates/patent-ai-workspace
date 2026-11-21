@@ -50,7 +50,9 @@ flowchart LR
    - 판정: 모델 1회가 청구항 하나의 구성요소 × 문헌마다 `disclosed`/`difference_candidate`/`unclear` + 근거(chunk_id + 옮긴 글자) (`prompts/f3/compare.md`).
    - 출처 대조 (코드, 늘 돎): 근거 글자가 그 후보 조각에 그대로 있고 `min_quote_chars`(10자) 이상인가. 떨어지면 한 번 다시, 그래도 틀린 근거는 버린다 (`f3/compare.py:370-421`). 근거 없이 "개시됨"이면 불명 + `evidence_rejected`. 근거를 못 고르면 `not_found_in_scope` + 찾아본 범위 "D1 조각 N개 중 hybrid 상위 10 (cite-idx-v2)" (`:138-141`, `:537-540`).
    - 한 번 더 찾기 (`second_search`, 기본 켬으로 바꿈: 11/21 재아 결정, 설정 한 줄 PR 전까지 main은 끔): 1차에서 근거를 못 고른 구성요소만 같은 질의로 상위 `second_search_depth`(20)까지 + 도면 설명 조각을 받아 1차 조각을 빼고 다시 판정 (`f3/compare.py:557-642`).
-   - 요약 (코드가 줄을 모음, 새 글을 만들지 않음): 진보성 = 어느 문헌에도 "개시됨"이 없는 구성요소(부모에서 온 것은 "(청구항 N에서 인용)") + 심사관 결합 논리 원문 + 효과 후보 빈 목록 (`:716-744`). 신규성 = 대표 청구항 줄로 세 값을 정하고 reason에 "AI 정리, 판정 아님" (`:755-790`). 모든 대비표에 "직접 검토 필요" (`:899-906`, 커밋 010bb1a).
+   - 독립항 먼저 (진보성만, 이슈 #30, 11/22): 묶음마다 대표 청구항(독립항, 독립항이 대상 밖이면 대상 중 가장 앞 청구항)을 먼저 대비한다. 그 줄이 모두 개시됨(위 3-3 "무너짐")이면 나머지 종속항을 따로 대비한다(부모 구성요소 규칙은 위 그대로). 차이 후보·불명이 하나라도 있으면 **둘 다 맞는 종속항만** 건너뛴다: 대표 청구항을 거슬러 올라가 인용해(인용 가지가 여럿이면 아님) 대표의 구성요소를 다 갖고, 그 청구항에 붙은 인용문헌이 모두 대표에도 붙어 있다. 아니면(형제 종속항, 종속항에만 더 붙은 문헌) 그대로 대비한다(11/21 부모 구성요소 결정). 건너뛴 청구항은 보류 `f3_compare:<unit_id>:claim<N>:dependent` + 이유 글("대표 청구항 M에 차이 후보·불명 구성요소가 있어 종속항을 대비하지 않음")을 남긴다. 이 보류는 F3 결과 status도 F4 후보 status·`needs_human_review`도 낮추지 않고, F4 확인 사항 글에만 보인다(판별 `core/bundle_errors.py` `is_dependent_skip` 한 곳). 대표 줄이 없어 무너졌는지 모르면 종속항을 그대로 대비한다. 신규성은 이 순서를 쓰지 않는다. 대표가 안 무너지면 건너뛴 종속항 호출이 없어 모델 호출이 준다.
+   - 효과 후보 (진보성 ③, 이슈 #30, 11/22, `f3/effects.py`, 프롬프트 `prompts/f3/effect.md`, 설정 `config/f3.yaml` `effect`: 호출 상한 80, 조각 수 `search_k`): 표마다 차이점(개시됨 없고 글자를 확인한 구성요소)이 있을 때만 모델 1회(검사 실패 때 1번 더). 후보 조각은 그 사건 최초 명세서를 메모리 BM25로 차이점마다 상위 `effect.search_k`개. 모델은 차이점 번호 + 조각 chunk_id + 조각 글에서 옮긴 효과 문장을 낸다. 코드가 문장이 명세서 글에 그대로 있나(`min_quote_chars` 이상) 확인한다: 고른 조각에 없으면 명세서 전체(모든 조각, 쪽을 넘어 이어진 문단 포함)에서 한 번 더 찾아 `[0016] <원문 문장> (관련 차이점: 청구항 1 [구성 1-2])`로 `effect_candidates`에 싣는다. 그래도 없으면 후보에서 빼고(근거를 지어내지 않음, F4 모델 입력으로 가므로) 경고 + 보류 `f3_compare:<unit_id>:effect`(확인되지 않음, 뺀 건수만 적고 원문 글자는 없음). 효과 단계의 모델 호출이 실패(형식 두 번·전송 오류·상한)해도 대비표는 남기고 효과 후보만 빈 목록 + 보류 `f3_compare:<unit_id>:effect:call_failed`·`:limit_reached`. 결과 칸이 문자열 목록이라 위치·상태를 칸으로 나누지 못한다. 질문: `effect_candidates`를 `{문장, evidence, status}` 칸으로 바꿀지 (스키마 PR). 최초 명세서가 입력에 없으면 모델을 부르지 않고 빈 목록 + 보류 `f3_compare:<oa_id>:spec`(`waiting_for` "최초 명세서 본문 (올려 주면 효과 후보 뽑기)", 본문 미확보로 셈). 효과 문장은 반박 후보일 뿐 진보성 결론이 아니다.
+   - 요약 (코드가 줄을 모음, 새 글을 만들지 않음): 진보성 = 어느 문헌에도 "개시됨"이 없는 구성요소(부모에서 온 것은 "(청구항 N에서 인용)") + 심사관 결합 논리 원문 + 효과 후보(아래 "효과 후보" 줄). 신규성 = 대표 청구항 줄로 세 값을 정하고 reason에 "AI 정리, 판정 아님" (`:755-790`). 모든 대비표에 "직접 검토 필요" (`:899-906`, 커밋 010bb1a).
 5. **명확성** (`f3/clarity.py`, 대비 방식과 따로): OA가 짚은 문구(F1 `clarity_terms`)의 청구항 위치는 코드가 찾는다. 같은 문구가 여러 번이면 몇 곳인지 적는다. 정의 후보는 그 사건 출원서만 메모리 BM25 상위 5 (청구범위·요약서·도면 머리 줄 구간은 뺌, `config/f3.yaml:67-78`). 모델 1회가 문구마다 문제 유형 4개 중 하나 + 정의 근거. 근거는 명세서 조각과 대조 (`f3/clarity.py:1-8`, `:360-396`).
 6. **모으기** (`f3/run.py:135-162`): 결과 status = 단위·대비표·명확성 검토·보류의 가장 나쁜 값. 보류가 있으면(본문 기다림 `body_missing`, 그 밖 `not_extracted`) 확인됨으로 모으지 않는다 (커밋 010bb1a). 결과가 없는 단위도 `not_extracted`로 센다.
 - 실패하면 (정함 #211, #166 (가)): 판단 단위(묶음) 하나의 모델 호출 실패는 그 묶음만 보류(`f3_compare:<unit_id>:call_failed`, `f3_clarity:<unit_id>:call_failed`) + 확인되지 않음 + 이유, 같은 묶음에서 이미 나온 본문 미확보 보류는 남긴다. 대비와 명확성을 합쳐 모델을 부른 모든 묶음이 실패하면 마지막 원래 예외를 올리고 지휘가 실행을 failed로 남긴다 (`core/bundle_errors.py`). 호출 상한에 닿은 묶음은 `…:limit_reached` 보류 + `unverified(limit_reached)`. 청구항 나누기(`_split_claims`) 상한과 DB 연결 오류는 그대로 올린다.
@@ -85,7 +87,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
               "why_retrieved": "구성요소 글자를 질의로 검색 (D1 조각 120개 중 hybrid 상위 10 (cite-idx-v2)): 2위",
               "evidence": [{"document_id": "KR…A", "location": "[0023]", "raw_text": "…", "chunk_id": "…", "index_version": "cite-idx-v2"}],
               "status": {"value": "confirmed", "checked": "근거 글자가 인용문헌 조각에 그대로 있음"}}],
-    "summary": {"kind": "inventive_step", "differences": ["청구항 3 [구성 3-1] … "], "combination": "(심사관 논리 원문)", "effect_candidates": []},
+    "summary": {"kind": "inventive_step", "differences": ["청구항 3 [구성 3-1] … "], "combination": "(심사관 논리 원문)", "effect_candidates": ["[0016] 물통이 물을 담아 … 효과가 있다 (관련 차이점: 청구항 3 [구성 3-1])"]},
     "flags": ["needs_human_review"], "status": {"value": "…"}
   }],
   "clarity_reviews": [{"unit_id": "oa_1:42-4-2:c2", "claim": 2, "term": "상기 제어부", "claim_location": "청구항 2 …",
@@ -109,12 +111,16 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
     | `f3_compare:<oa_id>:<라벨>` | 인용문헌 색인 조각 0개 (본문 미확보, 미국 포함) | `<라벨> 본문 (올려 주면 대비)` | `f3/citations.py:67-69` |
     | `f3_compare:<unit_id>` | 단위에 대비할 수 있는 인용문헌이 하나도 없음 | `대비할 수 있는 인용문헌 (본문 확보·직접 확인)` | `f3/compare.py:836` |
     | `f3_compare:<unit_id>:claim<N>` | 단위 안 청구항 N의 구성요소가 없음 | `청구항 <N> 구성요소 나누기` | `f3/compare.py:862-866` |
+    | `f3_compare:<unit_id>:claim<N>:dependent` | 진보성 대표 청구항에 차이점이 있어 종속항 N을 대비하지 않음 (status를 낮추지 않음) | `청구항 N: 대표 청구항 M에 … 대비하지 않음 (필요하면 직접 요청)` | `core/bundle_errors.py` `DEPENDENT_SKIPPED` |
+    | `f3_compare:<unit_id>:effect` | 효과 문장이 명세서 원문과 안 맞아 뺌 (not_extracted) | `효과 문장 N건이 … 뺌 (직접 확인)` | `f3/compare.py` `_effect_candidates` |
+    | `f3_compare:<unit_id>:effect:call_failed`·`:limit_reached` | 효과 단계 모델 호출 실패·상한 (표는 남음) | `원문 확인 필요: <이유>` | `f3/compare.py` `_effect_candidates` |
+    | `f3_compare:<oa_id>:spec` | 진보성 차이점이 있는데 최초 명세서 글자가 없어 효과 후보를 못 뽑음 (본문 미확보) | `최초 명세서 본문 (올려 주면 효과 후보 뽑기)` | `f3/compare.py` `_effect_candidates` |
     | `f3_compare:<unit_id>:<라벨들>` | 그 문헌 묶음으로 대비 줄이 0개 | `대비할 청구항 구성요소` | `f3/compare.py:874` |
     | `f3_split:<oa_id>:claim<N>` | OA 당시 청구항 N 글자가 없음 | `OA 당시 청구항 <N> 글자` | `f3/run.py:69-72` |
     | `f3_units:<oa_id>:r<N>` | 거절이유 N의 대상 청구항을 모름 | `거절이유의 대상 청구항 확인 (직접 확인)` | `f3/units.py:127-130` |
     | `f3_units:<oa_id>:r<N>:c<N>` | 같은 unit_id가 또 나옴 | `같은 단위 <unit_id>가 이미 있음 (직접 확인)` | `f3/units.py:138-141` |
     | `f3_clarity:<unit_id>` | 명확성 줄에 짚은 문구가 없음 | `OA가 짚은 문구 확인 (직접 확인)` | `f3/clarity.py:320-322` |
-    - 결과 status에 주는 값: 콜론으로 나눠 세 조각이고 앞이 `f3_compare:<oa_id>`이면 본문 기다림(`body_missing`), 그 밖은 `not_extracted` (`f3/run.py:165-174`). `unit_id` 안에 콜론이 있어 `f3_compare:<unit_id>…`는 세 조각이 넘으므로 본문 기다림으로 세지 않는다.
+    - 결과 status에 주는 값: 끝말이 `:dependent`인 보류는 status를 낮추지 않는다(F4도 같음). 콜론으로 나눠 세 조각이고 앞이 `f3_compare:<oa_id>`이면(`<라벨>`·`spec`) 본문 기다림(`body_missing`), 그 밖은 `not_extracted` (`f3/run.py:165-174`). `unit_id` 안에 콜론이 있어 `f3_compare:<unit_id>…`는 세 조각이 넘으므로 본문 기다림으로 세지 않는다.
 - 다음 기능으로 가는 길: F4는 `F3Result` 중 `units`·`comparisons`·`clarity_reviews`만 받는다 (F4 design 3-1 `F4Input`). `held_tasks`와 `F3Result.status`는 지휘가 ⑥ `CaseMaterials.held_tasks`로 옮긴다 (지금 코드 없음, 이슈 #166). 또 표 status는 rows만 모으므로(`comparison.py:136-143`), 대비하지 않은 문헌(`compared=false`, `body_missing`)이 있어도 표는 확인됨일 수 있다. 예: 신규성에서 D2 본문이 없어도 D1 표는 confirmed이고, F4 후보도 confirmed가 될 수 있다. 단위 안 청구항 보류(`f3_compare:<unit_id>:claim<N>`)도 그 청구항이 단위 `claims`에 남아 F4 누락 검사에 안 걸린다. 정함 (11/21 재아 결정): F3 표 status는 그대로 두고 F4가 `compared=false` 문헌 status와 표의 `needs_human_review`를 후보 status·flags로 옮긴다 (F4 design 3-1, F2 연결 전에 고침).
 - 앞 기능 결과가 바뀌면 "다시 확인 필요"를 붙이나: 붙인다 (data-model 3절 규칙 2, 빠진 인용문헌을 올리면 그 문헌 대비만 다시). 지금 코드에는 없다. 질문: `result_inputs` 기록과 "다시 확인 필요"를 F3 저장과 같이 만들지 (5절 저장 질문과 같이)
 - 인터페이스 변경: 있음. ②③ 스키마는 PR #176, `run_f3` 서명에 `ctx` 키워드가 더해졌고 받는 쪽(지휘 #166, F4 #39)에 알림 (커밋 1f9bc68). 스키마 칸 더하기(문제 유형·신규성 청구항별·시점·가지)는 공유 자원 PR로.
