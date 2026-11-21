@@ -35,6 +35,9 @@ _SIGNATURE = re.compile(r"심사관\s+\S{2,5}\s*$")
 _DEPARTMENT = re.compile(r"심사(?:국|과|팀|부)\s*$")
 # 거절이유 순번 제목: 줄 맨 앞(들여쓰기 없음)의 "1. " (표 안 번호 줄은 들여써 있다)
 _REASON_HEAD = re.compile(r"^([1-9][0-9]*)\.\s")
+# [심사결과] 요약 표: 머리 줄과 순번 줄("    1        특허법 제29조제2항"처럼 들여쓴 숫자 뒤 칸)
+_SUMMARY_HEAD = re.compile(r"순번\s+거절이유가\s*있는\s*부분")
+_SUMMARY_ROW = re.compile(r"^\s{0,12}(\d{1,2})\s{3,}\S")
 # 조문 표기: (특허법|같은 법 [시행령]) 제29조[의2][제1항][제2호], "29조 2항"처럼 '제'가 없어도
 _ARTICLE_REF = re.compile(
     r"(?:(?:특허법|같은\s*법|동법)\s*(?:시행령|시행규칙)?\s*)?"
@@ -56,6 +59,22 @@ class LawGoldError(RetrievalEvalError):
     """법령 정답을 만들 수 없다."""
 
 
+def _count_in_summary(head_lines: list[str]) -> int | None:
+    """[심사결과] 요약 표의 순번 줄 수. 표 머리("순번 거절이유가 있는 부분")를 못 찾으면 None."""
+    try:
+        i = next(k for k, ln in enumerate(head_lines) if _SUMMARY_HEAD.search(ln))
+    except StopIteration:
+        return None
+    n = 0
+    for ln in head_lines[i + 1 :]:
+        if ln.strip().startswith("□"):  # 다음 칸("□ 특허 가능한 청구항")에서 표가 끝난다
+            break
+        m = _SUMMARY_ROW.match(ln)
+        if m and int(m.group(1)) == n + 1:
+            n += 1
+    return n or None
+
+
 def segment_reasons(oa_text: str) -> dict[int, str]:
     """OA 글 → {거절이유 순번: 그 본문}. 순번 제목이 없으면 본문 전체가 1번."""
     lines = oa_text.splitlines()
@@ -72,13 +91,20 @@ def segment_reasons(oa_text: str) -> dict[int, str]:
     while body and (not body[-1].strip() or _DEPARTMENT.search(body[-1])):
         body.pop()
 
+    # 요약 표에 적힌 거절이유 수. 본문 속 "1. 청구항5 …" 같은 번호 목록을
+    # 거절이유 제목으로 잘못 세지 않게, 이 수만큼만 제목으로 본다 (#214)
+    limit = _count_in_summary(lines[: start - 1])
+
     # 1, 2, 3 … 차례로 나오는 줄만 제목으로 본다 (본문 속 다른 번호 줄에 안 속게)
     heads: list[tuple[int, int]] = []
     for i, ln in enumerate(body):
+        if limit is not None and len(heads) >= limit:
+            break
         m = _REASON_HEAD.match(ln)
         if m and int(m.group(1)) == len(heads) + 1:
             heads.append((len(heads) + 1, i))
-    if not heads:
+    # 거절이유가 하나뿐이면 제목 줄 앞 머리말도 그 이유 본문이다: 전체를 1번으로
+    if not heads or limit == 1:
         return {1: "\n".join(body).strip()}
     out: dict[int, str] = {}
     for n, (no, i) in enumerate(heads):
