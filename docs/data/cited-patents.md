@@ -27,6 +27,7 @@
   - 은진 로컬 옛 폴더(`~/dev/Patent_AI_Workspace/data/raw/cited_v2/`, 은진 맥에만 있음)에도 같은 전체가 있고, 받기 스크립트·기록(`fetch_cited.py`, `log_*.json`)은 그 `_meta/`에만 있다.
   - report 채점 때 이 자료를 어디서 읽을지는 아직 설정·코드에 없다 (`config/cite_search.yaml`은 `data/raw/cited_v2`만 읽음). report 채점 전에 따로 정한다.
 - 크기 (11/19 셈): 사건 8건, PDF 17개, 51MB. 한국 공보 15개(공개 A 9, 등록 B1 6), 논문 1건 2판. 미국·그 밖 나라 없음.
+- 11/21 [#168](https://github.com/merge-mates/patent-ai-workspace/issues/168) tune 30건 늘리기: 더한 20건 중 인용 특허가 있는 16건(G2 4건은 명확성만이라 인용 없음)의 한국·미국 공보를 같은 방법(Google Patents 공보 PDF 주소, 1초 간격, `%PDF` 확인)으로 받았다. 받은 것 38개 중 2개는 대기열에서 빠진 사건 폴더 것이라 안 쓴다. Google에 PDF가 없는 한국 공개공보 2개는 KIPRIS 공개전문으로, 미국 1개와 공개 논문 2건은 따로 받는다. 받을 곳을 못 찾은 논문 2건(국내 학술지 1, 기관 보고서 1)은 비어 있다. 색인(`cite-idx-v1`)에는 아직 안 들어갔다.
 - 쪽 수: 한국 공보 9~37쪽, 논문 학회판 9쪽, 다른 판 12쪽.
 - 검색 정답(`data/goldsets/tune/search_v0/`)은 tune 10건을 다루지만, 2건은 거절이유가 42조뿐이라 인용문헌이 없어 폴더도 없다.
 
