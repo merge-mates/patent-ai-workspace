@@ -11,7 +11,7 @@
 - 법률 판단을 하지 않습니다. 심사관이 쓴 것만 옮깁니다.
 - 거절이유는 통지서에 나온 순서대로, 하나씩 따로 적습니다. 같은 청구항이 여러 거절이유에 나오면 각각에 적습니다.
 
-출력 모양 (value는 모르면 null, 값마다 raw_text·page·ambiguous를 모두 적음. 단, 통지서에 칸이 아예 없는 allowable_claims·amendment_note는 객체를 만들지 않고 null 하나만 적음)
+출력 모양 (value는 모르면 null, 값마다 raw_text·page·ambiguous를 모두 적음. 단, {value, raw_text, page, ambiguous} 객체로 적는 칸에 해당하는 것이 통지서에 없으면(allowable_claims·amendment_note·cited_paragraphs·location·number·no_location 등) 객체를 만들지 않고 null 하나만 적음. 객체가 아닌 칸은 셋: label·clarity_reason은 문자열, rejection은 숫자)
 {
   "application_number": {"value": "10-2099-0000001", "raw_text": "10-2099-0000001", "page": 1, "ambiguous": false},
   "dispatch_number": {"value": "9-5-2099-000000001", "raw_text": "9-5-2099-000000001", "page": 1, "ambiguous": false},
@@ -29,7 +29,7 @@
       "examiner_reasoning": {"value": "심사관 논리를 한두 문장으로 요약", "raw_text": "그 논리가 적힌 원문 글자", "page": 2, "ambiguous": false}
     }
   ],
-  "allowable_claims": {"value": null, "raw_text": "「특허 가능한 청구항」 칸의 청구항 글자", "page": 3, "ambiguous": false},
+  "allowable_claims": {"value": null, "raw_text": "특허 가능한 청구항 칸의 본문 글자 (칸 제목은 빼고 본문만)", "page": 3, "ambiguous": false},
   "amendment_note": {"value": null, "raw_text": "보정 참고사항 칸의 본문 글자 (칸 제목은 빼고 본문만)", "page": 3, "ambiguous": false},
   "claim_rows": [
     {
@@ -55,7 +55,7 @@
 - 인용문헌 번호(number)는 통지서의 표기를 그대로 옮깁니다 (예: 공개특허공보 제10-2099-0000001호, US 2020/0123456 A1). 번호 꼴을 바꾸거나 종류 코드를 덧붙이지 마세요.
 - 대상 청구항(claims)이 "청구항 전항"처럼 적혀 있으면 그 글자를 그대로 옮깁니다. 번호로 펼치지 마세요.
 - 인용 식별번호(cited_paragraphs)는 그 인용문헌에 대해 통지서가 짚은 위치 글자(문단 번호, 도면, 청구항, 요약 등)를 그대로 옮깁니다.
-- 인용문헌에 식별번호(인용 문단)가 없으면 cited_paragraphs는 null입니다.
+- 인용문헌에 식별번호(인용 문단)가 없으면 cited_paragraphs는 객체 없이 null 하나입니다.
 - 「특허 가능한 청구항」 칸과 보정 참고사항 칸이 통지서에 없으면 해당 값은 null입니다. 값이 빈 객체({"value": null, "raw_text": "", …})를 만들지 말고 `"amendment_note": null`처럼 null 하나만 적습니다. 보정 참고사항 칸의 제목은 【보정에 관한 참고사항】 또는 「보정서 제출시 참고사항」으로 적혀 있을 수 있습니다. 칸이 있으면 반드시 그 내용을 뽑으세요.
 - 이 두 칸의 raw_text에는 칸 제목(【보정에 관한 참고사항】, 「보정서 제출시 참고사항」, 「특허 가능한 청구항」)을 넣지 않습니다. 제목 뒤에 오는 본문만 한 글자도 바꾸지 말고 옮깁니다.
 - 거절이유가 하나도 없으면 rejections는 빈 목록입니다.
@@ -74,8 +74,9 @@
 
 - examiner_reasoning만 value에 요약을 적습니다. 나머지 value는 null로 둬도 됩니다.
 - 목록 칸(same_as, clarity_terms)의 항목도 문자열이 아니라 {value, raw_text, page, ambiguous} 객체입니다. 해당하는 것이 없으면 빈 목록 []입니다.
-- no_location(인용 안의 것과 줄 단위 것 모두)도 문자열이 아니라 {value, raw_text, page, ambiguous} 객체입니다. raw_text에 그 표현 글자를 적습니다. 해당하지 않으면 null입니다.
-- clarity_reason만 객체가 아니라 짧은 문자열 하나입니다 (예: "clarity_reason": "지시 대상이 불명확"). 해당하지 않으면 null입니다.
+- no_location(인용 안의 것과 줄 단위 것 모두)도 문자열이 아니라 {value, raw_text, page, ambiguous} 객체입니다. raw_text에 그 표현 글자를 적습니다. 해당하지 않으면 객체 없이 null 하나입니다.
+- clarity_reason은 {value, raw_text, page, ambiguous} 객체가 아니라 짧은 문자열 하나입니다 (예: "clarity_reason": "지시 대상이 불명확"). 해당하지 않으면 null입니다.
+- claim_rows의 rejection은 거절이유 번호 숫자 하나, citations의 label은 문자열 하나(예: "D1")입니다. 둘 다 객체가 아닙니다.
 - 위 출력 모양에 없는 키를 만들지 않습니다. JSON 객체 하나만 출력하고, 마지막 닫는 중괄호 뒤에는 아무 글자도 붙이지 않습니다.
 $retry_note
 
