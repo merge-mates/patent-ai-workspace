@@ -256,6 +256,12 @@ def _mean(xs: list[float]) -> float | None:
 RESPONDED_OUTCOMES = ("ok", "invalid_output", "output_truncated")  # 응답을 받은 결과
 
 
+def _sum_known(calls: list[dict], key: str) -> int | None:
+    """토큰 칸 합. 확인되지 않은(None) 줄이 하나라도 있으면 일부만 더한 합 대신 None."""
+    vals = [c[key] for c in calls]
+    return None if any(v is None for v in vals) else sum(vals)
+
+
 def sum_calls(calls: list[dict] | None, n_oa: int | None = None) -> dict:
     """read_oa 실행 호출 기록을 cost 칸으로 합친다. 모르는 키는 안 본다.
 
@@ -309,16 +315,16 @@ def sum_calls(calls: list[dict] | None, n_oa: int | None = None) -> dict:
         usd = None
     if unknown:
         logger.warning(
-            "토큰이 확인되지 않은 호출 기록 %d줄이 있어 usd를 비움 (토큰은 아는 것만 더함)",
+            "토큰이 확인되지 않은 호출 기록 %d줄이 있어 usd와 그 토큰 칸의 합을 비움",
             len(unknown),
         )
         usd = None
     return {
         "usd": usd,
-        "input_tokens": sum(c["input_tokens"] or 0 for c in real),
-        "output_tokens": sum(c["output_tokens"] or 0 for c in real),
-        "cached_input_tokens": sum(c["input_tokens"] or 0 for c in cached),
-        "cached_output_tokens": sum(c["output_tokens"] or 0 for c in cached),
+        "input_tokens": _sum_known(real, "input_tokens"),
+        "output_tokens": _sum_known(real, "output_tokens"),
+        "cached_input_tokens": _sum_known(cached, "input_tokens"),
+        "cached_output_tokens": _sum_known(cached, "output_tokens"),
         "external_calls": len(real),
     }
 
