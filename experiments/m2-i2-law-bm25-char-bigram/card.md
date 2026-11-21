@@ -31,7 +31,7 @@
 
 ## 해석
 - 합친 구현이 law_bm25와 같은 셈을 한다는 확인 (둘 다 결정적 계산).
-- `unique_query_terms: false`(bm25s 기본, 질의 낱말을 나온 만큼 셈)로 돌리면 hit@1/3/5/10 = 0.211 / 0.526 / 0.737 / 1.000. 긴 거절이유 질의에서 흔한 두 글자가 반복돼 점수를 끌고 간다. 그 scores.json은 남기지 않았다.
+- `unique_query_terms: false`(bm25s 기본, 질의 낱말을 나온 만큼 셈)로 돌리면 hit@1/3/5/10 = 0.211 / 0.526 / 0.737 / 1.000. 긴 거절이유 질의에서 흔한 두 글자가 반복돼 점수를 끌고 간다 (`m2-i2-law-bm25-char-bigram-count-repeats`).
 
 ## 다음
 - 두 말뭉치 `unique_query_terms`를 하나로 정하기 (`m2-i2-cite-search-bm25-unique-query` 참고).
