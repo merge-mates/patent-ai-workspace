@@ -236,10 +236,13 @@ def test_F3_결과와_실행_입력_글자가_F4_입력으로_이어진다(tmp_p
     assert inp.spec == _texts().spec and inp.checked_on == CHECKED_ON
 
 
-def test_F3_대비_출력_검사가_두_번_실패하면_failed로_끝나고_이유가_남는다(tmp_path, wired):
+def test_F3_모든_묶음의_출력_검사가_두_번_실패하면_failed로_끝나고_이유가_남는다(tmp_path, wired):
+    # 묶음 하나만 실패하면 그 묶음만 보류한다 (tests/core/f3/test_f3_bundle_failure.py).
+    # 대비·명확성 묶음이 모두 실패하면 단계 전체가 못 돈 것이라 failed
     responses = _responses()
     broken = TransportResponse("JSON 아님", 10, 10)
     responses["f3.compare"] = [broken, broken]
+    responses["f3.clarity"] = [broken, broken]
     out, steps = _go(tmp_path, responses)
     assert out.state == "failed"
     assert out.error["code"] == "ModelOutputInvalid" and out.error["message"]
@@ -250,10 +253,21 @@ def test_F3_대비_출력_검사가_두_번_실패하면_failed로_끝나고_이
     assert (last.tool_name, last.outcome, last.result_status) == ("run_f3", "failed", None)
 
 
-def test_F4_단계가_실패해도_failed로_끝난다(tmp_path, wired):
+def test_F3_묶음_하나만_실패하면_실행은_계속되고_F4_결과가_나온다(tmp_path, wired):
+    # 합격 기준 1 (지휘 수준): 묶음 하나의 모델 호출 실패는 그 묶음만 보류한다
     responses = _responses()
     broken = TransportResponse("JSON 아님", 10, 10)
-    responses["f4.direction"] = [broken, broken]
+    responses["f3.compare"] = [broken, broken]  # 대비 묶음만 실패, 명확성 묶음은 정상
+    out, steps = _go(tmp_path, responses)
+    assert out.state != "failed"
+    assert isinstance(out.results["run_f3"], F3Result) and "run_f4" in out.results
+    assert any(h.task.endswith(":call_failed") for h in out.results["run_f3"].held_tasks)
+
+
+def test_F4_모든_묶음이_실패하면_failed로_끝난다(tmp_path, wired):
+    responses = _responses()
+    broken = TransportResponse("JSON 아님", 10, 10)
+    responses["f4.direction"] = [broken] * 4  # 묶음 둘 × (첫 호출 + 다시 한 번)
     out, steps = _go(tmp_path, responses)
     assert out.state == "failed" and out.error["message"]
     assert isinstance(out.results["run_f3"], F3Result) and "run_f4" not in out.results

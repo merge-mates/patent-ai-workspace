@@ -16,6 +16,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.bundle_errors import BUNDLE_ERRORS, hold_for_error, is_limit
 from patent_ai.core.f3_claim_compare.examiner import find_claim_row
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
 from patent_ai.core.f3_claim_compare.retry import call_checked, confirmed, unverified
@@ -81,10 +82,13 @@ class ClarityAnswer(BaseModel):
 
 
 class ClarityOutput(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     reviews: list[ClarityReview] = Field(default_factory=list)
     held_tasks: list[HeldTask] = Field(default_factory=list)
+    # compare.CompareOutput과 같은 뜻: 호출 실패(상한 제외)의 원래 예외와 시도한 묶음 수
+    call_errors: list[Exception] = Field(default_factory=list, exclude=True)
+    units_tried: int = 0
 
 
 # ---- 명세서 쪼개기: 쪽 안에서 식별번호마다 ----
@@ -405,8 +409,18 @@ def review_clarity_units(
     if not mine:
         return ClarityOutput()
     index = build_spec_index(config.inputs.spec, config.settings)  # 사건마다 한 번
+    errors: list[Exception] = []
     for unit in mine:
-        out = review_clarity_unit(unit, oa, config, ctx=ctx, spec_index=index)
+        try:
+            out = review_clarity_unit(unit, oa, config, ctx=ctx, spec_index=index)
+        except BUNDLE_ERRORS as e:
+            # 모델 호출이 실패한 묶음만 보류하고 나머지는 끝까지 한다
+            held.append(hold_for_error("f3_clarity", unit.unit_id, e))
+            if not is_limit(e):
+                errors.append(e)
+            continue
         reviews += out.reviews
         held += out.held_tasks
-    return ClarityOutput(reviews=reviews, held_tasks=held)
+    return ClarityOutput(
+        reviews=reviews, held_tasks=held, call_errors=errors, units_tried=len(mine)
+    )

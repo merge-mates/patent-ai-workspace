@@ -21,7 +21,7 @@ from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Inputs
 from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.llm.config import load_step_config
 from patent_ai.core.llm.embed import load_embed_config
-from patent_ai.core.llm.errors import ModelConfigError, ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
@@ -275,10 +275,12 @@ def test_모델이_판정을_빼먹은_줄은_버리지_않고_확인되지_않�
     assert row.status.reason == UnverifiedReason.NOT_EXTRACTED
 
 
-def test_두_번_다_형식이_틀리면_예외로_끝난다():
+def test_두_번_다_형식이_틀리면_그_단위만_보류하고_이유를_남긴다():
     broken = TransportResponse("대비 결과입니다", 100, 50)
-    with pytest.raises(ModelOutputInvalid):
-        _run(_inventive(), [broken, broken])
+    out, _, _ = _run(_inventive(), [broken, broken])
+    assert out.tables == []
+    assert [h.task for h in out.held_tasks] == ["f3_compare:oa_1:29-2:c1:call_failed"]
+    assert [type(e).__name__ for e in out.call_errors] == ["ModelOutputInvalid"]
 
 
 # ---- 인용문헌 ----
