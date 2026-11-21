@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from patent_ai.core.f2_legal_research.run import F2Result, load_f2_settings
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
 from patent_ai.core.f3_claim_compare.inputs import F3Inputs
 from patent_ai.core.f3_claim_compare.result import F3Result
@@ -41,11 +42,29 @@ def f3_input(results: dict[str, Any], case_id: str, texts: F3Inputs | None) -> d
     }
 
 
+def f2_input(results: dict[str, Any], checked_on: date | None) -> dict | InputMissing:
+    """run_f2 입력: read_oa 결과(OAResult) + F3 판단 단위 + 확인 기준일 + config/f2.yaml 설정."""
+    oa, f3 = results.get("read_oa"), results.get("run_f3")
+    if not isinstance(oa, OAResult):
+        return _missing("앞 단계 결과가 없음 (read_oa)")
+    if not isinstance(f3, F3Result):
+        # 법률 근거 묶음은 판단 단위마다 만든다 (F4가 unit_id로 찾음)
+        return _missing("앞 단계 결과가 없음 (run_f3)")
+    if checked_on is None:
+        return _missing("확인 기준일이 실행 입력에 없음 (CaseInput.checked_on)")
+    return {
+        "oa": oa,
+        "units": f3.units,
+        "checked_on": checked_on,
+        "settings": load_f2_settings(),
+    }
+
+
 def f4_input(
     results: dict[str, Any], texts: F3Inputs | None, checked_on: date | None
 ) -> dict | InputMissing:
     """run_f4 입력: OAResult + F3 결과(판단 단위·대비표·명확성 검토) + 글자 + 확인 기준일."""
-    oa, f3 = results.get("read_oa"), results.get("run_f3")
+    oa, f3, f2 = results.get("read_oa"), results.get("run_f3"), results.get("run_f2")
     if not isinstance(oa, OAResult):
         return _missing("앞 단계 결과가 없음 (read_oa)")
     if not isinstance(f3, F3Result):
@@ -60,8 +79,8 @@ def f4_input(
         "units": f3.units,
         "tables": f3.comparisons,
         "clarity": f3.clarity_reviews,
-        # F2 결과는 아직 없다. 비워 두면 F4가 묶음마다 "확인되지 않음" 빈 묶음을 쓴다
-        "legal": [],
+        # F2 결과. F2를 넘겼으면 비워 두고, F4가 묶음마다 "확인되지 않음" 빈 묶음을 쓴다
+        "legal": f2.bundles if isinstance(f2, F2Result) else [],
         "claims_text": [
             {"claim": no, "text": text, "document_id": texts.claims_document_id}
             for no, text in sorted(texts.claims_at_oa.items())

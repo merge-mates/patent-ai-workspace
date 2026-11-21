@@ -72,19 +72,20 @@ def test_저장소_설정의_순서는_F1_F3_F2_F4이고_plan_기본값은_agent
     cfg = yaml.safe_load(REAL_CONFIG.read_text("utf-8"))
     assert cfg["plan"] == "agent"
     assert cfg["fixed_order"] == ["extract_pages", "read_oa", "run_f3", "run_f2", "run_f4"]
-    # F2 도구는 아직 없다: 넘겨도 되는 단계로 적혀 있어야 한다
-    assert "run_f2" in cfg["skip_if_missing"]
+    # F2 도구가 붙어(#28) 도구가 없어 넘겨도 되는 단계는 없다
+    assert cfg["skip_if_missing"] == []
     # F1 단계는 넘길 수 없다
     assert not set(cfg["skip_if_missing"]) & set(F1_STEPS)
 
 
+# run_later: 아직 도구가 없는 단계 이름 (F2가 #28에서 붙어 이름을 바꿈)
 def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유와_경고를_남긴다(
     tmp_path, notice_pages, caplog
 ):
     body = {
         "plan": "fixed_order",
-        "fixed_order": [*F1_STEPS, "run_f2"],
-        "skip_if_missing": ["run_f2"],
+        "fixed_order": [*F1_STEPS, "run_later"],
+        "skip_if_missing": ["run_later"],
     }
     with caplog.at_level(logging.WARNING):
         out, steps = _go(tmp_path, body)
@@ -92,44 +93,46 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
     assert out.state == "succeeded"
     assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
     # 넘긴 단계는 결과에도, 돈 순서에도 없다 (성공한 것처럼 보이지 않는다)
-    assert "run_f2" not in out.results
-    assert list(out.skipped) == ["run_f2"]
-    assert "tool_missing" in out.skipped["run_f2"]
+    assert "run_later" not in out.results
+    assert list(out.skipped) == ["run_later"]
+    assert "tool_missing" in out.skipped["run_later"]
     # 단계 기록 한 줄: ok가 아니고, 확인되지 않음이며, 넘긴 이유가 있다
     rec = steps.records[-1]
-    assert rec.tool_name == "run_f2"
+    assert rec.tool_name == "run_later"
     assert rec.outcome != "ok"
-    assert rec.reason == "넘김: " + out.skipped["run_f2"]  # DB에 남는 칸(reason)에 이유가 있다
+    assert rec.reason == "넘김: " + out.skipped["run_later"]  # DB에 남는 칸(reason)에 이유가 있다
     assert rec.result_status == "unverified"
-    assert rec.skipped_reason == out.skipped["run_f2"]
+    assert rec.skipped_reason == out.skipped["run_later"]
     # 넘기지 않은 단계에는 이유 칸이 비어 있다
     assert all(r.skipped_reason is None for r in steps.records[:-1])
-    assert any("run_f2" in r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
+    assert any(
+        "run_later" in r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
+    )
 
 
 def test_넘긴_단계가_가운데에_있어도_뒤_단계는_돈다(tmp_path, notice_pages):
     body = {
         "plan": "fixed_order",
-        "fixed_order": ["extract_pages", "run_f2", "read_oa"],
-        "skip_if_missing": ["run_f2"],
+        "fixed_order": ["extract_pages", "run_later", "read_oa"],
+        "skip_if_missing": ["run_later"],
     }
     out, steps = _go(tmp_path, body)
     assert out.state == "succeeded"
     assert [r.tool_name for r in steps.records] == [
         "extract_pages",
-        "run_f2",
+        "run_later",
         "read_oa",
         "cut_to_oa",
     ]
-    assert len([r for r in steps.records if r.tool_name == "run_f2"]) == 1  # 한 번만 적는다
+    assert len([r for r in steps.records if r.tool_name == "run_later"]) == 1  # 한 번만 적는다
 
 
 def test_표시_없는_모르는_단계_이름은_설정_오류로_failed(tmp_path, notice_pages):
-    body = {"plan": "fixed_order", "fixed_order": [*F1_STEPS, "run_f2"]}
+    body = {"plan": "fixed_order", "fixed_order": [*F1_STEPS, "run_later"]}
     out, steps = _go(tmp_path, body)
     assert out.state == "failed"
     assert out.error["code"] == "invalid_tool_choice"
-    assert "run_f2" in out.error["message"] and "skip_if_missing" in out.error["message"]
+    assert "run_later" in out.error["message"] and "skip_if_missing" in out.error["message"]
     assert out.skipped == {}
     assert (steps.records[-1].step_kind, steps.records[-1].outcome) == ("decide", "failed")
 
@@ -142,8 +145,8 @@ def test_넘겨도_된다고_적혀도_도구가_있으면_그대로_돈다(tmp_
 
 
 def test_agent_모드는_넘김_표시와_상관없이_없는_도구를_고르면_failed(tmp_path, notice_pages):
-    body = {"plan": "agent", "fixed_order": F1_STEPS, "skip_if_missing": ["run_f2"]}
-    out, _ = _go(tmp_path, body, {"agents.orchestrator": [_decision("run_f2")]})
+    body = {"plan": "agent", "fixed_order": F1_STEPS, "skip_if_missing": ["run_later"]}
+    out, _ = _go(tmp_path, body, {"agents.orchestrator": [_decision("run_later")]})
     assert out.state == "failed"
     assert out.error["code"] == "invalid_tool_choice"
     assert out.skipped == {}
@@ -154,7 +157,7 @@ def test_agent_모드는_넘김_표시와_상관없이_없는_도구를_고르�
     [
         {"plan": "fixed_order", "fixed_order": "extract_pages"},
         {"plan": "fixed_order", "fixed_order": ["extract_pages", 3]},
-        {"plan": "fixed_order", "fixed_order": F1_STEPS, "skip_if_missing": "run_f2"},
+        {"plan": "fixed_order", "fixed_order": F1_STEPS, "skip_if_missing": "run_later"},
     ],
 )
 def test_순서나_넘김_목록이_이름_목록이_아니면_ValueError(tmp_path, notice_pages, body):
