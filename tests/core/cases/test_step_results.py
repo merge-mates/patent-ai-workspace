@@ -46,7 +46,7 @@ def test_step_results_같은_실행_같은_단계를_두_번_저장하면_거부
         store.save_step_result("oa_1", "r_1", outcome.results["run_f3"])
 
 
-def test_step_results_F3_F4가_아닌_객체는_TypeError(outcome):
+def test_step_results_F2_F3_F4가_아닌_객체는_TypeError(outcome):
     with pytest.raises(TypeError):
         kind_of(outcome.results["read_oa"])
 

@@ -145,8 +145,9 @@ def test_results_api_F2_법률_근거를_저장하고_다시_열_수_있다(env)
     assert body["run_id"] == created["run_id"] and body["empty_reason"] is None
     units = env.get(oa_id, "units").json()["result"]
     assert [b["unit_id"] for b in body["result"]] == [u["unit_id"] for u in units]
-    first = body["result"][0]["claims"][0]["sources"][0]
-    assert first["identifier"] == "특허법 제29조제2항" and first["evidence"]["chunk_id"]
+    sources = [b["claims"][0]["sources"][0] for b in body["result"]]
+    assert [s["identifier"] for s in sources] == ["특허법 제29조제2항", "특허법 제42조제4항제2호"]
+    assert all(s["evidence"]["chunk_id"] for s in sources)
     assert env.get(oa_id, "legal-evidence").json() == body  # 다시 열기
 
 
