@@ -57,10 +57,14 @@ class CallRecord:
     elapsed_ms: int
     from_cache: bool
     attempt: int
-    # ok / cache_hit / transport_error / limit_exceeded / invalid_output
+    # ok / cache_hit / transport_error / limit_exceeded / invalid_output / output_truncated
+    # 출력 검사에 떨어진 답은 둘로 나눈다: output_truncated = max_tokens에 닿아 잘림
+    # (stop_reason = max_tokens), invalid_output = 그 밖 (끝까지 답했는데 모양이 틀림)
     outcome: str
     # 전송 시도 번호 (1부터, 재시도마다 +1). 캐시 적중은 0
     transport_try: int
+    # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 답을 못 받았거나 모르면 None
+    stop_reason: str | None = None
 
 
 class CallRecorder(Protocol):

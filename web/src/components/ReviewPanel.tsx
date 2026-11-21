@@ -1,4 +1,4 @@
-import { Card, Empty, List, Space, Tag, Typography } from 'antd'
+import { Space, Tag, Typography } from 'antd'
 import { lookupResultLabel, unverifiedReasonLabel } from '../labels'
 import type { ReviewItem } from '../types/generated/ReviewItem'
 import { HumanCheckTag } from './Marks'
@@ -36,11 +36,11 @@ function reasonText(reason: string): string {
   return reasonCodes[reason] ?? reason
 }
 
-// 오른쪽에 늘 있는 "검토할 사항 N건" 판: 사람이 봐야 할 것을 한곳에 모은다
+// 정리 단계 아래쪽 "검토할 사항 N건"을 펼쳤을 때 줄들: 사람이 봐야 할 것을 한곳에 모은다 (제목은 바깥 제목 줄이 가진다)
 export function ReviewPanel({ items, count }: Props) {
   const n = items ? items.length : count
   return (
-    <Card size="small" title={n === null ? '검토할 사항 (모름)' : `검토할 사항 ${n}건`} styles={{ body: { paddingTop: 4 } }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       {items === null ? (
         <Space direction="vertical" size={4}>
           <StatusTag status="unverified" />
@@ -51,27 +51,31 @@ export function ReviewPanel({ items, count }: Props) {
           </Typography.Text>
         </Space>
       ) : items.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="검토할 사항 없음" />
+        <Typography.Text type="secondary">검토할 사항 없음</Typography.Text>
       ) : (
-        <List
-          size="small"
-          dataSource={items}
-          renderItem={(item) => (
-            <List.Item style={{ paddingInline: 0 }}>
-              <Space direction="vertical" size={2}>
-                <Space size={4} wrap>
-                  <KindTag item={item} />
-                  <Typography.Text strong>{item.label}</Typography.Text>
-                </Space>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {reasonText(item.reason)}
-                </Typography.Text>
-              </Space>
-            </List.Item>
-          )}
-        />
+        items.map((item, i) => (
+          <div
+            key={`${item.kind}-${item.target}-${i}`}
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              padding: '12px 0',
+              borderBottom: '1px solid var(--line-neutral-tertiary)',
+            }}
+          >
+            <KindTag item={item} />
+            <span className="body2" style={{ fontWeight: 600, flex: '1 1 200px' }}>
+              {item.label}
+            </span>
+            <span className="label1 t3" style={{ flex: '1 1 200px' }}>
+              {reasonText(item.reason)}
+            </span>
+          </div>
+        ))
       )}
       <StatusLegend />
-    </Card>
+    </div>
   )
 }

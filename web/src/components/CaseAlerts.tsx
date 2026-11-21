@@ -1,29 +1,7 @@
 import { Alert, Space } from 'antd'
-import { articleLabel } from '../labels'
-import type { NoticeKind, Rejection } from '../types/generated/OAResult'
+import type { NoticeKind } from '../types/generated/OAResult'
 import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
-
-// AI가 다루지 않은 거절이유가 남아 있으면 늘 알린다. 번호가 정리 결과에 없어도 번호만이라도 보인다
-export function UnsupportedAlert({ numbers, rejections }: { numbers: number[]; rejections: Rejection[] }) {
-  if (numbers.length === 0) return null
-  const names = numbers.map((no) => {
-    const r = rejections.find((x) => x.no === no)
-    return r ? `거절이유 ${no}(특허법 ${articleLabel(r.article.value)})` : `거절이유 ${no}`
-  })
-  return (
-    <Alert
-      type="warning"
-      showIcon
-      message={
-        <Space wrap>
-          <span>{`AI가 다루지 않은 거절이유가 남아 있음: ${names.join(', ')}`}</span>
-          <HumanCheckTag>직접 대응 필요</HumanCheckTag>
-        </Space>
-      }
-    />
-  )
-}
 
 // 보정 제한: OA 하나에 하나라 ① OAResult.notice_kind에서 정한다 (묶음마다 두지 않음).
 // 최후면 제한 안내, 모르면(unknown·값 없음·정리 결과 없음) "없음"으로 읽히지 않게 "확인되지 않음"으로 알린다

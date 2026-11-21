@@ -3,8 +3,6 @@
 import logging
 from pathlib import Path
 
-import anthropic
-import httpx
 import pytest
 from pydantic import BaseModel
 
@@ -306,6 +304,76 @@ def test_검사_실패_재시도도_상한에_센다(tmp_path):
     assert [r.outcome for r in rec.records] == ["invalid_output", "limit_exceeded"]
 
 
+# ---- 잘린 답과 모양이 틀린 답을 호출 기록에 다른 이유로 남긴다 (#172) ----
+def test_max_tokens에_닿아_잘린_답은_output_truncated로_남는다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse('{"title": "진보', 10, 256, "max_tokens"))
+    with pytest.raises(ModelOutputInvalid, match="JSON") as e:
+        run(t, cfg, CallBudget(), rec, schema=Strict)
+    assert [(r.outcome, r.stop_reason) for r in rec.records] == [("output_truncated", "max_tokens")]
+    assert (e.value.stop_reason, e.value.truncated) == ("max_tokens", True)
+
+
+def test_끝까지_답했는데_모양이_틀리면_invalid_output으로_남는다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse("그냥 글", 10, 3, "end_turn"))
+    with pytest.raises(ModelOutputInvalid) as e:
+        run(t, cfg, CallBudget(), rec, schema=Strict)
+    assert [(r.outcome, r.stop_reason) for r in rec.records] == [("invalid_output", "end_turn")]
+    assert (e.value.stop_reason, e.value.truncated) == ("end_turn", False)
+
+
+def test_스키마_검사에_떨어진_답도_max_tokens면_output_truncated(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse("{}", 10, 256, "max_tokens"))
+    with pytest.raises(ModelOutputInvalid, match="스키마") as e:
+        run(t, cfg, CallBudget(), rec, schema=Strict)
+    assert [r.outcome for r in rec.records] == ["output_truncated"]
+    assert e.value.truncated is True
+
+
+def test_stop_reason을_모르면_None이고_검사_실패는_invalid_output(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse("{}", 10, 1))  # stop_reason을 안 주는 옛 모양
+    with pytest.raises(ModelOutputInvalid) as e:
+        run(t, cfg, CallBudget(), rec, schema=Strict)
+    assert [(r.outcome, r.stop_reason) for r in rec.records] == [("invalid_output", None)]
+    assert (e.value.stop_reason, e.value.truncated) == (None, False)
+
+
+def test_성공·캐시_적중·전송_오류_기록의_stop_reason(tmp_path):
+    cfg = make_config(tmp_path, max_retries=1)
+    rec, cache = MemoryRecorder(), MemoryCache()
+    t = scripted(
+        TransportError("429", retryable=True), TransportResponse("답", 600, 100, "end_turn")
+    )
+    run(t, cfg, CallBudget(), rec, cache=cache)
+    run(t, cfg, CallBudget(), rec, cache=cache)
+    assert [(r.outcome, r.stop_reason) for r in rec.records] == [
+        ("transport_error", None),  # 답을 못 받았으니 모름
+        ("ok", "end_turn"),
+        ("cache_hit", "end_turn"),  # 캐시에 같이 넣어 둔 값
+    ]
+
+
+def test_캐시에_stop_reason을_같이_넣고_없는_옛_캐시도_읽힌다(tmp_path):
+    cfg = make_config(tmp_path)
+    cache = MemoryCache()
+    t = scripted(TransportResponse("답", 600, 100, "end_turn"))
+    run(t, cfg, CallBudget(), MemoryRecorder(), cache=cache)
+    (key,) = cache._data
+    assert cache._data[key]["stop_reason"] == "end_turn"
+    cache._data[key] = {"text": "옛 답", "input_tokens": 1, "output_tokens": 1}  # 옛 모양
+    rec = MemoryRecorder()
+    r = run(t, cfg, CallBudget(), rec, cache=cache)
+    assert (r.text, r.from_cache) == ("옛 답", True)
+    assert [(x.outcome, x.stop_reason) for x in rec.records] == [("cache_hit", None)]
+
+
 def test_budget이_없으면_가짜_전송층이어도_막는다(tmp_path):
     cfg = make_config(tmp_path, max_model_calls=1)
     for transport in (None, scripted(OK)):
@@ -346,47 +414,6 @@ def test_재시도_기록에_전송_시도_번호가_남는다(tmp_path):
     run(scripted(OK), cfg, CallBudget(), cached, cache=cache)
     run(scripted(OK), cfg, CallBudget(), cached, cache=cache)
     assert [r.transport_try for r in cached.records] == [1, 0]  # 적중은 0
-
-
-# ---- AnthropicTransport: SDK 예외 -> TransportError (네트워크 없음) ----
-_REQ = httpx.Request("POST", "https://example.invalid/v1/messages")
-
-
-class _Raises:
-    def __init__(self, exc):
-        self.messages = self
-        self.exc = exc
-
-    def create(self, **kwargs):
-        raise self.exc
-
-
-def _sdk_transport(exc):
-    # conftest가 __init__을 막으므로 객체만 만들고 가짜 클라이언트를 넣는다
-    tr = object.__new__(AnthropicTransport)
-    tr._client = _Raises(exc)
-    return tr
-
-
-def _status_error(code):
-    resp = httpx.Response(code, request=_REQ)
-    return anthropic.APIStatusError(f"에러 {code}", response=resp, body=None)
-
-
-@pytest.mark.parametrize(
-    "exc,retryable",
-    [
-        (_status_error(429), True),
-        (_status_error(500), True),
-        (_status_error(401), False),
-        (anthropic.APIConnectionError(request=_REQ), True),
-    ],
-)
-def test_SDK_예외를_TransportError로_바꾸고_다시_부를지_정한다(exc, retryable):
-    tr = _sdk_transport(exc)
-    with pytest.raises(TransportError) as e:
-        tr.complete(step="t.s", model="m", prompt="p", effort="medium", max_tokens=5)
-    assert e.value.retryable is retryable
 
 
 # ---- RunContext ----

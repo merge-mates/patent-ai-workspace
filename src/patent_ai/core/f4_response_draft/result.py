@@ -1,0 +1,49 @@
+"""F4 한 번 실행의 결과를 한데 담는 모델 (도구 출력).
+
+저장하는 결과 스키마가 아니다: 저장은 안의 directions·drafts를 하나씩 한다.
+결과 스키마(core/schemas)로 올릴 때 이름·칸을 그대로 옮긴다.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from patent_ai.core.schemas.common import Flag, Status
+from patent_ai.core.schemas.direction import DirectionCandidates
+from patent_ai.core.schemas.drafts import Drafts
+from patent_ai.core.schemas.judgment_unit import JudgmentUnit
+
+
+class AmendmentOverlap(BaseModel):
+    """같은 청구항을 두 묶음이 다 고쳐서, 앞선 묶음 초안만 싣고 뒤 묶음 초안은 싣지 않은 기록."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim: int  # 겹친 청구항 번호
+    kept_unit: str  # 초안을 실은 묶음 (order가 앞선 쪽)
+    dropped_unit: str  # 초안을 싣지 않은 묶음 (사람이 직접 합쳐야 함)
+
+
+class F4Output(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    oa_id: str
+    units: list[JudgmentUnit]  # 이 실행에 넣은 판단 단위 (채점·다시 내기가 결과 하나로 되게)
+    directions: list[DirectionCandidates]  # 판단 단위마다 하나 (order 순)
+    drafts: Drafts | None  # OA 하나에 하나. 모든 묶음이 보류면 null
+    held_units: list[str]  # 초안을 보류한 묶음 (사람이 방향을 고르거나 자료를 채우면 다시 만든다)
+    unsupported_rejections: list[int]  # AI가 다루지 않은 거절이유 번호 (직접 대응 필요)
+    uncovered: list[tuple[int, int]]  # 판단 단위가 덮지 않은 (거절이유 번호, 청구항 번호)
+    # 대상 청구항을 못 읽어 누락 검사를 못 한 거절이유 번호 (uncovered가 비어도 누락 없음이 아님)
+    coverage_unchecked: list[int] = Field(default_factory=list)
+    # 같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안을 싣지 않은 기록 (Drafts.flags는 늘 붙어 있어
+    # 구분이 안 되므로 따로 남긴다). 의견서 쪽 겹침은 이 단계에서 다루지 않는다
+    amendment_overlaps: list[AmendmentOverlap] = Field(default_factory=list)
+    # 최후거절이유통지 보정 제한을 보정 프롬프트에 넣었나 (스위치 켬 + 통지 종류 final일 때만 true).
+    # 제한을 지켰다는 판정이 아니다: 넣었다는 사실만 적는다
+    amendment_limit_applied: bool = False
+    # 화면·API가 결과와 함께 보일 알림 문구 (결과 스키마에 칸이 없어 여기 싣는다)
+    rank_notice: str  # 순위는 검토 순서 제안이고 등록 가능성 보증이 아님
+    legality_notice: str  # 보정 초안은 검토용이고 적법성은 판단하지 않음
+    # 방향 후보·초안 status 중 가장 나쁜 값. 값은 원문 확인 여부만 뜻한다:
+    # 보류·누락처럼 사람이 봐야 할 것은 flags·held_units·uncovered로 본다
+    status: Status
+    flags: list[Flag] = Field(default_factory=list)

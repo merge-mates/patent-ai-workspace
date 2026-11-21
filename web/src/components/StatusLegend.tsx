@@ -10,7 +10,10 @@ export function StatusLegend() {
         상태 보기
       </Typography.Text>
       <Space size={[0, 4]} wrap style={{ marginTop: 4 }}>
-        <StatusTag status="confirmed" />
+        {/* 확인됨은 꼬리표 없이 체크 + 초록 글자 */}
+        <span style={{ marginInlineEnd: 8 }}>
+          <StatusTag status="confirmed" />
+        </span>
         <StatusTag status="unverified" />
         <StatusTag status="not_found_in_scope" />
         <StatusTag status="conflict" />

@@ -23,6 +23,7 @@ dependencies = [
     "kiwipiepy>=0.24.1",
     "bm25s>=0.3.16",
     "python-multipart>=0.0.34",
+    "httpx2>=2.0.0,<3",
 ]
 
 [dependency-groups]

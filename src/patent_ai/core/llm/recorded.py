@@ -25,7 +25,10 @@ def save_recording(
     effort: str,
     max_tokens: int,
 ) -> Path:
-    """녹화 파일 {"text","input_tokens","output_tokens","model","step"} 저장. 이미 있으면 멈춘다."""
+    """녹화 파일 {"text","input_tokens","output_tokens","stop_reason","model","step"} 저장.
+
+    이미 있으면 멈춘다.
+    """
     key = recording_key(step=step, model=model, prompt=prompt, effort=effort, max_tokens=max_tokens)
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -36,6 +39,7 @@ def save_recording(
         "text": resp.text,
         "input_tokens": resp.input_tokens,
         "output_tokens": resp.output_tokens,
+        "stop_reason": resp.stop_reason,
         "model": model,
         "step": step,
     }
@@ -63,4 +67,7 @@ class RecordedTransport:
                 f"녹화가 없음: {path} (step={step}). scripts/record_llm.py로 녹화"
             )
         d = json.loads(path.read_text(encoding="utf-8"))
-        return TransportResponse(d["text"], d["input_tokens"], d["output_tokens"])
+        # stop_reason 칸이 없는 옛 녹화 파일은 None으로 읽는다
+        return TransportResponse(
+            d["text"], d["input_tokens"], d["output_tokens"], d.get("stop_reason")
+        )

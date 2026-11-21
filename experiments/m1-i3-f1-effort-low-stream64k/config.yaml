@@ -1,0 +1,22 @@
+# F1 read_oa effort 낮추기, 스트리밍·64000 판에서 다시 (지시 11/20). 설정 비교: effort 하나만
+# 앞 실험 experiments/m1-i3-f1-effort-low/ (16000·스트리밍 전, 은진 11/20)를 새 전송층에서 다시 잰 것
+experiment: m1-i3-f1-effort-low-stream64k
+feature: f1
+baseline: m1-i3-f1-read-oa-prompt-shape   # 같은 판(6b87e06) medium. effort 하나만 다름
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: fix/172 6b87e06     # 스트리밍 + 64000 + 프롬프트 모양 규칙(T4, sha256 앞 12자 d680efd54818)
+settings:                 # config/f1.yaml read_oa에서 effort만 바꿔 실행 (저장소 설정은 medium 그대로)
+  model: claude-haiku-5-5
+  effort: low             # changed (기준 medium. 같은 판 medium 2회를 같이 돌려 card에 적음)
+  max_tokens: 64000
+  prompt: prompts/f1/read_oa.md
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 2                   # scores.json은 low 1회차. low 2회차·medium 1·2회차는 git 밖 work/overnight_1120/f1/a4_<이름>_scores.json
+runner: work/overnight_1120/f1_run.py work/overnight_1120/f1/a4_<low|medium><N> --effort <low|medium>   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.50
+  max_external_calls: 80  # 4회 × 10건 × 2
