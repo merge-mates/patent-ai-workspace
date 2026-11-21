@@ -9,6 +9,7 @@ import logging
 import pytest
 
 from patent_ai.core.f3_claim_compare.elements import STEP, split_elements
+from patent_ai.core.llm.cache import MemoryCache
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -48,13 +49,18 @@ GOOD_1 = _answer(1, [SENSOR, TANK, CONTROL])
 GOOD_2 = _answer(2, ["상기 물통은 투명한 재질로 이루어진"], [1], "제1항에 있어서")
 
 
-def _split(claim: int, responses, claims: dict[int, str] | None = None):
-    """split_elements를 가짜 전송층으로 돌린다. responses: 답 하나 또는 차례로 낼 목록."""
+def _split(claim: int, responses, claims: dict[int, str] | None = None, ctx=None):
+    """split_elements를 가짜 전송층으로 돌린다. responses: 답 하나 또는 차례로 낼 목록.
+
+    ctx를 넘기면 그 ctx로 부른다 (같은 ctx로 여러 번 부를 때). 그 ctx의 transport를 돌려준다.
+    """
     claims = claims or CLAIMS
-    transport = FakeTransport({STEP: responses})
-    ctx = RunContext(
-        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
-    )
+    if ctx is None:
+        transport = FakeTransport({STEP: responses})
+        ctx = RunContext(
+            run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+        )
+    transport = ctx.transport
     result = split_elements(claim, claims[claim], sorted(claims), ctx=ctx)
     return result, transport
 
@@ -64,9 +70,19 @@ def _is_unverified(status, reason: UnverifiedReason) -> bool:
 
 
 # ---- 같은 입력 → 같은 결과 ----
-def test_같은_입력을_두_번_나누면_결과가_같다():
-    first, _ = _split(1, GOOD_1)
-    second, _ = _split(1, GOOD_1)
+def test_같은_입력을_두_번_나누면_모델은_한_번만_불리고_결과가_같다():
+    # 같은 ctx(같은 메모리 캐시)로 두 번 부른다: 두 번째는 캐시에서 나와 전송이 일어나지 않는다
+    transport = FakeTransport({STEP: GOOD_1})
+    ctx = RunContext(
+        run_id="r_1",
+        budget=CallBudget(),
+        recorder=MemoryRecorder(),
+        transport=transport,
+        cache=MemoryCache(),
+    )
+    first, _ = _split(1, GOOD_1, ctx=ctx)
+    second, _ = _split(1, GOOD_1, ctx=ctx)
+    assert len(transport.calls) == 1
     assert first == second
     assert first.model_dump_json() == second.model_dump_json()
 
