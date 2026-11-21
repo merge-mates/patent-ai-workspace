@@ -1,0 +1,78 @@
+# F3 청구항–인용문헌 대비 설정. 단계 칸(split_elements 등)은 core/llm이, 나머지는 f3_claim_compare/config.py가 읽는다.
+# 가격 키는 모르니 넣지 않는다 (비용 계산 안 함 경고가 남음).
+
+# 대비 방식 (전략 패턴). 지금은 split_search 하나: 구성요소 나누기 → 구성요소마다 검색 → 판정
+impl: split_search
+# 켜면 못 찾은 구성요소만 다른 문단·도면으로 한 번 더 찾는다 (PRD F3 3번). M3에서 켬/끔 비교
+second_search: false
+# 한 번 더 찾을 때 같은 질의로 받는 상위 조각 수 (1차 search.k의 두 배. 1차에 보여 준 조각은 뺀다)
+second_search_depth: 20
+# false면 심사관 지정 위치를 검색 질의·대비 프롬프트·결과 줄 어디에도 넣지 않는다 (tune 채점 실행용, 평가 누출 막기)
+use_examiner_paragraphs: true
+# 모델이 근거로 옮긴 글자(공백 뺀 뒤) 길이 하한: 대비 근거와 명확성 정의 근거가 같이 쓴다.
+# 이보다 짧으면 검사 오류로 한 번 다시 부르고, 그래도 짧으면 버린다 (조각 글 전체를 옮긴 것은 받음)
+min_quote_chars: 10
+
+# 단계: 청구항 하나를 구성요소로 나누기
+split_elements:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f3/split_elements.md
+  max_model_calls: 80   # 실행(run) 하나의 이 단계 합계: 청구항마다 1번 + 검사 실패 때 1번 더 (청구항 40개까지)
+  max_retries: 2        # 전송 오류(429·연결)를 다시 부르는 횟수
+
+# 인용문헌 문단 검색 (retrieval.contract.get_searcher에 넘긴다).
+# tokenizer·pos_tags·bm25·hybrid는 experiments/m2-i2-cite-search-hybrid-rrf/config.yaml settings와 같은 값
+search:
+  impl: hybrid
+  index_version: cite-idx-v2
+  k: 10                  # 구성요소마다 가져올 상위 조각 수
+  tokenizer: kiwi
+  pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
+  bm25: {method: lucene, k1: 1.5, b: 0.75}
+  hybrid:
+    rrf_k: 60
+    weights: {bm25: 0.5, vector: 0.5}
+
+# 단계: 청구항 하나의 구성요소 × 후보 문단 대비 판정
+compare:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f3/compare.md
+  # 실행 하나의 합계: 판단 단위 × 청구항마다 1번(신규성은 × 인용문헌) + 검사 실패 때 1번 더.
+  # 여러 독립항을 인용하는 종속항은 묶음마다 다시 센다
+  # second_search를 켜면 못 찾은 청구항마다 한 번 더 불러 최대 두 배가 된다
+  max_model_calls: 240
+  max_retries: 2
+
+# 질의(구성요소 글자) 임베딩. 색인 cite-idx-v2와 같은 모델이어야 한다 (config/cite_search.yaml embed와 같은 값)
+embed:
+  model: text-embedding-3-small
+  batch_size: 100
+  price_per_mtok_input: 0.02      # 달러 / 입력 토큰 100만 [가정]
+  max_model_calls: 400            # 구성요소 하나에 1번 (같은 글은 실행 안에서 한 번만)
+  max_retries: 3
+
+# 단계: 명확성 문구 검토 (청구항 하나의 짚은 문구들 × 명세서 후보 조각)
+clarity:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f3/clarity.md
+  max_model_calls: 80   # 실행 하나의 합계: 명확성 청구항마다 1번 + 검사 실패 때 1번 더
+  max_retries: 2
+
+# 명확성 용어 정의 찾기: 그 사건 출원서만, 메모리 BM25 (DB·임베딩 없음. 토크나이저·bm25 값은 search 칸과 같이 씀)
+clarity_search:
+  k: 5                  # 문구마다 모델에 보여 줄 명세서 조각 수 (근거 글자 하한은 맨 위 min_quote_chars)
+  # 이 머리 줄부터 다음 식별번호(【0001】 꼴)가 나올 때까지는 정의 찾기 색인에서 뺀다.
+  # 청구항 글이 자기 정의 근거로 뽑히지 않게 (공백과 【】[]를 뺀 줄 글자 전체에 맞춘다.
+  # config/cite_search.yaml chunking의 claims_heading·abstract_heading과 같은 생각)
+  skip_headings:
+    - '^(특허)?청구(의)?범위$'
+    - '^청구항\d+$'
+    - '^(\(57\))?요약서?$'
+    - '^도면$'
+    - '^도\d+[a-zA-Z]?$'

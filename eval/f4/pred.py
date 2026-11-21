@@ -1,0 +1,95 @@
+"""F4 예측 읽기: F4 실행 결과에서 채점에 쓰는 것만 꺼낸다.
+
+예측 폴더 (git 밖):
+- <출원번호>_<발송번호>.json: run_f4 결과(F4Output dump, `directions` 칸을 씀)
+  또는 DirectionCandidates 목록
+- 판단 단위(JudgmentUnit) 목록: 결과 JSON 안의 `units` 칸을 쓴다. 없으면(옛 결과, 목록만 둔 파일)
+  <출원번호>_<발송번호>.units.json 을 읽는다. 둘 다 없으면 채점하지 못한다.
+  DirectionCandidates에는 묶음의 거절이유 번호·청구항 목록이 없어 판단 단위로 줄에 잇는다.
+"""
+
+import json
+import logging
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from pydantic import TypeAdapter, ValidationError
+
+from eval.common.errors import EvalError
+from patent_ai.core.schemas.direction import DirectionCandidates
+from patent_ai.core.schemas.judgment_unit import JudgmentUnit
+
+logger = logging.getLogger(__name__)
+
+UNITS_SUFFIX = ".units.json"
+# 예측 파일 이름(확장자 뺀 것)은 정답과 같은 OA 키 꼴: <출원번호>_<발송번호>
+_OA_KEY = re.compile(r"\d+_\d+")
+_DIRECTIONS = TypeAdapter(list[DirectionCandidates])
+_UNITS = TypeAdapter(list[JudgmentUnit])
+
+
+@dataclass(frozen=True)
+class F4Pred:
+    units: list[JudgmentUnit]
+    directions: dict[str, DirectionCandidates]  # unit_id -> 그 묶음의 방향 후보 결과
+
+
+def _read_json(path: Path, where: str):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        raise EvalError(f"{where}: JSON 문법이 틀리다") from None
+
+
+def load_predictions(folder: Path) -> dict[str, F4Pred]:
+    """예측 폴더를 읽는다. 키는 파일 이름(확장자 뺀 것) = OA 키. 틀린 파일은 순번만 말한다."""
+    if not folder.is_dir():
+        raise EvalError("F4 예측 폴더가 없다")
+    candidates = sorted(f for f in folder.glob("*.json") if not f.name.endswith(UNITS_SUFFIX))
+    files = [f for f in candidates if _OA_KEY.fullmatch(f.stem)]
+    if len(files) != len(candidates):
+        # 실행 스크립트가 같이 남기는 요약(summary.json) 같은 파일. 조용히 넘기지 않고 수를 남긴다
+        logger.warning(
+            "예측 폴더에서 OA 키 꼴이 아닌 파일 %d개를 건너뜀 (예측으로 읽지 않음)",
+            len(candidates) - len(files),
+        )
+    preds: dict[str, F4Pred] = {}
+    for i, f in enumerate(files, start=1):
+        where = f"예측 파일 {i}번째"  # 파일 이름(출원번호)과 원문 글자는 메시지에 넣지 않는다
+        data = _read_json(f, where)
+        inner_units = None
+        if isinstance(data, dict):  # F4Output dump
+            inner_units = data.get("units")
+            data = data.get("directions")
+        try:
+            directions = _DIRECTIONS.validate_python(data)
+        except ValidationError:
+            raise EvalError(
+                f"{where}: DirectionCandidates 목록(또는 F4Output) 모양이 아니다"
+            ) from None
+        if inner_units is None:
+            # 결과 안에 없을 때만 따로 둔 파일을 읽는다
+            units_file = f.with_name(f.stem + UNITS_SUFFIX)
+            if not units_file.is_file():
+                raise EvalError(
+                    f"{where}: 판단 단위가 없다 (결과의 units 칸이나 <같은 이름>{UNITS_SUFFIX})"
+                )
+            inner_units = _read_json(units_file, where + " 판단 단위")
+        try:
+            units = _UNITS.validate_python(inner_units)
+        except ValidationError:
+            raise EvalError(f"{where}: 판단 단위가 JudgmentUnit 목록 모양이 아니다") from None
+        known = {u.unit_id for u in units}
+        dropped = [d for d in directions if d.unit_id not in known]
+        if dropped:
+            # 거절이유·청구항에 이을 수 없어 채점에 못 쓴다 (그 줄은 누락으로 세어진다)
+            logger.warning(
+                "%s: 판단 단위 파일에 없는 묶음의 방향 결과 %d건 (채점에 쓰지 않음)",
+                where,
+                len(dropped),
+            )
+        preds[f.stem] = F4Pred(
+            units=units, directions={d.unit_id: d for d in directions if d.unit_id in known}
+        )
+    return preds

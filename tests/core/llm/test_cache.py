@@ -131,12 +131,45 @@ def test_녹화_답을_읽는다(tmp_path):
         "text",
         "input_tokens",
         "output_tokens",
+        "stop_reason",
         "model",
         "step",
     }
     r = run(RecordedTransport(rec), None)
     assert r.text == "녹화된 답"
     assert (r.input_tokens, r.output_tokens) == (10, 5)
+
+
+KW = dict(step=STEP, model="m", prompt="p", effort="medium", max_tokens=5)
+
+
+def test_녹화_파일에_stop_reason을_남기고_다시_읽는다(tmp_path):
+    saved = save_recording(tmp_path, TransportResponse("잘린 답", 10, 5, "max_tokens"), **KW)
+    assert json.loads(saved.read_text(encoding="utf-8"))["stop_reason"] == "max_tokens"
+    assert RecordedTransport(tmp_path).complete(**KW) == TransportResponse(
+        "잘린 답", 10, 5, "max_tokens"
+    )
+
+
+def test_stop_reason이_없는_옛_녹화_파일도_읽히고_None(tmp_path):
+    saved = save_recording(tmp_path, TransportResponse("옛 답", 10, 5, "end_turn"), **KW)
+    d = json.loads(saved.read_text(encoding="utf-8"))
+    del d["stop_reason"]  # 옛 파일 모양
+    saved.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    resp = RecordedTransport(tmp_path).complete(**KW)
+    assert (resp.text, resp.stop_reason) == ("옛 답", None)
+
+
+def test_파일_캐시에_stop_reason을_같이_넣는다(tmp_path):
+    cache = FileCache(tmp_path / "cache")
+    run(FakeTransport({STEP: TransportResponse("답", 10, 5, "end_turn")}), cache)
+    (saved,) = (tmp_path / "cache").glob("*.json")
+    assert json.loads(saved.read_text(encoding="utf-8")) == {
+        "text": "답",
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "stop_reason": "end_turn",
+    }
 
 
 def test_녹화가_없으면_RecordingMissing(tmp_path):

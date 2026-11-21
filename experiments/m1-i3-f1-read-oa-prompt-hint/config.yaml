@@ -1,0 +1,21 @@
+# F1 read_oa 프롬프트: 힌트 칸 없음은 null, raw_text는 칸 제목 빼고 본문만 (이슈 #173). 프롬프트 문구 하나만 바꿈
+experiment: m1-i3-f1-read-oa-prompt-hint
+feature: f1
+baseline: m1-i3-f1-effort-medium   # 주의: 같은 판(main ea00d43, PR #160·#170 뒤) 기준선 폴더가 없어 가장 가까운 medium 폴더를 적음. index의 "기준선 대비"는 프롬프트 말고도 #160·#170 차이와 예측 없음 건수가 섞인 값이다 (card의 비교는 git 밖 #161 v2 실행)
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: fix/172 54ab36d     # main ea00d43(#160 뒤) + 프롬프트만 고친 커밋. 전송층은 아직 스트리밍 아님
+settings:                 # config/f1.yaml read_oa (54ab36d 때 값)
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 16000
+  prompt: prompts/f1/read_oa.md   # changed (sha256 앞 12자 e677a6fe8893 → f86da6d01b6b)
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 1
+runner: work/overnight_1120/f1_run.py work/overnight_1120/f1/a1_hint   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.15
+  max_external_calls: 20

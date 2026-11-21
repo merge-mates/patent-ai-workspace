@@ -66,7 +66,7 @@ class AgentStep(Base):
         # StepRecord: ok/failed/waiting/skipped, CallRecord: ok/cache_hit/transport_error/…
         CheckConstraint(
             "outcome IN ('ok', 'failed', 'waiting', 'skipped', 'cache_hit', 'transport_error', "
-            "'limit_exceeded', 'invalid_output')",
+            "'limit_exceeded', 'invalid_output', 'output_truncated')",
             name="ck_agent_steps_outcome",
         ),
     )
@@ -91,6 +91,8 @@ class AgentStep(Base):
     from_cache: Mapped[bool | None] = mapped_column(Boolean)
     attempt: Mapped[int | None] = mapped_column(Integer)
     transport_try: Mapped[int | None] = mapped_column(Integer)
+    # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 모르면 NULL (#172)
+    stop_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

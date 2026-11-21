@@ -1,0 +1,20 @@
+# F4 뼈대 첫 tune 실행 (이슈 #39·#41·#42). 처음 돌린 것이라 이 실험이 기준선이다. F4 정답이 아직 없어 점수는 없음
+experiment: m3-f4-skeleton
+feature: f4
+baseline: m3-f4-skeleton
+goldset: tune
+goldset_version: 2
+gold: f4                  # data/goldsets/tune/f4/ (11/21 새벽에는 없음: 사람 검수 뒤 생김)
+impl: skeleton            # 묶음마다 방향 후보 → 의견서 초안 → 보정 청구항 초안, 호출마다 1회 + 출력 검사 실패 때 1회 다시
+settings:                 # config/f4.yaml (실행은 그 파일을 읽는다)
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  max_candidates: 3
+  min_basis_chars: 10
+  final_rejection_limit: false
+runs: 1
+runner: work/overnight_1120/f4_run.py work/overnight_1120/f4/run1 --workers 4   # git 밖. F3 입력은 m2-f3-skeleton 실행 결과(work/overnight_1120/f3/run1), F1 결과는 work/overnight_1120/f1/a3_run2_pred
+budget:
+  max_usd: 2.0
+  max_external_calls: 300

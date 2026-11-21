@@ -86,6 +86,15 @@ def test_offline_sql_inserts_one_default_user():
     assert "u_default" in inserts[0]
 
 
+def test_offline_sql_adds_stop_reason_and_output_truncated_to_agent_steps():
+    # 이슈 #172: 모델 호출 기록에 stop_reason 칸, outcome에 output_truncated
+    sql = _offline_sql()
+    assert re.search(r"ALTER TABLE agent_steps ADD COLUMN stop_reason TEXT", sql)
+    last_check = re.findall(r"ADD CONSTRAINT ck_agent_steps_outcome CHECK \(([^;]*)\);", sql)[-1]
+    assert "'output_truncated'" in last_check
+    assert "'invalid_output'" in last_check
+
+
 # --- 이슈 #57 T5: 건너뛴 단계 ---
 
 
@@ -108,3 +117,23 @@ def test_offline_sql_agent_steps_outcome_check_matches_model():
     )
     assert _values(checks[-1]) == _values(str(model.sqltext))
     assert "skipped" in _values(checks[-1])
+
+
+def test_skipped_마이그레이션의_옛_CHECK는_앞_마이그레이션의_새_CHECK와_같다():
+    # downgrade가 앞 판(#181 c4a8f1e63b27)과 같은 CHECK를 다시 만들어야 한다 (#187 리뷰)
+    import importlib.util
+    from pathlib import Path
+
+    versions = Path(__file__).resolve().parents[1] / "src/patent_ai/db/migrations/versions"
+
+    def load(name: str):
+        spec = importlib.util.spec_from_file_location(name, versions / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    prev = load("20261121_c4a8f1e63b27_agent_steps_stop_reason")
+    skipped = load("20261121_e5d3a7b92c18_agent_steps_outcome_skipped")
+    assert skipped.down_revision == prev.revision
+    assert _values(skipped._OLD) == _values(prev._NEW)
+    assert _values(skipped._NEW) == _values(prev._NEW) | {"skipped"}

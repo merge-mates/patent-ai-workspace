@@ -145,7 +145,13 @@ def _call(pages: PageText, ctx: RunContext) -> OAExtraction:
         return first.parsed
     except ModelOutputInvalid as e:
         error = str(e)[:_MAX_ERROR_CHARS]
-        logger.warning("read_oa: 모델 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름")
+        # 잘림(max_tokens에 닿음)이든 모양 오류든 다시 부르는 방식은 같다. 로그에만 가른다
+        logger.warning(
+            "read_oa: 모델 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름 "
+            "(잘림=%s, stop_reason=%s)",
+            e.truncated,
+            e.stop_reason,
+        )
     # 두 번째: 검사 오류 문구를 프롬프트에 넣는다. 목록 칸의 문자열만 받아 두는 판으로 검사하고
     # (그 줄은 claim_rows가 확인되지 않음으로 둔다) 그 밖의 검사 실패는 ModelOutputInvalid 그대로.
     variables = {"pages": text, "retry_note": _RETRY_NOTE.format(error=error)}

@@ -29,6 +29,7 @@ make index-load DUMP=data/index/law-idx-v1.dump
 ```
 - 덤프를 주고받을 때는 같은 main에서 `make db`로 마이그레이션을 맞춘 뒤 한다 (revision이 정확히 같아야 한다).
 - 덤프는 옆 파일 둘(`.revision`, `.fingerprint.json`)과 같이 받는다. 하나라도 없으면 덜 받은 것이라 멈춘다.
+- 마이그레이션이 main에 머지되면 그 전에 뽑은 덤프는 `.revision`이 달라서 load가 멈춘다. 덤프를 만든 사람이 최신 main에서 `make db`를 돌린 뒤 `make index-dump CORPUS=<말뭉치>`로 다시 뽑고, 드라이브의 `.dump`·`.revision`·`.fingerprint.json`을 함께 바꾼다. `.revision`은 손으로 고치지 않는다.
 - 덤프 옆 `.revision`이 내 DB의 마이그레이션 revision과 다르면 멈춘다. `make db`로 맞춘 뒤 다시 한다.
 - 넣은 뒤 조각 수·chunk_id 목록(지문)을 다시 세어 `.fingerprint.json`과 다르면 실패로 끝난다. 덤프를 다시 받아 다시 한다.
 - 손 확인(가짜 조각): `make db` 뒤 `uv run python -m patent_ai.db.index_dump load-fixture cite tests/fixtures/retrieval/chunks_cite.jsonl`, `make index-dump CORPUS=cite`로 `data/index/cite-idx-v1.dump`·`.revision`·`.fingerprint.json`이 생기는지 본다.

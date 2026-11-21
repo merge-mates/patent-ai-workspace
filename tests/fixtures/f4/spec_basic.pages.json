@@ -1,0 +1,18 @@
+{
+  "document_id": "spec_1",
+  "pages": [
+    {
+      "page": 1,
+      "text": "【발명의 명칭】 가상의 센서 장치\n[0001] 이 문서는 테스트용으로 지어낸 명세서이다.\n[0005] 가상의 센서는 기판 위에 놓인다.",
+      "status": {"value": "confirmed", "reason": null, "checked": "글자 있음", "searched_scope": null},
+      "tables": []
+    },
+    {
+      "page": 2,
+      "text": "[0012] 적당한 간격은 1mm 이상 2mm 이하를 말한다.\n[0015] 덮개에는 김 서림 방지 막을 둘 수 있다.",
+      "status": {"value": "confirmed", "reason": null, "checked": "글자 있음", "searched_scope": null},
+      "tables": []
+    }
+  ],
+  "status": {"value": "confirmed", "reason": null, "checked": "글자 있음", "searched_scope": null}
+}

@@ -6,7 +6,12 @@ import koKR from 'antd/locale/ko_KR'
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
 import './index.css'
 import App from './App.tsx'
+import { router } from './router'
+import { setRevalidate } from './runPoll'
 import { appTheme } from './theme.ts'
+
+// 폴링 모듈이 router를 직접 import하지 않도록 여기서 이어 준다 (순환 import 방지)
+setRevalidate(() => void router.revalidate())
 
 // 한국어 문구와 테마는 앱 맨 바깥에서 한 번만 준다
 createRoot(document.getElementById('root')!).render(
