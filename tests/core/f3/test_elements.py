@@ -455,3 +455,23 @@ def test_쉼표로_나열한_인용은_번호가_전부_맞으면_확인됨():
     assert len(transport.calls) == 1
     assert result.depends_on == [1, 2, 5]
     assert result.depends_on_status.value == StatusValue.CONFIRMED
+
+
+@pytest.mark.parametrize("joiner", ["및", "과", "혹은"])
+def test_및_과_혹은으로_이은_인용에서_뒷_항만_옮기면_확인되지_않음(joiner):
+    text = f"제1항 {joiner} 제2항에 있어서, 물통은 투명한 화분."
+    partial = _answer(3, ["물통은 투명한 화분"], [2], "제2항에 있어서")
+    result, transport = _split(3, [partial, partial], claims={1: "가.", 2: "나.", 3: text})
+    assert len(transport.calls) == 2
+    assert result.depends_on is None
+    assert _is_unverified(result.depends_on_status, UnverifiedReason.NOT_EXTRACTED)
+
+
+@pytest.mark.parametrize("joiner", ["및", "과", "혹은"])
+def test_및_과_혹은으로_이은_인용을_전체로_옮기면_확인됨(joiner):
+    text = f"제1항 {joiner} 제2항에 있어서, 물통은 투명한 화분."
+    full = _answer(3, ["물통은 투명한 화분"], [1, 2], f"제1항 {joiner} 제2항에 있어서")
+    result, transport = _split(3, full, claims={1: "가.", 2: "나.", 3: text})
+    assert len(transport.calls) == 1
+    assert result.depends_on == [1, 2]
+    assert result.depends_on_status.value == StatusValue.CONFIRMED

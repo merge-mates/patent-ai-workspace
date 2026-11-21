@@ -28,11 +28,12 @@ STEP = "f3.split_elements"
 # 인용구 안 "제N항" 또는 "제N항 내지/~ 제M항" (범위는 사이 번호까지 펼친다)
 _CITE = re.compile(r"제\s*(\d+)\s*항(?:\s*(?:내지|~)\s*제?\s*(\d+)\s*항)?")
 # 원문이 맨 앞에서 "제N항에 있어서/의/또는/내지 ..."처럼 앞 청구항을 인용하는 꼴 (넓히지 않는다)
-_LEADING_CITE = re.compile(r"^\s*제\s*\d+\s*항(?=\s*(?:에|의|또는|내지|~|,))")
+_JOINERS = r",|또는|및|와|과|혹은"
+_LEADING_CITE = re.compile(rf"^\s*제\s*\d+\s*항(?=\s*(?:에|의|내지|~|{_JOINERS}))")
 # 원문 맨 앞의 인용 문구 전체: "제1항, 제2항 또는 제5항", "제1항 내지 제3항"처럼
 # 번호 나열이 이어지는 데까지 ("에 있어서" 같은 뒷말 앞에서 끝난다)
 _ONE_CITE = r"제\s*\d+\s*항(?:\s*(?:내지|~)\s*제?\s*\d+\s*항)?"
-_LEADING_LIST = re.compile(rf"^\s*{_ONE_CITE}(?:\s*(?:,|또는|및|와|과)\s*{_ONE_CITE})*")
+_LEADING_LIST = re.compile(rf"^\s*{_ONE_CITE}(?:\s*(?:{_JOINERS})\s*{_ONE_CITE})*")
 
 
 def cited_numbers(quote: str) -> set[int]:
