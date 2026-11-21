@@ -142,7 +142,7 @@ flowchart LR
 | `POST /cases` | `{case_id, oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | `POST /cases/{id}/oas` | `{oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | `PATCH /cases/{id}` | 없음 | 출원번호 넣기 → 기다리던 실행이 이어 감 (이어 가는 방식 #15) | 서버 담당 리뷰 |
-| `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, date}]`, `claim_versions[{version, created_by_receipt_number, claim_count}]`, 각 OA에 `examined_claim_version{version, created_by_receipt_number}`. events·claim_versions는 올라온 OA 중 가장 늦은 OA 시점까지. 청구항 본문은 넣지 않음 | 서버 담당 리뷰 |
+| `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, seq}]`(seq = 행정 이력 순서, 자료로만 온 줄은 null), `claim_versions[{version, source_kind, source_doc_number, document_id}]`(0 = 출원 때 판), 각 OA에 `examined_claim_version` = `ExtractedValue[str]`(값 `"as_filed"` 또는 만든 보정서 접수번호, 묶기 결과 저장 전이면 null). events·claim_versions는 원문이 있는 OA 중 가장 늦은 OA 시점까지 (그 뒤 이력·보정서 판, 공개·등록공보 판은 뺌). 청구항 본문은 넣지 않음 (#16 T7) | 서버 담당 리뷰 |
 | 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | + 출원번호 입력 기다림 (`waiting_for: application_number`, 목록은 #15) | 서버 담당 리뷰 |
 | 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 (11/18 확인, requirements 실패할 때) | 서버 담당 리뷰 |
 | `GET /documents/{id}` | 원문과 쪽 | 메타 + `PageText` 그대로 (`pages[{page, text, status, tables}]` + 문서 status). 화면이 쪽마다 "글자 없음"을 보임. `tables`는 #18에서 더함(공유 스키마 변경) | 서버 담당 리뷰 |
@@ -178,7 +178,7 @@ flowchart LR
 │ ③ 발명의 설명 42조 3항  ⚠ 직접 검토 필요                                   │
 │ 심사관 힌트: 특허 가능한 청구항 5, 7 [3쪽]                                  │
 ├─────────────────────────────────────────────────────────────┤
-│ 검토할 사항 2건: 인용문헌 US 2099/0000001 본문 없음 [올려 주세요]           │
+│ 검토할 사항 2건: D2 US20990000001A1 본문 없음 [올려 주세요]             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
