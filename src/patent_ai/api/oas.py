@@ -133,8 +133,9 @@ def get_oa_result(
 ) -> OAResultOut:
     if unit.store.get_oa(oa_id) is None:
         raise AppError(404, "oa_not_found", "OA를 찾을 수 없습니다")
-    # succeeded 실행이 낸 가장 최근 결과만. 진행 중·실패·취소된 실행의 결과는 주지 않는다
-    saved = results.latest_succeeded_oa_result(oa_id)
+    # succeeded·사람 기다림 실행이 낸 가장 최근 결과만.
+    # 진행 중·실패·취소된 실행의 결과는 주지 않는다
+    saved = results.latest_visible_oa_result(oa_id)
     if saved is None:
         raise AppError(404, "result_not_ready", "OA 정리 결과가 아직 없습니다")
     return OAResultOut(

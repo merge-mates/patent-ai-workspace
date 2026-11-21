@@ -24,6 +24,10 @@ UNFINISHED_STATES = frozenset({RunState.QUEUED, RunState.RUNNING})
 # 아직 진행 중인 상태 (같은 OA에 진행 중 실행이 있는지 볼 때 쓴다)
 ACTIVE_STATES = frozenset({RunState.QUEUED, RunState.RUNNING, RunState.WAITING_FOR_HUMAN})
 
+# 결과를 화면에 보여 주는 실행 상태. 사람 기다림 중에도 그때까지의 정리를 본다 (11/21 은진 결정).
+# 진행 중(queued·running)·실패·취소된 실행의 결과는 주지 않는다
+RESULT_VISIBLE_STATES = frozenset({RunState.SUCCEEDED, RunState.WAITING_FOR_HUMAN})
+
 # 허용 전이 표. 여기 없는 이동은 전부 거부한다.
 _ALLOWED: dict[RunState, frozenset[RunState]] = {
     RunState.QUEUED: frozenset({RunState.RUNNING, RunState.CANCELLED, RunState.FAILED}),

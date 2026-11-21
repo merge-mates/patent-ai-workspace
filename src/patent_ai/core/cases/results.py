@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Protocol
 
 from patent_ai.core.cases.store import InMemoryRunStore, now_utc
-from patent_ai.core.runs.state import RunState
+from patent_ai.core.runs.state import RESULT_VISIBLE_STATES
 from patent_ai.core.runs.store import OAResultSink
 from patent_ai.core.schemas.oa_result import OAResult
 
@@ -28,8 +28,8 @@ class SavedOAResult:
 class OAResultStore(OAResultSink, Protocol):
     """저장(save_oa_result)은 OAResultSink에서 이어받고, 읽기를 더한다."""
 
-    def latest_succeeded_oa_result(self, oa_id: str) -> SavedOAResult | None:
-        """그 OA에서 succeeded 실행이 낸 가장 최근 결과. 없으면 None.
+    def latest_visible_oa_result(self, oa_id: str) -> SavedOAResult | None:
+        """그 OA에서 보여 줄 실행(succeeded·waiting_for_human)이 낸 가장 최근 결과. 없으면 None.
 
         저장 시각이 같으면 실행을 만든 시각, 그래도 같으면 run id가 큰 쪽.
         """
@@ -37,7 +37,7 @@ class OAResultStore(OAResultSink, Protocol):
 
 
 class InMemoryOAResultStore:
-    """테스트용. 실행 상태는 같은 InMemoryRunStore를 보고 succeeded만 고른다."""
+    """테스트용. 실행 상태는 같은 InMemoryRunStore를 보고 보여 줄 상태만 고른다."""
 
     def __init__(self, runs: InMemoryRunStore, clock: Callable[[], datetime] = now_utc) -> None:
         self._runs = runs
@@ -55,7 +55,7 @@ class InMemoryOAResultStore:
         with self._lock:
             return [(oa, run, res) for _, oa, run, res in self._saved]
 
-    def latest_succeeded_oa_result(self, oa_id: str) -> SavedOAResult | None:
+    def latest_visible_oa_result(self, oa_id: str) -> SavedOAResult | None:
         best = None
         best_key = None
         for saved_at, saved_oa, run_id, result in self._saved:
@@ -63,7 +63,7 @@ class InMemoryOAResultStore:
             row = self._runs.get_row(run_id)
             if saved_oa != oa_id or status is None or row is None:
                 continue
-            if status.state != RunState.SUCCEEDED:
+            if status.state not in RESULT_VISIBLE_STATES:
                 continue
             key = (saved_at, row.created_at, run_id)
             if best_key is None or key > best_key:

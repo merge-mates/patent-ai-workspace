@@ -96,10 +96,8 @@ def test_실행_전에는_결과_줄이_없어_result_not_ready(env):
     _not_ready(env.get_result(created["oa_id"]))
 
 
-@pytest.mark.parametrize(
-    "state", [RunState.QUEUED, RunState.RUNNING, RunState.WAITING_FOR_HUMAN, RunState.CANCELLED]
-)
-def test_succeeded가_아닌_실행이_결과를_저장해_둬도_안_준다(env, state):
+@pytest.mark.parametrize("state", [RunState.QUEUED, RunState.RUNNING, RunState.CANCELLED])
+def test_보여_줄_상태가_아닌_실행이_결과를_저장해_둬도_안_준다(env, state):
     # 실제 실행기는 결과를 먼저 저장하고 succeeded로 바꾸므로, 결과 줄이 있는데 아직
     # succeeded가 아닌 순간이 생긴다. 그때 결과를 내주면 안 된다
     env.launch_enabled = False
@@ -107,13 +105,24 @@ def test_succeeded가_아닌_실행이_결과를_저장해_둬도_안_준다(env
     run_id = created["run_id"]
     if state != RunState.QUEUED:
         env.runs.transition(run_id, RunState.RUNNING)
-    if state == RunState.WAITING_FOR_HUMAN:
-        env.runs.transition(run_id, state, waiting_for="reviewer")
     if state == RunState.CANCELLED:
         env.runs.transition(run_id, state)
     assert env.runs.get_status(run_id).state == state
     env.results.save_oa_result(created["oa_id"], run_id, load_oa_result())
     _not_ready(env.get_result(created["oa_id"]))
+
+
+def test_사람_기다림_실행의_결과는_준다(env):
+    # 방향 고르기를 기다리는 동안에도 그때까지의 OA 정리를 본다 (11/21 은진 결정)
+    env.launch_enabled = False
+    created = env.upload()
+    run_id = created["run_id"]
+    env.runs.transition(run_id, RunState.RUNNING)
+    env.runs.transition(run_id, RunState.WAITING_FOR_HUMAN, waiting_for="direction_selection")
+    env.results.save_oa_result(created["oa_id"], run_id, load_oa_result())
+    res = env.get_result(created["oa_id"])
+    assert res.status_code == 200
+    assert res.json()["run_id"] == run_id
 
 
 def test_끝나면_결과가_result에_담겨_온다(env):

@@ -115,13 +115,13 @@ def test_결과_저장과_최근_succeeded만_읽음(factory):
     oa_id, first = _new_run(factory, "db_result_" + "f" * 20)
     store = PostgresRunStatusStore(factory)
     results = PostgresOAResultStore(factory)
-    assert results.latest_succeeded_oa_result(oa_id) is None
+    assert results.latest_visible_oa_result(oa_id) is None
 
     # 첫 실행: 결과를 저장했지만 실패 -> 안 보인다
     results.save_oa_result(oa_id, first, load_oa_result())
     store.transition(first, RunState.RUNNING)
     store.transition(first, RunState.FAILED, error=RunError("boom", "실패했다"))
-    assert results.latest_succeeded_oa_result(oa_id) is None
+    assert results.latest_visible_oa_result(oa_id) is None
 
     # 둘째 실행: 성공 -> 보인다
     with factory() as s:
@@ -130,9 +130,18 @@ def test_결과_저장과_최근_succeeded만_읽음(factory):
     results.save_oa_result(oa_id, second, load_oa_result())
     store.transition(second, RunState.RUNNING)
     store.transition(second, RunState.SUCCEEDED)
-    got = results.latest_succeeded_oa_result(oa_id)
+    got = results.latest_visible_oa_result(oa_id)
     assert got.run_id == second
     assert got.result == load_oa_result()
+
+    # 셋째 실행: 사람 기다림 -> 보인다 (가장 최근)
+    with factory() as s:
+        third = PostgresRunStore(s).create_queued(oa_id).id
+        s.commit()
+    results.save_oa_result(oa_id, third, load_oa_result())
+    store.transition(third, RunState.RUNNING)
+    store.transition(third, RunState.WAITING_FOR_HUMAN, waiting_for="direction_selection")
+    assert results.latest_visible_oa_result(oa_id).run_id == third
 
 
 def test_record_skipped_왕복은_agent_steps에_skipped로_남는다(factory):

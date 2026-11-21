@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from patent_ai.core.cases.results import SavedOAResult
 from patent_ai.core.f1_oa_reader.case_repository import oa_result_row
+from patent_ai.core.runs.state import RESULT_VISIBLE_STATES
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.db.models import OAResultRow, Run
 
@@ -27,12 +28,16 @@ class PostgresOAResultStore:
             s.add(OAResultRow(**asdict(oa_result_row(oa_id, run_id, result))))
             s.commit()
 
-    def latest_succeeded_oa_result(self, oa_id: str) -> SavedOAResult | None:
-        # runs와 이어 succeeded만. 시각이 같으면 runs.created_at, 그다음 id 순
+    def latest_visible_oa_result(self, oa_id: str) -> SavedOAResult | None:
+        # runs와 이어 보여 줄 상태(succeeded·waiting_for_human)만.
+        # 시각이 같으면 runs.created_at, 그다음 id 순
         q = (
             select(OAResultRow)
             .join(Run, OAResultRow.run_id == Run.id)
-            .where(OAResultRow.oa_id == oa_id, Run.state == "succeeded")
+            .where(
+                OAResultRow.oa_id == oa_id,
+                Run.state.in_([st.value for st in RESULT_VISIBLE_STATES]),
+            )
             .order_by(OAResultRow.created_at.desc(), Run.created_at.desc(), Run.id.desc())
             .limit(1)
         )
