@@ -68,9 +68,9 @@ def _go(tmp_path, body: dict, responses=None):
     return out, steps
 
 
-def test_저장소_설정의_순서는_F1_F3_F2_F4이고_plan_기본값은_agent():
+def test_저장소_설정의_순서는_F1_F3_F2_F4이고_plan_기본값은_fixed_order():
     cfg = yaml.safe_load(REAL_CONFIG.read_text("utf-8"))
-    assert cfg["plan"] == "agent"
+    assert cfg["plan"] == "fixed_order"  # M2 걷는 뼈대 (M3에 agent)
     assert cfg["fixed_order"] == ["extract_pages", "read_oa", "run_f3", "run_f2", "run_f4"]
     # F2 도구는 아직 없다: 넘겨도 되는 단계로 적혀 있어야 한다
     assert "run_f2" in cfg["skip_if_missing"]
