@@ -16,7 +16,7 @@ F1~F4를 채점할 OA(의견제출통지서) 사건 목록과 그 사건 서류�
 - 위치 (모두 git 밖):
   - 목록: 드라이브 `04_KIPRIS_대량원본/oa_learning_scan_1116/v2f_selected_1121.csv` (지금 쓰는 판, v2f 149 = report 119 + tune 30). 그 전 판 `v2e_selected_1118.csv`(129 = report 119 + tune 10)는 같은 폴더에 그대로 둔다. 맥 사본은 `data/raw/oa_learning_scan_1116/pool_v2_1117/`(v2e까지), v2f는 은진 맥 `work/t168/`. v2c → v2e 바뀐 줄은 같은 드라이브 폴더 `v2c_to_v2e_changes_1118.csv`.
   - 받은 서류 묶음 (정답 쪽, 채점기만 읽음): `data/goldsets/tune/case_full/<출원번호>/` (30, 11/21 #168로 20건 더함), `data/goldsets/report/case_full/<출원번호>/` (119, 봉인). report 실패 사례는 `report/case_fail/` (23), 안 쓴 여유분은 `report/case_spare/` (3). 11/20 #150 결정으로 옮겼다. 그 전 자리 `data/raw/cases_v2/`(`_report`·`_report_fail`·`_report_spare_v2`)는 이제 안 쓴다. 드라이브 사본은 `01_OA_사건자료_v2/` (옛 구조 그대로). 11/21에 더한 tune 20건의 `case_full` 묶음도 같은 폴더 바로 아래 출원번호 폴더 20개로 올렸다 (195개, 11/21 은진). 옛 391건 폴더 `01_OA_사건자료/`(v1)는 안 쓰고 지웠다.
-  - AI 입력: `data/processed/cases/<출원번호>/<발송번호>/`. 받은 묶음을 OA 시점까지 자른 것이다 (스크립트 `scripts/split_cases_at_oa.py`, [#148](https://github.com/merge-mates/patent-ai-workspace/issues/148), 머지 전). tune 30건은 맥에서 만들었다 (11/21에 더한 20건 로그 `work/split_cases_1121.log`, git 밖). 드라이브에는 올리지 않는다. 받는 사람은 드라이브 `case_full` 묶음을 `data/goldsets/tune/case_full/`에 두고 `scripts/split_cases_at_oa.py`로 같은 30건을 만든다 (스크립트가 OA 시점으로만 자르니 같은 입력이면 같은 결과).
+  - AI 입력: `data/processed/cases/<출원번호>/<발송번호>/`. 받은 묶음을 OA 시점까지 자른 것이다 (스크립트 `scripts/split_cases_at_oa.py`, [#148](https://github.com/merge-mates/patent-ai-workspace/issues/148)). tune 30건은 맥에서 만들었다 (11/21에 더한 20건 로그 `work/split_cases_1121.log`, git 밖). 드라이브에는 올리지 않는다. 받는 사람은 드라이브 `case_full` 묶음을 `data/goldsets/tune/case_full/`에 두고 `scripts/split_cases_at_oa.py`로 같은 30건을 만든다 (스크립트가 OA 시점으로만 자르니 같은 입력이면 같은 결과).
   - `data/raw/cases/`는 그 전 이름이다. 든 것이 사람마다 다르다 (은진 맥은 이력 파일만 8건, 재아 맥은 정답 서류까지 9건). 정답 변환이 아직 읽어서 남겨 두었고, 정리는 [#159](https://github.com/merge-mates/patent-ai-workspace/issues/159).
   - 정답 파일: `data/goldsets/tune/`, `data/goldsets/report/` ([eval/GUIDE.md](../../eval/GUIDE.md) 1절, #139로 들어옴).
 
@@ -77,11 +77,12 @@ G3(신규성만)은 두지 않는다 (11/17 재아·은진 합의, 조건에 맞
 - tune 30건 (11/21 셈): OA 30, 행정 이력 30, 청구항 이력 30, 출원서 28, 공개공보 2. 공개공보 2건은 출원서가 없는 PCT 국내단계 사건이다 (위 1건 + 11/21에 더한 1건). `--audit` 문제 0건.
 
 ### 2.4 OA 글자 (`data/raw/oa_txt_tune/<출원번호>_OA_<발송번호>.txt`)
-- tune 10건(11/18 판)의 의견제출통지서 PDF를 `pdftotext -layout`(poppler 26.11.0)으로 뽑은 글자다. 한 파일 = OA 한 통이고, 파일 이름은 OA PDF와 같다 (확장자만 `.txt`).
-- 11/18에 옛 폴더 `cited_v2/_meta/oa_txt_tune/`에서 만들었다. 만든 스크립트는 남지 않았다. 11/20에 2.3절 입력 폴더의 OA PDF를 같은 명령으로 다시 뽑아 보니 10개 모두 바이트까지 같았다.
+- tune 30건의 의견제출통지서 PDF를 `pdftotext -layout`(poppler 26.11.0)으로 뽑은 글자다 (30개). 한 파일 = OA 한 통이고, 파일 이름은 OA PDF와 같다 (확장자만 `.txt`).
+- 처음 10건은 11/18에 옛 폴더 `cited_v2/_meta/oa_txt_tune/`에서 만들었다. 만든 스크립트는 남지 않았다. 11/20에 2.3절 입력 폴더의 OA PDF를 같은 명령으로 다시 뽑아 보니 10개 모두 바이트까지 같았다.
+- 11/21에 더한 20건은 11/22에 같은 명령으로 뽑았다 (은진 맥). 그때 처음 10건도 다시 뽑아 보니 바이트까지 같았다.
 - 읽는 곳: 법령 검색 정답 변환 `eval/retrieval/law_gold.py`의 `--oa-dir`. 이 글을 거절이유별로 잘라 정답 줄에 붙인다. 파일이 없거나 자른 순번이 정답과 안 맞으면 그 사건을 빼고 경고를 남긴다.
 - report 사건 글자는 만들지 않았다.
-- **남은 일: 11/21에 더한 20건은 아직 글자가 없다** (이 폴더 10개). 지금 `law_gold.py --oa-dir`로 30건 법령 검색 정답을 만들면 20건이 경고만 남기고 빠진다. 정답 판 3을 넣기 전에 같은 명령으로 20개를 뽑아 둔다.
+- 거절이유가 하나인 OA 2건은 지금 `law_gold.py`가 본문 번호(1. 2. 3.)를 이유로 잘못 잘라 경고를 남기고 뺀다 ([#214](https://github.com/merge-mates/patent-ai-workspace/issues/214)에서 고침).
 - [사람 판단] 받은 원본이 아니라 뽑은 글자인데 `data/raw/`에 있다 (`law_gold.py`가 먼저 이 자리를 썼다). `data/processed/`로 옮기고 뽑는 명령을 스크립트로 남길지는 나중에 정한다.
 
 ## 3. 품질 (받은 건수와 뺀 건수)
