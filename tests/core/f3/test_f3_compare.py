@@ -603,3 +603,40 @@ def test_모르는_검색_방식_이름은_조용히_바꾸지_않고_설정_오
     settings = config.settings.model_copy(update={"search": search})
     with pytest.raises(ModelConfigError, match="fake"):
         _run(_inventive(), [], config.model_copy(update={"settings": settings}))
+
+
+# ---- 대비할 문헌이 없는 청구항은 기록 없이 빠지지 않는다 ----
+SPLITS_1_3 = {1: SPLITS[1], 3: split(3, [SENSOR], [1])}
+
+
+def test_대비할_문헌이_없는_청구항은_보류와_경고를_남긴다(caplog):
+    # 청구항 3의 줄은 D2만 적용했는데 D2는 JP라 대비할 수 없다
+    result = oa(
+        [rejection(1, "29-2", [1, 3], [citation("D1", D1), citation("D2", "JP1A", country="JP")])],
+        [claim_row(1, 1, ["D1"]), claim_row(3, 1, ["D2"])],
+    )
+    answer = _answer([_row(1, "D1", "unclear"), _row(2, "D1", "unclear")])
+    with caplog.at_level(logging.WARNING):
+        out, _, _ = _run(result, answer, splits=SPLITS_1_3)
+    (table,) = out.tables
+    assert {r.claim for r in table.rows} == {1}
+    held = [h for h in out.held_tasks if h.task.endswith(":claim3")]
+    assert len(held) == 1 and held[0].task == f"f3_compare:{table.unit_id}:claim3"
+    assert "청구항 3" in held[0].waiting_for
+    assert any("청구항 3" in r.getMessage() for r in caplog.records)
+
+
+def test_신규성은_다른_문헌_묶음에서_대비된_청구항은_보류하지_않는다():
+    # 청구항 3은 D2에만 적용: D1 묶음에서는 비지만 D2 묶음에서 대비된다
+    result = oa(
+        [rejection(1, "29-1-1", [1, 3], [citation("D1", D1), citation("D2", D2)])],
+        [claim_row(1, 1, ["D1", "D2"]), claim_row(3, 1, ["D2"])],
+    )
+    answers = [
+        _answer([_row(1, "D1", "unclear"), _row(2, "D1", "unclear")]),
+        _answer([_row(1, "D2", "unclear"), _row(2, "D2", "unclear")]),
+        _answer([_row(1, "D2", "unclear")], claim=3),
+    ]
+    out, _, _ = _run(result, answers, splits=SPLITS_1_3)
+    assert len(out.tables) == 2
+    assert not [h for h in out.held_tasks if h.task.endswith(":claim3")]

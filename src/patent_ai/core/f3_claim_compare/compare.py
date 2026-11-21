@@ -843,12 +843,15 @@ def compare_unit(
     # 신규성은 인용문헌 하나씩 따로 (두 문헌을 한 프롬프트·한 표에 섞지 않는다)
     groups = [[c] for c in usable] if novelty else ([usable] if usable else [])
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
+    # 어느 묶음에서든 대비된 청구항 (신규성은 문헌마다 묶음이 따로라 합쳐서 본다)
+    compared_anywhere: set[int] = set()
     for group in groups:
         rows: list[ComparisonRow] = []
         # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
         cites_of = {c: _labels_for(oa, unit.rejection, c, group) for c in unit.claims}
         has_elements = {c for c in unit.claims if c in splits and splits[c].elements}
         compared = {c: {x.label for x in cites_of[c]} for c in has_elements if cites_of[c]}
+        compared_anywhere |= set(compared)
         # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
         views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
         # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
@@ -917,6 +920,22 @@ def compare_unit(
                 flags=[Flag.NEEDS_HUMAN_REVIEW],
             )
         )
+    # 구성요소는 있는데 어느 묶음에서도 대비되지 않은 청구항 (적용 문헌이 대비 불가이거나
+    # 청구항 줄의 인용 라벨이 거절이유 인용 목록과 안 맞음): 기록 없이 빠지지 않게 보류한다
+    if groups:
+        for claim in unit.claims:
+            if claim in splits and splits[claim].elements and claim not in compared_anywhere:
+                logger.warning(
+                    "compare %s: 청구항 %d에 적용된 대비할 수 있는 인용문헌이 없어 건너뜀",
+                    unit.unit_id,
+                    claim,
+                )
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{claim}",
+                    f"청구항 {claim}에 적용된 대비할 수 있는 인용문헌"
+                    " (인용 라벨·본문 확보 직접 확인)",
+                )
     return CompareOutput(
         tables=tables,
         held_tasks=seen.held,
