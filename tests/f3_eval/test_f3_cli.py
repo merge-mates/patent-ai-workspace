@@ -139,6 +139,16 @@ def test_검색_기록이_없는_줄은_CQ에_넣지_않고_안_찾은_줄로만
     assert scores["failures"]["cq_candidates"] == 0 and cq == []
 
 
+def test_CQ의_구성요소_번호는_그_청구항_것만_두고_부모_것은_따로_둔다(run):
+    # 구성요소 2는 부모(청구항 9)에서 온 것: 청구항 1의 1번과 번호가 겹치지 않게 갈라 쓴다
+    pred = prediction(searched=((1, [20]), (2, [20])), selected=(), element_claims={1: 1, 2: 9})
+    _, _, cq = run(pred)
+    (line,) = cq
+    assert line["element_nos"] == [1]
+    assert line["parent_element_nos"] == [[9, 2]]
+    assert line["found"] == ["cite-idx-v2:KR20990000001A:p0020"]  # 부모 검색 조각도 그대로 센다
+
+
 def test_CQ가_0건이면_경고한다(run, caplog):
     with caplog.at_level(logging.WARNING):
         _, scores, cq = run()

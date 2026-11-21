@@ -111,18 +111,25 @@ def _mean(xs: list[float]) -> float | None:
 # ---- ① 심사관 지정 위치 회수율 ----
 def _chunk_ids(
     pred: F3Pred, rejection: int, claim: int, doc_id: str
-) -> tuple[set[str], set[str], list[int]]:
+) -> tuple[set[str], set[str], list[int], list[list[int]]]:
     """그 거절이유 × 청구항 × 인용문헌에서 찾은 것.
 
-    돌려주는 값: (검색이 가져온 조각, 모델이 고른 조각, 찾은 구성요소 번호).
+    돌려주는 값: (검색이 가져온 조각, 모델이 고른 조각, 이 청구항 자기 구성요소 번호,
+    부모 청구항에서 온 구성요소 [청구항, 번호]).
     """
     units = {u.unit_id for u in pred.units if u.rejection == rejection}
     searched: set[str] = set()
     elements: set[int] = set()
+    parents: set[tuple[int, int]] = set()
     for log in pred.search_log:
         if log.unit_id in units and log.claim == claim and log.doc_id == doc_id:
             searched |= set(log.hit_chunk_ids)
-            elements.add(log.element_no)
+            # 번호는 구성요소가 있는 청구항 안의 순번이라, 부모 것은 청구항을 붙여 따로 둔다.
+            # element_claim이 없는 옛 예측은 자기 것으로 본다
+            if log.element_claim is None or log.element_claim == claim:
+                elements.add(log.element_no)
+            else:
+                parents.add((log.element_claim, log.element_no))
     selected: set[str] = set()
     for table in pred.comparisons:
         if table.unit_id not in units:
@@ -131,7 +138,7 @@ def _chunk_ids(
             if row.claim != claim:
                 continue
             selected |= {e.chunk_id for e in row.evidence if e.document_id == doc_id and e.chunk_id}
-    return searched, selected, sorted(elements)
+    return searched, selected, sorted(elements), [list(p) for p in sorted(parents)]
 
 
 def _score_cite(
@@ -172,10 +179,10 @@ def _score_cite(
         pred = by_dispatch.get(dispatch)
         if pred is None:
             missing.add(dispatch)
-            searched, selected, elements = set(), set(), []
+            searched, selected, elements, parents = set(), set(), [], []
         else:
-            searched, selected, elements = _chunk_ids(pred, rejection, claim, doc_id)
-            if not elements:
+            searched, selected, elements, parents = _chunk_ids(pred, rejection, claim, doc_id)
+            if not elements and not parents:
                 failures["not_searched_rows"] += 1  # 그 청구항 × 문헌을 찾은 기록이 없다 (0점)
         found_search = sum(1 for m in kept if m & searched)
         found_selected = sum(1 for m in kept if m & selected)
@@ -192,7 +199,7 @@ def _score_cite(
         else:
             marks["rr"].append(0.0)
             marks["rh"].append(0.0)
-        if pred is not None and elements and found_search == 0:
+        if pred is not None and (elements or parents) and found_search == 0:
             # 못 찾은 질문: 검색을 했는데 정답 위치를 하나도 못 덮음
             # (검색 기록이 없는 줄은 검색을 안 한 것이라 CQ가 아니다. not_searched_rows로만 센다)
             # (질의·정답 위치가 있어 git 밖에만 쓴다)
@@ -206,6 +213,7 @@ def _score_cite(
                     "claim": claim,
                     "doc_id": doc_id,
                     "element_nos": elements,
+                    "parent_element_nos": parents,
                     "query": row.query,
                     "items": [i.model_dump(mode="json") for i in row.items],
                     "found": sorted(searched),

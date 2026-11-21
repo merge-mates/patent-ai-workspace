@@ -53,8 +53,13 @@ def prediction(
     source="ai_found",
     clarity_location="청구항 2 [글자 10-19]",
     novelty_tables=(),
+    element_claims=None,
 ) -> dict:
-    """F3Result를 dump한 모양의 예측. searched: (구성요소 번호, 걸린 문단 번호들)."""
+    """F3Result를 dump한 모양의 예측. searched: (구성요소 번호, 걸린 문단 번호들).
+
+    element_claims: {구성요소 번호: 그 구성요소가 있는 청구항} (없으면 옛 예측처럼 칸을 뺀다).
+    """
+    claim_of = element_claims or {}
     ok = {"value": "confirmed", "reason": None, "checked": "테스트", "searched_scope": None}
     rows = [
         {
@@ -95,6 +100,7 @@ def prediction(
                 "unit_id": UNIT,
                 "claim": 1,
                 "element_no": no,
+                **({"element_claim": claim_of[no]} if no in claim_of else {}),
                 "citation": "D1",
                 "doc_id": DOC,
                 "round": 1,
