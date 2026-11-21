@@ -68,3 +68,55 @@ def test_step_recorder_쓰기가_실패하면_record_failed로_끝나고_원문�
     assert st.state == RunState.FAILED and st.error["code"] == "record_failed"
     assert "비밀" not in st.error["message"]
     assert "실행 기록 저장 실패" in st.error["message"]
+
+
+# --- T2: 모델 호출 기록 (CallRecord) ---------------------------------------------------
+
+
+def test_call_recorder_쓰기가_실패하면_record_failed로_끝나고_원문은_안_보인다(
+    tmp_path, monkeypatch
+):
+    from patent_ai.core.llm.limits import CallBudget, RunContext
+    from tests.core.run_case_fakes import FakeTransport, _responses
+
+    wire(monkeypatch)
+
+    class BrokenCalls:
+        def record(self, rec) -> None:
+            raise RunLogWriteFailed("비밀 연결문자열 postgres://x")
+
+    def ctx(run_id: str) -> RunContext:
+        return RunContext(
+            run_id=run_id,
+            budget=CallBudget(),
+            recorder=BrokenCalls(),
+            transport=FakeTransport(_responses()),
+        )
+
+    store = MemoryStatusStore()
+    store.add(RID, OID)
+    RunCaseExecutor(
+        store=store,
+        registry=CancelRegistry(),
+        oa_results=InMemoryOAResultStore(store),
+        step_results=InMemoryStepResultStore(),
+        inputs=_Inputs(tmp_path),
+        cases=_Cases(),
+        config_path=real_config(tmp_path),
+        make_ctx=ctx,
+        today=lambda: CHECKED_ON,
+        lock=threading.Lock(),
+    ).execute(RID, OID)
+    st = store.get_status(RID)
+    assert st.state == RunState.FAILED and st.error["code"] == "record_failed"
+    assert "비밀" not in st.error["message"]
+
+
+def test_call_recorder_서버_실행맥락은_PostgresCallRecorder이고_실행마다_새_객체다():
+    from patent_ai.api import deps
+    from patent_ai.core.runs.step_log_pg import PostgresCallRecorder
+
+    a = deps._new_run_context("r_a")
+    b = deps._new_run_context("r_b")
+    assert isinstance(a.recorder, PostgresCallRecorder)
+    assert a.recorder is not b.recorder  # records가 실행끼리 안 섞인다

@@ -56,3 +56,78 @@ def test_step_recorder_skipped_줄을_상태_저장소가_읽는다(factory):  #
 def test_step_recorder_없는_run_id면_RunLogWriteFailed(factory):  # noqa: F811
     with pytest.raises(RunLogWriteFailed):
         PostgresStepRecorder(factory).record(_step("r_없음", "read_oa", "ok"))
+
+
+# --- T2: 모델 호출 기록 ----------------------------------------------------------------
+
+
+def _call(rid, outcome, **kw):
+    from patent_ai.core.llm.limits import CallRecord
+
+    base = dict(
+        run_id=rid,
+        step="read_oa",
+        model="m-1",
+        input_tokens=10,
+        output_tokens=5,
+        cost=0.0123,
+        elapsed_ms=200,
+        from_cache=False,
+        attempt=1,
+        outcome=outcome,
+        transport_try=1,
+        stop_reason="end_turn",
+    )
+    base.update(kw)
+    return CallRecord(**base)
+
+
+def test_call_recorder_두_호출이_다른_세션에서_순서대로_칸이_맞게_보인다(factory):  # noqa: F811
+    from decimal import Decimal
+
+    from patent_ai.core.runs.step_log_pg import PostgresCallRecorder
+
+    _, rid = _new_run(factory, "db_calllog_" + "a" * 20)
+    rec = PostgresCallRecorder(factory)
+    ok = _call(rid, "ok")
+    bad = _call(
+        rid,
+        "transport_error",
+        input_tokens=None,
+        output_tokens=None,
+        cost=None,
+        attempt=2,
+        transport_try=2,
+        stop_reason=None,
+    )
+    rec.record(ok)
+    rec.record(bad)
+    assert rec.records == [ok, bad]
+    with factory() as other:
+        rows = list(
+            other.scalars(select(AgentStep).where(AgentStep.run_id == rid).order_by(AgentStep.id))
+        )
+    assert [(r.step_kind, r.tool_name, r.outcome) for r in rows] == [
+        ("model_call", "read_oa", "ok"),
+        ("model_call", "read_oa", "transport_error"),
+    ]
+    a, b = rows
+    assert (a.model, a.input_tokens, a.output_tokens, a.cost) == ("m-1", 10, 5, Decimal("0.012300"))
+    assert (a.elapsed_ms, a.from_cache, a.attempt, a.transport_try, a.stop_reason) == (
+        200,
+        False,
+        1,
+        1,
+        "end_turn",
+    )
+    assert (b.input_tokens, b.output_tokens, b.cost, b.stop_reason) == (None, None, None, None)
+    assert (b.attempt, b.transport_try) == (2, 2)
+
+
+def test_call_recorder_없는_run_id면_RunLogWriteFailed이고_records에_안_붙는다(factory):  # noqa: F811
+    from patent_ai.core.runs.step_log_pg import PostgresCallRecorder
+
+    rec = PostgresCallRecorder(factory)
+    with pytest.raises(RunLogWriteFailed):
+        rec.record(_call("r_없음", "ok"))
+    assert rec.records == []
