@@ -1,0 +1,52 @@
+{
+  "experiment": "m2-f3-skeleton",
+  "commit": "39a843ff1e1164845d3ed37bccdf19a34c57828e",
+  "goldset": "tune",
+  "goldset_version": 2,
+  "gold_sha256": "0fee10d368f3f97c15165576e7ab2d5d8555b10dfa9b7667459022777b90bf38",
+  "impl": "split_search",
+  "index_version": "cite-idx-v2",
+  "metric_name": "심사관 지정 위치 회수율",
+  "n": 10,
+  "metrics": {
+    "search_hit": 0.7318605006105006,
+    "search_recall": 0.5836622647634553,
+    "selected_hit": 0.37822802197802197,
+    "selected_recall": 0.18632835969145492,
+    "random_search_recall": 0.2621650284091545,
+    "random_search_hit": 0.41779017926080736,
+    "search_recall_ratio": 2.226316256997283,
+    "novelty_tables": 3,
+    "clarity_term_reviewed": 0.6944444444444445
+  },
+  "failures": {
+    "missing_prediction": 1,
+    "not_searched_rows": 6,
+    "excluded_no_location": 3,
+    "excluded_clarity": 0,
+    "excluded_same_as_other": 33,
+    "excluded_body_missing": 0,
+    "excluded_gold_not_in_scope": 1,
+    "excluded_gold_items_not_in_scope": 11,
+    "cq_candidates": 14,
+    "novelty_multi_citation": 0,
+    "clarity_no_claim_text": 0,
+    "clarity_gold_term_not_in_claim": 2,
+    "excluded_clarity_no_terms": 12,
+    "clarity_location_unreadable": 0
+  },
+  "skipped_metrics": {
+    "clarity_definition_recall": "정답 없음",
+    "clarity_issue_type": "정답 없음",
+    "novelty_difference_recall": "정답 없음",
+    "novelty_timing": "정답 없음",
+    "element_judgment_accuracy": "정답 없음"
+  },
+  "cost": {
+    "usd": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "external_calls": 0,
+    "seconds": 2.151
+  }
+}

@@ -7,9 +7,11 @@ CQ 후보 파일은 main이 write_cq로 쓴다 (cq.py).
 
 import argparse
 import hashlib
+import json
 import logging
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
 from eval.retrieval.metrics import random_hit, random_recall, row_hit, row_recall
 from patent_ai.db.index_dump import index_fingerprint
+from patent_ai.git_paths import is_git_ignored as git_ignored_strict  # 저장소 밖도 거절
 from patent_ai.retrieval import get_searcher
 from patent_ai.retrieval.repository import (
     ChunkRepository,
@@ -270,14 +273,51 @@ def postgres_repo() -> ChunkRepository:
     return PostgresChunkRepository.from_url()
 
 
-def main(argv: list[str] | None = None, commit: str | None = None) -> int:
+def first_hit_rank(r: RowResult) -> int | None:
+    """처음 맞힌 순위 (1부터). 검색한 범위 안에 없으면 None."""
+    for i, found in enumerate(r.found_by_rank):
+        if found:
+            return i + 1
+    return None
+
+
+def write_rows(report: ScoreReport, path: Path) -> None:
+    """점수에 들어간 줄마다 한 줄씩 JSONL. 질의 글자는 쓰지 않는다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for r in report.rows:
+            line = {
+                "row_id": r.row.row_id,
+                "doc_ids": list(r.row.doc_ids or []),
+                "first_hit_rank": first_hit_rank(r),
+                # 채점 때 검색한 가장 큰 k. 이보다 큰 k로 비교하면 틀린 값이라 compare가 막는다
+                "k_max": report.k_max,
+            }
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+
+def main(
+    argv: list[str] | None = None,
+    commit: str | None = None,
+    # eval.common.paths.is_git_ignored(저장소 밖 통과)와 반대라 이름을 다르게 받았다
+    ignored: Callable[[Path], bool] = git_ignored_strict,
+) -> int:
     ap = argparse.ArgumentParser(prog="eval.retrieval.score")
     ap.add_argument("--config", required=True)
     ap.add_argument("--goldsets-root", default="data/goldsets")
     ap.add_argument("--chunks", default=None, help="조각 JSONL. 없으면 Postgres(DATABASE_URL)")
     ap.add_argument("--scores-dir", default=None)
     ap.add_argument("--cq-dir", default=None)
+    ap.add_argument("--rows-out", default=None, help="줄별 결과 JSONL (git 제외 경로만)")
     args = ap.parse_args(argv)
+
+    # 줄별 결과 경로는 채점 전에 본다: 커밋될 수 있는 곳이면 아무것도 쓰지 않고 끝낸다
+    rows_out = Path(args.rows_out).resolve() if args.rows_out else None
+    if rows_out is not None and not ignored(rows_out):
+        print(
+            f"--rows-out 경로가 git 제외 확인 안 됨 (커밋될 수 있음): {rows_out}", file=sys.stderr
+        )
+        return 1
 
     # --chunks가 있으면 가짜 조각(출력은 work/), 없으면 진짜 색인 DB(출력은 experiments/)
     chunks_mode = args.chunks is not None
@@ -318,6 +358,8 @@ def main(argv: list[str] | None = None, commit: str | None = None) -> int:
     except RetrievalEvalError as e:
         print(f"채점 실패: {e}", file=sys.stderr)
         return 1
+    if rows_out is not None:
+        write_rows(report, rows_out)
     print(f"scores.json 저장: n={report.scores['n']}", file=sys.stderr)
     return 0
 

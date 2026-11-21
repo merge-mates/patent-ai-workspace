@@ -12,13 +12,11 @@ import type {
   OADetail,
   OAResultResponse,
 } from '../types/provisional/case'
-import type {
-  ClarityReview,
-  ComparisonTable,
-  JudgmentUnit,
-  LegalEvidenceBundle,
-  LegalQuestion,
-} from '../types/provisional/analysis'
+import type { ClarityReview } from '../types/generated/ClarityReview'
+import type { ComparisonTable } from '../types/generated/ComparisonTable'
+import type { DirectionCandidates } from '../types/generated/DirectionCandidates'
+import type { JudgmentUnit } from '../types/generated/JudgmentUnit'
+import type { LegalEvidenceBundle } from '../types/generated/LegalEvidenceBundle'
 import {
   exampleClarity,
   exampleComparisons,
@@ -26,7 +24,7 @@ import {
   exampleLegalAnswer,
   exampleUnits,
 } from '../types/provisional/examples'
-import type { CaseCheck, DirectionCandidates, Drafts, DraftPatch } from '../types/provisional/direction'
+import type { CaseCheck, DraftPatch, DraftsWithCheck, LegalQuestion } from '../types/provisional/pending'
 import { exampleCaseChecks, exampleDirections, exampleDrafts } from '../types/provisional/directionExamples'
 import demoFiles from 'virtual:demo-results'
 import { ApiError } from './errors'
@@ -102,7 +100,7 @@ function summaryOf(b: Bundle): CaseSummary {
     run_state: 'succeeded',
     status: r.status.value,
     review_items_count: b.review_items?.length ?? null,
-    last_opened_at: b.last_opened_at,
+    updated_at: b.last_opened_at,
   }
 }
 
@@ -177,6 +175,7 @@ export const mockApi = {
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
     found.selection = { candidate_id: candidateId, origin: 'human_selected' }
+    // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
     return found
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {
@@ -186,13 +185,13 @@ export const mockApi = {
     if (!check) throw new ApiError('result_not_ready', '사건 전체 검사 결과가 아직 없습니다', 404)
     return check
   },
-  async getDrafts(oaId: string): Promise<Drafts> {
+  async getDrafts(oaId: string): Promise<DraftsWithCheck> {
     await byOA(oaId)
     const d = drafts[oaId]
     if (!d) throw new ApiError('result_not_ready', '초안이 아직 없습니다', 404)
     return d
   },
-  async patchDraft(draftId: string, patch: DraftPatch): Promise<Drafts> {
+  async patchDraft(draftId: string, patch: DraftPatch): Promise<DraftsWithCheck> {
     const d = Object.values(drafts).find((x) => x.draft_id === draftId)
     if (!d) throw new ApiError('draft_not_found', '초안을 찾을 수 없습니다', 404)
     // AI 원본은 그대로 두고 사람이 고친 글만 바꾼다. AI 원문과 같아지면 고친 것이 아님
@@ -200,12 +199,17 @@ export const mockApi = {
       const sec = d.opinion.find((x) => x.key === patch.section)
       if (!sec) throw new ApiError('section_not_found', '의견서 칸을 찾을 수 없습니다', 400)
       sec.human_text = patch.text === sec.ai_text ? null : patch.text
+      sec.origin = sec.human_text === null ? 'ai_generated' : 'human_edited' // 고친 글이 있으면 사람이 고친 것
     } else {
       const c = d.claims.find((x) => x.claim === patch.claim)
       // 보류한 청구항(초안 없음)은 고칠 수 없다
-      if (!c || c.after === null) throw new ApiError('claim_not_editable', '고칠 수 있는 보정 초안이 없습니다', 400)
-      c.human_text = patch.text === c.after ? null : patch.text
+      if (!c || c.ai_text === null) throw new ApiError('claim_not_editable', '고칠 수 있는 보정 초안이 없습니다', 400)
+      c.human_text = patch.text === c.ai_text ? null : patch.text
+      c.origin = c.human_text === null ? 'ai_generated' : 'human_edited'
     }
+    // 초안 전체도 고친 곳이 하나라도 있으면 사람이 고친 것
+    const edited = d.opinion.some((x) => x.origin === 'human_edited') || d.claims.some((x) => x.origin === 'human_edited')
+    d.origin = edited ? 'human_edited' : 'ai_generated'
     return { ...d }
   },
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
@@ -217,7 +221,7 @@ export const mockApi = {
 
 // mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)
 const directions: Record<string, DirectionCandidates[]> = structuredClone(exampleDirections)
-const drafts: Record<string, Drafts> = structuredClone(exampleDrafts)
+const drafts: Record<string, DraftsWithCheck> = structuredClone(exampleDrafts)
 
 // unit_id가 `<oa_id>:`로 시작하는 예시만 (판단 단위 ID는 OA ID로 시작한다)
 function ofOA<T>(table: Record<string, T>, oaId: string): T[] {

@@ -12,7 +12,14 @@ export type StatusValue = 'confirmed' | 'unverified' | 'not_found_in_scope' | 'c
  * `unverified`일 때 왜 확인되지 않았나.
  */
 export type UnverifiedReason =
-  'lookup_failed' | 'body_missing' | 'edition_unknown' | 'not_extracted' | 'ambiguous' | 'input_unverified'
+  | 'lookup_failed'
+  | 'body_missing'
+  | 'edition_unknown'
+  | 'not_extracted'
+  | 'ambiguous'
+  | 'input_unverified'
+  | 'evidence_rejected'
+  | 'limit_reached'
 export type Checked = string | null
 export type SearchedScope = string | null
 export type Documents = CaseDocument[]

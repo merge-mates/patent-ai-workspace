@@ -9,7 +9,7 @@ import { StatusTag } from '../../components/StatusTag'
 import { claimRange } from '../../format'
 import { articleLabel, rejectionKindLabel } from '../../labels'
 import type { CompareLoaderData, OALoaderData } from '../../loaders'
-import type { JudgmentUnit } from '../../types/provisional/analysis'
+import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 import { ClarityView } from './ClarityView'
 import { ComparisonView } from './ComparisonView'
 
