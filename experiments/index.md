@@ -7,6 +7,7 @@
 | m1-i3-f1-model-input-tables | F1 | `settings.model_input`: raw → tables_md | tables_md.confirmed 94.000 | 기준선 | $0.03 | [card](m1-i3-f1-model-input-tables/card.md) |
 | m1-i3-f1-pdf-tool | F1 | PDF 도구 4개 비교 (pdfplumber 유지 결정의 기준선) | pdfplumber.task2_with_cells 1.000 | 기준선 | - | [card](m1-i3-f1-pdf-tool/card.md) |
 | m1-i3-f1-read-oa-baseline | F1 | 기준선 (처음 정답 대비 채점, 바꾼 것 없음) | field_accuracy 0.605 | 기준선 | $0.00 | [card](m1-i3-f1-read-oa-baseline/card.md) |
+| m2-f3-skeleton | F3 | 기준선 (F3 뼈대 첫 tune 실행, 바꾼 것 없음) | search_recall 0.584 | 기준선 | $0.00 | [card](m2-f3-skeleton/card.md) |
 | m2-i1-cite-search-bm25-baseline | cite-search | 기준선 (처음 측정, 바꾼 것 없음) | hit@5 0.500 | - | $0.00 | [card](m2-i1-cite-search-bm25-baseline/card.md) |
 | m2-i1-law-bm25-baseline | 검색 (법령, 이슈 #66) | 기준선 (처음 측정, 바꾼 것 없음) | hit@5 1.000 | - | $0.00 | [card](m2-i1-law-bm25-baseline/card.md) |
 | m2-i2-cite-search-bm25-unique-query | 검색 (인용문헌, PR #117 리뷰 요청 2 후속) | `settings.bm25.unique_query_terms`: false → true | hit@5 0.412 | -0.088 | $0.00 | [card](m2-i2-cite-search-bm25-unique-query/card.md) |
