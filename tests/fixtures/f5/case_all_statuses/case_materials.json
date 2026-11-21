@@ -19,7 +19,7 @@
     {
       "what": "D2 US20990000002A1 본문",
       "depends_on_tasks": [
-        "f3_compare:oa_1:D2"
+        "f3_compare:oa_4:D2"
       ],
       "lookup_result": "lookup_failed",
       "ask_upload": true,
@@ -28,7 +28,7 @@
   ],
   "held_tasks": [
     {
-      "task": "f3_compare:oa_1:D2",
+      "task": "f3_compare:oa_4:D2",
       "waiting_for": "D2 US20990000002A1 본문"
     }
   ],
@@ -42,19 +42,19 @@
     },
     {
       "kind": "conflict",
-      "target": "oa_result[oa_1].dispatch_number",
-      "label": "oa_1",
+      "target": "oa_result[oa_4].dispatch_number",
+      "label": "oa_4",
       "reason": "값이 서로 충돌"
     },
     {
       "kind": "unverified",
-      "target": "oa_result[oa_1].response_due",
-      "label": "oa_1",
+      "target": "oa_result[oa_4].response_due",
+      "label": "oa_4",
       "reason": "not_extracted"
     },
     {
       "kind": "needs_human_review",
-      "target": "oa_result[oa_1].rejections[1]",
+      "target": "oa_result[oa_4].rejections[1]",
       "label": "42-3",
       "reason": "지원 안 하는 거절이유 42-3"
     }

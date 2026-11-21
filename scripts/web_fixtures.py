@@ -74,7 +74,7 @@ CASES = [
         "case_id": "c_4",
         "case_name": "가상의 상태 표시 시연 장치",
         "last_opened_at": "2099-02-02T10:00:00",
-        "oa_id": "oa_1",
+        "oa_id": "oa_4",
         "fixture_dir": ALL_STATUSES,
     },
 ]

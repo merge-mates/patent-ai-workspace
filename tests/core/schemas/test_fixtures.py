@@ -122,7 +122,7 @@ def all_materials() -> CaseMaterials:
 
 
 def test_네_값_사건이_스키마_검사를_통과한다(all_oa, all_materials):
-    assert all_oa.oa_id == "oa_1"
+    assert all_oa.oa_id == "oa_4"
     assert all_materials.case_id == "c_all_statuses"
 
 
@@ -155,7 +155,7 @@ def test_네_값_사건에_직접_검토_거절이유_42_3이_있다(all_oa):
 def test_네_값_사건에_빠진_자료_하나와_보류가_있다(all_materials):
     assert len(all_materials.missing) == 1
     assert all_materials.missing[0].ask_upload is True
-    assert [h.task for h in all_materials.held_tasks] == ["f3_compare:oa_1:D2"]
+    assert [h.task for h in all_materials.held_tasks] == ["f3_compare:oa_4:D2"]
 
 
 def test_네_값_사건의_review_items가_마무리_결과와_같다(all_oa, all_materials):

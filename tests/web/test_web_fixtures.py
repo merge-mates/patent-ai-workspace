@@ -17,3 +17,9 @@ def test_커밋된_fixture가_다시_뽑은_것과_같다(case):
     # 파일로 쓸 때와 같게 JSON을 한 번 거쳐 비교한다 (집합 등 파이썬 값이 섞이지 않게)
     regenerated = json.loads(json.dumps(web_fixtures._run_one(case), ensure_ascii=False))
     assert regenerated == committed
+
+
+def test_사건끼리_oa_id가_겹치지_않는다():
+    # 겹치면 /cases/<id>가 다른 사건의 OA 화면으로 가 버린다
+    oa_ids = [c["oa_id"] for c in web_fixtures.CASES]
+    assert len(oa_ids) == len(set(oa_ids))
