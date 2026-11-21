@@ -2,6 +2,7 @@ import { Button, Steps } from 'antd'
 import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
 import { CaseInfo } from '../components/CaseInfo'
+import { currentRunText, isPreviousResult } from '../previousResult'
 import { HumanCheckTag } from '../components/Marks'
 import { type OpenCite, type OpenEvidence, type OpenPage, SourceContext } from '../components/sourceContext'
 import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
@@ -28,7 +29,9 @@ type StepItem = { title: string; description?: React.ReactNode; status?: 'wait' 
 // 단계 막대 항목 (D5). 단계 상태는 "결과가 있나"(로더가 받은 값)로 정한다. current_step은 자유 글이라 파싱하지 않고 그대로 보인다.
 // 실행 중: 결과 있는 단계 "끝남", 결과 없는 첫 단계 "찾는 중", 그 뒤 "대기". 실행이 끝났으면 지금까지처럼 (정리에 직접 할 일 N)
 // 실행 줄이 아직 없으면(run null) 끝난 실행처럼 결과 유무만 보인다
-function stepItems(run: LatestRun | null, ready: (boolean | null)[], todoText: string): StepItem[] {
+// previous: 보이는 결과가 이전 실행 것이면 "끝남" 대신 "이전 결과" (서버는 실행이 끝나야 그 실행 결과를 연다)
+function stepItems(run: LatestRun | null, ready: (boolean | null)[], todoText: string, previous: boolean): StepItem[] {
+  const doneText = previous ? '이전 결과' : '끝남'
   const ended = run === null || isRunEnded(run.state)
   const firstMissing = ready.indexOf(false) // 결과 없는 첫 단계 (모두 있으면 -1). null(모름)은 건너뛴다
   const stepText = run?.current_step ? (
@@ -48,7 +51,7 @@ function stepItems(run: LatestRun | null, ready: (boolean | null)[], todoText: s
       return { ...base, description: i === 0 && ready[0] ? `직접 할 일 ${todoText}` : undefined }
     }
     if (run.state === 'failed' || run.state === 'cancelled') {
-      if (ready[i]) return { ...base, description: i === 0 ? `직접 할 일 ${todoText}` : '끝남' }
+      if (ready[i]) return { ...base, description: i === 0 ? `직접 할 일 ${todoText}` : doneText }
       if (i === firstMissing)
         return run.state === 'failed'
           ? { ...base, description: <><div>멈춤</div>{stepText}</>, status: 'error', disabled: true }
@@ -56,7 +59,7 @@ function stepItems(run: LatestRun | null, ready: (boolean | null)[], todoText: s
       return { ...base, status: 'wait', disabled: true }
     }
     // queued · running
-    if (ready[i]) return { ...base, description: '끝남', status: 'finish' }
+    if (ready[i]) return { ...base, description: doneText, status: 'finish' }
     if (i === firstMissing) return { ...base, description: <><div>찾는 중</div>{stepText}</>, status: 'process', disabled: true }
     return { ...base, description: '대기', status: 'wait', disabled: true }
   })
@@ -92,6 +95,7 @@ export function CaseShell() {
   // 실행 상태는 폴링 값 (loader가 준 값에서 시작해 2.5초마다 GET /runs/{id}만 부른다)
   const snap = useRunSnapshot(data.oa.latest_run)
   const run = snap?.run ?? null
+  const previous = isPreviousResult(data.oaResult, data.oa.latest_run)
   const runError = snap?.error ?? null
   const ready: (boolean | null)[] = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
   const reviewCount = data.reviewItems?.length ?? data.materials?.review_items_count ?? null
@@ -149,6 +153,12 @@ export function CaseShell() {
                 ? `${r.notice_kind.value ? noticeKindLabel[r.notice_kind.value] : (r.notice_kind.raw_text ?? '통지 종류 모름')} · 제출기일 ${r.response_due.raw_text ?? '모름'}`
                 : `정리 결과 없음 · ${run ? runStateLabel[run.state] : '아직 정리를 시작하지 않았습니다'}`}
             </span>
+            {/* 지금 보이는 결과가 이전 실행 것이면 머리에서도 짧게 (정리 단계 머리에 자세히) */}
+            {previous && run && (
+              <span className="label2" style={{ color: 'var(--fg-cautionary-text)' }}>
+                이전 실행 결과 · {currentRunText(run)}
+              </span>
+            )}
             {r && <HumanCheckTag />}
             {r && r.response_due.status.value !== 'confirmed' && <StatusTag status={r.response_due.status} />}
             {r && r.status.value !== 'confirmed' && <StatusTag status={r.status} />}
@@ -176,7 +186,7 @@ export function CaseShell() {
               size="small"
               current={stepIdx}
               onChange={(i) => navigate(base + STEPS[i].path)}
-              items={stepItems(run, ready, todoText)}
+              items={stepItems(run, ready, todoText, previous)}
             />
             {/* 실행이 도는 동안: 상태를 못 받았으면 알리고, 직접 새로 받는 버튼 */}
             {/* 실패·취소는 단계 결과가 다 있어도 보여야 한다 */}

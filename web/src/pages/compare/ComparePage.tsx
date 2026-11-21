@@ -93,7 +93,7 @@ export function ComparePage() {
       <div>
         <Button type="primary" size="large" disabled={!ready.directions} onClick={() => navigate(`/oas/${oa.oa_id}/directions`)}>
           {/* 결과가 없을 때 왜 못 가는지 글자로 (실행 중 / 멈춤·취소 / 모름) */}
-          {ready.directions ? '대응 방향으로' : running ? '대응 방향이 끝나면 열려요' : '대응 방향 결과가 없어요'}
+          {ready.directions ? '대응 방향으로' : running ? '실행이 끝나면 열려요' : '대응 방향 결과가 없어요'}
         </Button>
       </div>
     </div>

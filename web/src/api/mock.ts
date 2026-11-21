@@ -137,8 +137,8 @@ export const mockApi = {
   },
   async getOAResult(oaId: string): Promise<OAResultResponse> {
     const b = await byOA(oaId)
-    gate(b, PHASE.summary)
-    return { oa_id: b.oa_id, run_id: b.run_id, status: b.oa_result.status.value, result: b.oa_result }
+    const runId = gateResult(b)
+    return { oa_id: b.oa_id, run_id: runId, status: b.oa_result.status.value, result: b.oa_result }
   },
   async getMaterials(caseId: string): Promise<CaseMaterials> {
     const b = await byCase(caseId)
@@ -149,7 +149,7 @@ export const mockApi = {
   },
   async getReviewItems(caseId: string): Promise<ReviewItem[]> {
     const b = await byCase(caseId)
-    gate(b, PHASE.summary)
+    gateResult(b)
     if (!b.review_items) throw new ApiError('result_not_ready', '검토할 사항 목록이 아직 없습니다', 404)
     return b.review_items
   },
@@ -178,19 +178,19 @@ export const mockApi = {
   },
   // ②③④는 스키마가 아직 없어 예시 데이터 (types/provisional/examples.ts)
   async getUnits(oaId: string): Promise<JudgmentUnit[]> {
-    gate(await byOA(oaId), PHASE.compare)
+    gateResult(await byOA(oaId))
     return exampleUnits[oaId] ?? []
   },
   async getComparisons(oaId: string): Promise<ComparisonTable[]> {
-    gate(await byOA(oaId), PHASE.compare)
+    gateResult(await byOA(oaId))
     return ofOA(exampleComparisons, oaId)
   },
   async getClarityReviews(oaId: string): Promise<ClarityReview[]> {
-    gate(await byOA(oaId), PHASE.compare)
+    gateResult(await byOA(oaId))
     return ofOA(exampleClarity, oaId)
   },
   async getLegalEvidence(oaId: string): Promise<LegalEvidenceBundle[]> {
-    gate(await byOA(oaId), PHASE.compare)
+    gateResult(await byOA(oaId))
     return ofOA(exampleLegal, oaId)
   },
   // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
@@ -199,7 +199,7 @@ export const mockApi = {
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<DirectionCandidates[]> {
-    gate(await byOA(oaId), PHASE.directions)
+    gateResult(await byOA(oaId))
     return directions[oaId] ?? []
   },
   async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
@@ -215,14 +215,14 @@ export const mockApi = {
     return found
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {
-    gate(await byOA(oaId), PHASE.directions)
+    gateResult(await byOA(oaId))
     // 예시가 없으면 "다루지 않은 거절이유 없음"처럼 지어내지 않고 결과 없음으로
     const check = exampleCaseChecks[oaId]
     if (!check) throw new ApiError('result_not_ready', '사건 전체 검사 결과가 아직 없습니다', 404)
     return check
   },
   async getDrafts(oaId: string): Promise<DraftsWithCheck> {
-    gate(await byOA(oaId), PHASE.directions)
+    gateResult(await byOA(oaId))
     const d = drafts[oaId]
     if (!d) throw new ApiError('result_not_ready', '초안이 아직 없습니다', 404)
     return d
@@ -250,12 +250,12 @@ export const mockApi = {
   },
   // 실행 상태: 시작 시각과 흐른 시간으로 만든다 (D5). 표에 없는 OA는 늘 끝남
   async getRun(runId: string): Promise<RunStatus> {
-    const b = (await bundles()).find((x) => x.run_id === runId)
+    const b = await byRun(runId)
     if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
     return { ...runOf(b), oa_id: b.oa_id, error: null }
   },
   async cancelRun(runId: string): Promise<RunStatus> {
-    const b = (await bundles()).find((x) => x.run_id === runId)
+    const b = await byRun(runId)
     if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
     const run = loadRun(b.oa_id)
     // 이미 끝난 실행은 취소할 수 없다 (끝난 것을 취소로 바꾸지 않는다)
@@ -268,14 +268,14 @@ export const mockApi = {
   // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
   async createCase(_file: File): Promise<CreatedCase> {
     const b = committed[0]
-    startRun(b.oa_id)
-    return { case_id: b.case_id, oa_id: b.oa_id, run_id: b.run_id }
+    startRun(b, false)
+    return { case_id: b.case_id, oa_id: b.oa_id, run_id: runOf(b).run_id }
   },
   // 다음 OA 올리기: 파일은 읽지 않고, 그 사건의 예시 OA 실행이 새로 시작한 것으로 흉내만 낸다
   async createOA(caseId: string, _file: File): Promise<CreatedOA> {
     const b = await byCase(caseId)
-    startRun(b.oa_id)
-    return { oa_id: b.oa_id, run_id: b.run_id }
+    startRun(b, false)
+    return { oa_id: b.oa_id, run_id: runOf(b).run_id }
   },
   // 파일을 읽어 자료로 만들 수 없어서 지어내지 않고 오류로 (화면은 mock에서 이 버튼을 막아 둔다)
   async uploadDocument(_caseId: string, _file: File): Promise<UploadedDocument> {
@@ -284,7 +284,7 @@ export const mockApi = {
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
   async rerunOA(oaId: string): Promise<CreatedRun> {
     const b = await byOA(oaId)
-    startRun(b.oa_id)
+    startRun(b, true)
     return { run_id: runOf(b).run_id }
   },
   async getLegalChat(_chatId: string): Promise<LegalChatView> {
@@ -303,13 +303,19 @@ const RUN_STEPS = [
 ]
 const STEP_MS = 3000 // 단계마다 약 3초 (판단)
 // 결과가 "열리는" 단계 번호: 그 단계를 지나면(번호 이상이면) 결과 엔드포인트가 200
-const PHASE = { materials: 2, summary: 3, compare: 4, directions: 5 }
+// 사건 자료 목록만 단계로 연다 (사건 단위 자료라 실행 결과 계약 밖으로 보고, 올리기 화면이 "찾아온 자료"를 실행 중에 보인다).
+// 정리·대비·방향·초안 결과는 단계가 아니라 실행이 끝나야(gateResult) 열린다
+const PHASE = { materials: 2, compare: 4, directions: 5 }
 
 const MOCK_CHAT_ID = 'mock_chat_1'
 
 interface MockRun {
   startedAt: number
   cancelledAt?: number
+  // 이 실행의 run_id (다시 돌릴 때마다 새로 만든다). 없으면 fixture 원래 run_id
+  runId?: string
+  // 다시 돌리기 전에 끝나 있던 실행의 run_id: 이 실행이 끝나기 전까지 결과는 그 실행 것으로 보인다
+  prevRunId?: string | null
 }
 // mockRuns[oa_id]: 새로고침해도 이어지게 sessionStorage에 둔다 (막히면 메모리만)
 const mockRuns: Record<string, MockRun> = {}
@@ -335,8 +341,19 @@ function saveRun(oaId: string, run: MockRun) {
     console.warn(`[mock] 실행 흉내 저장소에 쓰지 못함 (${runKey(oaId)}): 새로고침하면 사라져요`, e)
   }
 }
-function startRun(oaId: string) {
-  saveRun(oaId, { startedAt: Date.now() })
+// 올리기(새 사건·다음 OA)는 이전 결과가 없고, 다시 돌리기(keepPrev)는 마지막으로 끝난 실행의 결과를 이어 보인다
+function startRun(b: Bundle, keepPrev: boolean) {
+  const prevRunId = keepPrev ? lastDoneRunId(b) : null
+  saveRun(b.oa_id, { startedAt: Date.now(), runId: `${b.run_id}_r${Date.now()}`, prevRunId })
+}
+const currentRunId = (b: Bundle) => loadRun(b.oa_id)?.runId ?? b.run_id
+// 지금까지 결과가 확정된 마지막 실행 (없으면 null)
+function lastDoneRunId(b: Bundle): string | null {
+  const run = loadRun(b.oa_id)
+  if (!run) return b.run_id // 시작한 적 없는 사건은 늘 끝난 상태
+  const state = runOf(b).state
+  if (state === 'succeeded' || state === 'waiting_for_human') return currentRunId(b)
+  return run.prevRunId ?? null
 }
 const elapsedOf = (run: MockRun) => (run.cancelledAt ?? Date.now()) - run.startedAt
 
@@ -352,17 +369,35 @@ function runOf(b: Bundle): LatestRun {
   const run = loadRun(b.oa_id)
   if (!run) return { run_id: b.run_id, state: 'succeeded', current_step: null }
   const phase = phaseOf(b.oa_id)
-  if (run.cancelledAt) return { run_id: b.run_id, state: 'cancelled', current_step: null }
-  if (phase < RUN_STEPS.length) return { run_id: b.run_id, state: 'running', current_step: RUN_STEPS[phase] }
+  const run_id = currentRunId(b)
+  if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
+  if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   const waiting = (directions[b.oa_id] ?? []).some(
     (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
   )
-  return { run_id: b.run_id, state: waiting ? 'waiting_for_human' : 'succeeded', current_step: null }
+  return { run_id, state: waiting ? 'waiting_for_human' : 'succeeded', current_step: null }
 }
 
-// 아직 안 지난 단계의 결과는 404 result_not_ready (서버와 같게)
+// run_id로 사건 묶음 찾기: 다시 돌린 실행은 fixture의 run_id에 꼬리가 붙어 있다
+async function byRun(runId: string): Promise<Bundle> {
+  const found = (await bundles()).find((x) => x.run_id === runId || currentRunId(x) === runId)
+  if (!found) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
+  return found
+}
+
+// 사건 자료: 아직 안 지난 단계면 404 result_not_ready
 function gate(b: Bundle, need: number) {
   if (phaseOf(b.oa_id) < need) throw new ApiError('result_not_ready', '결과가 아직 없습니다', 404)
+}
+
+// 결과 엔드포인트의 계약 (안 B): "가장 최근에 결과가 확정된 실행"의 결과만 준다. 실행 중·실패·취소된 실행의 결과는 주지 않는다.
+// 판단: waiting_for_human은 서버 계약에 빈칸이다. mock은 "방향 후보까지 결과가 확정돼 사람이 고르기를 기다리는 상태"로 보고
+// 그 실행의 결과를 열어 둔다 (안 열면 방향을 고를 수 없어 올리기 → 방향 고르기 → 초안 흐름이 끊긴다).
+// 돌려주는 값은 결과가 속한 실행의 run_id (다시 돌리는 중이면 이전 실행 것이라 화면의 "이전 실행 결과"가 보인다)
+function gateResult(b: Bundle): string {
+  const runId = lastDoneRunId(b)
+  if (runId === null) throw new ApiError('result_not_ready', '결과가 아직 없습니다', 404)
+  return runId
 }
 
 // mock 저장소: 예시를 복사해 두고 고른 것·고친 것을 여기에 쓴다 (예시 원본은 그대로)

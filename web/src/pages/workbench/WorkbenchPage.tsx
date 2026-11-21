@@ -1,6 +1,8 @@
 import { Alert, App, Button, Popconfirm, Result, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { useLocation, useNavigate, useRouteLoaderData } from 'react-router'
+import { PreviousResultNote } from '../../components/PreviousResultNote'
+import { isPreviousResult } from '../../previousResult'
 import { ReviewPanel } from '../../components/ReviewPanel'
 import { StatusTag } from '../../components/StatusTag'
 import { TodoRows } from '../../components/TodoList'
@@ -22,12 +24,24 @@ export function WorkbenchPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   // 실행 상태는 폴링 값 (단계 막대와 같은 값을 구독한다)
-  const run = useRunSnapshot(oa.latest_run)?.run ?? null
+  const snap = useRunSnapshot(oa.latest_run)
+  const run = snap?.run ?? null
   const running = run !== null && !isRunEnded(run.state)
   // 검토할 사항 펼침: "전체 보기"로 #review-items 주소로 왔으면 펼쳐 있고, 직접 누른 것이 그 뒤면 그게 이긴다.
   // 눌렀을 때의 주소 key를 같이 적어 두어, 같은 주소로 다시 와도(새 key) 주소 쪽을 따른다 (effect 없이 계산)
   const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
   const showReview = pressed?.key === location.key ? pressed.open : location.hash === '#review-items'
+
+  // 실행 취소: 확인을 받고 취소한 뒤 화면 데이터를 다시 받는다
+  const cancel = async () => {
+    if (run === null) return
+    try {
+      await api.cancelRun(run.run_id)
+      await refreshRun(run.run_id)
+    } catch (e) {
+      message.error(`취소하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   if (oaResult === null) {
     // 결과가 없으면 빈 표 대신 실행 상태를 보인다. 실패·취소를 "정리 중"으로 보이지 않게 나눈다
@@ -41,38 +55,51 @@ export function WorkbenchPage() {
     if (run.state === 'cancelled') {
       return <Result status="warning" title="정리를 취소했습니다" subTitle={`${runStateLabel[run.state]}${step}`} />
     }
-    return <Result status="info" title="아직 정리하는 중입니다" subTitle={`${runStateLabel[run.state]}${step}`} />
+    // 도는 동안은 결과가 열리지 않으니 여기서도 취소할 수 있어야 한다
+    return (
+      <Result
+        status="info"
+        title="아직 정리하는 중입니다"
+        subTitle={`${runStateLabel[run.state]}${step}`}
+        extra={
+          running ? (
+            <Popconfirm
+              title="실행을 취소할까요?"
+              description="이번 실행 결과는 남지 않아요. 전에 끝난 결과가 있으면 그것이 보여요."
+              okText="취소하기"
+              cancelText="계속 두기"
+              onConfirm={cancel}
+            >
+              <Button size="small">실행 취소</Button>
+            </Popconfirm>
+          ) : undefined
+        }
+      />
+    )
   }
   const r = oaResult.result
   const todos = directTodos(data)
   const reviewCount = reviewItems?.length ?? materials?.review_items_count ?? null
 
-  // 실행 취소: 확인을 받고 취소한 뒤 화면 데이터를 다시 받는다
-  const cancel = async () => {
-    if (run === null) return
-    try {
-      await api.cancelRun(run.run_id)
-      await refreshRun(run.run_id)
-    } catch (e) {
-      message.error(`취소하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
   return (
     <>
-      {/* 정리는 끝났고 뒤 단계가 아직 도는 중: 먼저 보라고 알린다 */}
+      {/* 지금 보이는 결과가 지금 실행 것이 아니면 (다시 돌리는 중·실패·취소) 이전 실행 결과라고 머리에서 알린다 */}
+      {snap !== null && isPreviousResult(oaResult, oa.latest_run) && <PreviousResultNote snap={snap} />}
+      {/* 서버는 실행이 끝나야(succeeded) 그 실행의 결과를 연다: 도는 동안은 끝나면 열린다고 알린다 */}
       {running && (
         <Alert
           type="info"
           showIcon
-          message={
-            data.ready.compare
-              ? '대응 방향 후보를 만드는 중이에요. 정리·대비는 먼저 보세요.'
-              : '인용발명 대비와 법률 근거를 찾는 중이에요. 정리는 끝났으니 먼저 보세요.'
-          }
-          description={`지금 하는 일: ${run.current_step ?? '준비 중'}. 끝나면 위 단계에 표시돼요.`}
+          message="실행이 끝나면 이번 실행 결과가 열려요."
+          description={`지금 하는 일: ${run.current_step ?? '준비 중'}.`}
           action={
-            <Popconfirm title="실행을 취소할까요?" description="지금까지 끝난 결과는 남아요." okText="취소하기" cancelText="계속 두기" onConfirm={cancel}>
+            <Popconfirm
+              title="실행을 취소할까요?"
+              description="이번 실행 결과는 남지 않아요. 전에 끝난 결과가 있으면 그것이 보여요."
+              okText="취소하기"
+              cancelText="계속 두기"
+              onConfirm={cancel}
+            >
               <Button size="small">실행 취소</Button>
             </Popconfirm>
           }
@@ -124,7 +151,7 @@ export function WorkbenchPage() {
       {/* 다음 단계: 대비 결과가 없으면 열지 못한다 (실행 중이면 끝나면 열린다고 알림) */}
       <div>
         <Button type="primary" size="large" disabled={!data.ready.compare} onClick={() => navigate(`/oas/${oa.oa_id}/compare`)}>
-          {!data.ready.compare && running ? '대비가 끝나면 열려요' : '인용발명 대비로'}
+          {!data.ready.compare && running ? '실행이 끝나면 열려요' : '인용발명 대비로'}
         </Button>
       </div>
     </>
