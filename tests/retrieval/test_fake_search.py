@@ -10,6 +10,7 @@ from patent_ai.retrieval import (
     RecordedEmbeddingMissing,
     get_searcher,
 )  # 패키지 import가 fake도 등록
+from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.fake import recorded_embed
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 
@@ -149,3 +150,9 @@ def test_vector인데_조각에_embedding_없으면_ValueError(tmp_path):
     s = get_searcher("fake", repo, {"index_version": "cite-idx-v1", "query_vectors": QV})
     with pytest.raises(ValueError, match="embedding"):
         s.search("열 처리", "cite", "vector", 3)
+
+
+def test_fake는_hybrid를_스스로_거절한다():
+    # 래퍼가 hybrid를 받게 된 뒤로, hybrid가 아닌 구현은 스스로 거절한다 (계약 design 4절)
+    with pytest.raises(ModeNotSupportedError):
+        cite().search("열 처리", "cite", "hybrid", 3, doc_ids=[KR])

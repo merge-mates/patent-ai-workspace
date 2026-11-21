@@ -1,0 +1,5 @@
+# 인용문헌 색인 cite-idx-v2 설정 (#67). v1 조각 그대로 + embedding. 설정을 바꾸면 새 판(v3)으로, 이 파일은 고치지 않는다.
+index_version: cite-idx-v2
+from: data/processed/cite_search/cite-idx-v1.jsonl
+embed_step: cite_search.embed
+out: data/processed/cite_search/cite-idx-v2.jsonl
