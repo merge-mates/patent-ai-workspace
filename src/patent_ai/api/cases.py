@@ -30,6 +30,7 @@ from patent_ai.core.cases.store import (
     new_case_id,
     now_utc,
 )
+from patent_ai.core.f1_oa_reader.case_repository import load_case_view
 from patent_ai.core.runs.launcher import RunLauncher, mark_launch_failed
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.case_materials import CaseMaterials
@@ -187,7 +188,9 @@ def get_case(
     if row is None:
         raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다")
     # OA별 심사 대상 판은 묶기 결과의 OA 줄에서 oa_id로 찾는다 (같은 oas 표)
-    examined = {v.oa_id: v.examined_claim_version for v in cases.repo.oa_versions(case_id)}
+    # 이력·청구항 판은 가장 늦게 올라온 OA 시점까지 자른 것 (core가 자름, design 3-3)
+    view = load_case_view(cases.repo, case_id)
+    examined = {v.oa_id: v.examined_claim_version for v in view.oa_versions}
     return CaseDetail(
         case_id=row.case_id,
         case_name=row.case_name,
@@ -201,7 +204,7 @@ def get_case(
         ],
         events=[
             CaseEventOut(kind=e.kind, doc_number=e.doc_number, seq=e.seq)
-            for e in cases.repo.events(case_id)
+            for e in view.events
         ],
         claim_versions=[
             ClaimVersionOut(
@@ -210,7 +213,7 @@ def get_case(
                 source_doc_number=v.source_doc_number,
                 document_id=v.document_id,
             )
-            for v in cases.repo.claim_versions(case_id)
+            for v in view.claim_versions
         ],
     )
 

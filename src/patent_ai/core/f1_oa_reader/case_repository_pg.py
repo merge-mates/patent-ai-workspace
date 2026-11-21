@@ -132,7 +132,11 @@ class PostgresCaseRepository:
             version = None
             if oa.examined_claim_version_id is not None:
                 version = _to_row(self._s.get(ClaimVersion, oa.examined_claim_version_id))
-            out.append(OAVersionRow(oa.id, event.doc_number, examined_from_version(version)))
+            out.append(
+                OAVersionRow(
+                    oa.id, event.doc_number, examined_from_version(version), oa.document_id
+                )
+            )
         return out
 
     def claim_versions(self, case_id: str) -> list[ClaimVersionRow]:

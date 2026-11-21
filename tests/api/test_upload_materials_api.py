@@ -14,6 +14,7 @@ from patent_ai.api.deps import get_case_repository_unit, get_case_unit, get_uplo
 from patent_ai.api.main import create_app
 from patent_ai.core.cases.store import InMemoryCaseAppStore, NewDocument
 from patent_ai.core.f1_oa_reader.case_repository import InMemoryCaseRepository
+from patent_ai.core.schemas.case_materials import LookupResult
 from tests.api.repo_fake import FakeRepoUnit
 from tests.core.f1.test_case_repository import CASE_ID, _record
 
@@ -41,7 +42,9 @@ class SameOARepository(InMemoryCaseRepository):
 
     def oa_versions(self, case_id):
         rows = super().oa_versions(case_id)
-        return [replace(r, oa_id=i) for r, i in zip(rows, self._oa_ids, strict=False)]
+        # 앞에서부터 사건 저장소 OA ID로 바꾸고, 남는 OA 줄은 그대로 둔다
+        ids = [*self._oa_ids, *(r.oa_id for r in rows[len(self._oa_ids) :])]
+        return [replace(r, oa_id=i) for r, i in zip(rows, ids, strict=True)]
 
 
 def _app(tmp_path, repo_unit, store):
@@ -174,12 +177,34 @@ def test_materials_api_사건_보기에_이력_청구항_판_OA별_심사_대상
         ("amendment", "112099000000112", 2),
         ("oa", "952099000000002", 3),
     ]
-    # 판이 섞이지 않는다: 출원 때 판 0, 보정서 판 1, 등록공보 판은 따로
+    # 판이 섞이지 않는다: 출원 때 판 0, 보정서 판 1. 등록공보 판은 OA 당시 판이 아니라 빠진다
     assert [(v["version"], v["source_kind"]) for v in body["claim_versions"]] == [
         (0, "application"),
         (1, "amendment"),
-        (2, "registration"),
     ]
     (oa,) = body["oas"]
     assert oa["examined_claim_version"]["value"] == "as_filed"
     assert oa["examined_claim_version"]["status"]["value"] == "confirmed"
+
+
+def test_materials_api_직접_확인할_자료는_422_upload_not_asked(env):
+    client, unit, root = env
+    saved = unit.repo.load_case_materials(CASE_ID)
+    first = saved.missing[0].model_copy(
+        update={"ask_upload": False, "lookup_result": LookupResult.UNSUPPORTED_COUNTRY}
+    )
+    # 저장소 값을 바꿔 지원 안 하는 나라 자료를 흉내 낸다
+    rows = unit.repo._cases[CASE_ID]
+    body = saved.model_copy(update={"missing": [first, *saved.missing[1:]]}).model_dump(mode="json")
+    unit.repo._cases[CASE_ID] = replace(rows, materials_body=body)
+    res = _upload(client, first.what)
+    assert res.status_code == 422 and res.json()["code"] == "upload_not_asked"
+    assert not _pdfs(root)
+
+
+def test_materials_api_빈_파일은_422_empty_file(env):
+    client, unit, root = env
+    what = unit.repo.load_case_materials(CASE_ID).missing[0].what
+    res = _upload(client, what, data=b"")
+    assert res.status_code == 422 and res.json()["code"] == "empty_file"
+    assert not _pdfs(root)

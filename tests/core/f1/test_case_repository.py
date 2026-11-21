@@ -24,6 +24,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     InMemoryCaseRepository,
     StoredFile,
     UnknownCaseError,
+    load_case_view,
     oa_result_row,
     plan_case_rows,
     upload_missing_material,
@@ -440,3 +441,48 @@ def test_없는_사건은_이력_판_빈_목록():
     repo = InMemoryCaseRepository()
     assert repo.events("c_none") == [] and repo.oa_versions("c_none") == []
     assert repo.case_application_number("c_none") is None
+
+
+# 지난 사건: OA① → 보정서① → OA② → 보정서② → 등록결정, 등록공보 판까지 저장 (#54 조회 모양)
+AMD2 = "1-1-2099-0000002-34"
+LONG_HISTORY = [
+    *HISTORY,
+    HistoryEvent(kind="amendment", doc_number_text=AMD2),
+    HistoryEvent(kind="registration_decision"),
+]
+
+
+def _view(materials):
+    repo = InMemoryCaseRepository()
+    repo.save_case(_record(materials=materials, history=LONG_HISTORY))
+    return load_case_view(repo, CASE_ID)
+
+
+def test_사건_보기는_가장_늦게_올라온_OA_시점까지_자른다():
+    # OA②까지 올라옴: 그 뒤 보정서②·등록결정과 보정서② 판, 등록공보 판이 빠진다
+    view = _view(MATERIALS)
+    assert [(e.kind, e.seq) for e in view.events if e.seq is not None] == [
+        ("oa", 1),
+        ("amendment", 2),
+        ("oa", 3),
+    ]
+    assert [(v.version, v.source_kind, v.source_doc_number) for v in view.claim_versions] == [
+        (0, "application", None),
+        (1, "amendment", "112099000000112"),
+    ]
+
+
+def test_첫_OA만_올라왔으면_그_뒤_보정서와_둘째_OA가_빠진다():
+    only_first = [m for m in MATERIALS if m.document_id != "doc_oa2"]
+    view = _view(only_first)
+    assert [(e.kind, e.seq) for e in view.events if e.seq is not None] == [("oa", 1)]
+    assert [v.source_kind for v in view.claim_versions] == ["application"]
+    # OA별 심사 대상 판은 자르지 않는다 (OA②의 판도 남음)
+    assert [v.dispatch_number for v in view.oa_versions] == ["952099000000001", "952099000000002"]
+
+
+def test_올라온_OA를_모르면_이력은_그대로이고_공보_판만_빠진다():
+    no_oa = [m for m in MATERIALS if m.kind != "oa"]
+    view = _view(no_oa)
+    assert len([e for e in view.events if e.seq is not None]) == len(LONG_HISTORY)
+    assert {v.source_kind for v in view.claim_versions} == {"application", "amendment"}

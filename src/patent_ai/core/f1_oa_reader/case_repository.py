@@ -172,6 +172,16 @@ class OAVersionRow:
     oa_id: str
     dispatch_number: str | None
     examined_claim_version: ExtractedValue[str]
+    document_id: str | None = None  # OA 원문. 있으면 올라온(받은) OA
+
+
+@dataclass(frozen=True)
+class CaseView:
+    """사건 보기에 내는 이력·청구항 판·OA별 판. 가장 늦게 올라온 OA 시점까지 자른 것."""
+
+    events: list[EventRow]
+    claim_versions: list[ClaimVersionRow]
+    oa_versions: list[OAVersionRow]
 
 
 @dataclass(frozen=True)
@@ -467,6 +477,47 @@ def upload_missing_material(
     return updated
 
 
+def cut_to_latest_oa(
+    events: list[EventRow], versions: list[ClaimVersionRow], oas: list[OAVersionRow]
+) -> tuple[list[EventRow], list[ClaimVersionRow]]:
+    """이력·청구항 판을 가장 늦게 올라온 OA 시점까지 자른다 (design 3-3 GET /cases/{id}).
+
+    - 기준: 원문이 있는 OA 중 이력 순서(seq)가 가장 늦은 것. 지난 사건은 #54 조회로 뒤 이력
+      (보정서②·등록결정)과 등록공보까지 저장돼 있어, 자르지 않으면 OA 당시 판과 섞여 보인다.
+    - 이력: 그 OA의 seq 뒤 줄을 뺀다. seq 없는 줄(이력에 없고 자료로만 온 것)은 시점을 몰라 남긴다.
+    - 청구항 판: 출원 때 판은 늘, 보정서 판은 남은 이력 줄에 잇는 것만. 공개·등록공보 판은 뺀다.
+    - 올라온 OA를 모르면(원문 있는 OA가 이력에 없음) 이력은 자르지 않고 공보 판만 뺀다 (경고).
+    """
+    seq_by_number = {e.doc_number: e.seq for e in events if e.kind == "oa" and e.seq is not None}
+    uploaded = [
+        seq_by_number[o.dispatch_number]
+        for o in oas
+        if o.document_id is not None and o.dispatch_number in seq_by_number
+    ]
+    if uploaded:
+        cutoff = max(uploaded)
+        kept = [e for e in events if e.seq is None or e.seq <= cutoff]
+    else:
+        if events:
+            logger.warning("cut_to_latest_oa: 올라온 OA의 이력 순서를 몰라 이력을 자르지 않음")
+        kept = list(events)
+    kept_ids = {e.id for e in kept}
+    kept_versions = [
+        v
+        for v in versions
+        if v.source_kind == "application"
+        or (v.source_kind == "amendment" and v.case_event_id in kept_ids)
+    ]
+    return kept, kept_versions
+
+
+def load_case_view(repo: CaseRepository, case_id: str) -> CaseView:
+    """사건 보기 값: 이력·청구항 판은 가장 늦게 올라온 OA 시점까지, OA별 판은 그대로."""
+    oas = repo.oa_versions(case_id)
+    events, versions = cut_to_latest_oa(repo.events(case_id), repo.claim_versions(case_id), oas)
+    return CaseView(events=events, claim_versions=versions, oa_versions=oas)
+
+
 # --- 저장소 인터페이스와 메모리 fake -----------------------------------------------
 
 
@@ -578,6 +629,7 @@ class InMemoryCaseRepository:
                 examined_claim_version=examined_from_version(
                     versions.get(o.examined_claim_version_id or "")
                 ),
+                document_id=o.document_id,
             )
             for o in sorted(rows.oas, key=lambda o: order[o.case_event_id])
         ]
