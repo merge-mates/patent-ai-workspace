@@ -194,6 +194,10 @@ class CaseAppStore(Protocol):
 
     def get_oa(self, oa_id: str) -> OADetailRow | None: ...
 
+    def create_run(self, oa_id: str) -> RunRow:
+        """있는 OA에 queued 실행을 하나 더 만든다 (POST /oas/{id}/runs). OA 확인은 부르는 쪽."""
+        ...
+
     def find_document_by_sha256(
         self, sha256: str, case_id: str | None = None
     ) -> ExistingDocument | None:
@@ -232,11 +236,13 @@ class InMemoryRunStore:
         return row
 
     def latest_for_oa(self, oa_id: str) -> RunRow | None:
-        mine = [r for r in self._rows if r.oa_id == oa_id]
-        return max(mine, key=lambda r: (r.created_at, r.id), default=None)
+        with self._lock:  # 백그라운드 스레드가 _rows를 바꾸는 중에 읽지 않게 잠근다
+            mine = [r for r in self._rows if r.oa_id == oa_id]
+            return max(mine, key=lambda r: (r.created_at, r.id), default=None)
 
     def get_row(self, run_id: str) -> RunRow | None:
-        return next((r for r in self._rows if r.id == run_id), None)
+        with self._lock:
+            return next((r for r in self._rows if r.id == run_id), None)
 
     # --- RunStatusStore (실행 상태 바꾸기, #57) ---
 
@@ -251,7 +257,8 @@ class InMemoryRunStore:
         ]
 
     def get_status(self, run_id: str) -> RunStatus | None:
-        return self._status.get(run_id)
+        with self._lock:
+            return self._status.get(run_id)
 
     def transition(
         self,
@@ -288,7 +295,8 @@ class InMemoryRunStore:
 
     def unfinished_run_ids(self) -> list[str]:
         unfinished = {RunState.QUEUED, RunState.RUNNING}
-        return [r.id for r in self._rows if self._status[r.id].state in unfinished]
+        with self._lock:
+            return [r.id for r in self._rows if self._status[r.id].state in unfinished]
 
 
 @dataclass
@@ -350,6 +358,9 @@ class InMemoryCaseAppStore:
         if case is None:
             raise CaseNotFoundError(case_id)
         return self._add_oa(case, file)
+
+    def create_run(self, oa_id: str) -> RunRow:
+        return self._runs.create_queued(oa_id)
 
     def _refs(self, case: _Case) -> list[OARef]:
         return [OARef(oa_id) for oa_id in case.oa_ids]

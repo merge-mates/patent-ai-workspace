@@ -133,6 +133,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/runs:
+    post:
+      summary: Create Run
+      operationId: create_run_oas__oa_id__runs_post
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunCreated'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /runs/{run_id}:
+    get:
+      summary: Get Run
+      operationId: get_run_runs__run_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatusOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /runs/{run_id}/cancel:
+    post:
+      summary: Cancel Run
+      operationId: cancel_run_runs__run_id__cancel_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatusOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Body_add_oa_cases__case_id__oas_post:
@@ -328,6 +400,61 @@ components:
       - oa_id
       - notice_kind
       title: OARefOut
+    RunCreated:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - run_id
+      title: RunCreated
+    RunErrorOut:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: RunErrorOut
+    RunStatusOut:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        oa_id:
+          type: string
+          title: Oa Id
+        state:
+          type: string
+          title: State
+        current_step:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Step
+        waiting_for:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Waiting For
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/RunErrorOut'
+          - type: 'null'
+      type: object
+      required:
+      - run_id
+      - oa_id
+      - state
+      - current_step
+      - error
+      title: RunStatusOut
     ValidationError:
       properties:
         loc:

@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, UploadFile
 from pydantic import BaseModel
 
-from patent_ai.api.deps import CaseUnit, get_case_unit, get_upload_dir
+from patent_ai.api.deps import CaseUnit, get_case_unit, get_run_launcher, get_upload_dir
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases import upload
 from patent_ai.core.cases.store import (
@@ -19,6 +19,7 @@ from patent_ai.core.cases.store import (
     new_case_id,
     now_utc,
 )
+from patent_ai.core.runs.launcher import RunLauncher
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,6 +70,7 @@ def create_case(
     file: UploadFile,
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     upload_dir: Annotated[Path, Depends(get_upload_dir)],
+    launch: Annotated[RunLauncher, Depends(get_run_launcher)],
 ) -> CreatedCase:
     data, sha256 = read_pdf(file)
 
@@ -107,6 +109,7 @@ def create_case(
         ) from None
     except upload.UploadFailedError:
         raise AppError(500, "upload_failed", "파일을 저장하지 못했습니다") from None
+    launch(created.run_id, created.oa_id)  # 커밋 뒤에 실행기에 넘긴다
     return CreatedCase(case_id=created.case_id, oa_id=created.oa_id, run_id=created.run_id)
 
 

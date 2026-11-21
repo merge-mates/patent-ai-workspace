@@ -112,6 +112,9 @@ class PostgresCaseAppStore:
         run = self._runs.create_queued(oa.id)
         return OACreated(oa.id, doc.id, run.id)
 
+    def create_run(self, oa_id: str) -> RunRow:
+        return self._runs.create_queued(oa_id)
+
     def create_case(self, file: NewDocument, case_id: str | None = None) -> CaseCreated:
         # 임시 사건: 출원번호를 모른다 (partial unique라 비어 있는 사건은 여럿이어도 된다)
         case = Case(user_id=DEFAULT_USER_ID, application_number=None)

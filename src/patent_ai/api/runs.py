@@ -1,0 +1,94 @@
+"""실행 엔드포인트 (이슈 #57). 라우터만 두고 판단은 core/cases/start_run.py, core/runs/에 있다."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
+from patent_ai.api.deps import (
+    CaseUnit,
+    get_cancel_registry,
+    get_case_unit,
+    get_run_launcher,
+    get_run_status_store,
+)
+from patent_ai.api.errors import AppError
+from patent_ai.core.cases.start_run import OANotFoundError, RunInProgressError, create_run_for_oa
+from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
+from patent_ai.core.runs.launcher import RunLauncher
+from patent_ai.core.runs.store import RunNotFound, RunStatus, RunStatusStore
+
+router = APIRouter()
+
+
+class RunCreated(BaseModel):
+    run_id: str
+
+
+class RunErrorOut(BaseModel):
+    code: str
+    message: str
+
+
+class RunStatusOut(BaseModel):
+    run_id: str
+    oa_id: str
+    state: str
+    current_step: str | None
+    waiting_for: str | None = None  # 사람을 기다릴 때만
+    error: RunErrorOut | None  # 실패했을 때만 {code, message}
+
+
+def _out(s: RunStatus) -> RunStatusOut:
+    return RunStatusOut(
+        run_id=s.run_id,
+        oa_id=s.oa_id,
+        state=s.state.value,
+        current_step=s.current_step,
+        waiting_for=s.waiting_for,
+        error=RunErrorOut(**s.error) if s.error else None,
+    )
+
+
+@router.post("/oas/{oa_id}/runs", response_model=RunCreated)
+def create_run(
+    oa_id: str,
+    unit: Annotated[CaseUnit, Depends(get_case_unit)],
+    launch: Annotated[RunLauncher, Depends(get_run_launcher)],
+) -> RunCreated:
+    try:
+        run = create_run_for_oa(unit.store, oa_id)
+    except OANotFoundError:
+        raise AppError(404, "oa_not_found", "OA를 찾을 수 없습니다") from None
+    except RunInProgressError:
+        raise AppError(409, "run_in_progress", "이미 진행 중인 실행이 있습니다") from None
+    unit.commit()  # 커밋해야 실행기(다른 세션)가 이 줄을 본다
+    launch(run.id, oa_id)
+    return RunCreated(run_id=run.id)
+
+
+@router.get("/runs/{run_id}", response_model=RunStatusOut)
+def get_run(
+    run_id: str, store: Annotated[RunStatusStore, Depends(get_run_status_store)]
+) -> RunStatusOut:
+    status = store.get_status(run_id)
+    if status is None:
+        raise AppError(404, "run_not_found", "실행을 찾을 수 없습니다")
+    return _out(status)
+
+
+@router.post("/runs/{run_id}/cancel", response_model=RunStatusOut)
+def cancel_run(
+    run_id: str,
+    store: Annotated[RunStatusStore, Depends(get_run_status_store)],
+    registry: Annotated[CancelRegistry, Depends(get_cancel_registry)],
+) -> RunStatusOut:
+    try:
+        # queued·waiting_for_human은 바로 cancelled, running은 표시만 (응답 state는 running 그대로)
+        return _out(request_cancel(run_id, store, registry))
+    except RunNotFound:
+        raise AppError(404, "run_not_found", "실행을 찾을 수 없습니다") from None
+    except RunAlreadyFinished:
+        raise AppError(409, "run_already_finished", "이미 끝난 실행입니다") from None
