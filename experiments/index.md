@@ -25,3 +25,5 @@
 | m2-i2-law-vector-baseline | 검색 (법령, 이슈 #66) | `mode`·`impl`: bm25·law_bm25 → vector·vector (`law-idx-v2` = v1 조각 + text-embedding-3-small 벡터) | hit@5 0.316 | -0.684 | $0.00 | [card](m2-i2-law-vector-baseline/card.md) |
 | m2-i3-cite-search-bm25-noise-b | cite-search (이슈 #178 둘째 점수) | `noise_scope`: 없음(그 인용문헌 안) → `retrieval/cite_noise_b.jsonl` (B안: tune 인용문헌 전체 풀). 검색 설정·색인은 그대로 | hit@10 0.353 | -0.265 | $0.00 | [card](m2-i3-cite-search-bm25-noise-b/card.md) |
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
+| m3-i1-f3-rescore | F3 | 코드 판 (m2-f3-skeleton 849d18f 뼈대 → main 9eb8237: 부모 구성요소 넣기·second_search 기본 켬 등 그 사이 머지된 F3). 설정은 그 판의 config/f3.yaml 그대로 | search_recall 0.585 | +0.001 | $0.00 | [card](m3-i1-f3-rescore/card.md) |
+| m3-i1-f4-first-score | F4 | 코드 판 (m3-f4-skeleton 1731de3 → main 9eb8237)과 `final_rejection_limit` 기본값 false → true. 처음으로 F4 정답으로 채점 | direction_top1 0.104 | - | $0.00 | [card](m3-i1-f4-first-score/card.md) |
