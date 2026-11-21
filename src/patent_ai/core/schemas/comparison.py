@@ -14,6 +14,7 @@ from patent_ai.core.schemas.common import (
     Flag,
     ResultBase,
     Status,
+    StatusValue,
     worst_status,
 )
 from patent_ai.core.schemas.judgment_unit import UNIT_ID_FORM, UnitId
@@ -56,6 +57,14 @@ class ComparisonRow(ResultBase):
             raise ValueError("why_retrieved는 ai_found일 때만, 그리고 그때는 꼭 채운다")
         if ai_found and not has_reason:
             raise ValueError("why_retrieved가 비어 있음")
+        # 개시됨을 확인됨으로 두려면 인용문헌 원문 위치가 있어야 한다
+        # (차이 후보·불명은 그 구성이 인용문헌에 없다는 뜻이라 위치가 없을 수 있다)
+        if (
+            self.judgment == Judgment.DISCLOSED
+            and self.status.value == StatusValue.CONFIRMED
+            and not self.evidence
+        ):
+            raise ValueError("disclosed이고 confirmed인 줄은 evidence가 하나 이상 필요")
         return self
 
 
@@ -160,6 +169,11 @@ class ClarityReview(ResultBase):
             raise ValueError("term이 비어 있음")
         if not self.note.strip():
             raise ValueError("note가 비어 있음")
+        # 실제 근거는 spec_definition 한 곳: 물려받은 evidence 칸은 쓰지 않는다
+        if self.evidence:
+            raise ValueError("evidence는 비워 둔다 (근거는 spec_definition)")
+        if self.status.value == StatusValue.CONFIRMED and self.spec_definition is None:
+            raise ValueError("confirmed면 spec_definition(명세서 정의 위치)이 필요")
         # claim은 unit_id의 c번호(대표 청구항)와 같아야 한다
         m = UNIT_ID_FORM.fullmatch(self.unit_id)
         if m is None or int(m["claim"]) != self.claim:

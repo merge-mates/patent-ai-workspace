@@ -19,7 +19,7 @@ data/goldsets/
 │   ├── case_full/           받은 사건 묶음 전체 (정답 쪽, AI 입력 아님, #148)
 │   ├── search_v0/           검색 정답을 만든 검수본 (retrieval/ 파일의 재료, 드라이브 이름 `tune_search_v0/`)
 │   └── f4/                  F4 대응 방향 (아직 없음, 6절)
-└── report/                  보고용. 마일스톤 끝에 채점기만 읽는다 (개발하는 세션은 열지 않음. 만드는 법은 아래 report 정답 절)
+└── report/                  보고용. M3 끝(11/26)에 채점기만 읽는다 (개발하는 세션은 열지 않음. 만드는 법은 아래 report 정답 절)
 ```
 - `report/`는 `tune/`과 폴더 구조·파일 꼴이 같다. 다른 것은 보는 때뿐이다.
 
@@ -53,7 +53,7 @@ data/goldsets/
 
 ## 5. 드라이브 사본
 - `data/goldsets/`는 각자 컴퓨터에 있다. 둘이 같은 판을 쓰도록 드라이브에 판마다 사본을 둔다 (`goldsets_v<VERSION>.zip` 꼴) (목록과 같은 `04_KIPRIS_대량원본/` 아래).
-- report 사본은 마일스톤 끝 채점 때만 내려받는다.
+- report 사본은 M3 끝(11/26) 채점 때만 내려받는다.
 
 ## 6. 아직 없는 것
 - F4 대응 방향 정답 파일, ③④층 채점 (M3 전. 형식 검사와 ①②층 채점은 `eval/f4/`. 규칙은 [f4-direction-gold.md](../docs/evaluation/f4-direction-gold.md)).

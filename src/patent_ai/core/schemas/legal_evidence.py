@@ -137,6 +137,12 @@ class LegalSource(BaseModel):
     def _검사(self) -> LegalSource:
         if not self.identifier.strip():
             raise ValueError("identifier가 비어 있음")
+        # 확인됨이면 원문 발췌가 있어야 한다 (법령·심사기준·판례·심결 모두)
+        if (
+            self.status.value == StatusValue.CONFIRMED
+            and not (self.evidence.raw_text or "").strip()
+        ):
+            raise ValueError("confirmed 근거는 evidence.raw_text(원문 발췌)가 비지 않아야 함")
         if self.source_kind in _VERSIONED:
             edition = self.evidence.edition
             # 판본을 모르는 법령·심사기준은 확인됨으로 둘 수 없다
@@ -181,6 +187,12 @@ class LegalClaim(ResultBase):
     def _검사(self) -> LegalClaim:
         if not self.text.strip():
             raise ValueError("text가 비어 있음")
+        # 실제 근거는 sources[].evidence 한 곳: 물려받은 evidence 칸은 쓰지 않는다
+        if self.evidence:
+            raise ValueError("evidence는 비워 둔다 (근거는 sources[].evidence)")
+        # 검토하지 않은 주장이 조용히 confirmed로 보이지 않게 한다
+        if self.sources and self.review is None and Flag.NEEDS_HUMAN_REVIEW not in self.flags:
+            raise ValueError("근거가 있는데 review가 없으면 flags에 needs_human_review가 필요")
         # 사람이 꼭 봐야 하는 경우는 flags로 드러낸다
         if (
             self.review is not None and self.review.verdict != ReviewVerdict.SUPPORTED
@@ -214,6 +226,7 @@ class FurtherReview(BaseModel):
     chunk_id: str
     why: FurtherReviewWhy
     note: str | None = None
+    index_version: str | None = None  # 조각이 속한 색인 판
 
     @model_validator(mode="after")
     def _검사(self) -> FurtherReview:
@@ -264,6 +277,14 @@ class LegalEvidenceBundle(ResultBase):
             raise ValueError("claims의 no에 중복이 있음")
         if not self.claims:
             _빈_목록_status_검사(self.status, "claims")
+            # 못 찾음 != 없음: 판본·날짜를 몰라 뺀 조각이 있으면 "없음"이 아니라 unverified
+            skipped = sum(
+                e.skipped_unverified_edition + e.skipped_unknown_date for e in self.search_log
+            )
+            if skipped > 0 and self.status.value == StatusValue.NOT_FOUND_IN_SCOPE:
+                raise ValueError(
+                    "skipped 조각이 있으면 not_found_in_scope 불가 (unverified edition_unknown)"
+                )
             return self
         expected = summarize_bundle_status(self.claims)
         if self.status.value != expected.value:

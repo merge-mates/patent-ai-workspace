@@ -10,17 +10,17 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
 ## 1. 출처와 이용 조건
 - 어디서: 법제처 Open API (`lawSearch.do` 목록, `lawService.do` 본문). 인증키는 `.env`의 `LAW_OC`. 심사기준 원문은 각 판의 첨부파일 링크(`flDownload.do?flSeq=<번호>`, 인증키 없음).
 - 이용 조건: 법령·판결·훈령·예규는 저작권법 제7조에 따라 저작권 보호 대상이 아니다. Open API 이용 약관(출처 표시)은 따로 확인하지 않았다 [가정].
-- 위치: `data/raw/` (git 제외). 받은 기록은 `data/raw/DOWNLOAD_1116.md`, `data/raw/DOWNLOAD_1118.md`.
+- 위치: `data/raw/` (git 제외). 법령 JSON(`body_*`, `list_*`)은 `data/raw/law/` 아래에 있다. 색인 설정(`config/index/law-idx-v1.yaml`의 `raw_dir`)이 이 폴더를 읽는다. 옛 폴더에서는 `data/raw/` 바로 아래였고, 11/20 새 저장소로 복사할 때 `law/`로 모았다. 같은 폴더의 `body_특허실용신안_심사기준_*.json` 8개는 본문이 빈 API 응답이다 (3절). 받은 기록은 `data/raw/DOWNLOAD_1116.md`, `data/raw/DOWNLOAD_1118.md`.
 - 저장 파일 안의 인증키는 `***`로 가렸다(11/18 새 파일 100개 검사, 남은 키 0개).
 
 ## 2. 무엇이 들었나
 
 | 자료 | 판·건수 | 파일 형식 | 위치 |
 |---|---|---|---|
-| 특허법 | 14판 (시행 2017.9.22, 2018.10.18~2022.10.18 중 12판, 2025.11.11) | JSON (조문 단위) | `data/raw/body_특허법_<MST>_<시행일>.json` |
-| 특허법 시행령 | 3판 | JSON | `data/raw/body_특허법_시행령_*.json` |
-| 특허법 시행규칙 | 5판 | JSON | `data/raw/body_특허법_시행규칙_*.json` |
-| 변리사법 | 1판 | JSON | `data/raw/body_변리사법_*.json` |
+| 특허법 | 14판 (시행 2017.9.22, 2018.10.18~2022.10.18 중 12판, 2025.11.11) | JSON (조문 단위) | `data/raw/law/body_특허법_<MST>_<시행일>.json` |
+| 특허법 시행령 | 3판 | JSON | `data/raw/law/body_특허법_시행령_*.json` |
+| 특허법 시행규칙 | 5판 | JSON | `data/raw/law/body_특허법_시행규칙_*.json` |
+| 변리사법 | 1판 | JSON | `data/raw/law/body_변리사법_*.json` |
 | 특허·실용신안 심사기준 | 8판 (아래 표) | PDF 8 (그중 2판은 HWP 원본을 한컴 뷰어로 PDF 변환) | `data/raw/exam_guideline_*.pdf`, `data/raw/exam_guideline_versions/` |
 | 판례 (진보성) | 30건 | JSON | `data/raw/prec/` |
 | 판례 (명확성) | 29건 (+ 진보성과 겹치는 1건) | JSON | `data/raw/prec/` |
@@ -59,6 +59,7 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
 - 받기 스크립트:
   - `scripts/fetch_exam_guidelines_versions.py`: 심사기준 옛 판 메타 JSON
   - `scripts/fetch_exam_guideline_attachments.py`: 심사기준 판별 본문 첨부(PDF 우선, 없으면 HWP)
+  - 위 두 스크립트는 옛 위치 기준이다 (`RAW_DIR = data/raw`, 11/18에 돌림). 심사기준 JSON이 이제 `data/raw/law/`에 있어서 그대로 다시 돌리면 attachments 스크립트가 JSON을 0개 찾고 경고 없이 빈 기록으로 끝난다. 다시 받을 일이 생기면 JSON을 읽는 경로(40줄 glob)만 `data/raw/law`로 바꾸고 0개면 멈추게 고친 뒤 돌린다. `RAW_DIR` 자체를 바꾸면 저장 위치(`OUT_DIR = RAW_DIR / "exam_guideline_versions"`)도 같이 옮겨지니 바꾸지 않는다. 지금은 다시 돌릴 계획이 없어 고치지 않았다.
   - `scripts/fetch_prec_novelty.py`: 신규성 판례 1차
   - `scripts/fetch_prec_novelty_refill.py`: 본문에 제29조 제1항이 있는 사건만으로 다시 채우기
   - 이 PR에 없는 것: 법령 판 받기 `fetch_law_versions.py`와 심사기준 현행 판 받기 `fetch_exam_guidelines.py`·`fetch_exam_guidelines_body.py`는 은진 로컬 `feat/law-chunker` 브랜치에만 있다(원격에 안 올림). 법령 목록·본문 받기 `list_patent_laws.py`·`fetch_law_body.py`는 원격 `feat/law-rag-demo` 브랜치에 있다. 진보성·명확성 판례(11/16)는 스크립트로 남지 않았고, 받은 방법은 `data/raw/DOWNLOAD_1116.md` 1절에 있다.

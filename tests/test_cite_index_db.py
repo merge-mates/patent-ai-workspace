@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk
 from patent_ai.retrieval.cite_index.__main__ import write_index
+from patent_ai.retrieval.law_index_db import replace_index
 from patent_ai.retrieval.repository import PostgresChunkRepository
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 from patent_ai.settings import get_settings
@@ -68,3 +69,23 @@ def test_쓴_줄을_저장소가_읽는다(session):
     assert repo.has_index_version("cite", IV)
     got = repo.chunks("cite", IV, doc_ids=["KRTEST1A"])
     assert [c.chunk_id for c in got] == [f"{IV}:KRTEST1A:pg1"]
+
+
+def test_v2를_두_번_넣어도_줄_수가_같고_벡터가_저장된다(session):
+    v2 = "cite-idx-v2"
+    chunks = [
+        c.model_copy(
+            update={
+                "index_version": v2,
+                "chunk_id": c.chunk_id.replace(IV, v2),
+                "embedding": [0.0123456789123] * 1536,  # float32로 저장하면 값이 바뀐다,
+            }
+        )
+        for c in (_chunk("pg1"), _chunk("pg2"))
+    ]
+    assert replace_index(session, chunks, "cite", v2) == 2
+    # DB에서 다시 읽은 값(float32)과 JSONL 값(float64)으로 같은 판을 다시 넣어도 멈추지 않는다
+    session.expire_all()
+    assert replace_index(session, chunks, "cite", v2) == 2
+    got = PostgresChunkRepository(session).chunks("cite", v2, doc_ids=["KRTEST1A"])
+    assert len(got) == 2 and all(len(c.embedding) == 1536 for c in got)

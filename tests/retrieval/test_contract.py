@@ -4,7 +4,6 @@ import pytest
 
 from patent_ai.retrieval import (
     IndexVersionMismatchError,
-    ModeNotSupportedError,
     SearchContractViolationError,
     UnknownImplError,
     UnknownIndexVersionError,
@@ -159,10 +158,11 @@ def test_모르는_corpus_mode_값은_ValueError():
         _search(_get(), mode="x")
 
 
-def test_hybrid는_지원하지_않는다():
-    _register("t", lambda: [])
-    with pytest.raises(ModeNotSupportedError):
-        _search(_get(), mode="hybrid")
+def test_래퍼는_hybrid를_받는다():
+    # 래퍼가 hybrid를 막지 않는다 (구현이 맞게 돌려주면 통과)
+    _register("t", lambda: [_hit("c1", 1.0, 1)])
+    res = _search(_get(), mode="hybrid")
+    assert res.mode == "hybrid"
 
 
 def test_저장소에_없는_색인_판():
