@@ -73,7 +73,7 @@ class CallRecorder(Protocol):
 
 
 class MemoryRecorder:
-    """메모리에 쌓는 기록기 (DB agent_steps 구현은 #55 뒤)."""
+    """메모리에 쌓는 기록기 (DB agent_steps 구현은 `core/runs/step_log_pg.py`)."""
 
     def __init__(self) -> None:
         self.records: list[CallRecord] = []

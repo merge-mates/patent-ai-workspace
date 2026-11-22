@@ -1,4 +1,5 @@
-"""hybrid(RRF) 검색기 테스트. 메모리 저장소 + 지어낸 벡터 + 녹화 질의 벡터, 네트워크 없음."""
+"""hybrid(RRF) 검색기 테스트. 메모리 저장소 + 지어낸 벡터
++ 기록된 모델 응답(질의 벡터), 네트워크 없음."""
 
 import json
 
@@ -103,7 +104,7 @@ def test_녹화_질의_벡터를_쓴다(tmp_path):
     s = _searcher(embed=None, query_vectors=str(path))
     assert _search(s).hits[0].location.start == 2
     with pytest.raises(RecordedEmbeddingMissing):
-        _search(s, query="녹화에 없는 질의")
+        _search(s, query="기록된 모델 응답에 없는 질의")
 
 
 # --- 실패 ---

@@ -1,10 +1,10 @@
-"""사람이 돌려 진짜 모델 답을 녹화 파일로 저장한다 (테스트용 녹화 만들기).
+"""사람이 돌려 진짜 모델 답을 기록 파일로 저장한다 (테스트용 기록된 모델 응답 만들기).
 
 사용: uv run python scripts/record_llm.py <단계> <변수 JSON 파일> [--out 폴더]
 - 진짜 모델 API를 부른다(비용 발생). 키는 환경 변수에서 SDK가 읽고, 출력·저장하지 않는다.
-- 이미 같은 녹화가 있으면 멈춘다 (덮어쓰지 않음).
-- 지어낸 통지서만 녹화한다. 저장소 data/ 아래 변수 파일은 거부한다.
-- 녹화를 tests/fixtures로 옮기는 일은 사람이 한다.
+- 이미 같은 기록이 있으면 멈춘다 (덮어쓰지 않음).
+- 지어낸 통지서만 기록한다. 저장소 data/ 아래 변수 파일은 거부한다.
+- 기록된 응답을 tests/fixtures로 옮기는 일은 사람이 한다.
 """
 
 import argparse
@@ -17,7 +17,7 @@ from patent_ai.core.llm.config import REPO_ROOT, load_step_config
 from patent_ai.core.llm.prompts import render_prompt
 from patent_ai.core.llm.recorded import recording_key, save_recording
 
-# 기본 녹화 위치: git 밖 work/
+# 기본 기록 위치: git 밖 work/
 DEFAULT_OUT = REPO_ROOT / "work" / "llm_recordings"
 
 
@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # 비공개 자료(data/)가 외부 모델로 가지 않게 먼저 막는다
     if is_under_data_dir(args.variables_file):
-        print(f"data/ 아래 파일은 녹화에 쓸 수 없음: {args.variables_file}", file=sys.stderr)
+        print(f"data/ 아래 파일은 기록에 쓸 수 없음: {args.variables_file}", file=sys.stderr)
         return 1
 
     cfg = load_step_config(args.step)
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         max_tokens=cfg.max_tokens,
     )
     if (args.out / f"{key}.json").exists():
-        print(f"이미 녹화가 있어 멈춤: {args.out / f'{key}.json'}", file=sys.stderr)
+        print(f"이미 기록이 있어 멈춤: {args.out / f'{key}.json'}", file=sys.stderr)
         return 1
 
     print(f"진짜 모델 API를 부릅니다 (비용 발생): 단계={args.step}, 모델={cfg.model}")

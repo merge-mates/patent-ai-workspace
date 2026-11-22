@@ -209,7 +209,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 
 ## 9. 테스트 방법
 - 어디서 테스트하나: `run_f3` 입력 → `F3Result` (`tests/core/f3/test_f3_run.py`), 단계마다 함수 경계(나누기·단위·대비·명확성·한 번 더 찾기·부모 구성요소), 채점기 CLI (`tests/f3_eval/test_f3_cli.py`).
-- 가짜 응답 / 녹화 응답: 모델 응답은 기록된 응답(지어낸 청구항·조각용), 검색은 메모리 조각 저장소 + 가짜 질의 임베딩 (`tests/core/f3/fakes.py`·`scenario.py`). 네트워크·API 키·DB 없이 돈다. 실제 원문 fixture는 넣지 않는다 (CLAUDE.md).
+- 가짜 응답 / 기록된 모델 응답: 모델 응답은 사람이 쓴 가짜 응답(지어낸 청구항·조각용), 검색은 메모리 조각 저장소 + 가짜 질의 임베딩 (`tests/core/f3/fakes.py`·`scenario.py`). 네트워크·API 키·DB 없이 돈다. 실제 원문 fixture는 넣지 않는다 (CLAUDE.md).
 - 상태마다 나오는 경우:
   - 확인됨: 근거 글자가 조각에 그대로 (`test_f3_compare.py::test_다시_불러_고쳐_오면_통과한다`)
   - 조회 범위 내 없음: 근거를 못 고름 + 찾아본 범위 (`::test_근거를_못_고르면_조회_범위_내_없음과_찾아본_범위를_남긴다`, 명확성 `test_f3_clarity.py::test_정의를_못_고르면_…`)
