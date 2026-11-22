@@ -63,6 +63,14 @@ class PredHeld(_Loose):
     task: str
 
 
+class PredRecheck(_Loose):
+    """다시 찾기(recheck) 기록 한 줄 (구성요소 하나). 도구 쓰임을 셀 때만 읽는다."""
+
+    outcome: str
+    tool_calls: int = 0
+    turns: int = 0
+
+
 class F3Pred(_Loose):
     oa_id: str
     units: list[PredUnit] = Field(default_factory=list)
@@ -71,3 +79,4 @@ class F3Pred(_Loose):
     search_log: list[PredSearch] = Field(default_factory=list)
     examiner_locations: list[dict] = Field(default_factory=list)
     held_tasks: list[PredHeld] = Field(default_factory=list)  # 건너뛴 종속항 판별에 쓴다
+    recheck_log: list[PredRecheck] = Field(default_factory=list)  # 옛 예측엔 없다 (빈 목록)
