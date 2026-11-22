@@ -79,9 +79,10 @@ def empty_legal_bundle(oa_id: str, unit: JudgmentUnit, checked_on: date) -> Lega
 def legal_bundle_for(inp: F4Input, unit: JudgmentUnit) -> LegalEvidenceBundle:
     """이 묶음의 법률 근거 묶음 (F4 design 3-1 ④ 연결 키).
 
-    1. `unit_id`가 같은 묶음
-    2. 없으면 `oa_id`·`rejection`이 같고 `unit_id`가 빈 묶음 (F2는 거절이유 하나마다 만든다:
-       그 거절이유의 모든 판단 단위가 같이 쓴다)
+    1. `unit_id`가 같은 묶음. F2(#28)는 ④를 판단 단위마다 만들고 `unit_id`를 채우므로
+       실제 F2 결과는 이 규칙으로 맞는다
+    2. 없으면 `oa_id`·`rejection`이 같고 `unit_id`가 빈 묶음. `unit_id` 없이 거절이유 단위로
+       만든 ④가 오면 쓰는 대비용이다 (그 거절이유의 모든 판단 단위가 같이 쓴다)
     3. 없으면 빈 묶음(확인되지 않음). `legal`이 비지 않았는데 못 맞췄으면 경고한다
     """
     for bundle in inp.legal:
