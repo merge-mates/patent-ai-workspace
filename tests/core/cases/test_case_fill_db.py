@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from patent_ai.core.cases.case_fill import PostgresCaseFill
@@ -174,3 +174,30 @@ def test_기존_사건에_같은_파일이_있으면_합치지_않는다(factory
         assert store.get_oa(second.oa_id).case_id == second.case_id
         assert store.get_case(second.case_id).merged_into is None
         assert [r.oa_id for r in store.get_case(first.case_id).oas] == [first.oa_id]
+
+
+def test_기존_사건_이력에_같은_발송번호_줄이_있으면_그_줄에_붙인다(factory):
+    # 자동 조회(#54)가 기존 사건 이력에 이번 OA 줄을 먼저 넣어 둔 경우 (OA는 아직 없음).
+    # 새 줄을 옮기면 uq_case_events_case_kind_number에 걸린다: 있던 줄(그 순서)을 쓴다
+    first = _numbered_case(factory, "fill_272_hist_a")
+    with factory() as s:
+        s.add(CaseEvent(case_id=first.case_id, kind="oa", doc_number=DISP2, seq=5))
+        s.commit()
+    second = _upload(factory, "fill_272_hist_b")
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        second.oa_id, second.run_id, _next_oa(second.oa_id), None
+    )
+    with factory() as s:
+        oa = s.get(OA, second.oa_id)
+        event = s.get(CaseEvent, oa.case_event_id)
+        assert (oa.case_id, event.case_id, event.doc_number, event.seq) == (
+            first.case_id,
+            first.case_id,
+            DISP2,
+            5,
+        )
+        events = s.scalars(
+            select(CaseEvent).where(CaseEvent.case_id == first.case_id, CaseEvent.kind == "oa")
+        ).all()
+        assert sorted(e.doc_number for e in events) == sorted([DISP, DISP2])  # 줄이 늘지 않음
+        assert PostgresCaseAppStore(s).get_case(second.case_id).merged_into == first.case_id

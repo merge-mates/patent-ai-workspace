@@ -17,8 +17,9 @@
 하지 않는 것 (조용히 넘기지 않고 경고를 남긴다):
 - 합칠 사건에 같은 파일이 이미 있을 때 합치기 (올릴 때 409로 막히는 드문 경우). 임시 사건 그대로.
 - 사건 출원번호와 다른 번호를 읽었을 때 사건 번호 바꾸기.
-- 합친 뒤 F2~F4 다시 돌리기: 이번 실행은 임시 사건 자료로 돌았다. 사람이 다시 실행하면
-  합친 사건 자료로 돈다.
+- 합친 뒤 F2~F4 다시 돌리기: 지휘는 check_oa에서 이미 기존 사건 id를 쓰지만, F3·F4 입력 글자
+  (CaseInput.texts)는 실행을 시작할 때 OA가 있던 임시 사건에서 읽었다. 사람이 다시 실행하면
+  합친 사건 자료로 읽는다.
 """
 
 from __future__ import annotations
@@ -230,14 +231,16 @@ class PostgresCaseFill:
                 case.id, case.application_number, event.doc_number, result, owner
             )
             if fill.merge_into is not None:
-                if _merge_oa_pg(s, oa, event, fill.merge_into):
-                    case = s.get(Case, fill.merge_into)
+                dispatch = fill.dispatch_number or event.doc_number
+                moved = _merge_oa_pg(s, oa, event, fill.merge_into, dispatch)
+                if moved is not None:
+                    case, event = s.get(Case, fill.merge_into), moved
                 else:
                     _warn_not_merged(case.id, fill.merge_into)
                     fill = NumberFill(None, fill.dispatch_number, None)
             if fill.application_number is not None:
                 case.application_number = fill.application_number
-            if fill.dispatch_number is not None:
+            if fill.dispatch_number is not None and event.doc_number is None:
                 event.doc_number = fill.dispatch_number
             s.flush()
 
@@ -267,12 +270,17 @@ class PostgresCaseFill:
             s.commit()
 
 
-def _merge_oa_pg(s: Session, oa: OA, event: CaseEvent, target_id: str) -> bool:
-    """OA·그 이력 줄·원문 문서를 같은 출원번호의 기존 사건 끝(다음 OA)으로 옮긴다 (#272).
+def _merge_oa_pg(
+    s: Session, oa: OA, event: CaseEvent, target_id: str, dispatch: str | None
+) -> CaseEvent | None:
+    """OA·원문 문서를 같은 출원번호의 기존 사건으로 옮기고, 그 OA의 이력 줄을 돌려준다 (#272).
 
-    OA 순서는 올린 시각(oas.created_at) 그대로라 맨 뒤에 붙는다. 이력 순서(seq)는 기존 사건에
-    순서가 있을 때만 그 다음 번호를 준다 (날짜로 끼우지 않는다).
-    같은 파일이 그 사건에 이미 있으면 옮기지 않고 False (uq_documents_case_sha256).
+    - 기존 사건 이력에 같은 발송번호의 OA 줄이 이미 있으면(자동 조회 #54가 먼저 넣은 경우)
+      새 줄을 옮기지 않고 그 줄(그 순서)에 붙인다. 임시 사건의 줄은 지우지 않고 그 사건에 남는다.
+    - 없으면 이력 줄도 옮겨 맨 뒤에 둔다: 순서(seq)는 기존 사건에 순서가 있을 때만 그 다음 번호
+      (날짜로 끼우지 않는다). OA 목록은 올린 시각(oas.created_at) 순이라 맨 뒤에 붙는다.
+    합치지 못하면 None: 같은 파일이 그 사건에 이미 있음(uq_documents_case_sha256),
+    또는 같은 발송번호 줄에 이미 OA가 있음(같은 OA. 보통은 지휘의 check_oa가 먼저 막는다).
     """
     doc = s.get(Document, oa.document_id) if oa.document_id else None
     if doc is not None:
@@ -280,11 +288,30 @@ def _merge_oa_pg(s: Session, oa: OA, event: CaseEvent, target_id: str) -> bool:
             select(Document.id).where(Document.case_id == target_id, Document.sha256 == doc.sha256)
         ).first()
         if dup is not None:
-            return False
-    last_seq = s.scalar(select(func.max(CaseEvent.seq)).where(CaseEvent.case_id == target_id))
+            return None
+    existing = None
+    if dispatch is not None:
+        existing = s.scalars(
+            select(CaseEvent).where(
+                CaseEvent.case_id == target_id,
+                CaseEvent.kind == "oa",
+                CaseEvent.doc_number == dispatch,
+            )
+        ).first()
+    if existing is not None:
+        if s.scalar(select(OA.id).where(OA.case_event_id == existing.id).limit(1)) is not None:
+            return None
+        oa.case_event_id = existing.id
+        if doc is not None and doc.case_event_id == event.id:
+            doc.case_event_id = existing.id
+        moved = existing
+    else:
+        last_seq = s.scalar(select(func.max(CaseEvent.seq)).where(CaseEvent.case_id == target_id))
+        event.case_id = target_id
+        event.seq = last_seq + 1 if last_seq is not None else None
+        moved = event
     source_id = oa.case_id
-    oa.case_id = event.case_id = target_id
-    event.seq = last_seq + 1 if last_seq is not None else None
+    oa.case_id = target_id
     if doc is not None:
         doc.case_id = target_id
     s.flush()
@@ -292,7 +319,7 @@ def _merge_oa_pg(s: Session, oa: OA, event: CaseEvent, target_id: str) -> bool:
     if s.scalar(select(OA.id).where(OA.case_id == source_id).limit(1)) is None:
         s.get(Case, source_id).merged_into_case_id = target_id
         s.flush()
-    return True
+    return moved
 
 
 # --- 메모리 (테스트용) --------------------------------------------------------------
