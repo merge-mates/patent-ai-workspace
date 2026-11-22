@@ -16,6 +16,7 @@ import pytest
 
 from patent_ai.core.f4_response_draft.config import F4Options
 from patent_ai.core.f4_response_draft.directions import (
+    LEGAL_REVIEW_CHECK,
     RANK_NOTICE,
     STEP,
     amendment_limit_of,
@@ -423,6 +424,26 @@ def test_대비_못_한_인용문헌이_있으면_후보가_확인되지_않음�
     assert all(not any("D2" in k for k in c.checks) for c in clarity.candidates)
     assert clarity.candidates[0].status.value == StatusValue.CONFIRMED
     assert "D2" in caplog.text
+
+
+def test_법률_주장의_직접_검토_필요는_그_묶음_후보에_옮긴다():
+    # F2 걷는 뼈대(#28)는 근거 검토 전이라 주장에 review가 없고 needs_human_review를 단다
+    inp = _confirmed_legal(_case())
+    legal = [b.model_dump(mode="json") for b in inp.legal]
+    claim = legal[0]["claims"][0]
+    claim["review"], claim["flags"] = None, ["needs_human_review"]
+    inp = F4Input.model_validate({**inp.model_dump(mode="json"), "legal": legal})
+    results, _ = _run_basic(inp)
+    inventive, clarity = results
+    for c in inventive.candidates:
+        # 조문·판본은 확인됐으니 status는 그대로, 사람이 봐야 한다는 표시와 확인 사항만 붙는다
+        assert c.status.value == StatusValue.CONFIRMED
+        assert Flag.NEEDS_HUMAN_REVIEW in c.flags
+        assert LEGAL_REVIEW_CHECK in c.checks
+    assert Flag.NEEDS_HUMAN_REVIEW in inventive.flags
+    # 검토를 마친 묶음(명확성)에는 옮기지 않는다
+    assert all(Flag.NEEDS_HUMAN_REVIEW not in c.flags for c in clarity.candidates)
+    assert all(LEGAL_REVIEW_CHECK not in c.checks for c in clarity.candidates)
 
 
 def test_대비표의_직접_검토_필요는_후보_flags로_옮긴다():

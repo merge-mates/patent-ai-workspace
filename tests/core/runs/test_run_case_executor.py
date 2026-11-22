@@ -104,9 +104,8 @@ def test_run_case_한_바퀴가_끝나면_succeeded이고_F1_F3_F4_결과가_저
     f3, f4 = env.step_results.step_result(RID, "f3"), env.step_results.step_result(RID, "f4")
     assert f3 is not None and f3.units and f3.comparisons
     assert f4 is not None and f4.directions
-    # F2는 넘긴 단계로 실행 상태에 남는다 (outcome skipped 줄이 그대로 옮겨짐)
-    skipped = env.store.skipped_steps(RID)
-    assert [s.step for s in skipped] == ["run_f2"] and "tool_missing" in skipped[0].reason
+    # F2도 돌아서 넘긴 단계가 없다 (F2 결과 저장은 아직 없음, 결과 API 테스트 참고)
+    assert env.store.skipped_steps(RID) == []
 
 
 def test_run_case_지금_하는_일이_단계마다_바뀐다(env):

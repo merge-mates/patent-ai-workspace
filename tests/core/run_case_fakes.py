@@ -5,6 +5,7 @@
 """
 
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
+from patent_ai.core.f2_legal_research import run as f2_run
 from patent_ai.core.f3_claim_compare import run as f3_run
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport
@@ -20,6 +21,7 @@ from tests.core.agents.test_fixed_order_f3_f4 import (
     _responses,
     _texts,
 )
+from tests.core.f2 import fakes as f2_fakes
 from tests.core.f3 import scenario
 from tests.core.f3.fakes import claim_row
 
@@ -40,7 +42,7 @@ responses = _responses  # F3·F4 기록된 응답 (도구 이름 -> 응답 목�
 
 
 def wire(monkeypatch) -> OAResult:
-    """F1 두 단계(extract_pages·read_oa)와 F3 검색 자원을 지어낸 것으로 바꾼다."""
+    """F1 두 단계(extract_pages·read_oa)와 F3 검색 자원·F2 법령 조각을 지어낸 것으로 바꾼다."""
     pages = PageText.model_validate_json((F1 / "notice_basic.pages.json").read_text("utf-8"))
     oa = OAResult.model_validate(
         {**CASE["oa"], "claim_rows": [claim_row(2, 2, clarity_terms=[TERM]).model_dump()]}
@@ -50,6 +52,8 @@ def wire(monkeypatch) -> OAResult:
     monkeypatch.setattr(
         f3_run, "make_search_resources", lambda config, ctx: (scenario.searcher(), scenario.REPO)
     )
+    # F2 법령 조각도 메모리 저장소로 (진짜 DB를 열지 않는다)
+    monkeypatch.setattr(f2_run, "make_law_repo", f2_fakes.repo)
     return oa
 
 

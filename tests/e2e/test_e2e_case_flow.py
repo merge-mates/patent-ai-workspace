@@ -1,11 +1,11 @@
-"""끝에서 끝까지(E2E) 테스트: 사건 하나가 F1 → F3 → F2(넘김) → F4로 돈다 (이슈 #166 T3).
+"""끝에서 끝까지(E2E) 테스트: 사건 하나가 F1 → F3 → F2 → F4로 돈다 (이슈 #166 T3, F2는 #28).
 
 네트워크·API 키·DB 없음. 확인 명령: `uv run pytest -k e2e`
 - core 단계(지금 돈다): 지어낸 통지서 하나(tests/fixtures/e2e/)를 진짜 F1 코드(read_oa 규칙+모델
   합치기)로 읽고, 그 결과가 그대로 F3·F4 입력으로 이어진다. #180의 한 바퀴 테스트는 read_oa 자리에
   F4 fixture의 OA를 끼웠는데, 여기서는 끼우지 않는다. 바꿔 끼우는 것은 두 곳뿐이다:
-  extract_pages(한글 PDF를 테스트에서 못 만들어 쪽 글자 fixture로)와 F3 검색 자원(DB·임베딩 대신
-  메모리 저장소). 모델 답은 기록된 응답(FakeTransport).
+  extract_pages(한글 PDF를 테스트에서 못 만들어 쪽 글자 fixture로)와 F3 검색 자원·F2 법령 조각
+  (DB·임베딩 대신 메모리 저장소). 모델 답은 기록된 응답(FakeTransport).
 - 통지서는 F4 fixture 사건(fixtures/f4/case_basic.json)과 같은 사건으로 지었다: 청구항 1~3,
   진보성(청구항 1·2, D1) + 명확성(청구항 2 '적당한 간격'). 그래서 F3·F4 기록된 응답을 같이 쓴다.
 - 서버 단계(올리기 → 실행 → 폴링 → 다시 열기)는 아래 test_e2e_server_*: 진짜 앱·실행기 위에서
@@ -20,6 +20,8 @@ from patent_ai.core.agents.orchestrator import CaseInput, run_case
 from patent_ai.core.agents.steps import MemoryStepRecorder
 from patent_ai.core.cases.run_inputs import RunInputNotFound
 from patent_ai.core.cases.store import InMemoryCaseAppStore
+from patent_ai.core.f2_legal_research import run as f2_run
+from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare import run as f3_run
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
@@ -28,6 +30,7 @@ from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import StatusValue
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
+from tests.core.f2 import fakes as f2_fakes
 from tests.core.f3 import scenario
 
 # F3·F4 기록된 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것 (같은 사건이라 한 곳에)
@@ -44,12 +47,13 @@ def _read_oa_answer() -> TransportResponse:
 
 @pytest.fixture
 def offline(monkeypatch):
-    """PDF 글자 읽기와 F3 검색 자원만 바꿔 끼운다 (read_oa·F3·F4 코드는 진짜)."""
+    """PDF 글자 읽기와 F3 검색 자원·F2 법령 조각만 바꿔 끼운다 (read_oa·F3·F2·F4 코드는 진짜)."""
     pages = PageText.model_validate_json((E2E / "notice.pages.json").read_text("utf-8"))
     monkeypatch.setattr("patent_ai.core.f1_oa_reader.pages.extract_pages", lambda p, d: pages)
     monkeypatch.setattr(
         f3_run, "make_search_resources", lambda config, ctx: (scenario.searcher(), scenario.REPO)
     )
+    monkeypatch.setattr(f2_run, "make_law_repo", f2_fakes.repo)
 
 
 def _run(tmp_path, responses):
@@ -73,22 +77,20 @@ def _all_responses() -> dict:
     return {"f1.read_oa": [_read_oa_answer()], **responses()}
 
 
-def test_e2e_한_사건이_F1부터_F4까지_돌고_F2는_넘긴_이유가_남는다(tmp_path, offline):
+def test_e2e_한_사건이_F1_F3_F2_F4로_돈다(tmp_path, offline):
     out, steps, _ = _run(tmp_path, _all_responses())
 
     assert out.state == "succeeded" and out.error is None
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f4"]
+    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f2", "run_f4"]
     assert [(r.tool_name, r.outcome) for r in steps.records] == [
         ("extract_pages", "ok"),
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
         ("run_f3", "ok"),
-        ("run_f2", "skipped"),
+        ("run_f2", "ok"),
         ("run_f4", "ok"),
     ]
-    # F2는 결과 없이 넘긴 이유만 (성공으로 숨기지 않는다)
-    assert "run_f2" not in out.results
-    assert list(out.skipped) == ["run_f2"] and "tool_missing" in out.skipped["run_f2"]
+    assert out.skipped == {}
 
 
 def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, offline):
@@ -113,6 +115,14 @@ def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, o
     assert f3.comparisons and f3.clarity_reviews
     assert [r.unit_id for r in f3.clarity_reviews] == ["oa_1:42-4-2:c2"]
     assert f4.directions and f4.drafts
+    # F2: F3 판단 단위마다 발송일 시행판 조문 근거 묶음 하나
+    f2 = out.results["run_f2"]
+    assert isinstance(f2, F2Result) and f2.oa_id == "oa_1"
+    assert [b.unit_id for b in f2.bundles] == [u.unit_id for u in f3.units]
+    assert [b.claims[0].sources[0].identifier for b in f2.bundles] == [
+        "특허법 제29조제2항",
+        "특허법 제42조제4항제2호",
+    ]
 
 
 def test_e2e_기록된_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
@@ -204,9 +214,8 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
     run = server.poll(run_id)
     assert run["state"] == "succeeded", run
     assert run["error"] is None
-    # F2는 넘긴 이유와 함께 남는다 (성공으로 숨기지 않는다)
-    assert [s["step"] for s in run["skipped_steps"]] == ["run_f2"]
-    assert [w["code"] for w in run["warnings"]] == ["step_skipped"]
+    # F2도 돌아 넘긴 단계가 없다
+    assert run["skipped_steps"] == [] and run["warnings"] == []
 
     def results() -> dict:
         got = {n: client.get(f"/oas/{oa_id}/{n}") for n in RESULTS}
@@ -222,10 +231,11 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
         f"{oa_id}:29-2:c1",
         f"{oa_id}:42-4-2:c2",
     ]
-    # F2는 넘겨서 결과가 없다: 404 result_not_ready가 아니라 이유가 붙은 빈 목록이다
+    # F2는 돌지만 결과 저장은 아직 없다 (#224): 이유가 붙은 빈 목록이다
     legal = client.get(f"/oas/{oa_id}/legal-evidence")
     assert legal.status_code == 200
-    assert legal.json()["result"] == [] and legal.json()["empty_reason"]
+    assert legal.json()["result"] == []
+    assert legal.json()["empty_reason"] == "확인되지 않음: 이 실행에 결과가 없음"
 
     # 다시 열기: 사건 → OA 목록 → latest_run → 같은 결과
     case = client.get(f"/cases/{case_id}").json()

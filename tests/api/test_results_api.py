@@ -56,12 +56,13 @@ def test_results_api_실행이_끝나면_F3_F4_결과가_같은_실행에서_열
     assert body["directions"]["rank_notice"]
 
 
-def test_results_api_넘긴_F2는_빈_목록과_넘긴_이유(env):
+def test_results_api_F2_결과는_아직_저장하지_않아_빈_목록과_이유(env):
+    # F2는 돌지만(#28) 결과 저장 칸이 아직 없다: 이유 없이 비우지 않는다
     oa_id = env.upload()["oa_id"]
     legal = env.get(oa_id, "legal-evidence")
     assert legal.status_code == 200
     assert legal.json()["result"] == []
-    assert legal.json()["empty_reason"].startswith("넘김: tool_missing")
+    assert legal.json()["empty_reason"] == "확인되지 않음: 이 실행에 결과가 없음"
 
 
 def test_results_api_청구항_판을_못_찾으면_F3_F4는_빈_목록과_input_unverified(
