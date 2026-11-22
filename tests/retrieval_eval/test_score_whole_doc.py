@@ -13,7 +13,7 @@ import pytest
 from eval.retrieval import score as score_mod
 from eval.retrieval.config import load_config
 from eval.retrieval.errors import RetrievalEvalError
-from eval.retrieval.score import main, score
+from eval.retrieval.score import first_hit_rank, main, score
 from patent_ai.core.llm.cache import MemoryCache
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -102,14 +102,19 @@ def test_캐시_적중은_실제_호출과_비용에_안_센다(tmp_path, goldse
 
 
 def test_출력_검사_실패는_호출에_세고_failures에_드러난다(tmp_path, goldsets_root):
-    # 첫 줄: 실패 1번 뒤 성공. 둘째 줄: 2번 다 실패 -> not_extracted로 점수에서 빠진다
-    ctx = make_ctx([answer("깨짐"), ranked(1), answer("틀림"), answer("또 틀림")])
-    scores = run_score(tmp_path, goldsets_root, ctx).scores
+    # 첫 줄: 실패 1번 뒤 성공(번호 2 = [0022], 맞힘)
+    # 둘째 줄: 2번 다 실패 -> not_extracted, 못 맞힌 줄로 n에 남는다
+    ctx = make_ctx([answer("깨짐"), ranked(2), answer("틀림"), answer("또 틀림")])
+    report = run_score(tmp_path, goldsets_root, ctx)
+    scores = report.scores
+    assert [first_hit_rank(r) for r in report.rows] == [1, None]
     assert scores["cost"]["external_calls"] == 4
     assert scores["failures"]["llm_output_invalid"] == 3
     assert scores["failures"]["not_extracted"] == 1
     assert scores["failures"]["excluded_body_missing"] == 0
-    assert scores["n"] == 1
+    assert scores["n"] == 2
+    assert scores["metrics"]["hit@1"] == 0.5  # 첫 줄 1, 둘째 줄 0
+    assert scores["metrics"]["hit@10"] == 0.5
 
 
 def test_가격을_모르는_호출이_있으면_usd는_None이고_0으로_메우지_않는다(tmp_path, goldsets_root):

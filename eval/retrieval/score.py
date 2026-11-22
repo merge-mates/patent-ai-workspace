@@ -221,11 +221,12 @@ def score(
         except Exception as e:  # 줄 하나의 검색 예외는 조용히 넘기지 않는다
             # 메시지에 질의 글자가 섞일 수 있어 예외 종류만 적는다
             raise RetrievalEvalError(f"줄 {row.row_id}: 검색 실패 ({type(e).__name__})") from None
-        if result.status == "unverified" and result.status_reason == "not_extracted":
-            # 모델 출력을 못 읽은 줄: 본문이 없는 것과 다르니 따로 센다 (점수에서는 빠진다)
+        not_extracted = result.status == "unverified" and result.status_reason == "not_extracted"
+        if not_extracted:
+            # 모델 출력을 못 읽은 줄: 점수에서 빼지 않고 결과 0개(못 맞힌 줄)로 n에 남긴다.
+            # 빼면 출력 실패가 많을수록 점수가 오른다. 건수는 failures에 따로 센다
             failures["not_extracted"] += 1
-            continue
-        if result.status == "unverified":  # 본문 미확보는 여기서만 정한다
+        elif result.status == "unverified":  # 본문 미확보는 여기서만 정한다
             failures["excluded_body_missing"] += 1
             continue
         # 채점기가 색인 판을 한 번 더 본다
