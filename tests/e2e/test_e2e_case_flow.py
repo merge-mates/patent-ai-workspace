@@ -152,7 +152,7 @@ def test_e2e_F1_모델_답이_두_번_검사에_떨어지면_failed로_끝나고
 # ---- 서버 단계: 올리기 → 실행 → 폴링 → 다시 열기 (요청·응답 모양은 docs/api/README.md) ----
 # 앱은 진짜 라우터·진짜 실행기(RunCaseExecutor)·진짜 run_case다. 바꿔 끼우는 것은
 # 저장소(Postgres 대신 메모리), 실행 방법(백그라운드 스레드 대신 그 자리에서 바로),
-# 모델 전송층(기록된 응답), 실행 입력 글자(texts: #205가 저장된 청구항 판에서 만든다.
+# 모델 전송층(가짜 응답), 실행 입력 글자(texts: #205가 저장된 청구항 판에서 만든다.
 # 여기서는 위 core 단계와 같은 글자를 준다)뿐이다.
 
 
@@ -252,7 +252,7 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
     oa = client.get(f"/oas/{oa_id}").json()
     assert oa["latest_run"]["run_id"] == run_id and oa["latest_run"]["state"] == "succeeded"
     assert results() == first
-    # 모델 호출은 모두 이 실행 이름으로, 기록된 응답만 썼다
+    # 모델 호출은 모두 이 실행 이름으로, 가짜 응답만 썼다
     assert server.recorder.records and {r.run_id for r in server.recorder.records} == {run_id}
 
 

@@ -38,7 +38,7 @@ __all__ = [
 
 texts = _texts
 real_config = _real_config
-responses = _responses  # F3·F4 기록된 응답 (도구 이름 -> 응답 목록)
+responses = _responses  # F3·F4 가짜 응답 (도구 이름 -> 응답 목록)
 
 
 def wire(monkeypatch) -> OAResult:
