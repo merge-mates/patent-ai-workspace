@@ -113,12 +113,12 @@ def test_보여_줄_상태가_아닌_실행이_결과를_저장해_둬도_안_�
 
 
 def test_사람_기다림_실행의_결과는_준다(env):
-    # 방향 고르기를 기다리는 동안에도 그때까지의 OA 정리를 본다 (11/21 은진 결정)
+    # 출원번호를 기다리는 동안에도 그때까지의 OA 정리를 본다
     env.launch_enabled = False
     created = env.upload()
     run_id = created["run_id"]
     env.runs.transition(run_id, RunState.RUNNING)
-    env.runs.transition(run_id, RunState.WAITING_FOR_HUMAN, waiting_for="direction_selection")
+    env.runs.transition(run_id, RunState.WAITING_FOR_HUMAN, waiting_for="application_number")
     env.results.save_oa_result(created["oa_id"], run_id, load_oa_result())
     res = env.get_result(created["oa_id"])
     assert res.status_code == 200

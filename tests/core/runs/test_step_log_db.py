@@ -153,6 +153,7 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
 ):
     import threading
 
+    from patent_ai.core.cases.selections import InMemorySelectionStore
     from patent_ai.core.llm.limits import CallBudget, RunContext
     from patent_ai.core.llm.transport import FakeTransport
     from patent_ai.core.runs.cancel import CancelRegistry
@@ -183,6 +184,7 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
             transport=FakeTransport(_responses()),
         ),
         today=lambda: CHECKED_ON,
+        selections=InMemorySelectionStore(),
         lock=threading.Lock(),
         step_log=PostgresStepRecorder(factory),
     ).execute(rid, oa_id)

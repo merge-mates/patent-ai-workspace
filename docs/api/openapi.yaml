@@ -427,6 +427,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /directions/{unit_id}/selection:
+    put:
+      summary: Put Selection
+      operationId: put_selection_directions__unit_id__selection_put
+      parameters:
+      - name: unit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectionOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AddedSource:
@@ -1469,17 +1499,26 @@ components:
     DirectionSelection:
       properties:
         candidate_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Candidate Id
+        written_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Written Direction
         origin:
           $ref: '#/components/schemas/Origin'
       additionalProperties: false
       type: object
       required:
-      - candidate_id
       - origin
       title: DirectionSelection
-      description: 묶음에서 고른 후보. AI 기본값과 사람 선택을 origin으로 구분한다.
+      description: '묶음에서 고른 방향. 후보 id 또는 사람이 쓴 글 중 정확히 하나.
+
+
+        AI 기본값·사람 선택·사람이 직접 쓴 글을 origin으로 구분한다.'
     DirectionsOut:
       properties:
         oa_id:
@@ -2486,6 +2525,7 @@ components:
       - ai_default
       - human_selected
       - human_edited
+      - human_written
       title: Origin
     ParagraphSource:
       type: string
@@ -2786,6 +2826,37 @@ components:
       - hits
       title: SearchLogEntry
       description: 자료 종류 하나를 어떻게 찾았나 (못 찾음 ≠ 없음을 가르는 기록).
+    SelectionIn:
+      properties:
+        candidate_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Candidate Id
+        written_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Written Direction
+      type: object
+      title: SelectionIn
+      description: '둘 중 정확히 하나: 후보 id 또는 사람이 직접 쓴 방향 글.'
+    SelectionOut:
+      properties:
+        unit_id:
+          type: string
+          title: Unit Id
+        run_id:
+          type: string
+          title: Run Id
+        selection:
+          $ref: '#/components/schemas/DirectionSelection'
+      type: object
+      required:
+      - unit_id
+      - run_id
+      - selection
+      title: SelectionOut
     SkippedStepOut:
       properties:
         step:

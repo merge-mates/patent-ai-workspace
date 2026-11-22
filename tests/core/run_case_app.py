@@ -20,6 +20,7 @@ from patent_ai.api.deps import (
     get_run_executor,
     get_run_launcher,
     get_run_status_store,
+    get_selection_store,
     get_step_result_store,
     get_upload_dir,
 )
@@ -28,6 +29,7 @@ from patent_ai.core.cases.case_fill import InMemoryCaseFill
 from patent_ai.core.cases.materials import InMemoryCaseMaterialsStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputSource
+from patent_ai.core.cases.selections import InMemorySelectionStore
 from patent_ai.core.cases.step_results import InMemoryStepResultStore
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
 from patent_ai.core.llm.limits import RunContext
@@ -83,6 +85,7 @@ class RunCaseApp:
         self.oa_results = InMemoryOAResultStore(self.runs)
         self.steps = InMemoryStepResultStore()
         self.materials = InMemoryCaseMaterialsStore()
+        self.selections = InMemorySelectionStore()
         self.launch_enabled = True
         self.executor = RunCaseExecutor(
             store=self.runs,
@@ -95,6 +98,7 @@ class RunCaseApp:
             config_path=real_config(tmp_path),
             make_ctx=make_ctx,
             today=lambda: CHECKED_ON,
+            selections=self.selections,
         )
         unit = FakeUnit(self.cases)
         app = create_app(startup_store=self.runs)
@@ -108,6 +112,7 @@ class RunCaseApp:
                 get_oa_result_store: lambda: self.oa_results,
                 get_step_result_store: lambda: self.steps,
                 get_case_materials_store: lambda: self.materials,
+                get_selection_store: lambda: self.selections,
                 get_run_executor: lambda: self.executor,
                 get_run_launcher: lambda: self._launch,
             }

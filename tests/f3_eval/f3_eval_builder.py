@@ -54,6 +54,8 @@ def prediction(
     clarity_location="청구항 2 [글자 10-19]",
     novelty_tables=(),
     element_claims=None,
+    held_tasks=(),
+    rounds=None,
 ) -> dict:
     """F3Result를 dump한 모양의 예측. searched: (구성요소 번호, 걸린 문단 번호들).
 
@@ -103,12 +105,13 @@ def prediction(
                 **({"element_claim": claim_of[no]} if no in claim_of else {}),
                 "citation": "D1",
                 "doc_id": DOC,
-                "round": 1,
+                "round": (rounds or {}).get(no, 1),
                 "hit_chunk_ids": [chunk_id(n) for n in hits],
             }
             for no, hits in searched
         ],
         "examiner_locations": [],
+        "held_tasks": [{"task": t, "waiting_for": "테스트"} for t in held_tasks],
         "status": ok,
     }
 

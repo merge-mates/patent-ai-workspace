@@ -30,7 +30,7 @@ export interface LatestRun {
 export interface RunStatus extends LatestRun {
   oa_id: string
   // 사람 기다림의 이유. 사람을 기다릴 때만 값이 있다 (서버 core/agents/orchestrator.py WaitingFor:
-  // application_number / dispatch_number / direction_selection). 서버 칸은 str이라 모르는 값도 올 수 있다
+  // application_number / dispatch_number). 서버 칸은 str이라 모르는 값도 올 수 있다
   waiting_for?: string | null
   // 실패한 실행의 이유 (docs/api/README.md GET /runs/{id}). 실패가 아니면 null
   error: { code: string; message: string } | null

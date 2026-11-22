@@ -67,7 +67,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
         amendment_core: [],
         rebuttal: { rejection_kind: 'novelty', type: 'difference', summary: 'D1 도 4b는 사각 격자 분할' },
       }),
-    ], { candidate_id: 'd1a', origin: 'ai_default' }, initial),
+    ], { candidate_id: 'd1a', written_direction: null, origin: 'ai_default' }, initial),
     group('oa_1:29-2:c1', [
       cand(unv('body_missing'), [ev(spec1, '[0088]', '역광 장면의 프리뷰가 바로 보인다')], {
         candidate_id: 'd2a', rank: 1, coarse: 'amend_and_argue', name: '구성 1-4 부가 + 결합 동기 없음 반박', confidence: 'medium',
@@ -85,7 +85,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
         amendment_core: [{ claim: 1, kind: 'delete', source: null }, { claim: 5, kind: 'limit', source: null }],
         rebuttal: null,
       }),
-    ], { candidate_id: 'd2a', origin: 'ai_default' }, initial),
+    ], { candidate_id: 'd2a', written_direction: null, origin: 'ai_default' }, initial),
     group('oa_1:42-4-2:c6', [
       cand(ok('근거 원문 대조'), [ev(spec1, '[0031]', '프리뷰 이미지란 촬영 전에 화면에 보이는 축소 영상')], {
         candidate_id: 'd3a', rank: 1, coarse: 'amend_only', name: '청구항 6의 인용항을 청구항 1로 고침', confidence: 'high',
@@ -95,7 +95,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
         amendment_core: [{ claim: 6, kind: 'clarify', source: null }],
         rebuttal: null,
       }),
-    ], { candidate_id: 'd3a', origin: 'ai_default' }, initial),
+    ], { candidate_id: 'd3a', written_direction: null, origin: 'ai_default' }, initial),
     // 확신 낮은 묶음: 순위 없이, 미리 고르지 않는다 (묶음 flags도 직접 판단)
     group('oa_1:42-4-2:c7', [
       cand(unv('ambiguous'), [ev(spec1, '전체 (조회 범위 내 없음)')], {
@@ -126,7 +126,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
         amendment_core: [],
         rebuttal: { rejection_kind: 'inventive_step', type: 'difference', summary: 'D1 [0031]은 고정 상수' },
       }),
-    ], { candidate_id: 'e1a', origin: 'ai_default' }, initial),
+    ], { candidate_id: 'e1a', written_direction: null, origin: 'ai_default' }, initial),
   ],
   oa_3: [
     group('oa_3:29-2:c1', [
@@ -148,7 +148,7 @@ export const exampleDirections: Record<string, DirectionCandidates[]> = {
         amendment_core: [{ claim: 1, kind: 'clarify', source: null }],
         rebuttal: null,
       }),
-    ], { candidate_id: 'f2a', origin: 'ai_default' }, final),
+    ], { candidate_id: 'f2a', written_direction: null, origin: 'ai_default' }, final),
   ],
 }
 
