@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from patent_ai.core.f3_claim_compare.recheck.config import RecheckSettings
 from patent_ai.core.schemas.common import Status
 from patent_ai.core.schemas.document import PageText
 
@@ -103,3 +104,5 @@ class F3Config(BaseModel):
 
     settings: F3Settings
     inputs: F3Inputs
+    # 근거 다시 찾기 설정 (config/recheck.yaml). 기본 none = 옛 동작 그대로
+    recheck: RecheckSettings = RecheckSettings()

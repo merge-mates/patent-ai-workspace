@@ -1,0 +1,47 @@
+# 근거 다시 찾기(recheck) 설정. 단계 칸(rewrite·agent)은 core/llm이, 나머지는 f3_claim_compare/recheck/config.py가 읽는다.
+
+# 1차 검색에서 근거를 못 고른 구성요소를 다시 찾는 방식: none(안 함) | fixed_loop(고정 루프) | agent(도구를 고르는 에이전트)
+recheck: none
+# 다시 찾은 조각을 판정하는 쪽: compare(기존 대비 판정) | agent(에이전트가 직접)
+recheck_judge: compare
+# 에이전트가 자기 결과를 돌아보는 횟수. 0만 구현됨 (1은 아직 멈춤)
+reflect: 0
+# 에이전트 진행을 정하는 쪽: code(코드 고정 순서). llm은 아직 구현 안 돼 멈춤
+supervisor: code
+# 명세서 근거 찾기: none만 구현됨
+spec_basis: none
+
+# 에이전트 한 번의 상한
+limits:
+  tool_calls: 8   # 도구를 부르는 횟수
+  turns: 10       # 모델 호출 차례 수
+
+# 다시 찾기 검색 값
+search:
+  k_max: 10            # 도구 한 번이 돌려줄 최대 조각 수
+  snippet_chars: 160   # 도구가 보여 주는 조각 앞부분 글자 수
+  rewrite_k: 10        # 고정 루프: 질의마다 받는 상위 조각 수
+  rewrite_n: 3         # 고정 루프: 다시 쓸 질의 수
+
+# 단계: 고정 루프의 질의 다시 쓰기 (구성요소 × 인용문헌 하나마다 1번)
+# 가격은 claude-haiku-5-5 공식 가격표 2026-11-03 판 기준 (입력 $0.10, 출력 $0.50 / 100만 토큰)
+rewrite:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 4000
+  prompt: prompts/recheck/rewrite.md
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
+  max_model_calls: 200   # 실행 하나의 합계: 못 찾은 구성요소 × 인용문헌마다 1번 + 검사 실패 때 1번 더
+  max_retries: 2         # 전송 오류(429·연결)를 다시 부르는 횟수
+
+# 단계: 에이전트의 도구 사용 차례 (다음 task가 씀)
+agent:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 16000
+  prompt: prompts/recheck/cite_agent.md
+  price_per_mtok_input: 0.10    # 공식 가격표 2026-11-03 판
+  price_per_mtok_output: 0.50
+  max_model_calls: 400   # [가정] 못 찾은 구성요소 × 인용문헌 수십 건 × 차례 10 안쪽. 돌려 본 뒤 맞춘다
+  max_retries: 2
