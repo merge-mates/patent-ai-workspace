@@ -34,6 +34,13 @@ export interface RunStatus extends LatestRun {
   waiting_for?: string | null
   // 실패한 실행의 이유 (docs/api/README.md GET /runs/{id}). 실패가 아니면 null
   error: { code: string; message: string } | null
+  // 자료·도구가 없어 넘긴 단계 (docs/api/README.md GET /runs/{id}). step은 지휘 도구 이름(run_f3 등), 넘긴 것이 없으면 []
+  skipped_steps?: SkippedStep[]
+}
+
+export interface SkippedStep {
+  step: string
+  reason: string
 }
 
 // POST /oas/{oa_id}/runs (다시 돌리기) 응답: 명세에 모양이 없음(임시). POST /cases 처럼 새 실행 ID만 있다고 가정한다.

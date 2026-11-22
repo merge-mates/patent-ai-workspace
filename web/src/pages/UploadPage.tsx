@@ -1,4 +1,4 @@
-import { InboxOutlined } from '@ant-design/icons'
+import { InboxOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import { App, Button, Steps, Upload } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useNavigate } from 'react-router'
@@ -6,7 +6,7 @@ import { api, API_MODE } from '../api'
 import { ApplicationNumberForm } from '../components/ApplicationNumberForm'
 import { MaterialRows } from '../components/MaterialRows'
 import { RunNotice } from '../components/RunNotice'
-import { waitingForLabel } from '../labels'
+import { skippedStepLabel, skippedStepRow, unverifiedReasonLabel, waitingForLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
 import { isRunEnded, refreshRun } from '../runPoll'
 import { existingCaseLink } from '../uploadError'
@@ -118,7 +118,22 @@ function UploadProgress({ data }: { data: OALoaderData }) {
   const waitingFor = snap.waitingFor
   const numberWait = waitingFor === 'application_number' || waitingFor === 'dispatch_number'
   const waitText = waitingForLabel(waitingFor)
+  // 넘긴 단계 (이슈 #260): 결과 엔드포인트는 넘겨도 빈 목록 + 빈 이유로 답해 "결과 있음"이 되므로, 실행의 skipped_steps로 가른다.
+  // 넘김은 끝남처럼 보이지 않게 그 줄에 "넘김 · 이유"를 단다. 줄을 모르는 단계는 목록 아래 한 줄로 (숨기지 않는다)
+  const skippedAt = new Map<number, string[]>()
+  const skippedOther: string[] = []
+  for (const s of snap.skipped) {
+    const name = skippedStepLabel[s.step] ?? s.step
+    const text = `${name} 넘김${s.reason ? ` · ${reasonText(s.reason)}` : ''}`
+    const row = skippedStepRow[s.step]
+    if (row === undefined) skippedOther.push(text)
+    else skippedAt.set(row, [...(skippedAt.get(row) ?? []), text])
+  }
   const items = titles.map((title, i) => {
+    // 넘긴 단계는 결과 유무(doneCount)와 상관없이 그 줄에 넘김으로
+    const skippedHere = skippedAt.get(i)
+    if (skippedHere)
+      return { title, description: <SkippedText lines={skippedHere} />, status: 'wait' as const, icon: <MinusCircleOutlined /> }
     if (i < doneCount) {
       // 사람 기다림: 기다리는 자리 (사건 단계 막대와 같게)
       if (waiting && i === (numberWait ? 0 : ready.summary ? 4 : 2))
@@ -142,6 +157,7 @@ function UploadProgress({ data }: { data: OALoaderData }) {
           <h2 className="headline1">지금 하는 일</h2>
           {!ended && run.current_step && <span className="body2 t2">지금 하는 일: {run.current_step}</span>}
           <Steps direction="vertical" size="small" current={doneCount} items={items} />
+          {skippedOther.length > 0 && <SkippedText lines={skippedOther} />}
           <RunNotice oaId={oa.oa_id} snap={snap} />
           {/* 출원번호 입력을 기다리면 입력 칸 (사건 머리와 같은 부품) */}
           {waiting && waitingFor === 'application_number' && (
@@ -194,5 +210,23 @@ function UploadProgress({ data }: { data: OALoaderData }) {
         </Button>
       </div>
     </>
+  )
+}
+
+// 서버 이유 글 "<코드>: <설명>"의 앞 코드가 아는 미확인 이유면 한국어로 (모르는 코드·모양이면 글자 그대로)
+function reasonText(reason: string): string {
+  const m = /^([a-z_]+): (.*)$/s.exec(reason)
+  const label = m ? (unverifiedReasonLabel as Record<string, string>)[m[1]] : undefined
+  return m && label ? `${label}: ${m[2]}` : reason
+}
+
+// 넘긴 단계 글: 한 단계에 둘이 넘어가면(인용발명 대비·법률 근거) 줄을 나눈다
+function SkippedText({ lines }: { lines: string[] }) {
+  return (
+    <span className="label2" style={{ display: 'flex', flexDirection: 'column', color: 'var(--fg-cautionary-text)' }}>
+      {lines.map((l) => (
+        <span key={l}>{l}</span>
+      ))}
+    </span>
   )
 }

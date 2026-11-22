@@ -59,6 +59,23 @@ export function waitingForLabel(w: string | null): string {
   return '사람 기다림'
 }
 
+// 올리기 화면 진행 목록에서 넘긴 단계(GET /runs/{id} skipped_steps의 step = 지휘 도구 이름)가 놓이는 줄 (이슈 #260).
+// 0 통지서 읽기 · 1 자료 찾아오기 · 2 거절이유별 정리 · 3 인용발명 대비·법률 근거 · 4 대응 방향 후보.
+// 여기 없는 이름은 목록 아래 한 줄로 따로 보인다 (숨기지 않는다)
+export const skippedStepRow: Record<string, number> = {
+  read_oa: 2,
+  run_f3: 3,
+  run_f2: 3,
+  run_f4: 4,
+}
+
+export const skippedStepLabel: Record<string, string> = {
+  read_oa: '거절이유별 정리',
+  run_f3: '인용발명 대비',
+  run_f2: '법률 근거',
+  run_f4: '대응 방향 후보',
+}
+
 export const lookupResultLabel: Record<LookupResult, string> = {
   lookup_failed: '조회 실패',
   body_missing: '본문 미확보',
