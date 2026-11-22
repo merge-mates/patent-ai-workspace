@@ -84,7 +84,7 @@ export function WorkbenchPage() {
   return (
     <>
       {/* 지금 보이는 결과가 지금 실행 것이 아니면 (다시 돌리는 중·실패·취소) 이전 실행 결과라고 머리에서 알린다 */}
-      {snap !== null && isPreviousResult(oaResult, oa.latest_run) && <PreviousResultNote snap={snap} />}
+      {snap !== null && isPreviousResult(oaResult, oa.latest_run, snap) && <PreviousResultNote snap={snap} />}
       {/* 서버는 실행이 끝나야(succeeded) 그 실행의 결과를 연다: 도는 동안은 끝나면 열린다고 알린다 */}
       {running && (
         <Alert

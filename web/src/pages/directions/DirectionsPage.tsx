@@ -21,7 +21,7 @@ import {
   LOW_CONFIDENCE_TEXT,
 } from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
-import { seedRun } from '../../runPoll'
+import { markSelectionRun } from '../../runPoll'
 import { selectionErrorText } from '../../selectionError'
 import type { SelectionBody } from '../../types/provisional/case'
 import { useRunSnapshot } from '../../useRunSnapshot'
@@ -187,7 +187,7 @@ export function DirectionsPage() {
   const runState = runSnap?.run.state
   const rebuilding = runState === 'queued' || runState === 'running'
   // 지금 실행이 이 화면에서 고른 작은 실행인가 (그 밖의 실행: 다시 돌리기 등)
-  const ownRun = Object.values(justChosen).some((j) => j.runId === runSnap?.run.run_id)
+  const ownRun = runSnap?.fromSelection === true
   // 저장 중인 묶음들 (여러 묶음을 빨리 골라도 서로 덮지 않게 묶음마다 따로)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [checkOpen, setCheckOpen] = useState(false)
@@ -211,7 +211,7 @@ export function DirectionsPage() {
       // 응답의 run_id는 초안만 다시 만드는 새 작은 실행: 폴링에 넣고 화면 데이터를 다시 받는다.
       // 다시 받은 OA의 latest_run이 그 실행이라 사건 틀이 구독하고, 끝나면 runPoll이 방향·초안을 다시 받게 한다
       // (사건 틀의 "직접 할 일" 개수는 실행이 끝나 loader가 새 선택을 받아야 줄어든다)
-      seedRun({ run_id: saved.run_id, state: 'queued', current_step: null })
+      markSelectionRun(saved.run_id) // 사건 머리·단계 막대도 읽는 곳에 "고르기로 시작한 작은 실행"으로 넣는다
       revalidator.revalidate()
       return true
     } catch (e) {

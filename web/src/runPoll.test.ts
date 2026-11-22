@@ -158,3 +158,84 @@ describe('넘긴 단계 받기 (succeeded, 이슈 #260)', () => {
     expect(getRun).toHaveBeenCalledTimes(1)
   })
 })
+
+// 방향을 고르면 서버가 초안만 다시 만드는 작은 실행을 만든다. 화면이 그 실행을 "고르기로 시작한 것"으로 표시해 둔다
+// (그동안 사건 머리·단계 막대가 "이전 실행 결과"라고 지나치게 말하지 않게). 기대값은 이슈 #43 지시문에서 가져왔다.
+describe('고르기로 시작한 작은 실행 표시', () => {
+  it('표시한 실행을 loader가 같은 run_id로 다시 seedRun해도 표시가 남는다', () => {
+    rp.markSelectionRun('r_1')
+    rp.seedRun(run('queued'))
+    rp.seedRun(run('running', '초안 다시 만드는 중'))
+    expect(rp.getRunSnapshot('r_1')?.fromSelection).toBe(true)
+  })
+
+  it('표시하지 않은 실행은 표시가 없다 (전체 다시 돌리기 등)', () => {
+    rp.seedRun(run('running'))
+    expect(rp.getRunSnapshot('r_1')?.fromSelection).toBe(false)
+    expect(rp.isSelectionRunActive(rp.getRunSnapshot('r_1'))).toBe(false)
+  })
+
+  it('표시한 실행이 queued·running인 동안만 도는 중이고, succeeded·failed·cancelled가 되면 거짓이다', () => {
+    rp.markSelectionRun('r_1')
+    rp.seedRun(run('queued'))
+    expect(rp.isSelectionRunActive(rp.getRunSnapshot('r_1'))).toBe(true)
+    rp.seedRun(run('running'))
+    expect(rp.isSelectionRunActive(rp.getRunSnapshot('r_1'))).toBe(true)
+    getRun.mockResolvedValue(status('succeeded'))
+    rp.seedRun(run('succeeded'))
+    expect(rp.isSelectionRunActive(rp.getRunSnapshot('r_1'))).toBe(false)
+    rp.seedRun(run('failed'))
+    expect(rp.isSelectionRunActive(rp.getRunSnapshot('r_1'))).toBe(false)
+    rp.seedRun(run('cancelled'))
+    expect(rp.isSelectionRunActive(rp.getRunSnapshot('r_1'))).toBe(false)
+  })
+
+  it('표시하면 그 실행을 구독한 화면이 다시 그려진다', () => {
+    rp.seedRun(run('queued'))
+    const onChange = vi.fn()
+    rp.subscribeRun('r_1')(onChange)
+    rp.markSelectionRun('r_1')
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('아직 모르는 run_id를 표시하면 queued로 시작한다', () => {
+    rp.markSelectionRun('r_9')
+    const s = rp.getRunSnapshot('r_9')
+    expect(s?.run.state).toBe('queued')
+    expect(rp.isSelectionRunActive(s)).toBe(true)
+  })
+})
+
+// 실제 길: 2.5초 폴링(refresh)을 지나도 표시가 남는지
+describe('고르기로 시작한 작은 실행 표시: 폴링을 지나도', () => {
+  it('폴링으로 running·succeeded를 받아도 표시가 남고, 끝나면 도는 중이 거짓이다', async () => {
+    rp.markSelectionRun('r_1')
+    rp.seedRun(run('queued'))
+    rp.subscribeRun('r_1')(() => {})
+
+    getRun.mockResolvedValue(status('running', { current_step: '초안 다시 만드는 중' }))
+    await vi.advanceTimersByTimeAsync(2500)
+    let s = rp.getRunSnapshot('r_1')
+    expect(s?.run.state).toBe('running')
+    expect(s?.fromSelection).toBe(true)
+    expect(rp.isSelectionRunActive(s)).toBe(true)
+
+    getRun.mockResolvedValue(status('succeeded'))
+    await vi.advanceTimersByTimeAsync(2500)
+    s = rp.getRunSnapshot('r_1')
+    expect(s?.run.state).toBe('succeeded')
+    expect(s?.fromSelection).toBe(true)
+    expect(rp.isSelectionRunActive(s)).toBe(false)
+  })
+
+  it('폴링이 실패해 오류 글이 들어가도 표시가 남는다', async () => {
+    rp.markSelectionRun('r_1')
+    rp.seedRun(run('running'))
+    rp.subscribeRun('r_1')(() => {})
+    getRun.mockRejectedValue(new Error('network'))
+    await vi.advanceTimersByTimeAsync(2500)
+    const s = rp.getRunSnapshot('r_1')
+    expect(s?.error).toBe('network')
+    expect(s?.fromSelection).toBe(true)
+  })
+})
