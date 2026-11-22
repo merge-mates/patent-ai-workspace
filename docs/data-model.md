@@ -90,7 +90,11 @@ erDiagram
   - 넘긴 단계(도구 없음·입력 없음) = `agent_steps.outcome = skipped` + `reason`. 실행은 계속 돌고, `GET /runs/{id}`의 `skipped_steps`·`warnings`로 보인다 (#57). 지휘(#180)도 같은 표기(`step_kind = code_tool`, `outcome = skipped`, `result_status = unverified`, `reason` = 넘긴 이유)로 남긴다 (#191). 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다.
 - `result_inputs`(뒤 결과 → 기댄 앞 결과 `result` 또는 자료 `document`): 상태 전파와 "다시 확인 필요"에 쓴다. 가리키는 표가 여럿이라 외래 키는 걸지 않는다.
 - `api_cache`: 외부 API 응답. 외부 API 호출은 이 캐시와 호출 상한을 거친다.
-- 원본 파일은 디스크에 두고 DB에는 경로만 둔다. 위치: `data/raw/cases/<출원번호>/`(평가 사건, 자동 조회, 사용자 업로드가 같은 자리) → 가공본 `data/processed/cases/<출원번호>/`, 법령은 `data/raw/legal/`. 파일 이름 규칙은 자동 조회 이슈(#54)에서 정한다.
+- 원본 파일은 디스크에 두고 DB에는 경로만 둔다. 자리는 쓰임마다 나눈다 (#159). 정확한 앱 경로·파일 이름 규칙은 자동 조회 이슈(#54)에서 정한다.
+  - 평가 사건 받은 묶음(정답 쪽): `data/goldsets/<세트>/case_full/<출원번호>/`. AI 입력은 이것을 OA 시점까지 자른 `data/processed/cases/<출원번호>/<발송번호>/` ([eval/GUIDE.md](../eval/GUIDE.md) 1절).
+  - 앱에 올린 파일: 설정 `upload_dir`(기본 `work/uploads/<case_id>/<sha256>.pdf`).
+  - 쪽 텍스트 가공본: `data/processed/pages/` (입력 폴더 `data/processed/cases/`와 다른 트리. `<출원번호>/` 아래에 두면 `<발송번호>/` 입력 폴더와 섞인다).
+  - 법령: `data/raw/legal/`.
 - 벡터 조각과 그래프는 원본에서 만든 검색 인덱스라 여기서 정하지 않는다 (벡터 조각은 F2·F3 설계, M2. 그래프는 M3에 넣기로 하면 그때).
 - M1은 위 표만 만든다. M2·M3 표는 그때 마이그레이션으로 더한다.
 

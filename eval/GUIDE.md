@@ -8,7 +8,8 @@
 - 정답을 드러내는 서류(그 OA에 낸 의견서·보정서, 등록공보, 결정서·결정본문 등 대상 OA 뒤 서류)는 AI 입력 폴더에 두지 않는다. 입력 폴더에 섞이면 AI가 정답을 보게 된다. "AI 입력으로 쓰지 않는다"는 문장만으로 막지 않고 폴더로 가른다 (#150 1번, 11/20).
   - 받은 사건 묶음 전체(위 서류, 이력 전체 판)는 정답 쪽 `data/goldsets/<세트>/case_full/<출원번호>/`에 그대로 둔다. F4 정답을 뽑는 재료도 여기서 읽는다.
   - AI 입력은 스크립트가 OA 시점까지 잘라 `data/processed/cases/<출원번호>/<발송번호>/`에 만든다 (#148, `scripts/split_cases_at_oa.py`). 청구항이력은 OA 앞 판만 남는다.
-- 옛 `data/raw/cases/`(이력 두 파일만 있는 8건)는 검색 정답 변환이 읽어서 남아 있다. 새 입력 폴더로 옮길지는 #148 "남은 것"에서 정한다. 그 전까지는 [cited-patents.md](../docs/data/cited-patents.md) 3절대로 질의 재료로만 쓴다.
+  - 검색 정답 변환(`eval/retrieval/cite_gold.yaml`의 `cases_root`)도 이 입력 폴더에서 질의를 만든다 (#159).
+  - report 입력은 마일스톤 끝에 은진이 터미널에서 같은 스크립트에 `--allow-report`를 붙여 `data/goldsets/report/cases_at_oa/<출원번호>/<발송번호>/`에 만든다 (로그도 `data/goldsets/report/` 안). 출력·검사·로그가 `goldsets/report/` 아래가 아니면 멈춘다. 그 자리는 report 막기 훅과 settings deny가 막으므로 개발 세션은 열지 않는다 (#159).
 
 ```
 data/goldsets/
@@ -63,7 +64,8 @@ data/goldsets/
 
 ### report 정답 만드는 법
 - 개발하는 세션(이 저장소에서 프롬프트·설정을 고치는 사람·Claude)은 `report/`를 열지 않는다.
-- report 정답과 report AI 입력(OA 시점으로 자른 자료)은 **떨어진 세션**이 만든다: 저장소 밖 폴더에서 새로 연 세션, 이 저장소·프로젝트 기록·공유 메모리 없음, 받는 것은 이 파일의 형식 절(4절과 각 형식 문서)과 report 서류뿐. 결과는 바로 `data/goldsets/report/`에 둔다.
+- report 정답은 **떨어진 세션**이 만든다: 저장소 밖 폴더에서 새로 연 세션, 이 저장소·프로젝트 기록·공유 메모리 없음, 받는 것은 이 파일의 형식 절(4절과 각 형식 문서)과 report 서류뿐. 결과는 바로 `data/goldsets/report/`에 둔다.
+- report AI 입력(OA 시점으로 자른 자료)은 규칙대로 자르기만 해 판단이 없으므로, 은진이 터미널에서 `scripts/split_cases_at_oa.py --allow-report`로 `data/goldsets/report/cases_at_oa/`에 만든다 (1절, #159). 모델 세션은 거치지 않는다.
 - 사람이 그중 20~30건을 원문으로 검수하고, 검수한 줄 목록을 `report/` 안에 남긴다. 점수표에는 전체 점수와 사람 검수 줄 점수를 따로 보인다 (같은 계열 모델 초안이 AI 답 쪽으로 기울 수 있어서).
 
 ## 5. 드라이브 사본
