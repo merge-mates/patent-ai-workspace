@@ -1,4 +1,4 @@
-# 인용문헌 하이브리드 (#67). BM25(m2-i2 bm25-v2와 같은 값) + 벡터(같은 녹화 질의 벡터)를 RRF로 섞는다
+# 인용문헌 하이브리드 (#67). BM25(m2-i2 bm25-v2와 같은 값) + 벡터(같은 기록된 질의 벡터)를 RRF로 섞는다
 experiment: m2-i2-cite-search-hybrid-rrf
 feature: retrieval
 baseline: m2-i2-cite-search-bm25-v2
@@ -14,7 +14,7 @@ settings:
   tokenizer: kiwi        # kiwipiepy 0.24.1
   pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
   bm25: {method: lucene, k1: 1.5, b: 0.75}   # bm25s 0.3.16
-  query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 녹화
+  query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 기록된 질의 벡터
   hybrid:
     rrf_k: 60                           # Cormack 외 SIGIR 2009
     weights: {bm25: 0.5, vector: 0.5}   # 11/20 재아

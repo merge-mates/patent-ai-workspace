@@ -279,4 +279,7 @@ def test_묶음끼리_길이가_다르면_그_묶음_기록은_invalid_output(tm
     ctx = ctx_with(t)
     with pytest.raises(ModelOutputInvalid):
         embed(STEP, ["가", "나"], ctx=ctx, config_dir=cfg)
-    assert [r.outcome for r in ctx.recorder.records] == ["ok", "invalid_output"]
+    assert [(r.outcome, r.invalid_kind) for r in ctx.recorder.records] == [
+        ("ok", None),
+        ("invalid_output", "bad_value"),
+    ]

@@ -22,7 +22,7 @@ graph LR
     N4 --> W1["#19 화면 mock에 case_all_statuses (스크린샷 자료)"]
 ```
 
-## m1-i3-140  (11/20~11/21)  상태: 초안  (이슈 [#140](https://github.com/merge-mates/patent-ai-workspace/issues/140))
+## m1-i3-140  (11/20~11/22)  상태: 승인  (이슈 [#140](https://github.com/merge-mates/patent-ai-workspace/issues/140))
 **구현할 design 부분**: design.md 2절(마무리 함수, 문서 줄, 묶기 규칙), 3-2절(⑥ `review_items`, `CaseDocument.text_status`, 마무리 안 한 ⑥ 저장 거부, 보류 작업 이름 규칙)   **맡은 합격 기준**: requirements.md 3 (검토할 사항 한곳, N = 줄 수, 전파 줄 묶기, 올리면 줄·보류가 사라짐), 근거 절 (원인 줄)
 **목표** (한 줄): 검토할 사항 목록을 ⑥ `CaseMaterials`에 담아, 화면이 개수만이 아니라 줄을 받게 한다.
 **끝나면 보여 줄 것** (데모 한 줄): `uv run pytest -q` 통과 + `case_missing_citation`·`case_scanned`의 ⑥에 `review_items` 줄이 있고 `review_items_count`와 같다.
@@ -78,12 +78,12 @@ graph LR
 - 문서(F1 requirements·architecture·product)의 "F3 대비" 글: 사람 말이라 그대로 둔다.
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- 다음: task-1
-- 막힌 것: PR #137 머지 기다림 (그 뒤 최신 main에서 시작)
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4 (계획 밖: 원문 강조용 가짜 `pages.json`, 화면 mock 사건 `c_4`는 `oa_4`)
+- 다음: 이슈 점검(/check)과 PR
+- 막힌 것: 없음 (PR #137 머지됨)
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로

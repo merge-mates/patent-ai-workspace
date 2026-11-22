@@ -1,6 +1,7 @@
-"""고정 순서 한 바퀴 F1 → F3 → F2(없음) → F4 테스트 (이슈 #166 T2). 네트워크·키·DB 없음.
+"""고정 순서 한 바퀴 F1 → F3 → F2 → F4 테스트 (이슈 #166 T2, F2는 #28). 네트워크·키·DB 없음.
 
-- 모델 답은 기록된 응답(FakeTransport), F3 검색은 메모리 저장소 + 가짜 임베딩(f3/scenario.py).
+- 모델 답은 가짜 응답(FakeTransport), F3 검색은 메모리 저장소 + 가짜 임베딩(f3/scenario.py).
+- F2 법령 조각은 메모리 저장소(f2/fakes.py, 지어낸 조문). F2는 모델을 부르지 않는다.
 - F1 결과는 F4 fixture 사건(fixtures/f4/case_basic.json)의 OA 정리 결과를 read_oa 자리에 끼운다.
   명확성 검토까지 돌도록 청구항 2 줄에 OA가 짚은 문구('적당한 간격')만 더했다
   (F1 자체는 test_scenario.py가 진짜 코드로 본다. 여기서는 단계 사이 잇기를 본다).
@@ -16,6 +17,8 @@ import yaml
 
 from patent_ai.core.agents.orchestrator import CaseInput, run_case
 from patent_ai.core.agents.steps import MemoryStepRecorder
+from patent_ai.core.f2_legal_research import run as f2_run
+from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare import run as f3_run
 from patent_ai.core.f3_claim_compare.inputs import F3Inputs
 from patent_ai.core.f3_claim_compare.result import F3Result
@@ -29,6 +32,7 @@ from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.drafts import Drafts
 from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 from patent_ai.core.schemas.oa_result import OAResult
+from tests.core.f2 import fakes as f2_fakes
 from tests.core.f3 import scenario
 from tests.core.f3.fakes import OK, bad, claim_row
 
@@ -79,7 +83,7 @@ def _f4(*names) -> list[TransportResponse]:
 
 
 def _responses() -> dict:
-    """단계마다 차례로 낼 기록된 모델 응답 (F3 셋 + F4 셋)."""
+    """단계마다 차례로 낼 가짜 응답 (F3 셋 + F4 셋)."""
     return {
         "f3.split_elements": [
             _split(1, [SENSOR, COVER]),
@@ -140,6 +144,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(
         f3_run, "make_search_resources", lambda config, ctx: (scenario.searcher(), scenario.REPO)
     )
+    monkeypatch.setattr(f2_run, "make_law_repo", f2_fakes.repo)
     return oa
 
 
@@ -172,33 +177,39 @@ def _go(tmp_path, responses=None, plan="fixed_order", **case_fields):
     return out, steps
 
 
-def test_저장소_설정에서_넘겨도_되는_단계는_F2뿐이다():
+def test_저장소_설정에_넘겨도_되는_단계가_없다():
+    # F2가 붙었으니 도구가 없어 넘기는 단계는 없다 (있으면 설정 오류로 실패해야 한다)
     cfg = yaml.safe_load(REAL_CONFIG.read_text("utf-8"))
-    assert cfg["skip_if_missing"] == ["run_f2"]
+    assert cfg["skip_if_missing"] == []
 
 
-def test_고정_순서_한_바퀴가_돌고_F2를_넘긴_이유가_남는다(tmp_path, wired, caplog):
-    with caplog.at_level(logging.WARNING):
-        out, steps = _go(tmp_path)
+def test_고정_순서_한_바퀴가_F1_F3_F2_F4로_돈다(tmp_path, wired):
+    out, steps = _go(tmp_path)
     assert out.state == "succeeded" and out.error is None
-    # F1 → (자르기) → F3 → F2 없음 → F4
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f4"]
+    # F1 → (자르기) → F3 → F2 → F4
+    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f2", "run_f4"]
     assert [(r.tool_name, r.outcome) for r in steps.records] == [
         ("extract_pages", "ok"),
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
         ("run_f3", "ok"),
-        ("run_f2", "skipped"),
+        ("run_f2", "ok"),
         ("run_f4", "ok"),
     ]
-    # F2: 결과 없음 + 넘긴 이유 + 경고 (성공으로 보이지 않는다)
+    assert out.skipped == {}
+    f2 = out.results["run_f2"]
+    assert isinstance(f2, F2Result) and f2.status.value == "confirmed"
+    # 모델을 부른 단계는 F3·F4뿐 (F2 걷는 뼈대는 모델 없음)
+    assert [r.model_call_count for r in steps.records] == [0, 0, 0, 5, 0, 6]
+
+
+def test_F3를_넘기면_F2도_입력이_없어_넘기고_이유가_남는다(tmp_path, wired):
+    out, steps = _go(tmp_path, texts=None)  # 글자가 없어 F3를 넘긴다
     assert "run_f2" not in out.results
-    assert list(out.skipped) == ["run_f2"] and "tool_missing" in out.skipped["run_f2"]
-    f2 = steps.records[4]
+    assert "input_unverified" in out.skipped["run_f2"]
+    assert "run_f3" in out.skipped["run_f2"]
+    f2 = next(r for r in steps.records if r.tool_name == "run_f2")
     assert f2.result_status == "unverified" and f2.skipped_reason == out.skipped["run_f2"]
-    assert any("run_f2" in r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
-    # 모델을 부른 단계는 F3·F4뿐
-    assert [r.model_call_count for r in steps.records] == [0, 0, 0, 5, None, 6]
 
 
 def test_단계_결과가_결과_스키마로_담긴다(tmp_path, wired):
@@ -229,7 +240,13 @@ def test_F3_결과와_실행_입력_글자가_F4_입력으로_이어진다(tmp_p
     assert (inp.units, inp.tables, inp.clarity) == (f3.units, f3.comparisons, f3.clarity_reviews)
     assert inp.held_tasks == f3.held_tasks  # 단위 안 보류를 F4가 후보에 표시하려고 받는다
     assert [u.unit_id for u in inp.units] == ["oa_1:29-2:c1", "oa_1:42-4-2:c2"]
-    assert inp.legal == []  # F2가 없어 비어 있다 (F4가 확인되지 않음 묶음으로 채운다)
+    # F2 묶음이 판단 단위마다 하나씩 F4로 간다 (F4는 unit_id로 찾는다)
+    assert inp.legal == out.results["run_f2"].bundles
+    assert [b.unit_id for b in inp.legal] == [u.unit_id for u in inp.units]
+    assert [b.claims[0].sources[0].identifier for b in inp.legal] == [
+        "특허법 제29조제2항",
+        "특허법 제42조제4항제2호",
+    ]
     assert [(c.claim, c.text, c.document_id) for c in inp.claims_text] == [
         (c["claim"], c["text"], "claims_1") for c in CASE["claims_text"]
     ]

@@ -23,7 +23,6 @@ from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.f4_response_draft.opinion import OpinionPart, drafts_from_opinion, has_amendment
 from patent_ai.core.f4_response_draft.result import AmendmentOverlap
 from patent_ai.core.f4_response_draft.spec_excerpt import excerpt_spec_text, full_spec_text
-from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.comparison import ComparisonTable, InventiveSummary, Judgment
@@ -233,8 +232,7 @@ def build_amendments(
     모든 묶음이 실패해도 예외를 올리지 않는다 (단계 전체 실패는 방향 후보 단계가 올림).
     """
     options = options or load_f4_options()
-    if len(inp.units) > options.max_units:
-        raise ModelCallLimitExceeded("max_units", len(inp.units), options.max_units)
+    # 묶음 수 상한은 방향 후보 단계에서 한 번 자른다: 상한 밖 묶음은 후보가 없어 여기서 보류가 된다
     chosen_id = {b.unit_id: b.candidate_id for b in opinion.based_on}
     candidates = {c.candidate_id: c for d in directions for c in d.candidates}
     # 의견서가 다루지 않은 묶음을 조용히 빼면 대응 누락이 된다. 부르기 전에 멈춘다
@@ -398,7 +396,12 @@ def build_amendments(
     )
 
 
-def assemble_drafts(oa_id: str, opinion: OpinionPart, amendment: AmendmentPart) -> Drafts | None:
+def assemble_drafts(
+    oa_id: str,
+    opinion: OpinionPart,
+    amendment: AmendmentPart,
+    lead_statuses: list[Status] | None = None,
+) -> Drafts | None:
     """의견서와 보정 청구항을 Drafts 하나로 묶는다. 의견서 칸이 없으면(모든 묶음 보류) None."""
     # 보류한 청구항의 상태는 초안 전체 status에 넣지 않는다 (보류는 flags와 held_reason으로 보임)
     made = [s for c, s in zip(amendment.claims, amendment.statuses, strict=True) if c.ai_text]
@@ -408,7 +411,7 @@ def assemble_drafts(oa_id: str, opinion: OpinionPart, amendment: AmendmentPart) 
         claims=amendment.claims,
         more_statuses=made,
         more_flags=amendment.flags,
-        lead_statuses=[*opinion.failed_statuses, *amendment.failed_statuses],
+        lead_statuses=lead_statuses,
     )
 
 

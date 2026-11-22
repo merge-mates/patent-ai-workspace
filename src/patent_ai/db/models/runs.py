@@ -93,6 +93,8 @@ class AgentStep(Base):
     transport_try: Mapped[int | None] = mapped_column(Integer)
     # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 모르면 NULL (#172)
     stop_reason: Mapped[str | None] = mapped_column(Text)
+    # 출력 검사에 떨어진 오류 종류 짧은 코드 (not_json 등, 원문 글자 없음). 아니면 NULL (#228)
+    invalid_kind: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

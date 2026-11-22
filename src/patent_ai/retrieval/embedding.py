@@ -22,13 +22,13 @@ def cosine(a: list[float], b: list[float]) -> float:
 
 
 def recorded_embed(path: str | Path) -> Embed:
-    """녹화해 둔 {질의: 벡터} 파일을 읽는 embed. 실제 모델을 부르지 않는다."""
+    """기록해 둔 {질의: 벡터} 파일을 읽는 embed. 실제 모델을 부르지 않는다."""
     with open(path, encoding="utf-8") as f:
         recorded: dict[str, list[float]] = json.load(f)
 
     def embed(query: str) -> list[float]:
         if query not in recorded:
-            raise RecordedEmbeddingMissing(f"녹화에 없는 질의: {query!r}")
+            raise RecordedEmbeddingMissing(f"기록된 모델 응답(질의 벡터)에 없는 질의: {query!r}")
         return recorded[query]
 
     return embed

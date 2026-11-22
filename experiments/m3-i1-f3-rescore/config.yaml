@@ -1,0 +1,21 @@
+# F3 다시 채점 (이슈 #39·#30): m2-f3-skeleton 뒤 바뀐 main(9eb8237)으로 tune 같은 설정 3회. scores.json은 1회차
+experiment: m3-i1-f3-rescore
+feature: f3
+baseline: m2-f3-skeleton
+goldset: tune
+goldset_version: 2
+impl: split_search        # config/f3.yaml impl: 구성요소 나누기 → 인용문헌별 하이브리드 검색 → LLM 대비
+index_version: cite-idx-v2
+k: 10
+settings:                 # config/f3.yaml (실행은 그 파일을 읽는다, main 9eb8237 그대로)
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  search: hybrid (RRF)    # experiments/m2-i2-cite-search-hybrid-rrf와 같은 값
+  use_examiner_paragraphs: false   # 채점 실행: 심사관 지정 번호를 입력에 주지 않음 (저장소 기본값은 true)
+  second_search: true     # main config/f3.yaml 기본값 (m2-f3-skeleton 때는 false)
+runs: 3
+runner: work/overnight_1121/scripts/f3_run.py work/overnight_1121/runs/f3_run<N> --workers 4 --cache-dir work/overnight_1121/runs/cache_f3_run<N>   # git 밖. 회차마다 새 캐시. F1 결과는 work/overnight_1120/f1/a3_run2_pred
+budget:
+  max_usd: 2.0
+  max_external_calls: 800

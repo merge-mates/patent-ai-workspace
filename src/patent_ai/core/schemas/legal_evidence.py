@@ -247,6 +247,9 @@ class SearchLogEntry(BaseModel):
     hits: int = Field(ge=0)
     skipped_unverified_edition: int = Field(default=0, ge=0)  # 판본을 몰라 뺀 조각 수
     skipped_unknown_date: int = Field(default=0, ge=0)  # 날짜를 몰라 뺀 조각 수
+    # 이 자료 유형을 찾은 결과 상태 (None = 기록하지 않음). 묶음이 확인됨이어도 안 본 유형이
+    # 무엇이고 왜인지(예: 심사기준 unverified(body_missing)) 화면·채점이 이 칸을 읽는다 (#222 리뷰)
+    status: Status | None = None
 
 
 class LegalEvidenceBundle(ResultBase):

@@ -32,7 +32,11 @@ from patent_ai.core.schemas.common import (
     worst_status,
 )
 from patent_ai.core.schemas.oa_result import Citation, OAResult
-from patent_ai.core.schemas.propagation import collect_review_items
+from patent_ai.core.schemas.propagation import (
+    document_review_items,
+    finalize_case_materials,
+    sort_review_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -338,48 +342,72 @@ def _missing_reason(
 def build_case_materials(
     case_id: str,
     grouped: list[GroupedMaterial],
-    oa: OAResult,
+    oas: list[OAResult],
     received_citations: set[str],
     lookup_failures: dict[str, LookupResult] | None = None,
+    text_status: dict[str, Status] | None = None,
 ) -> CaseMaterials:
-    """묶은 자료와 OA 인용문헌으로 사건 자료·빠진 자료·보류 작업을 채운다 (합격 기준 4).
+    """묶은 자료와 사건의 OA 전부로 사건 자료·빠진 자료·보류 작업을 채운다 (합격 기준 4).
 
+    - oas: 그 사건의 OA 전부(올라온 순서). 검토할 사항은 사건마다 한 줄이라 전부를 마무리에 넘긴다.
     - received_citations: 본문을 받은 인용문헌 번호(키 꼴). lookup_failures: 못 받은 번호 → 이유.
-    - 빠진 인용문헌마다 missing 한 줄 + 그 인용문헌의 F3 대비만 held_tasks. 나머지는 진행.
+    - 빠진 인용문헌마다 missing 한 줄(OA 둘이 같은 문헌을 인용하면 한 줄로 합침)과, OA마다 그
+      인용문헌의 F3 대비만 held_tasks (`f3_compare:<oa_id>:<라벨>`). 나머지는 진행.
     - 지원 안 하는 나라는 ask_upload=False ("직접 확인"), 그 밖은 "올려 주세요".
+    - text_status: 문서 id → 글자 추출 상태. 없는 문서는 None (묶기 status와 합치지 않음).
     - documents: 같은 열쇠(같은 문서)는 하나만, 올린 것 우선. 나머지는 경고 로그.
       confirmed가 아닌 자료(다른 출원번호·번호 못 읽음)도 빼지 않는다 (빼는 것은 cut_to_oa).
-    - review_items_count = 검토할 사항 모으기(collect_review_items) 줄 수
-      + confirmed가 아닌 자료 수 (조용히 섞이지 않게).
+    - review_items·review_items_count는 끝에서 finalize_case_materials가 채운다.
     """
     lookup_failures = lookup_failures or {}
+    text_status = text_status or {}
     # 저장된 인용문헌 문서(올린 것 포함)에 키가 있으면 본문을 받은 것으로 친다 (#201).
     # 그래서 올린 뒤 다시 만들어도 같은 빠진 자료가 다시 생기지 않는다
     received_citations = received_citations | {
         g.citation_key for g in grouped if g.kind == "citation" and g.citation_key is not None
     }
-    citations = _oa_citations(oa)
-    if not citations:
-        logger.warning("build_case_materials: OA 인용문헌이 0건 (빠진 자료 검사 없음)")
 
-    missing: list[MissingMaterial] = []
+    # 빠진 자료는 문헌마다 한 줄: 열쇠는 인용문헌 번호(없으면 이름). OA마다 라벨이 달라도
+    # (OA1 D2 = OA2 D1) 같은 번호면 한 줄로 합친다. 줄 이름(what)은 먼저 나온 OA의 라벨
+    missing: dict[str, MissingMaterial] = {}
     held: list[HeldTask] = []
-    for c in citations:
-        reason = _missing_reason(c, received_citations, lookup_failures)
-        if reason is None:
-            continue
-        what = f"{_citation_name(c)} 본문"
-        task = f"F3 대비: {_citation_name(c)}"
-        missing.append(
-            MissingMaterial(
-                what=what,
-                depends_on_tasks=[task],
-                lookup_result=reason,
-                ask_upload=reason != LookupResult.UNSUPPORTED_COUNTRY,
-                citation_key=c.number.value,  # 번호를 못 읽었으면 None
+    for oa in oas:
+        citations = _oa_citations(oa)
+        if not citations:
+            logger.warning(
+                "build_case_materials: OA %s 인용문헌이 0건 (빠진 자료 검사 없음)", oa.oa_id
             )
-        )
-        held.append(HeldTask(task=task, waiting_for=what))
+        for c in citations:
+            reason = _missing_reason(c, received_citations, lookup_failures)
+            if reason is None:
+                continue
+            what = f"{_citation_name(c)} 본문"
+            # 보류 작업 이름은 OA마다 자기 라벨 (design 3-2절)
+            task = f"f3_compare:{oa.oa_id}:{c.label}"
+            key = c.number.value or what
+            prev = missing.get(key)
+            if prev is None:
+                # 한 OA만 번호를 못 읽었어도 이름(what)이 같으면 같은 줄 (같은 what 두 줄 금지)
+                key, prev = next(
+                    ((k, m) for k, m in missing.items() if m.what == what), (key, None)
+                )
+            if prev is None:
+                missing[key] = MissingMaterial(
+                    what=what,
+                    depends_on_tasks=[task],
+                    lookup_result=reason,
+                    ask_upload=reason != LookupResult.UNSUPPORTED_COUNTRY,
+                    citation_key=c.number.value,  # 번호를 못 읽었으면 None
+                )
+            else:
+                # 다른 OA가 같은 문헌을 인용: 줄은 그대로, 기다리는 작업만 더한다
+                missing[key] = MissingMaterial.model_validate(
+                    prev.model_dump() | {"depends_on_tasks": [*prev.depends_on_tasks, task]}
+                )
+                what = (
+                    prev.what
+                )  # waiting_for는 합친 줄의 이름 (answer_missing이 이 이름으로 보류를 뺌)
+            held.append(HeldTask(task=task, waiting_for=what))
 
     materials = CaseMaterials(
         case_id=case_id,
@@ -389,17 +417,16 @@ def build_case_materials(
                 kind=g.kind,
                 source=g.source,
                 status=g.status,
+                text_status=text_status.get(g.document_id),
                 citation_key=g.citation_key,
             )
             for g in _one_per_key(grouped)
         ],
-        missing=missing,
+        missing=list(missing.values()),
         held_tasks=held,
     )
-    # 묶기에서 확인되지 않은 자료도 사람이 보게 검토할 사항 수에 더한다
-    unsettled = sum(1 for g in grouped if g.status.value != StatusValue.CONFIRMED)
-    count = len(collect_review_items([oa], materials)) + unsettled
-    return materials.model_copy(update={"review_items_count": count})
+    # 끝에서 F5 마무리를 거쳐 검토할 사항 목록·개수를 채운다 (마무리 안 한 ⑥이 저장되지 않게)
+    return finalize_case_materials(oas, materials)
 
 
 def _one_per_key(grouped: list[GroupedMaterial]) -> list[GroupedMaterial]:
@@ -458,10 +485,14 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     - 그 빠진 자료 줄과, 그 자료를 기다리던 보류 작업만 뺀다 (다른 보류는 그대로).
     - 올린 자료는 documents 끝에 더한다 (묶기 상태 그대로). 그 빠진 자료의 인용문헌 키를
       문서에 남겨 어느 인용문헌 본문인지 다시 열어도 알 수 있게 한다 (#201).
-    - 검토할 사항 수는 빠진 자료 한 줄만큼 줄인다 (collect_review_items가 빠진 자료마다 한 줄).
+    - 검토할 사항 목록에서 그 빠진 자료 줄(missing_material)을 빼고 개수는 새 목록 길이로 맞춘다.
+      남은 빠진 자료 줄의 경로(materials.missing[i])는 새 목록 위치로 고친다.
+    - 목록이 None인 옛 ⑥은 어느 줄을 뺄지 알 수 없어 ValueError (조용히 개수만 줄이지 않는다).
     - 빠진 자료가 아니거나 올려 달라고 하지 않은 것이면 오류 (조용히 더하지 않는다).
     """
     hit = missing_to_answer(materials, what)
+    if materials.review_items is None:
+        raise ValueError("review_items가 None인 ⑥(마무리 안 한 옛 값)에는 답할 수 없음")
     doc = CaseDocument(
         document_id=document.document_id,
         kind=document.kind,
@@ -472,11 +503,31 @@ def answer_missing(materials: CaseMaterials, what: str, document: GroupedMateria
     if hit.citation_key is None:
         # 번호를 못 읽은 인용문헌: 올린 문서가 어느 키인지 몰라 F3가 키로 찾지 못한다
         logger.warning("answer_missing: 인용문헌 키를 몰라 키 없이 더함 (%s)", what)
-    return materials.model_copy(
-        update={
-            "documents": [*materials.documents, doc],
-            "missing": [m for m in materials.missing if m is not hit],
-            "held_tasks": [h for h in materials.held_tasks if h.waiting_for != what],
-            "review_items_count": max(materials.review_items_count - 1, 0),
+    new_missing = [m for m in materials.missing if m is not hit]
+    # 그 빠진 자료의 줄만 빼고, 남은 빠진 자료 줄은 새 위치(materials.missing[i])로 경로를 고친다
+    items = []
+    for item in materials.review_items:
+        if item.kind != "missing_material":
+            items.append(item)
+        elif item.label != what:
+            idx = next(i for i, m in enumerate(new_missing) if m.what == item.label)
+            items.append(item.model_copy(update={"target": f"materials.missing[{idx}]"}))
+    # 올린 문서가 확인되지 않았거나 충돌이면 그 문서 줄을 더한다. 문서는 끝에 더해지므로 기존
+    # 문서 줄의 경로(materials.documents[i])는 그대로이고, 새 줄은 끝 위치를 가리킨다
+    new_doc_items = document_review_items(doc, len(materials.documents))
+    if new_doc_items:
+        # 마무리(finalize)와 같은 순서: 문서 줄(기존 문서 → 새 문서) 뒤에 결과 줄, 그다음 종류 순서
+        old_doc_items = [i for i in items if i.target.startswith("materials.documents[")]
+        rest = [i for i in items if not i.target.startswith("materials.documents[")]
+        items = sort_review_items(old_doc_items + new_doc_items + rest)
+    # 새로 만들어 개수 검사를 거친다
+    return CaseMaterials.model_validate(
+        materials.model_dump()
+        | {
+            "documents": [*materials.model_dump()["documents"], doc.model_dump()],
+            "missing": [m.model_dump() for m in new_missing],
+            "held_tasks": [h.model_dump() for h in materials.held_tasks if h.waiting_for != what],
+            "review_items": [i.model_dump() for i in items],
+            "review_items_count": len(items),
         }
     )
