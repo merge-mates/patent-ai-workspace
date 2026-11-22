@@ -30,7 +30,10 @@ RESULT_VISIBLE_STATES = frozenset({RunState.SUCCEEDED, RunState.WAITING_FOR_HUMA
 
 # 허용 전이 표. 여기 없는 이동은 전부 거부한다.
 _ALLOWED: dict[RunState, frozenset[RunState]] = {
-    RunState.QUEUED: frozenset({RunState.RUNNING, RunState.CANCELLED, RunState.FAILED}),
+    # queued → waiting: 번호 기록 저장이 실패하면 다시 사람을 기다리게 되돌린다 (#287)
+    RunState.QUEUED: frozenset(
+        {RunState.RUNNING, RunState.CANCELLED, RunState.FAILED, RunState.WAITING_FOR_HUMAN}
+    ),
     RunState.RUNNING: frozenset(
         {RunState.SUCCEEDED, RunState.FAILED, RunState.WAITING_FOR_HUMAN, RunState.CANCELLED}
     ),

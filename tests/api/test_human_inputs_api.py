@@ -194,3 +194,96 @@ def test_human_inputs_api_번호를_넣으면_바로_대기로_바뀌고_두_번
     env.executor.execute(created["run_id"], created["oa_id"])
     oa = env.client.get(f"/oas/{created['oa_id']}/oa-result").json()["result"]
     assert oa["application_number"]["value"] == "1020990000001"
+
+
+@pytest.mark.parametrize(
+    ("url_of", "body", "kind"),
+    [
+        (
+            lambda c: f"/cases/{c['case_id']}",
+            {"application_number": "10-2099-0000001"},
+            "application_number",
+        ),
+        (
+            lambda c: f"/oas/{c['oa_id']}",
+            {"dispatch_number": "9-5-2099-000000001"},
+            "dispatch_number",
+        ),
+    ],
+)
+def test_human_inputs_api_번호_기록_저장이_실패하면_500이고_다시_기다린다(
+    tmp_path, monkeypatch, url_of, body, kind
+):
+    # #287: 기록 저장이 실패해도 실행이 번호 없이 queued로 남아 그 OA를 막지 않는다
+    _unread(monkeypatch, kind)
+    env = _env(tmp_path)
+    created = env.upload()
+    real_add = env.human.add
+
+    def boom(*a, **k):
+        raise RuntimeError("DB 쓰기 실패")
+
+    monkeypatch.setattr(env.human, "add", boom)
+    failed = env.client.patch(url_of(created), json=body)
+
+    assert failed.status_code == 500
+    assert failed.json()["code"] == "human_input_not_saved" and failed.json()["message"]
+    st = env.client.get(f"/runs/{created['run_id']}").json()
+    assert (st["state"], st["waiting_for"]) == ("waiting_for_human", kind)
+    assert env.human.numbers_for_run(created["run_id"]) == {}
+
+    # 저장이 다시 되면 다음 번호 입력은 정상으로 받아 이어 돈다
+    monkeypatch.setattr(env.human, "add", real_add)
+    again = env.client.patch(url_of(created), json=body)
+    assert again.status_code == 200, again.text
+    assert env.client.get(f"/runs/{created['run_id']}").json()["state"] == "succeeded"
+
+
+def _fail_add_then(env, monkeypatch, on_revert):
+    """번호 기록 저장을 실패시키고, 되돌리기(→ waiting) 때 on_revert를 부른다."""
+
+    def boom(*a, **k):
+        raise RuntimeError("DB 쓰기 실패")
+
+    monkeypatch.setattr(env.human, "add", boom)
+    real = env.runs.transition
+
+    def transition(run_id, new, **k):
+        if new.value == "waiting_for_human":
+            on_revert(run_id)
+        return real(run_id, new, **k)
+
+    monkeypatch.setattr(env.runs, "transition", transition)
+
+
+def test_human_inputs_api_되돌리기도_실패하면_500이고_로그를_남긴다(
+    waiting_app, monkeypatch, caplog
+):
+    # 리뷰 고칠 것: DB가 끊기면 되돌리기도 실패한다. 조용히 넘기지 않고 같은 500 + 로그
+    env, created, _ = waiting_app
+
+    def revert_fails(run_id):
+        raise ConnectionError("DB 끊김")
+
+    _fail_add_then(env, monkeypatch, revert_fails)
+    res = env.client.patch(
+        f"/cases/{created['case_id']}", json={"application_number": "10-2099-0000001"}
+    )
+
+    assert (res.status_code, res.json()["code"]) == (500, "human_input_not_saved")
+    assert "되돌리기도 실패" in caplog.text and created["run_id"] in caplog.text
+
+
+def test_human_inputs_api_그_사이_취소됐으면_취소로_두고_500(waiting_app, monkeypatch):
+    env, created, _ = waiting_app
+
+    def cancelled_meanwhile(run_id):
+        env.client.post(f"/runs/{run_id}/cancel")
+
+    _fail_add_then(env, monkeypatch, cancelled_meanwhile)
+    res = env.client.patch(
+        f"/cases/{created['case_id']}", json={"application_number": "10-2099-0000001"}
+    )
+
+    assert (res.status_code, res.json()["code"]) == (500, "human_input_not_saved")
+    assert env.client.get(f"/runs/{created['run_id']}").json()["state"] == "cancelled"

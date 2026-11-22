@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -25,6 +26,7 @@ from patent_ai.api.errors import AppError
 from patent_ai.api.runs import launch_run
 from patent_ai.core.cases.human_answers import (
     Confirmation,
+    HumanInputNotSavedError,
     InvalidNumberError,
     NotWaitingError,
     ResultNotReadyError,
@@ -49,6 +51,14 @@ Launch = Annotated[RunLauncher, Depends(get_run_launcher)]
 Results = Annotated[OAResultStore, Depends(get_oa_result_store)]
 
 _NOT_WAITING = "그 번호를 기다리는 실행이 없습니다"
+
+logger = logging.getLogger(__name__)
+
+
+def _not_saved(exc: HumanInputNotSavedError) -> AppError:
+    # 저장 실패 원인은 로그에만 남긴다. 실행은 다시 번호를 기다리니 다시 넣으면 된다 (#287)
+    logger.error("번호 기록 저장 실패: run_id=%s", exc, exc_info=exc.__cause__)
+    return AppError(500, "human_input_not_saved", "번호를 저장하지 못했습니다. 다시 넣어 주세요")
 
 
 class ApplicationNumberIn(BaseModel):
@@ -85,6 +95,8 @@ def patch_case(
         raise AppError(422, "invalid_application_number", "출원번호 꼴이 아닙니다") from None
     except NotWaitingError:
         raise AppError(409, "not_waiting", _NOT_WAITING) from None
+    except HumanInputNotSavedError as exc:
+        raise _not_saved(exc) from exc
     launch_run(launch, runs, got.run_id, got.oa_id)
     return NumberEnteredOut(case_id=got.case_id, oa_id=got.oa_id, run_id=got.run_id)
 
@@ -103,6 +115,8 @@ def patch_oa(
         raise AppError(422, "invalid_dispatch_number", "발송번호 꼴이 아닙니다") from None
     except NotWaitingError:
         raise AppError(409, "not_waiting", _NOT_WAITING) from None
+    except HumanInputNotSavedError as exc:
+        raise _not_saved(exc) from exc
     launch_run(launch, runs, got.run_id, got.oa_id)
     return NumberEnteredOut(case_id=got.case_id, oa_id=got.oa_id, run_id=got.run_id)
 

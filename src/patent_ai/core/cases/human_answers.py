@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -25,6 +26,8 @@ from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue
 from patent_ai.core.schemas.oa_result import _OA_FIELD_NAMES, OAResult, summarize_status
 
+logger = logging.getLogger(__name__)
+
 # 사람이 넣은 번호 칸의 확인 글 (원문에서 확인한 값이 아니라는 것을 드러낸다)
 HUMAN_CHECKED = "사람이 직접 입력함 (원문 대조 아님)"
 
@@ -36,6 +39,10 @@ _NORMALIZE = {
 
 class NotWaitingError(Exception):
     """그 번호를 기다리는 실행이 없다 (API는 409 not_waiting)."""
+
+
+class HumanInputNotSavedError(RuntimeError):
+    """번호 기록(human_inputs)을 못 남겼다. 실행은 다시 그 번호를 기다린다 (API는 500)."""
 
 
 class InvalidNumberError(ValueError):
@@ -100,12 +107,30 @@ def _take_waiting(oa_id: str, run_id: str, kind: NumberKind, number: str, runs, 
     전이에 지면(이미 다른 PATCH가 가져감·취소됨) 번호를 남기지 않고 NotWaitingError (409).
     그래서 실행기가 잡기 전에 두 번째 PATCH가 와도 나중 번호가 몰래 이기지 않고, 상태도 바로
     queued로 보여 화면이 다시 폴링한다.
+    번호 기록 저장이 실패하면 다시 waiting으로 되돌리고 HumanInputNotSavedError (500, #287).
     """
     try:
         runs.transition(run_id, RunState.QUEUED, expected=RunState.WAITING_FOR_HUMAN)
     except InvalidRunTransition:
         raise NotWaitingError(run_id) from None
-    human.add(oa_id, run_id, kind, number)
+    try:
+        human.add(oa_id, run_id, kind, number)
+    except Exception as exc:
+        # 번호를 못 남겼는데 queued로 두면 실행이 번호 없이 남아 그 OA가 막힌다 (#287).
+        # 같은 번호를 다시 기다리게 되돌린다. 아직 queued일 때만 (그 사이 취소됐으면 건드리지 않음)
+        try:
+            runs.transition(
+                run_id, RunState.WAITING_FOR_HUMAN, waiting_for=kind, expected=RunState.QUEUED
+            )
+        except InvalidRunTransition:
+            pass  # 그 사이 취소됨: 실행은 cancelled로 끝나 막히지 않는다
+        except Exception:
+            # 되돌리기도 못 했다 (DB 끊김 등). 실행은 queued로 남고 서버를 다시 켤 때 failed로
+            # 바뀐다 (fail_unfinished_runs). 조용히 넘기지 않게 로그를 남긴다
+            logger.exception(
+                "번호 기록 저장 실패 뒤 되돌리기도 실패: run_id=%s (queued로 남음)", run_id
+            )
+        raise HumanInputNotSavedError(run_id) from exc
 
 
 def _waiting_run(oa, runs: RunStatusStore, kind: NumberKind) -> str | None:
