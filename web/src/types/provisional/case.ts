@@ -49,6 +49,14 @@ export interface CreatedRun {
   run_id: string
 }
 
+// PATCH /oas/{id} (발송번호 입력) 응답: docs/api/openapi.yaml NumberEnteredOut.
+// run_id는 기다리던 그 실행이 이어 도는 같은 실행이다 (화면은 이것을 폴링에 넣는다)
+export interface NumberEnteredOut {
+  case_id: string
+  oa_id: string
+  run_id: string
+}
+
 // GET /cases 의 한 줄
 export interface CaseSummary {
   case_id: string

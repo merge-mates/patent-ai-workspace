@@ -3,7 +3,7 @@ import { App, Button, Steps, Upload } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import { api, API_MODE } from '../api'
-import { ApplicationNumberForm } from '../components/ApplicationNumberForm'
+import { NumberInputForm } from '../components/NumberInputForm'
 import { MaterialRows } from '../components/MaterialRows'
 import { RunNotice } from '../components/RunNotice'
 import { skippedStepLabel, skippedStepRow, unverifiedReasonLabel, waitingForLabel } from '../labels'
@@ -161,8 +161,9 @@ function UploadProgress({ data }: { data: OALoaderData }) {
           <RunNotice oaId={oa.oa_id} snap={snap} />
           {/* 출원번호 입력을 기다리면 입력 칸 (사건 머리와 같은 부품) */}
           {waiting && waitingFor === 'application_number' && (
-            <ApplicationNumberForm caseId={oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
+            <NumberInputForm kind="application_number" targetId={oa.case_id} read={r?.application_number ?? null} />
           )}
+          {waiting && waitingFor === 'dispatch_number' && <NumberInputForm kind="dispatch_number" targetId={oa.oa_id} read={r?.dispatch_number ?? null} />}
           <span className="label2 t3">조회는 이 통지서 시점까지만 해요. 그 뒤 보정서·등록 청구항은 넣지 않아요.</span>
           {/* 사람 기다림은 폴링이 멈춘 상태지만 새로 보기는 눌러 볼 수 있게 둔다 */}
           {(!ended || run.state === 'waiting_for_human' || runError !== null) && (

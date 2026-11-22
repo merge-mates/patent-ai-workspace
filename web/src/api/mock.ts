@@ -18,6 +18,7 @@ import type {
   OAResultResponse,
   RunStatus,
   CreatedRun,
+  NumberEnteredOut,
   UploadedDocument,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
@@ -37,6 +38,7 @@ import { exampleCaseChecks, exampleDirections, exampleDrafts } from '../types/pr
 import demoFiles from 'virtual:demo-results'
 import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
 import { directTodos } from '../todos'
+import { isDispatchNumberShape } from '../numberShapes'
 import { ApiError } from './errors'
 import type { ResultList } from './resultList'
 
@@ -274,9 +276,10 @@ export const mockApi = {
     }
     return { ...runOf(b), oa_id: b.oa_id, error: null }
   },
-  // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다
+  // 올린 파일은 읽지 않는다: 첫 fixture 사건을 만든 것처럼 돌려준다.
+  // 예외(발송번호 기다림 보기용): 파일 이름에 "dispatch"가 있으면 발송번호를 못 읽은 fixture(c_4)를 올린 것으로 흉내 낸다
   async createCase(file: File): Promise<CreatedCase> {
-    const b = committed[0]
+    const b = (file.name.includes('dispatch') && committed.find((x) => x.oa_result.dispatch_number.status.value !== 'confirmed')) || committed[0]
     // 같은 파일을 또 올리면 서버처럼 409 document_already_exists + 기존 사건·OA (새로고침하면 잊는다)
     const key = `${file.name}:${file.size}`
     if (uploadedKeys.has(key))
@@ -296,9 +299,19 @@ export const mockApi = {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
   // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버는 PATCH /cases/{id}, #70)
-  async setApplicationNumber(caseId: string, applicationNumber: string): Promise<void> {
+  async setApplicationNumber(caseId: string, applicationNumber: string): Promise<NumberEnteredOut> {
     const b = await byCase(caseId)
     saveAppNumber(b.case_id, applicationNumber)
+    return { case_id: b.case_id, oa_id: b.oa_id, run_id: currentRunId(b) }
+  },
+  // 발송번호 입력: 서버처럼 꼴을 보고(422), 번호를 남기면 기다리던 같은 실행이 이어서 끝난 것으로 흉내 낸다 (PATCH /oas/{id})
+  async setDispatchNumber(oaId: string, dispatchNumber: string): Promise<NumberEnteredOut> {
+    const b = await byOA(oaId)
+    if (!isDispatchNumberShape(dispatchNumber))
+      throw new ApiError('invalid_dispatch_number', '발송번호 꼴이 아닙니다', 422)
+    if (runOf(b).waiting_for !== 'dispatch_number') throw new ApiError('not_waiting', '발송번호를 기다리는 실행이 없습니다', 409)
+    saveDispatchNumber(b.case_id, dispatchNumber.trim())
+    return { case_id: b.case_id, oa_id: b.oa_id, run_id: currentRunId(b) }
   },
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
   async rerunOA(oaId: string): Promise<CreatedRun> {
@@ -399,26 +412,47 @@ function saveAppNumber(caseId: string, n: string) {
     console.warn(`[mock] 출원번호를 저장하지 못함 (${appNumberKey(caseId)})`, e)
   }
 }
+// 사람이 넣은 발송번호 (mock만, 출원번호와 같은 방식). 사건 하나에 OA 하나라 사건 번호로 둔다
+const dispatchKey = (caseId: string) => `patent_ai:mock:v1:dispatch:${caseId}`
+function loadDispatchNumber(caseId: string): string | null {
+  try {
+    return sessionStorage.getItem(dispatchKey(caseId))
+  } catch {
+    return null
+  }
+}
+function saveDispatchNumber(caseId: string, n: string) {
+  try {
+    sessionStorage.setItem(dispatchKey(caseId), n)
+  } catch (e) {
+    console.warn(`[mock] 발송번호를 저장하지 못함 (${dispatchKey(caseId)})`, e)
+  }
+}
+
 // 서버와 같게: 사람이 넣은 출원번호는 값·글자를 사람 것으로, 쪽은 비우고 "사람이 직접 입력함" 확인 글 (#70)
 function withHumanNumber(b: Bundle): OAResult {
+  let r = b.oa_result
+  const human = (digits: string) => ({
+    value: digits,
+    raw_text: digits,
+    page: null,
+    status: { value: 'confirmed' as const, reason: null, checked: HUMAN_ENTERED_CHECKED, searched_scope: null },
+    candidates: [],
+  })
   const n = loadAppNumber(b.case_id)
-  if (n === null || b.oa_result.application_number.status.value === 'confirmed') return b.oa_result
-  const digits = n.replace(/-/g, '')
-  return {
-    ...b.oa_result,
-    application_number: {
-      value: digits,
-      raw_text: digits,
-      page: null,
-      status: { value: 'confirmed', reason: null, checked: HUMAN_ENTERED_CHECKED, searched_scope: null },
-      candidates: [],
-    },
-  }
+  if (n !== null && r.application_number.status.value !== 'confirmed') r = { ...r, application_number: human(n.replace(/-/g, '')) }
+  const d = loadDispatchNumber(b.case_id)
+  if (d !== null && r.dispatch_number.status.value !== 'confirmed') r = { ...r, dispatch_number: human(d.replace(/-/g, '')) }
+  return r
 }
 
 // 지휘(orchestrator)와 같은 규칙: 통지서에서 읽은 출원번호가 확인됨이 아니면(확인되지 않음·충돌) 사람에게 묻는다
 const needsAppNumber = (b: Bundle) =>
   b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
+
+// 발송번호도 같은 규칙 (출원번호를 먼저 묻고, 그다음 발송번호)
+const needsDispatchNumber = (b: Bundle) =>
+  b.oa_result.dispatch_number.status.value !== 'confirmed' && loadDispatchNumber(b.case_id) === null
 
 // 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 아니면 끝남 (방향 고르기는 실행을 멈추지 않는다: 확신 낮은 묶음은 선택 null로 두고 실행은 succeeded).
 // mock 단순화: 출원번호를 기다리는 동안에도 뒤 단계 결과(예시)는 열어 둔다 (서버는 OA 정리까지만 있다)
@@ -430,6 +464,7 @@ function runOf(b: Bundle): RunStatusLike {
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
+  if (needsDispatchNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'dispatch_number' }
   // 방향 고르기는 실행을 멈추지 않는다 (확신 낮은 묶음은 선택 null + 초안 보류, 실행은 succeeded)
   return { run_id, state: 'succeeded', current_step: null }
 }
