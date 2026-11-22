@@ -19,15 +19,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from patent_ai.core.f2_legal_research.refs import ArticleRef, article_ref, parse_dispatch_date
 from patent_ai.core.f2_legal_research.tools import (
+    ALL_KINDS,
+    NOT_SEARCHED,
     LawPool,
-    check_source,
+    further_review,
     get_article,
     search_not_indexed,
+    statute_source,
 )
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.schemas.common import (
-    Evidence,
     Flag,
     Status,
     StatusValue,
@@ -37,29 +39,18 @@ from patent_ai.core.schemas.common import (
 from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 from patent_ai.core.schemas.legal_evidence import (
     AsOfSource,
-    FurtherReview,
-    FurtherReviewWhy,
     LegalClaim,
     LegalEvidenceBundle,
     LegalQuestion,
-    LegalSource,
-    LegalSourceKind,
     QuestionSource,
     summarize_bundle_status,
     summarize_claim_status,
 )
 from patent_ai.core.schemas.oa_result import OAResult, Rejection
 from patent_ai.retrieval.repository import ChunkRepository, PostgresChunkRepository
-from patent_ai.retrieval.schemas import Chunk
 
 logger = logging.getLogger(__name__)
 
-_ALL_KINDS = [
-    LegalSourceKind.STATUTE,
-    LegalSourceKind.GUIDELINE,
-    LegalSourceKind.PRECEDENT,
-    LegalSourceKind.TRIAL,
-]
 _ALL_BUNDLES = "모든 판단 단위의 법률 근거 묶음 확인"
 
 
@@ -109,15 +100,6 @@ def make_law_repo() -> ChunkRepository:
     return PostgresChunkRepository.from_url()
 
 
-def edition_text(chunk: Chunk) -> str | None:
-    """사람이 읽는 판본: `특허법_1002_20200101 시행 2020-01-01 ~ 현행`. 시작일 모르면 None."""
-    ed = chunk.edition
-    if ed.status != "confirmed" or ed.effective_from is None:
-        return None
-    end = ed.effective_to.isoformat() if ed.effective_to else "현행"
-    return f"{chunk.doc_id} 시행 {ed.effective_from.isoformat()} ~ {end}"
-
-
 def _question(rej: Rejection, as_of: date | None, label: str | None) -> LegalQuestion:
     reasoning = rej.examiner_reasoning
     text = (reasoning.value or reasoning.raw_text or "").strip() or f"거절이유 {rej.no} 법률 근거"
@@ -126,7 +108,7 @@ def _question(rej: Rejection, as_of: date | None, label: str | None) -> LegalQue
         source=QuestionSource.OA_REJECTION,
         as_of=as_of,
         as_of_source=AsOfSource.OA_DISPATCH_DATE if as_of else AsOfSource.NONE,
-        source_kinds=_ALL_KINDS,
+        source_kinds=ALL_KINDS,
         article_refs=[label] if label else [],
     )
 
@@ -154,10 +136,6 @@ def _unverified(reason: UnverifiedReason) -> Status:
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
 
 
-# 심사기준·판례·심결: 검색이 아직 없어 body_missing으로 기록만 남기는 유형 (law-idx-v3 뒤 검색)
-_NOT_SEARCHED = (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL)
-
-
 def _question_of(
     unit: JudgmentUnit, oa: OAResult
 ) -> tuple[Rejection | None, date | None, ArticleRef | None, LegalQuestion]:
@@ -170,7 +148,7 @@ def _question_of(
             text=f"거절이유 {unit.rejection} 법률 근거",
             source=QuestionSource.OA_REJECTION,
             as_of_source=AsOfSource.NONE,
-            source_kinds=_ALL_KINDS,
+            source_kinds=ALL_KINDS,
         )
         return None, None, None, q
     nd = oa.notice_date
@@ -195,42 +173,20 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
         )
 
     found = get_article(pool, ref, as_of)
-    logs = [found.log, *(search_not_indexed(pool, kind, as_of) for kind in _NOT_SEARCHED)]
+    logs = [found.log, *(search_not_indexed(pool, kind, as_of) for kind in NOT_SEARCHED)]
     if found.chunk is None:
         # 같은 날 시행판이 둘이면 고르지 않고, 겹친 조각을 사람이 볼 수 있게 남긴다
-        further = [
-            FurtherReview(
-                chunk_id=c.chunk_id,
-                why=FurtherReviewWhy.OTHER_EDITION,
-                note=f"{ref.label}: 기준일 {as_of.isoformat()}에 시행판이 둘 이상 (판본 확인 필요)",
-                index_version=c.index_version,
-            )
-            for c in found.conflicts
-        ]
+        further = [further_review(c, ref.label, as_of) for c in found.conflicts]
         return _empty(unit, oa, question, checked_on, found.status, logs, further)
 
     chunk = found.chunk
-    evidence = Evidence(
-        document_id=chunk.doc_id,
-        location=chunk.location.label,
-        raw_text=chunk.text,
-        edition=edition_text(chunk),
-        checked_on=checked_on,
-        chunk_id=chunk.chunk_id,
-        index_version=chunk.index_version,
-    )
     # 출처 확인: 색인에 있고, 글이 그대로이고, 기준일 판인 근거만 쓴다 (없는 출처 0건)
-    if not check_source(pool, evidence.chunk_id, evidence.raw_text, as_of):
+    source = statute_source(chunk, ref.label, as_of, checked_on, pool)
+    if source is None:
         logger.warning("run_f2 %s: %s 근거가 출처 확인에서 빠짐", oa.oa_id, chunk.chunk_id)
         return _empty(
             unit, oa, question, checked_on, _unverified(UnverifiedReason.EVIDENCE_REJECTED), logs
         )
-    source = LegalSource(
-        source_kind=LegalSourceKind.STATUTE,
-        identifier=ref.label,
-        evidence=evidence,
-        status=found.status,
-    )
     claim = LegalClaim(
         no=1,
         text=f"거절이유 근거 조문: {ref.label} (OA 발송일 {as_of.isoformat()} 시행판)",

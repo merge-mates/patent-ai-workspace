@@ -13,17 +13,18 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from patent_ai.core.f2_legal_research.refs import ArticleRef, article_refs_in_text
-from patent_ai.core.f2_legal_research.run import edition_text
 from patent_ai.core.f2_legal_research.tools import (
+    ALL_KINDS,
+    NOT_SEARCHED,
     LawPool,
-    check_source,
+    further_review,
     get_article,
     law_of,
     search_article,
     search_not_indexed,
+    statute_source,
 )
 from patent_ai.core.schemas.common import (
-    Evidence,
     Flag,
     Status,
     StatusValue,
@@ -36,7 +37,6 @@ from patent_ai.core.schemas.legal_evidence import (
     LegalClaim,
     LegalEvidenceBundle,
     LegalQuestion,
-    LegalSource,
     LegalSourceKind,
     QuestionSource,
     SearchLogEntry,
@@ -47,14 +47,6 @@ from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.schemas import Chunk
 
 logger = logging.getLogger(__name__)
-
-ALL_KINDS = [
-    LegalSourceKind.STATUTE,
-    LegalSourceKind.GUIDELINE,
-    LegalSourceKind.PRECEDENT,
-    LegalSourceKind.TRIAL,
-]
-_NOT_SEARCHED = (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL)
 
 
 class ChatAsk(BaseModel):
@@ -107,28 +99,6 @@ def _claim_text(label: str, edition: str, by_search: bool, search_k: int) -> str
     return f"질문에서 찾은 조문: {label} ({edition})"
 
 
-def _source_of(chunk: Chunk, label: str, as_of: date, checked_on: date, pool: LawPool):
-    """조각 -> 근거(출처 확인에서 빠지면 None). 출처 확인은 무조건 도는 코드 단계다."""
-    evidence = Evidence(
-        document_id=chunk.doc_id,
-        location=chunk.location.label,
-        raw_text=chunk.text,
-        edition=edition_text(chunk),
-        checked_on=checked_on,
-        chunk_id=chunk.chunk_id,
-        index_version=chunk.index_version,
-    )
-    if not check_source(pool, evidence.chunk_id, evidence.raw_text, as_of):
-        return None
-    status = Status(
-        value=StatusValue.CONFIRMED,
-        checked=f"{label} {chunk.edition.label or chunk.doc_id} 판본·위치 확인",
-    )
-    return LegalSource(
-        source_kind=LegalSourceKind.STATUTE, identifier=label, evidence=evidence, status=status
-    )
-
-
 def _empty_status(statuses: list[Status], skipped: int, scope: str) -> Status:
     """주장이 0개일 때의 묶음 status (못 찾음 != 없음)."""
     if skipped > 0:
@@ -164,11 +134,12 @@ def _statute_candidates(
     searcher: Searcher,
     search_k: int,
 ):
-    """법령 후보 찾기 -> (후보 [(라벨, 조각)], 기록, 못 찾은 이유들, 판본 몰라 뺀 수, 범위 글)."""
+    """법령 후보 찾기 -> (후보 [(라벨, 조각)], 기록, 못 찾은 이유들, 뺀 수, 범위 글, 겹친 판)."""
     found: list[tuple[str, Chunk]] = []
     logs: list[SearchLogEntry] = []
     statuses: list[Status] = []
     skipped = 0
+    overlaps: list[FurtherReview] = []  # 같은 날 시행판이 둘 이상인 조각 (사람이 볼 것)
     if refs:
         # 글에 조문 번호가 있으면 그 조문을 ID로 조회한다
         for ref in refs:
@@ -179,9 +150,10 @@ def _statute_candidates(
                 found.append((ref.label, got.chunk))
             else:
                 statuses.append(got.status)
+                overlaps += [further_review(x, ref.label, as_of) for x in got.conflicts]
         labels = ", ".join(r.label for r in refs)
         scope = f"{pool.index_version} 법령 조문 {labels}, 모든 판 (기준일 {as_of.isoformat()})"
-        return found, logs, statuses, skipped, scope
+        return found, logs, statuses, skipped, scope, overlaps
     # 번호가 없으면 질문 글로 BM25 검색
     res = search_article(searcher, question.text, as_of, search_k)
     skipped = res.skipped_unverified_edition
@@ -211,7 +183,7 @@ def _statute_candidates(
             status=status,
         )
     )
-    return found, logs, statuses, skipped, scope
+    return found, logs, statuses, skipped, scope, overlaps
 
 
 def answer_question(
@@ -231,16 +203,17 @@ def answer_question(
     statuses: list[Status] = []
     skipped, scope = 0, f"{pool.index_version} 법령 (찾지 않음)"
     refs: list[ArticleRef] = []
+    overlaps: list[FurtherReview] = []
 
     # STATUTE를 고른 때만 법령을 찾는다
     if LegalSourceKind.STATUTE in question.source_kinds:
         refs = article_refs_in_text(question.text)
-        found, logs, statuses, skipped, scope = _statute_candidates(
+        found, logs, statuses, skipped, scope, overlaps = _statute_candidates(
             question, refs, as_of, pool, searcher, search_k
         )
         for label, chunk in found:
             # 출처 확인을 지난 근거만 주장에 넣는다 (없는 출처 0건)
-            source = _source_of(chunk, label, as_of, checked_on, pool)
+            source = statute_source(chunk, label, as_of, checked_on, pool)
             if source is None:
                 logger.warning(
                     "법률 질문 %s: %s 근거가 출처 확인에서 빠짐", bundle_id, chunk.chunk_id
@@ -268,13 +241,13 @@ def answer_question(
     # 심사기준·판례·심결: 아직 검색이 없어 body_missing 기록만 (못 찾음 != 없음)
     logs += [
         search_not_indexed(pool, kind, as_of)
-        for kind in _NOT_SEARCHED
+        for kind in NOT_SEARCHED
         if kind in question.source_kinds
     ]
     used = {c.sources[0].evidence.chunk_id for c in claims}
     in_force = {c.chunk_id for c in pool.in_force(as_of)}
     known = {c.chunk_id: c for c in pool.chunks}
-    further: list[FurtherReview] = []
+    further: list[FurtherReview] = list(overlaps)
     for cid in dict.fromkeys(prior_evidence):
         if cid in used or cid in in_force:
             continue

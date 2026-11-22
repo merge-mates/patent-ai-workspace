@@ -216,3 +216,17 @@ def test_주장_글은_번호로_읽은_조문과_검색한_조문을_구분한�
     by_search = _answer("통상의 기술자 진보성", kinds=[S]).claims[0].text
     assert by_ref.startswith("질문에서 찾은 조문: ")
     assert by_search.startswith("질문 글로 검색한 조문 (BM25 상위 3): ")
+
+
+def test_같은_날_시행판이_둘이면_고르지_않고_겹친_조각을_더_볼_것으로_남긴다():
+    # OA 흐름(test_f2_run.py)과 같은 규칙: 근거 0개 + ambiguous + further_review(other_edition)
+    twin = law_chunk("특허법_1009_20200101", 290002, "제29조제2항", "겹친 판", fakes.NEW)
+    b = _answer("특허법 제29조제2항", repo=fakes.repo([twin]))
+    assert b.claims == []
+    assert b.status.reason == UnverifiedReason.AMBIGUOUS
+    assert sorted(f.chunk_id for f in b.further_review) == [
+        f"{IV}:{NEW_DOC}:290002",
+        f"{IV}:특허법_1009_20200101:290002",
+    ]
+    assert all(f.why == FurtherReviewWhy.OTHER_EDITION for f in b.further_review)
+    assert all("시행판이 둘 이상" in f.note for f in b.further_review)

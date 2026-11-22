@@ -14,8 +14,14 @@ from dataclasses import dataclass
 from datetime import date
 
 from patent_ai.core.f2_legal_research.refs import ArticleRef
-from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
-from patent_ai.core.schemas.legal_evidence import LegalSourceKind, SearchLogEntry
+from patent_ai.core.schemas.common import Evidence, Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.legal_evidence import (
+    FurtherReview,
+    FurtherReviewWhy,
+    LegalSource,
+    LegalSourceKind,
+    SearchLogEntry,
+)
 from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import Chunk, SearchResult
@@ -199,3 +205,57 @@ def check_source(
     if found is None:
         return False  # 없는 조각이거나 기준일에 시행 중인 판이 아님
     return _squash(raw_text) in _squash(found.text)
+
+
+# 질문이 자료 유형을 따로 안 고르면 전부 (OA 흐름·법률 질문 탭이 같이 쓴다)
+ALL_KINDS = [
+    LegalSourceKind.STATUTE,
+    LegalSourceKind.GUIDELINE,
+    LegalSourceKind.PRECEDENT,
+    LegalSourceKind.TRIAL,
+]
+# 심사기준·판례·심결: 검색이 아직 없어 body_missing으로 기록만 남기는 유형 (law-idx-v3 뒤 검색)
+NOT_SEARCHED = (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL)
+
+
+def edition_text(chunk: Chunk) -> str | None:
+    """사람이 읽는 판본: `특허법_1002_20200101 시행 2020-01-01 ~ 현행`. 시작일 모르면 None."""
+    ed = chunk.edition
+    if ed.status != "confirmed" or ed.effective_from is None:
+        return None
+    end = ed.effective_to.isoformat() if ed.effective_to else "현행"
+    return f"{chunk.doc_id} 시행 {ed.effective_from.isoformat()} ~ {end}"
+
+
+def statute_source(
+    chunk: Chunk, label: str, as_of: date, checked_on: date, pool: LawPool
+) -> LegalSource | None:
+    """조각 -> 근거. 출처 확인(무조건 도는 코드 단계)에서 빠지면 None."""
+    evidence = Evidence(
+        document_id=chunk.doc_id,
+        location=chunk.location.label,
+        raw_text=chunk.text,
+        edition=edition_text(chunk),
+        checked_on=checked_on,
+        chunk_id=chunk.chunk_id,
+        index_version=chunk.index_version,
+    )
+    if not check_source(pool, evidence.chunk_id, evidence.raw_text, as_of):
+        return None
+    status = Status(
+        value=StatusValue.CONFIRMED,
+        checked=f"{label} {chunk.edition.label or chunk.doc_id} 판본·위치 확인",
+    )
+    return LegalSource(
+        source_kind=LegalSourceKind.STATUTE, identifier=label, evidence=evidence, status=status
+    )
+
+
+def further_review(chunk: Chunk, label: str, as_of: date) -> FurtherReview:
+    """같은 날 시행판이 둘 이상일 때 겹친 조각: 고르지 않고 사람이 볼 것으로 남긴다."""
+    return FurtherReview(
+        chunk_id=chunk.chunk_id,
+        why=FurtherReviewWhy.OTHER_EDITION,
+        note=f"{label}: 기준일 {as_of.isoformat()}에 시행판이 둘 이상 (판본 확인 필요)",
+        index_version=chunk.index_version,
+    )
