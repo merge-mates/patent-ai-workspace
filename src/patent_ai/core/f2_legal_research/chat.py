@@ -305,3 +305,21 @@ def answer_question(
         search_log=logs,
         status=status,
     )
+
+
+def missing_index_answer(
+    question: LegalQuestion, *, bundle_id: str, index_version: str, checked_on: date
+) -> LegalEvidenceBundle:
+    """법령 색인을 못 읽었거나 조각이 0개일 때의 묶음: 주장 없이 확인되지 않음(body_missing).
+
+    색인이 없어 못 본 것을 "조회 범위 내 없음"으로 내지 않는다 (못 찾음 != 없음).
+    """
+    logger.warning("법률 질문 %s: 법령 색인 %s을 못 읽음 (조각 없음)", bundle_id, index_version)
+    return LegalEvidenceBundle(
+        bundle_id=bundle_id,
+        question=question,
+        checked_on=checked_on,
+        claims=[],
+        search_log=[],
+        status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING),
+    )

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -28,6 +30,10 @@ from patent_ai.core.cases.store_pg import PostgresCaseAppStore
 from patent_ai.core.cases.texts_source import PostgresTextsSource
 from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
+from patent_ai.core.f2_legal_research.chat_store import LegalChatStore
+from patent_ai.core.f2_legal_research.chat_store_pg import PostgresLegalChatStore
+from patent_ai.core.f2_legal_research.run import F2Settings, load_f2_settings, make_law_repo
+from patent_ai.core.f2_legal_research.tools import LawPool
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.limits import CallBudget, RunContext
 from patent_ai.core.runs.cancel import CancelRegistry
@@ -38,7 +44,10 @@ from patent_ai.core.runs.step_log_pg import PostgresCallRecorder, PostgresStepRe
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
 from patent_ai.core.schemas.oa_result import OAResult
+from patent_ai.retrieval.contract import Searcher, get_searcher
 from patent_ai.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class CaseUnit(Protocol):
@@ -205,3 +214,78 @@ def get_run_launcher(
     store: Annotated[RunStatusStore, Depends(get_run_status_store)],
 ) -> RunLauncher:
     return ThreadLauncher(executor, store)
+
+
+# --- 법률 질문 대화 (이슈 #29) ----------------------------------------------------------
+
+
+class LegalChatUnit(Protocol):
+    """요청 하나의 대화 저장소 + 트랜잭션 끝내기. 저장소는 flush까지만, 커밋은 라우터가."""
+
+    store: LegalChatStore
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
+
+
+class _PgLegalChatUnit:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self.store: LegalChatStore = PostgresLegalChatStore(session)
+
+    def commit(self) -> None:
+        self._session.commit()
+
+    def rollback(self) -> None:
+        self._session.rollback()
+
+
+def get_legal_chat_unit() -> Iterator[LegalChatUnit]:
+    with Session(_engine()) as session:
+        yield _PgLegalChatUnit(session)
+
+
+@dataclass(frozen=True)
+class LegalIndex:
+    """법령 색인 한 판: 조각 묶음(pool)과 BM25 검색기. 프로세스에 한 번만 만든다."""
+
+    pool: LawPool
+    searcher: Searcher
+
+
+# 법령 BM25 기준선과 같은 낱말 자르기 (experiments/m2-i2-law-bm25-char-bigram)
+LAW_BM25_TOKENIZER = "char_bigram"
+
+
+@lru_cache
+def get_f2_settings() -> F2Settings:
+    return load_f2_settings()
+
+
+@lru_cache
+def _load_legal_index() -> LegalIndex:
+    """색인을 읽는다. 실패나 조각 0개는 예외라 캐시되지 않는다 (색인이 들어온 뒤 다시 시도)."""
+    iv = get_f2_settings().index_version
+    repo = make_law_repo()
+    if not repo.has_index_version("law", iv):
+        raise RuntimeError(f"법령 색인 {iv}이 저장소에 없음")
+    pool = LawPool.load(repo, iv)
+    if not pool.chunks:
+        raise RuntimeError(f"법령 색인 {iv}의 조각이 0개")
+    searcher = get_searcher("bm25", repo, {"index_version": iv, "tokenizer": LAW_BM25_TOKENIZER})
+    return LegalIndex(pool, searcher)
+
+
+def get_legal_index() -> LegalIndex | None:
+    """색인을 못 읽으면 None (라우터가 확인되지 않음 묶음을 낸다). 이유는 경고로 남긴다."""
+    try:
+        return _load_legal_index()
+    except Exception:
+        logger.warning("법률 질문: 법령 색인을 못 읽음", exc_info=True)
+        return None
+
+
+def get_today() -> date:
+    """확인 기준일. 테스트가 고정하려고 의존성으로 둔다."""
+    return date.today()

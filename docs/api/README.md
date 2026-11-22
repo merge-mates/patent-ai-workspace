@@ -70,12 +70,12 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/oas/{id}/oa-result/confirmation` | 지금 보이는 OA 정리를 사람이 확인했는지. `{oa_id, run_id, confirmed_at}`, 확인 전이면 `confirmed_at: null`. 오류: 404 `oa_not_found`·`result_not_ready` |
 | PATCH | `/drafts/{draft_id}` | 사람이 초안을 고친다. AI 원본 값은 남긴다. 중간 결과(F1·F2·F3)는 고치지 않는다 |
 
-### 법률 질문 (자리만, 필드와 여러 번 묻고 답하는 방식은 F2 설계 때)
+### 법률 질문 (사건 없이도 여러 번 묻고 답한다, 이슈 #29)
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
-| POST | `/legal-chats` | 대화 만들기 |
-| POST | `/legal-chats/{id}/messages` | 질문 보내기 |
-| GET | `/legal-chats/{id}` | 대화 보기 |
+| POST | `/legal-chats` | 대화 만들기. 본문 `{case_id?}`(없어도 됨). 201 `{chat_id}`. |
+| POST | `/legal-chats/{id}/messages` | 질문 보내기. 본문 `{text, as_of?, source_kinds?}`. `as_of`·`source_kinds`는 빠지면 앞 질문 것을 물려받고(첫 질문은 현행·전부), `as_of: null`은 현행으로 덮고, `source_kinds: []`는 전부다. 200 `{chat_id, no, scope_changed, result}`이고 `result`는 법률 근거 묶음(`LegalEvidenceBundle`)이다. `scope_changed`는 앞 질문과 시점 또는 자료 유형이 달라졌는지다. 글에 조문 번호가 있으면 그 조문을, 없으면 BM25로 찾은 조문을 근거로 준다(심사기준·판례·심결은 아직 검색 전이라 `body_missing`으로 기록만). 법령 색인을 못 읽으면 200 + 주장 없는 묶음 + `unverified(body_missing)`다. 오류: 404 `chat_not_found`, 422 `invalid_question`(빈 글·잘못된 값) |
+| GET | `/legal-chats/{id}` | 대화 보기. `{chat_id, case_id, created_at, turns: [{no, question, scope_changed, created_at, result}], prior_evidence}`. 오류: 404 `chat_not_found`, 500 `chat_corrupt`(저장된 턴을 스키마대로 못 읽음, 빈 대화로 돌려주지 않음) |
 
 ### 그 밖
 | 메서드 | 경로 | 하는 일 |
@@ -111,6 +111,11 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 OA 보기 (`GET /oas/{oa_id}`):
 ```json
 {"oa_id": "oa_1", "case_id": "c_1", "case_name": "출원번호 확인 전", "document_id": "doc_1", "latest_run": {"run_id": "r_1", "state": "queued", "current_step": null}, "dispatch_number": null}
+```
+
+법률 질문 답 (`POST /legal-chats/{id}/messages`):
+```json
+{"chat_id": "lc_1", "no": 2, "scope_changed": true, "result": {"...": "LegalEvidenceBundle (데이터 모델 4절 ④)"}}
 ```
 
 오류:

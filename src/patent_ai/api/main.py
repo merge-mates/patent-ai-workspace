@@ -12,6 +12,7 @@ from patent_ai.api import (
     documents,
     health,
     human_inputs,
+    legal_chats,
     oas,
     results,
     runs,
@@ -45,6 +46,7 @@ def create_app(startup_store: RunStatusStore | None = None) -> FastAPI:
     app.include_router(results.router)
     app.include_router(directions.router)
     app.include_router(human_inputs.router)
+    app.include_router(legal_chats.router)
     return app
 
 

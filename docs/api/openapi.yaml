@@ -586,6 +586,85 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /legal-chats:
+    post:
+      summary: Create Chat
+      operationId: create_chat_legal_chats_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChatIn'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedChatOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /legal-chats/{chat_id}/messages:
+    post:
+      summary: Ask
+      operationId: ask_legal_chats__chat_id__messages_post
+      parameters:
+      - name: chat_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chat Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Body
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /legal-chats/{chat_id}:
+    get:
+      summary: Get Chat
+      operationId: get_chat_legal_chats__chat_id__get
+      parameters:
+      - name: chat_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chat Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AddedSource:
@@ -673,6 +752,26 @@ components:
       - initial
       - final
       title: AmendmentLimit
+    AnswerOut:
+      properties:
+        chat_id:
+          type: string
+          title: Chat Id
+        'no':
+          type: integer
+          title: 'No'
+        scope_changed:
+          type: boolean
+          title: Scope Changed
+        result:
+          $ref: '#/components/schemas/LegalEvidenceBundle'
+      type: object
+      required:
+      - chat_id
+      - 'no'
+      - scope_changed
+      - result
+      title: AnswerOut
     ApplicationNumberIn:
       properties:
         application_number:
@@ -1084,6 +1183,38 @@ components:
       - review_items_count
       - updated_at
       title: CaseSummary
+    ChatOut:
+      properties:
+        chat_id:
+          type: string
+          title: Chat Id
+        case_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        turns:
+          items:
+            $ref: '#/components/schemas/TurnOut'
+          type: array
+          title: Turns
+        prior_evidence:
+          items:
+            type: string
+          type: array
+          title: Prior Evidence
+      type: object
+      required:
+      - chat_id
+      - case_id
+      - created_at
+      - turns
+      - prior_evidence
+      title: ChatOut
     Citation:
       properties:
         label:
@@ -1497,6 +1628,15 @@ components:
       - run_id
       - confirmed_at
       title: ConfirmationOut
+    CreateChatIn:
+      properties:
+        case_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Id
+      type: object
+      title: CreateChatIn
     CreatedCase:
       properties:
         case_id:
@@ -1514,6 +1654,15 @@ components:
       - oa_id
       - run_id
       title: CreatedCase
+    CreatedChatOut:
+      properties:
+        chat_id:
+          type: string
+          title: Chat Id
+      type: object
+      required:
+      - chat_id
+      title: CreatedChatOut
     CreatedOA:
       properties:
         oa_id:
@@ -3148,6 +3297,30 @@ components:
       - full
       - summary
       title: TextKind
+    TurnOut:
+      properties:
+        'no':
+          type: integer
+          title: 'No'
+        question:
+          $ref: '#/components/schemas/LegalQuestion'
+        scope_changed:
+          type: boolean
+          title: Scope Changed
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        result:
+          $ref: '#/components/schemas/LegalEvidenceBundle'
+      type: object
+      required:
+      - 'no'
+      - question
+      - scope_changed
+      - created_at
+      - result
+      title: TurnOut
     UnitKind:
       type: string
       enum:
