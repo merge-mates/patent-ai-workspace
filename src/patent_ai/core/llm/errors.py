@@ -12,9 +12,13 @@ class ModelOutputInvalid(Exception):
     닿아 잘린 것이다 (모양이 틀린 답과 가르려고 둔다. 호출 기록에는 output_truncated).
     """
 
-    def __init__(self, message: str, stop_reason: str | None = None) -> None:
+    def __init__(
+        self, message: str, stop_reason: str | None = None, invalid_kind: str | None = None
+    ) -> None:
         super().__init__(message)
         self.stop_reason = stop_reason
+        # 오류 종류 짧은 코드 (CallRecord.invalid_kind와 같음, #228)
+        self.invalid_kind = invalid_kind
 
     @property
     def truncated(self) -> bool:
@@ -40,4 +44,4 @@ class ModelCallLimitExceeded(Exception):
 
 
 class RecordingMissing(Exception):
-    """녹화한 답 파일이 없음. 조용히 진짜 호출하지 않고 멈춘다."""
+    """기록된 모델 응답 파일이 없음. 조용히 진짜 호출하지 않고 멈춘다."""

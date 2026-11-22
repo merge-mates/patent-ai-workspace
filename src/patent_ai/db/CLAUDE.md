@@ -34,7 +34,7 @@
 ## 테스트
 - AI 코어·코드 도구 테스트는 DB 없이 돈다: DB 접근은 repository 인터페이스 뒤에 두고, 테스트는 메모리 fake를 쓴다.
 - 실제 Postgres가 필요한 테스트(마이그레이션, pgvector 검색)는 `@pytest.mark.db`를 붙인다. 기본 `uv run pytest`에서는 빠지고, 로컬은 `make db`를 띄운 뒤 `make test-db`, CI는 GitHub Actions의 Postgres(pgvector) 서비스 컨테이너로 돈다.
-- 테스트는 네트워크·API 키 없이 돈다 (임베딩은 녹화 응답).
+- 테스트는 네트워크·API 키 없이 돈다 (임베딩은 기록된 모델 응답).
 
 ## 나중에 바뀔 수 있는 것
 - 한 사람이 Docker가 어려우면 클라우드 Postgres(Supabase)로 옮긴다. 같은 Postgres + pgvector라 덤프를 올리고 접속 문자열(`.env`의 `DATABASE_URL`)만 바꾼다. 공용 DB로 가면 "main에 머지된 마이그레이션만 CI가 공용 DB에 적용"으로 바꾼다.

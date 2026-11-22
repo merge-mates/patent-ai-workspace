@@ -1,0 +1,33 @@
+{
+  "document_id": "doc_oa_1",
+  "pages": [
+    {
+      "page": 1,
+      "text": "의견제출통지서\n출원번호 10-2099-0000007\n발송번호 9-5-2099-000000007\n발송일 2099.04.06\n(발송번호 9-5-2099-000000070)\n심사 대상 청구항 제1항 내지 제3항\n",
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "글자 층 있음",
+        "searched_scope": null
+      },
+      "tables": []
+    },
+    {
+      "page": 2,
+      "text": "거절이유 1. 특허법 제29조 제2항\n청구항 1 내지 2는 공개특허공보 제10-2099-0000011호 (KR, 식별번호 [0012])와 US 2099/0000002 A1 ([0020])로부터 쉽게 발명할 수 있다.\n거절이유 2. 특허법 제42조 제3항\n청구항 3은 발명의 설명에 의해 뒷받침되지 않는다.\n특허 가능한 청구항 없음\n",
+      "status": {
+        "value": "confirmed",
+        "reason": null,
+        "checked": "글자 층 있음",
+        "searched_scope": null
+      },
+      "tables": []
+    }
+  ],
+  "status": {
+    "value": "confirmed",
+    "reason": null,
+    "checked": "글자 층 있음",
+    "searched_scope": null
+  }
+}

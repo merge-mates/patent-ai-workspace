@@ -144,7 +144,13 @@ def embed(
     if missing and transport is None:
         transport = OpenAIEmbedTransport()
 
-    def record(n_tokens: int, elapsed_ms: int, outcome: str, transport_try: int) -> None:
+    def record(
+        n_tokens: int,
+        elapsed_ms: int,
+        outcome: str,
+        transport_try: int,
+        invalid_kind: str | None = None,
+    ) -> None:
         cost = (
             n_tokens * cfg.price_per_mtok_input / 1_000_000
             if cfg.price_per_mtok_input is not None and outcome != "cache_hit"
@@ -163,6 +169,7 @@ def embed(
                 attempt=1,
                 outcome=outcome,
                 transport_try=transport_try,
+                invalid_kind=invalid_kind,
             )
         )
 
@@ -196,14 +203,18 @@ def embed(
             ctx.budget.add(ctx.run_id, step, resp.input_tokens)
             # 개수가 다르면 어느 벡터가 어느 글인지 모른다: 조용히 넘기지 않는다
             if len(resp.vectors) != len(batch):
-                record(resp.input_tokens, 0, "invalid_output", n + 1)
-                raise ModelOutputInvalid(f"{step}: 글 {len(batch)}개에 벡터 {len(resp.vectors)}개")
+                record(resp.input_tokens, 0, "invalid_output", n + 1, "bad_value")
+                raise ModelOutputInvalid(
+                    f"{step}: 글 {len(batch)}개에 벡터 {len(resp.vectors)}개",
+                    invalid_kind="bad_value",
+                )
             # 캐시에 쓰기 전에 길이를 본다: 잘못된 벡터가 캐시에 남으면 다음 실행도 계속 실패한다
             lengths = {len(v) for v in resp.vectors} | {len(v) for v in out if v is not None}
             if len(lengths) != 1 or 0 in lengths:
-                record(resp.input_tokens, 0, "invalid_output", n + 1)
+                record(resp.input_tokens, 0, "invalid_output", n + 1, "bad_value")
                 raise ModelOutputInvalid(
-                    f"{step}: 벡터 길이가 서로 다르거나 0이다 {sorted(lengths)}"
+                    f"{step}: 벡터 길이가 서로 다르거나 0이다 {sorted(lengths)}",
+                    invalid_kind="bad_value",
                 )
             record(resp.input_tokens, int((time.monotonic() - t0) * 1000), "ok", n + 1)
             break

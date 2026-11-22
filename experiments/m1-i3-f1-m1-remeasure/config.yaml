@@ -1,0 +1,21 @@
+# F1 read_oa M1 정리용 tune 재측정 (이슈 #23). 바꾼 것 없음: main 설정 그대로 10건을 3번
+experiment: m1-i3-f1-m1-remeasure
+feature: f1
+baseline: m1-i3-f1-read-oa-prompt-shape
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: main 4687037        # 스트리밍 + 64000 + 프롬프트 모양 규칙 (기준선과 같은 코드)
+settings:                 # config/f1.yaml read_oa
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f1/read_oa.md   # sha256 앞 12자 d680efd54818 (기준선과 같음)
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 3                   # scores.json은 1회차. 2·3회차는 git 밖 work/f1_m1/run<N>/score/scores.json, 셋 다 card에
+runner: work/f1_m1/run.py data/processed/cases work/f1_m1/run<N>   # git 밖, 캐시 끔, 은진 맥 (10건 PDF 다 있음)
+budget:
+  max_usd: 0.40
+  max_external_calls: 40

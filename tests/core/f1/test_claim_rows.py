@@ -306,7 +306,7 @@ def test_모델이_줄을_안_주면_대상_청구항마다_빈_줄이고_결과
     assert result.status.value == StatusValue.UNVERIFIED
     items = collect_review_items([result], CaseMaterials(case_id="c_1"))
     targets = [i.target for i in items if "claim_rows" in i.target]
-    assert len(targets) == 16 and "oa_result[0].claim_rows[0]" in targets
+    assert len(targets) == 16 and "oa_result[oa_1].claim_rows[0]" in targets
 
 
 def test_줄이_빠진_청구항은_그_줄만_빈_확인되지_않음_줄():
@@ -358,7 +358,7 @@ def test_5_7항_줄은_인용은_규칙으로_정하고_위치는_어느_문헌�
     items = collect_review_items([result], CaseMaterials(case_id="c_1"))
     idx = result.claim_rows.index(_row(result, 5, 2))
     assert any(
-        i.target == f"oa_result[0].claim_rows[{idx}]" and i.reason == "ambiguous" for i in items
+        i.target == f"oa_result[oa_1].claim_rows[{idx}]" and i.reason == "ambiguous" for i in items
     )
 
 

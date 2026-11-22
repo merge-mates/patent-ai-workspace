@@ -1,6 +1,6 @@
 """은진 님 정답 JSON -> 계약 정답 파일 cite_gold.jsonl (design 3-1).
 
-실행: uv run python -m eval.retrieval.convert_cite_gold --src <json> --cases data/raw/cases
+실행: uv run python -m eval.retrieval.convert_cite_gold --src <json> --cases data/processed/cases
 
 읽는 사건 파일은 청구항이력·행정이력 둘뿐이다 (등록공보·결정본문은 안 읽음).
 검증(GoldRow, find_leaks)을 메모리에서 다 끝낸 뒤에만 파일을 쓴다.
@@ -117,8 +117,10 @@ def _items(entry: dict, doc_id: str, pages: int | None) -> list[GoldItem]:
     return items
 
 
-def _case_paths(cases_root: Path, app_no: str) -> tuple[Path, Path]:
-    d = Path(cases_root) / app_no
+def _case_paths(cases_root: Path, app_no: str, oa_no: str) -> tuple[Path, Path]:
+    # 입력 폴더: <cases_root>/<출원번호>/<발송번호>/
+    # (scripts/split_cases_at_oa.py가 OA 시점으로 자른 것, #159)
+    d = Path(cases_root) / app_no / oa_no
     return d / f"{app_no}_청구항이력.txt", d / f"{app_no}_행정이력.txt"
 
 
@@ -173,7 +175,7 @@ def convert(
             continue
 
         # 2단계: OA 당시 청구항 (질의). 파일·OA가 없으면 이 사건 줄은 모두 뺀다
-        hist, admin = _case_paths(cases_root, app_no)
+        hist, admin = _case_paths(cases_root, app_no, oa_no)
         try:
             claims_by_no, unapplied, unknown_kind = claims_at_oa_with_stats(hist, admin, oa_no)
         except OSError, OaNotFound:

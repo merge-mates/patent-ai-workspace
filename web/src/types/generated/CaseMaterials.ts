@@ -37,6 +37,12 @@ export type Task = string
 export type WaitingFor = string
 export type HeldTasks = HeldTask[]
 export type ReviewItemsCount = number
+export type ReviewItems = ReviewItem[] | null
+export type Kind1 =
+  'unverified' | 'conflict' | 'needs_recheck' | 'needs_human_judgment' | 'needs_human_review' | 'missing_material'
+export type Target = string
+export type Label = string
+export type Reason = string
 
 export interface CaseMaterials {
   case_id: CaseId
@@ -44,12 +50,14 @@ export interface CaseMaterials {
   missing: Missing
   held_tasks: HeldTasks
   review_items_count: ReviewItemsCount
+  review_items: ReviewItems
 }
 export interface CaseDocument {
   document_id: DocumentId
   kind: Kind
   source: Source
   status: Status
+  text_status: Status | null
   citation_key: CitationKey
 }
 /**
@@ -71,4 +79,13 @@ export interface MissingMaterial {
 export interface HeldTask {
   task: Task
   waiting_for: WaitingFor
+}
+/**
+ * 사람이 봐야 할 것 하나.
+ */
+export interface ReviewItem {
+  kind: Kind1
+  target: Target
+  label: Label
+  reason: Reason
 }

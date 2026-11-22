@@ -7,7 +7,7 @@ OA 한 통에 파일 하나 (<세트>/f4/<출원번호>_<발송번호>.json). �
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -48,9 +48,11 @@ class GoldClaimRow(BaseModel):
     rejection: int = Field(ge=1)  # F1 정답 rejections[].no (OA 순번)
     handled: bool  # ① 다뤘나
     direction: Direction | None  # ② 거친 방향. 안 다룸이면 null
-    inherited: bool  # 독립항 값을 물려받은 줄
+    inherited: bool  # 자기가 인용하는 청구항의 ②를 물려받은 줄 (3절 1·14번)
     amend_kinds: list[AmendKind]  # ③ 보정 종류 (여럿 가능)
     added_from: list[str]  # ③ 더한 구성의 출처
+    # ③ 삭제 줄: 지운 구성을 옮겨 받은 청구항 (4절, 채점에는 안 씀)
+    merged_into: list[Annotated[int, Field(strict=True, ge=1)]] = []
     argued: bool  # ④ 의견서가 따로 논증한 줄인가
 
     @model_validator(mode="after")
@@ -60,6 +62,8 @@ class GoldClaimRow(BaseModel):
             raise ValueError("handled가 true일 때만, 그리고 그때는 꼭 direction을 채운다")
         if not self.amend_kinds:
             raise ValueError("amend_kinds가 비어 있음 (그대로면 none)")
+        if self.merged_into and "delete" not in self.amend_kinds:
+            raise ValueError("merged_into는 amend_kinds에 delete가 있는 줄에만 둔다")
         return self
 
 

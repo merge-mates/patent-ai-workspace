@@ -33,7 +33,9 @@ flowchart LR
     C --> OUT["F4Output<br/>directions · drafts · held_units · uncovered · amendment_overlaps"]
     D -- "확신 낮음 (순위 있는 후보 없음)" --> H["그 묶음만 보류<br/>직접 판단 필요"]
     H --> C
-    D -- "출력 검사 두 번 실패 · 상한" --> F["예외 → 지휘가 실행 failed"]
+    D -- "묶음 하나 호출 실패 · 상한(max_units·호출 상한)" --> F["그 묶음만 보류<br/>limit_reached 또는 not_extracted"]
+    F --> C
+    D -- "시도한 묶음이 모두 실패" --> X["예외 → 지휘가 실행 failed"]
 ```
 1. **입력:** 지휘가 앞 단계 결과에서 `F4Input`을 만든다 (`src/patent_ai/core/agents/step_inputs.py:44-71`, 커밋 059429c). 3-1절.
 2. **처리** (`f4/run.py:57-68`, 호출 순서는 방향 → 의견서 → 보정):
@@ -43,10 +45,10 @@ flowchart LR
    - ④ 한데 묶기 (`f4/run.py:68-133`): 의견서와 보정 청구항을 `Drafts` 하나로, 보류 묶음·누락 쌍·지원 안 하는 거절이유·알림 문구를 `F4Output`에.
 3. **결과 저장:** `F4Output`은 저장 스키마가 아니다. 안의 `directions`(묶음마다)와 `drafts`(OA 하나)를 하나씩 저장한다 (`f4/result.py:1-5`). 5절.
 - **실패하면 (정함 #211, #166 (가)):** 묶음 하나의 모델 호출 실패(출력 검사 실패 재시도 뒤, 전송 오류)는 그 묶음만 보류 + 확인되지 않음 + 이유로 두고 나머지를 끝까지 한다. 의견서·보정 단계 실패는 늘 그 묶음 보류다. 방향 후보 호출이 (상한 말고) 모든 묶음에서 실패하면 run_f4가 아무것도 못 낸 것이라 마지막 원래 예외를 올리고 지휘가 실행을 `failed`로 끝낸다 (`core/bundle_errors.py`). 프로그래밍 오류(`TypeError` 등)는 잡지 않는다.
-  - 호출 상한(`max_model_calls`)에 닿은 묶음은 `unverified(limit_reached)` + 상한 숫자를 이유로 보류하고 끝까지 간다 (ADR 0003 110줄). F3가 상한으로 보류한 묶음도 F4 후보에서 `limit_reached`로 남는다. 남은 것: 묶음 밖 상한(`max_units` 앞 검사)은 그대로 예외로 실행 `failed`, 실행 state·단계 outcome에 `limit_reached`를 따로 둘지는 서버·DB 일이라 남김 (#57·#206).
+  - 호출 상한(`max_model_calls`)에 닿은 묶음은 `unverified(limit_reached)` + 상한 숫자를 이유로 보류하고 끝까지 간다 (ADR 0003 110줄). F3가 상한으로 보류한 묶음도 F4 후보에서 `limit_reached`로 남는다. 묶음 수 상한 `max_units`도 같다: 넘는 묶음은 호출 없이 `unverified(limit_reached)` 보류(이유 글에 상한 숫자와 다룬 범위, 원문 글자 없음)이고 실행은 `failed`가 아니다. 남은 것: 실행 state·단계 outcome에 `limit_reached`를 따로 둘지는 서버·DB 일이라 남김 (#57·#206). F1 읽기·지휘 모델·F3 청구항 나누기의 상한은 이슈 #241로 넘김.
   - 방향 후보 호출이 실패(호출 상한 포함)한 묶음은 후보 0개 + 확인되지 않음 + `needs_recheck=true` + `recheck_reason`(실패·상한 이유)으로 남긴다. `needs_recheck`를 "앞 입력이 바뀌어 다시 확인" 말고 "호출 실패로 다시 돌려야 함" 표시로도 쓴다 (#211).
 - **비면:** 판단 단위 0개 → 모델을 부르지 않고 경고, 빈 목록 (`directions.py:334-336`). 후보 0개 → 그 묶음 "확인되지 않음" + "직접 판단 필요" + 경고. 모든 묶음이 보류 → `drafts = null` + 경고.
-- **느리면:** 한 실행의 묶음 수 상한 `max_units`, 단계마다 호출 상한 `max_model_calls`(= 2 × `max_units` 이상, 설정을 읽을 때 검사: `f4/config.py:49-58`). 묶음이 상한보다 많으면 끊기지 않게 부르기 전에 예외로 멈춘다 (`directions.py:341-342`).
+- **느리면:** 한 실행의 묶음 수 상한 `max_units`, 단계마다 호출 상한 `max_model_calls`(= 2 × `max_units` 이상, 설정을 읽을 때 검사: `f4/config.py:49-58`). 묶음이 상한보다 많으면 order 앞 `max_units`개만 다루고, 넘는 묶음은 모델을 부르지 않고 `limit_reached`로 보류한다 (방향 후보 단계에서 한 번 자르고 의견서·보정은 그 결과를 따른다: `directions.py` `_over_limit_result`).
   - [ADR 0003](../../decisions/0003-tech-stack.md) 고정 단계 "상한"은 "도달하면 '확인되지 않음'과 찾아본 범위를 남기고 끝낸다"(110줄)이고 이유 코드 `limit_reached`가 있다. 묶음 안 상한은 위대로 맞췄다. 찾아본 범위(`searched_scope`)는 아직 채우지 않는다.
 
 ### 2-1. 흐름 방식
@@ -152,7 +154,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 
 **도구 출력 `F4Output` (저장하지 않음, `f4/result.py:15-36`)**
 - `oa_id`, `units`(이 실행의 판단 단위, 채점용), `directions`, `drafts`, `held_units`(초안을 보류한 묶음), `unsupported_rejections`, `uncovered`, `coverage_unchecked`, `amendment_overlaps`(커밋 a9421df), `amendment_limit_applied`, `rank_notice`("순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"), `legality_notice`, `status`, `flags`.
-- `status`는 방향 후보·초안 status 중 가장 나쁜 값이다. **보류·누락이 있어도 status를 내리지 않는다** (status = 원문 확인 여부, 사람이 볼 것은 flags·`held_units`·`uncovered`). 대신 `checked` 글에 "보류 N묶음, 누락 쌍 M", AI가 다루지 않은 거절이유 수, 싣지 않은 겹친 초안 수를 적는다 (`run.py:110-118`, 11/21 재아 확인, 커밋 f9ea396·a9421df). F3는 보류가 있으면 결과 status를 내린다 — 두 기능의 보류 뜻이 달라서다.
+- `status`는 방향 후보·초안 status 중 가장 나쁜 값이다. **보류·누락이 있어도 status를 내리지 않는다** (확신 낮음 보류 이야기. 호출 실패·상한 보류는 확인되지 않음) (status = 원문 확인 여부, 사람이 볼 것은 flags·`held_units`·`uncovered`). 대신 `checked` 글에 "보류 N묶음, 누락 쌍 M", AI가 다루지 않은 거절이유 수, 싣지 않은 겹친 초안 수를 적는다 (`run.py:110-118`, 11/21 재아 확인, 커밋 f9ea396·a9421df). F3는 보류가 있으면 결과 status를 내린다 — 두 기능의 보류 뜻이 달라서다.
 - 질문: 알림 문구 두 개와 F4Output 칸(보류 묶음·누락 쌍 등)을 결과 스키마로 올릴지, 화면 상수와 한 곳으로 모을지 (이슈 #57·화면).
 
 - 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로. 후보와 ⑤ 맨 위 `origin`은 늘 `ai_generated`이고, 사람 선택은 `selection.origin` 한 곳에만 (`direction.py:159-164, 228-233`).
@@ -197,11 +199,11 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 ### 7-1. 공통 칸
 - **인터페이스:** `run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None) -> F4Output` (`run.py:57`). 지휘 도구 이름 `run_f4`.
 - **평가 세트·지표:** `data/goldsets/tune/` VERSION 2의 `f4/` (git 밖, 사람 검수 뒤 생김. 11/21 기준 없음). 정답 규칙은 [대응 방향 정답](../../evaluation/f4-direction-gold.md). 채점 단위는 OA 시점 청구항 × 거절이유 한 줄 → OA 평균 → 세트 평균 (`eval/f4/score.py:1-20`).
-  - 주 지표 `direction_top1`: 모델 1번 후보(후보 목록 첫째)의 청구항별 거친 방향이 정답 ②와 같은 비율. 보류 묶음도 센다. 후보 0개 묶음은 틀림 (11/21 재아 결정, 커밋 04cb253). 청구항별 방향은 후보의 청구항별 보정 종류에서 계산한다(물려받기·삭제 규칙, `score.py:69-87`).
-  - 같이 내는 것: `direction_top1_conf_high`·`_medium`·`_low`(1번 후보 확신도별), `needs_human_judgment_rate`(보류 비율), `direction_top1_with_inherited`, 비교용 `direction_top1_ranked_only`(순위 1 후보로, 보류 줄 뺌), failures(누락 쌍 등) (`score.py:42-52, 235-260`). ① 다뤘나 지표 `handled_accuracy`는 뺐다 (11/21 재아 결정, 커밋 73fb60d). 정답의 `handled`는 ② 채점 대상을 가르는 데만 쓰고(`excluded_not_handled`), 지표 정의는 정답 문서에서 정한 뒤 다시 넣는다.
-  - 같은 크기 두 묶음("또는" 가지)에서 1번 후보 방향이 엇갈리면 그 줄은 빼고 건수만, 방향이 같고 확신도만 다르면 낮은 쪽 칸에 넣는다 (커밋 e07543d, `score.py:99-133`).
+  - 주 지표 `direction_top1`: AI 기본 선택(순위 1 후보, 순위 후보가 없는 보류 묶음은 후보 목록 첫째)의 청구항별 거친 방향이 정답 ②와 같은 비율 (11/22 재아 결정 2, 이슈 #39). 옛 값(목록 첫째 후보)은 `direction_top1_list_first`로 같이 낸다. 후보 목록 순서 규칙: 순위 있는 후보(high·medium)를 rank 순서로 먼저, low(rank 없음) 후보는 그 뒤, 순위 후보가 없는 보류 묶음은 low 후보를 먼저 볼 순서로 (`prompts/f4/direction.md`). 보류 묶음도 센다. 후보 0개 묶음은 틀림 (11/21 재아 결정, 커밋 04cb253). 청구항별 방향은 후보의 청구항별 보정 종류에서 계산한다(물려받기·삭제 규칙, `score.py:79-109`).
+  - 같이 내는 것: `direction_top1_conf_high`·`_medium`·`_low`(주 지표를 기본 선택 후보의 확신도로 나눔), `direction_top1_list_first_conf_*`(목록 첫째 후보 기준), `needs_human_judgment_rate`(보류 비율), `direction_top1_with_inherited`, 비교용 `direction_top1_ranked_only`(순위 1 후보로, 보류 줄 뺌), failures(누락 쌍 등) (`score.py:42-56, 174-230, 270-295`). ① 다뤘나 지표 `handled_accuracy`는 뺐다 (11/21 재아 결정, 커밋 73fb60d). 정답의 `handled`는 ② 채점 대상을 가르는 데만 쓰고(`excluded_not_handled`), 지표 정의는 정답 문서에서 정한 뒤 다시 넣는다.
+  - 같은 크기 두 묶음("또는" 가지)에서 AI 기본 선택 방향이 엇갈리면 그 줄은 주 지표에서 빼고 건수만(`excluded_branch_conflict`), 목록 첫째 방향이 엇갈리면 `list_first`에서만 뺀다(`excluded_list_first_conflict`). 방향이 같고 확신도만 다르면 낮은 쪽 칸에 넣는다 (커밋 e07543d, `score.py:111-172`).
   - 문턱: 질문.
-  - 질문: 정답 문서의 "1등"이 순위 1(화면 미리 선택)로 읽힐 수 있다. "1번 후보(목록 첫째)"로 맞출지 (공유 문서라 정답 문서 PR에서).
+  - 정함 (11/22 재아 결정 2): 정답 문서의 "1등"·"모델 1번 후보"는 AI 기본 선택(순위 1, 없으면 목록 첫째)으로 읽는다. 정답 문서 글은 공유 문서라 정답 문서 PR에서 맞춘다.
   - 질문: 정답 문서 4절이 [사람 판단]으로 F4 설계에 넘긴 칸 — ④ 저지가 읽을 의견서 원문 위치 칸 이름, 최후거절이유통지 뒤 신설을 따로 세는 칸, 정답 `rejection`이 F1 `rejections[].no`(OA 순번)를 가리킨다는 연결 ([대응 방향 정답](../../evaluation/f4-direction-gold.md) 4절).
   - 질문: 청구항별 ②를 후보 안 칸으로 둘지(지금은 채점기가 계산), 더한 구성의 출처를 번호까지(`claim:2`·`spec:[0042]`) 둘지(지금은 `other_dependent`·`spec`·`other`만이라 "출처까지 맞은 비율"을 못 잼), 정답 `none`과 스키마 `unchanged` 같은 코드 이름 맞추기.
   - ③④층, 실제 방향 순위, 독립항만 점수, 심사관 힌트 있음/없음 점수, 단순 규칙 점수는 아직 내지 않는다.
@@ -222,6 +224,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
   - 질문: 보정 프롬프트에 명세서 쪽 글자 전체를 넣는 방식을 줄일지 (3-1 F3 결과 넣기와 같이).
 - **프롬프트 파일:** `prompts/f4/direction.md`, `opinion.md`, `amendment.md`, `amendment_limit_final.md`.
 - **실험 설정(config):** `config/f4.yaml` — 맨 위 `final_rejection_limit`(기본 `true`, 커밋 14d26fb), `max_units`(20 [가정]), `min_basis_chars`(10 [가정]), `max_candidates`(3 [가정]), 단계 칸 `direction`·`opinion`·`amendment`(`model: claude-haiku-5-5`, `effort: medium`, `max_tokens: 64000`, `prompt`, `max_model_calls: 40` [가정], `max_retries: 2`). [가정] 값은 재 본 값이 아니다. 형이 틀리거나 키가 빠지면 조용히 기본값으로 가지 않고 멈춘다 (`f4/config.py:25-64`).
+- **`amendment_spec_excerpt`:** `{enabled: false, top_n: 5}` (기본 끔, 이슈 #42). 켜면 보정 프롬프트에 최초 명세서 쪽 글자 전체 대신 차이점 구성요소·묶음 청구항 글자와 겹치는 문단(청구범위 덩어리 제외) BM25 상위 `top_n`개를 원래 순서로 넣는다. 질의 = 대비표 차이 후보·불명 줄 구성요소 + 요약 `differences` + 묶음 청구항 글자 + 그 묶음에서 고른 방향(AI 기본 선택 또는 사람 선택, 의견서와 같은 후보)의 `name`·`reason`·`per_rejection[].response`. 가져다 붙이는 출처 종속항은 스키마에 번호가 없어 넣지 않는다(이슈 #238 `AmendmentCore.source_ref`에서 정함). 전체로 돌아가면 WARNING. 명세서 근거 위치 대조는 켜도 원문 전체 (`f4/spec_excerpt.py`). 칸이 없으면 끔, 값이 틀리면 멈춘다.
 - **`final_rejection_limit`:** 기본 켬 (11/21 재아 결정, 커밋 14d26fb). 켜면 통지 종류가 최후일 때 보정 프롬프트에 47조 3항 네 가지 제한을 넣고 `amendment_limit_applied = true`. 모르면 제한을 넣지 않고 후보마다 "통지 종류 확인 필요" + `needs_human_review`. 끄면 제한을 넣지 않고, 최후통지인 사건의 후보에 "보정 제한을 적용하지 않은 초안 (최후거절이유통지, 직접 검토 필요)" + `needs_human_review` + 경고 (`run.py:38-54`, `directions.py:344-349`, 커밋 e7b42e1·14d26fb). 끄는 것은 비교 실험 설정으로만 쓴다. 기준선 카드 `m3-f4-skeleton`은 끈 채 잰 실행이다 (카드 15줄). tune에 최후거절이유통지 사건이 아직 없다.
 
 ## 8. 이 기능 안의 결정
@@ -232,7 +235,8 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 | 의견서는 OA 하나에 하나, 묶음 칸을 순서대로 이음 | 묶음마다 의견서 | 실제 제출 서류 모양, `Drafts.based_on` 목록과 맞음 | 구현 중 | 커밋 b2905f0, `opinion.py:203-210` |
 | 1등을 AI 기본값으로, 확신 낮은 묶음은 미선택 + 그 묶음 초안만 보류 | 모두 사람 기다림 | ADR 0001 11/17 보완 | 설계 | `direction.py:246-258` |
 | 후보 목록을 모델이 낸 순서 그대로 | 순위로 다시 줄 세우기 | 채점 주 지표가 보류 묶음도 1번 후보로 셈 | 11/21 재아 결정 | 커밋 999759a |
-| 주 지표 = 모델 1번 후보, 보류 묶음 포함 + 확신도별 일치율 + 보류 비율 | 보류 줄을 뺀 1등 일치율 | 보류할수록 점수가 오르는 것을 막음 | 11/21 재아 결정 | 커밋 04cb253, e07543d |
+| 주 지표 = 모델 1번 후보, 보류 묶음 포함 + 확신도별 일치율 + 보류 비율 | 보류 줄을 뺀 1등 일치율 | 보류할수록 점수가 오르는 것을 막음 | 11/21 재아 결정 (11/22에 아래 줄로 바뀜) | 커밋 04cb253, e07543d |
+| 주 지표 `direction_top1` = AI 기본 선택(순위 1, 없으면 목록 첫째), 옛 값은 `direction_top1_list_first`, 확신도별은 기본 선택 기준(`list_first_conf_*` 따로). 후보 목록은 순위 있는 후보 먼저 | 목록 첫째로만 세기 (순위 1이 둘째로 밀리면 0.106 vs 0.366처럼 어긋남) | 사람이 화면에서 보는 기본 선택과 점수가 같은 후보를 재야 함. low에 순위는 주지 않음 (ADR 0001) | 11/22 재아 결정 2, 이슈 #39 | `score.py:70-76`, `prompts/f4/direction.md` |
 | 가지 충돌은 방향으로만 가르고 확신도만 다르면 낮은 쪽 | 확신도 차이도 충돌로 빼기 | 정답 문서 3절 5번 "AI 값" = 방향 | 리뷰 | 커밋 e07543d |
 | 보정 근거는 원문 대조 통과만, 못 찾으면 초안은 남기고 근거만 비움 | 근거 없으면 초안도 보류 | 초안을 버리면 사람이 볼 것이 없어짐. 보류(`ai_text = null`)는 확신 낮음·글자 없음에만 | 구현 중 | 커밋 da5acaa·02459ee |
 | `amendment_limit`은 통지 종류 사실만, 스위치는 프롬프트 제한만 | 코드가 보정 종류로 제한 위반 거르기 | 보정 종류와 네 가지 제한이 거의 겹쳐 코드로 못 가름, 적법성 판정이 됨 | 구현 중 | 커밋 e7b42e1 |
@@ -248,7 +252,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 
 ## 9. 테스트 방법
 - 경계: AI 모듈 입력 → 출력 (`run_f4(F4Input) -> F4Output`)과 단계 함수 셋. 채점기는 `eval/f4/score.py`의 `score_f4`.
-- 가짜 응답 / 녹화 응답: 기록된 모델 응답 `tests/fixtures/f4/llm/direction_inventive.json`·`direction_clarity.json`·`direction_low.json`·`opinion_*.json`·`amendment_*.json`. 네트워크·키 없이 돈다.
+- 가짜 응답 / 기록된 모델 응답: 사람이 쓴 가짜 응답 `tests/fixtures/f4/llm/direction_inventive.json`·`direction_clarity.json`·`direction_low.json`·`opinion_*.json`·`amendment_*.json`. 네트워크·키 없이 돈다.
 - 상태마다 나오는 경우 (`tests/core/f4/`, `tests/f4_eval/test_f4_score.py`):
   - 확인됨: 앞 단계가 모두 확인됨이면 결과도 확인됨이고 검토 표시가 없다 (`test_f4_run.py`).
   - 확인되지 않음: 빈 법률 근거 / F3 결과 없음 / 명세서 없음(`body_missing`) / 근거 대조 탈락(`evidence_rejected`) / 후보 0개 / 통지 종류 모름.
@@ -259,7 +263,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 - 아직 없는 것: 초안 검사(#40) 주입 오류 세트, 사건 전체 검사 남은 규칙(#39), F1 → F3 → F4를 한 사건으로 잇는 끝에서 끝까지 테스트(#166 T3).
 
 ## 열린 질문
-- 질문: 묶음 하나 실패 vs 실행 전체 `failed`, 상한 도달을 ADR 0003 110줄·`limit_reached`에 맞출지 (이슈 #166, PRD F5 3번과 부딪힘)
+- 정함 #211: 묶음 하나의 호출 실패는 그 묶음만 보류, 상한 도달(`max_units`·호출 상한)은 `limit_reached`로 보류하고 끝냄. 묶음 밖 상한(F1 읽기·지휘·F3 청구항 나누기)은 이슈 #241
 - 질문: 사람 승인 전 멈춤을 방향 후보 뒤에 둘지 F4 뒤에 둘지, ADR 0003 108줄 문장을 고칠지 (이슈 #70) [사람 판단]
 - 질문: `plan: agent`일 때 지휘가 F4를 언제 부르나
 - 질문: F3 결과에서 모델에 넣을 것, 보정 프롬프트의 명세서 전체 글자
@@ -278,6 +282,6 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 - 질문: 알림 문구·F4Output 칸을 결과 스키마로 올릴지 (이슈 #57·화면)
 - 질문: ⑤·`Drafts` 결과 표와 사람 선택·고침 저장 (이슈 #57)
 - 질문: F4 입력에 OA 당시 청구항 판 확인 여부 칸
-- 질문: 정답 문서 "1등"을 "1번 후보(목록 첫째)"로 맞출지
+- 정함 (11/22 결정 2): 정답 문서 "1등" = AI 기본 선택 (정답 문서 글은 정답 문서 PR에서 맞춤)
 - 질문: 정답 문서 4절이 넘긴 칸(④ 원문 위치 칸 이름, 최후통지 뒤 신설 칸, `rejection` ↔ F1 `rejections[].no`)
 - 정함 (11/21): ④ 연결 키 규칙(3-1), F3 대비 못 한 문헌·단위 안 보류를 F4가 옮김(3-1), `final_rejection_limit` 기본 켬(7-2), 명확성 근거 `spec_definition`을 F4가 모음(4절)
