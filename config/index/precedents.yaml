@@ -10,4 +10,6 @@ expected_precedents: 74
 # 심결 PDF: <trial_dir>/<유형 폴더>/<심판번호 13자리>.pdf. 개수가 다르면 멈춘다
 trial_dir: data/raw/trials_cv_1117
 expected_trials: 12
+# 조각 글자 수 상한. 넘으면 문단 경계에서 나눠 키에 -p<n>, label에 (n/m)을 붙인다
+max_chars: 3000
 out: data/processed/law/precedent-v3.jsonl
