@@ -34,7 +34,10 @@ _ALLOWED: dict[RunState, frozenset[RunState]] = {
     RunState.RUNNING: frozenset(
         {RunState.SUCCEEDED, RunState.FAILED, RunState.WAITING_FOR_HUMAN, RunState.CANCELLED}
     ),
-    RunState.WAITING_FOR_HUMAN: frozenset({RunState.RUNNING, RunState.CANCELLED, RunState.FAILED}),
+    # 사람이 번호를 넣으면 waiting → queued (실행기가 잡을 때까지 대기, #70)
+    RunState.WAITING_FOR_HUMAN: frozenset(
+        {RunState.QUEUED, RunState.RUNNING, RunState.CANCELLED, RunState.FAILED}
+    ),
     RunState.SUCCEEDED: frozenset(),
     RunState.FAILED: frozenset(),
     RunState.CANCELLED: frozenset(),

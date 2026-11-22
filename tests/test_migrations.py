@@ -152,3 +152,7 @@ def test_offline_sql_adds_direction_selections_and_runs_kind():
     assert "CREATE TABLE direction_selections" in sql
     assert re.search(r"ALTER TABLE runs ADD COLUMN kind TEXT DEFAULT 'full' NOT NULL", sql)
     assert "ck_runs_kind" in sql
+
+
+def test_offline_sql_adds_human_inputs():
+    assert "CREATE TABLE human_inputs" in _offline_sql()

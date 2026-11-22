@@ -9,6 +9,7 @@ import threading
 import pytest
 
 from patent_ai.core.agents.orchestrator import CaseInput
+from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputNotFound
 from patent_ai.core.cases.selections import InMemorySelectionStore
@@ -84,6 +85,7 @@ class Env:
         self.case_fill = _CaseFill()
         self.inputs = _Inputs(tmp_path, with_texts)
         self.selections = InMemorySelectionStore()
+        self.human = InMemoryHumanInputStore()
         self.lock = threading.Lock()
         self.executor = RunCaseExecutor(
             store=self.store,
@@ -97,6 +99,7 @@ class Env:
             make_ctx=fake_ctx,
             today=lambda: CHECKED_ON,
             selections=self.selections,
+            human=self.human,
             lock=self.lock,
         )
 
@@ -416,3 +419,46 @@ def test_redo_결과_저장이_실패하면_failed_result_save_failed(env, monke
     env.executor.execute(REDO, OID)
     st = env.store.get_status(REDO)
     assert st.state == RunState.FAILED and st.error["code"] == "result_save_failed"
+
+
+# ---- 사람 기다림에서 이어 돌기 (#70 계획 ②) ----
+def _waiting(tmp_path, monkeypatch):
+    oa = wire(monkeypatch)
+    unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    oa = oa.model_copy(
+        update={"application_number": oa.application_number.model_copy(update={"status": unknown})}
+    )
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", lambda *a, **k: oa)
+    env = Env(tmp_path)
+    assert env.run().state == RunState.WAITING_FOR_HUMAN
+    return env
+
+
+def test_resume_아직_기다리는_실행은_돌리지_않는다(tmp_path, monkeypatch):
+    # 사람 입력 API가 queued로 바꾼 뒤에만 이어 돈다: 기다리는 실행을 몰래 처음부터 돌리지 않는다
+    env = _waiting(tmp_path, monkeypatch)
+    saved_before = list(env.oa_results.saved)
+    env.executor.execute(RID, OID)
+    st = env.store.get_status(RID)
+    assert st.state == RunState.WAITING_FOR_HUMAN
+    assert env.oa_results.saved == saved_before
+
+
+def test_resume_저장한_정리가_없으면_failed_no_saved_oa_result(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    env = Env(tmp_path)
+    env.store.add(RID, OID)  # 번호를 넣어 queued가 된 실행처럼
+    env.human.add(OID, RID, "application_number", "1020990000001")
+    env.executor.execute(RID, OID)
+    st = env.store.get_status(RID)
+    assert st.state == RunState.FAILED and st.error["code"] == "no_saved_oa_result"
+
+
+def test_resume_번호를_넣으면_같은_실행이_끝까지_돌고_결과가_저장된다(tmp_path, monkeypatch):
+    env = _waiting(tmp_path, monkeypatch)
+    env.store.transition(RID, RunState.QUEUED, expected=RunState.WAITING_FOR_HUMAN)
+    env.human.add(OID, RID, "application_number", "1020990000001")
+    env.executor.execute(RID, OID)
+    st = env.store.get_status(RID)
+    assert st.state == RunState.SUCCEEDED and st.waiting_for is None
+    assert env.step_results.step_result(RID, "f4") is not None
