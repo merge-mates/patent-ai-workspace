@@ -1,7 +1,7 @@
 """화면 mock fixture(web/src/api/fixtures/)가 지금 core 코드로 다시 뽑은 것과 같은지 본다.
 
 core/schemas/나 read_oa가 바뀌었는데 fixture를 다시 뽑지 않으면 화면이 옛 모양으로 조용히 남는다.
-다르면 `cd web && npm run gen:fixtures`로 다시 뽑는다. 네트워크·키 없이 돈다 (기록된 모델 응답).
+다르면 `cd web && npm run gen:fixtures`로 다시 뽑는다. 네트워크·키 없이 돈다 (가짜 응답).
 """
 
 import json

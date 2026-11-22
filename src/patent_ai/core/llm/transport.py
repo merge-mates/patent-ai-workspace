@@ -11,7 +11,7 @@ class TransportResponse:
     text: str
     input_tokens: int
     output_tokens: int
-    # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등, API 값 그대로). 모르면 None (옛 캐시·녹화)
+    # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등, API 값 그대로). 모르면 None (옛 캐시·기록 파일)
     stop_reason: str | None = None
 
 

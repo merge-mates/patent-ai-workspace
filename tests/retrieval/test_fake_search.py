@@ -21,7 +21,8 @@ US = "US0000001B2"
 
 
 def cite(extra=None):
-    # 부르는 쪽이 embed를 넘기는 길 (design 7-1). 녹화 파일을 읽는 embed를 쓴다
+    # 부르는 쪽이 embed를 넘기는 길 (design 7-1).
+    # 기록된 모델 응답(질의 벡터) 파일을 읽는 embed를 쓴다
     repo = InMemoryChunkRepository.from_jsonl("cite", FIX / "chunks_cite.jsonl")
     s = {"index_version": "cite-idx-v1", **(extra or {})}
     return get_searcher("fake", repo, s, embed=recorded_embed(QV))
@@ -108,7 +109,7 @@ def test_없는_공보는_unverified_body_missing():
 
 def test_녹화_없는_질의는_RecordedEmbeddingMissing():
     with pytest.raises(RecordedEmbeddingMissing):
-        cite().search("녹화에 없는 질의", "cite", "vector", 3)
+        cite().search("기록된 모델 응답에 없는 질의", "cite", "vector", 3)
 
 
 def test_vector인데_embed도_query_vectors_설정도_없으면_ValueError():

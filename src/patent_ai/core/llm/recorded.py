@@ -1,4 +1,4 @@
-"""녹화 응답 전송층. 진짜 모델 답을 파일로 저장해 두고 테스트에서 다시 읽는다."""
+"""기록된 모델 응답 전송층. 진짜 모델 답을 파일로 저장해 두고 테스트에서 다시 읽는다."""
 
 import hashlib
 import json
@@ -25,7 +25,7 @@ def save_recording(
     effort: str,
     max_tokens: int,
 ) -> Path:
-    """녹화 파일 {"text","input_tokens","output_tokens","stop_reason","model","step"} 저장.
+    """기록된 응답 파일 {"text","input_tokens","output_tokens","stop_reason","model","step"} 저장.
 
     이미 있으면 멈춘다.
     """
@@ -34,7 +34,7 @@ def save_recording(
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{key}.json"
     if path.exists():
-        raise FileExistsError(f"이미 녹화가 있음: {path}")
+        raise FileExistsError(f"이미 기록된 응답이 있음: {path}")
     data = {
         "text": resp.text,
         "input_tokens": resp.input_tokens,
@@ -64,10 +64,10 @@ class RecordedTransport:
         path = self.directory / f"{key}.json"
         if not path.is_file():
             raise RecordingMissing(
-                f"녹화가 없음: {path} (step={step}). scripts/record_llm.py로 녹화"
+                f"기록된 응답이 없음: {path} (step={step}). scripts/record_llm.py로 기록"
             )
         d = json.loads(path.read_text(encoding="utf-8"))
-        # stop_reason 칸이 없는 옛 녹화 파일은 None으로 읽는다
+        # stop_reason 칸이 없는 옛 기록 파일은 None으로 읽는다
         return TransportResponse(
             d["text"], d["input_tokens"], d["output_tokens"], d.get("stop_reason")
         )

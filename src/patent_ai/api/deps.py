@@ -25,11 +25,12 @@ from patent_ai.core.cases.texts_source import PostgresTextsSource
 from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.llm.config import REPO_ROOT
-from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
+from patent_ai.core.llm.limits import CallBudget, RunContext
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import RunExecutor
 from patent_ai.core.runs.launcher import RunLauncher, ThreadLauncher
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
+from patent_ai.core.runs.step_log_pg import PostgresCallRecorder, PostgresStepRecorder
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
 from patent_ai.core.schemas.oa_result import OAResult
@@ -138,7 +139,13 @@ ORCHESTRATOR_CONFIG = REPO_ROOT / "config" / "orchestrator.yaml"
 
 def _new_run_context(run_id: str) -> RunContext:
     """실행마다 새 모델 호출 맥락. 상한은 실행 안에서만 센다 (transport None = 진짜 전송층)."""
-    return RunContext(run_id=run_id, budget=CallBudget(), recorder=MemoryRecorder())
+    # 모델 호출을 agent_steps에 남긴다. 기록기는 실행마다 새로 (records가 안 섞이게),
+    # 엔진은 앱 하나를 같이 쓴다
+    return RunContext(
+        run_id=run_id,
+        budget=CallBudget(),
+        recorder=PostgresCallRecorder(sessionmaker(_engine())),
+    )
 
 
 def _latest_oa_result(oa_id: str) -> OAResult | None:
@@ -167,6 +174,7 @@ def _run_case_executor() -> RunCaseExecutor:
         config_path=ORCHESTRATOR_CONFIG,
         make_ctx=_new_run_context,
         today=date.today,
+        step_log=PostgresStepRecorder(factory),  # 지휘 단계 전부를 agent_steps에
     )
 
 
