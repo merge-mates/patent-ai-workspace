@@ -2,7 +2,7 @@
 // 서버 응답 스키마(#56·#57)가 생기면 OpenAPI에서 뽑은 타입으로 바꿈. 손으로 오래 두지 않는다.
 // 결과 본문(OAResult·CaseMaterials·ReviewItem)은 types/generated/ 의 뽑은 타입을 쓴다.
 import type { CaseMaterials } from '../generated/CaseMaterials'
-import type { LegalEvidenceBundle } from '../generated/LegalEvidenceBundle'
+import type { LegalEvidenceBundle, LegalQuestion } from '../generated/LegalEvidenceBundle'
 import type {
   ExtractedValueStr,
   NoticeKind,
@@ -133,11 +133,31 @@ export interface UploadedDocument {
   result: CaseMaterials
 }
 
-// 법률 질문 답: 이어 묻기가 되도록 대화 ID(chat_id)와 같이 돌려준다 (임시: F2 설계 때 정함)
+// 법률 질문 답(화면용): 이어 묻기가 되도록 대화 ID(chat_id)와 같이 돌려준다
 export interface LegalAnswer {
   chat_id: string
   answer: LegalEvidenceBundle
 }
 
-// GET /legal-chats/{id}: 대화 보기. 응답 모양이 명세에 없다 (임시: F2 설계 때 정함).
-export type LegalChatView = { chat_id?: string } & Record<string, unknown>
+// POST /legal-chats/{id}/messages 응답: 묶음은 result에 담긴다 (docs/api/README.md)
+export interface LegalChatAnswerResponse {
+  chat_id: string
+  no: number
+  scope_changed: boolean // 앞 질문과 시점 또는 자료 유형이 달라졌는가
+  result: LegalEvidenceBundle
+}
+
+// GET /legal-chats/{id}: 대화 보기
+export interface LegalChatView {
+  chat_id: string
+  case_id: string | null
+  created_at: string
+  turns: {
+    no: number
+    question: LegalQuestion
+    scope_changed: boolean
+    created_at: string
+    result: LegalEvidenceBundle
+  }[]
+  prior_evidence: string[] // 앞 턴에서 확인된 색인 조각 ID
+}

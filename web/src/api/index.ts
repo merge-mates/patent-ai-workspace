@@ -17,6 +17,7 @@ import type {
   CreatedCase,
   CreatedOA,
   LegalAnswer,
+  LegalChatAnswerResponse,
   LegalChatView,
   UploadedDocument,
   OADetail,
@@ -86,12 +87,13 @@ const httpApi: typeof mockApi = {
   getComparisons: (oaId) => getResult<ComparisonTable>(`/oas/${oaId}/comparisons`),
   getClarityReviews: (oaId) => getResult<ClarityReview>(`/oas/${oaId}/clarity-reviews`),
   getLegalEvidence: (oaId) => getResult<LegalEvidenceBundle>(`/oas/${oaId}/legal-evidence`),
-  // 법률 질문 (필드는 F2 설계 때 바뀔 수 있음): chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
+  // 법률 질문: chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
   // (질문마다 새 대화를 만들면 두 번째 질문부터 앞 맥락이 끊긴다)
+  // 서버 응답 {chat_id, no, scope_changed, result}의 result(법률 근거 묶음)가 화면의 answer다
   askLegal: async (q, chatId): Promise<LegalAnswer> => {
     const id = chatId ?? (await postJson<{ chat_id: string }>('/legal-chats', {})).chat_id
-    const answer = await postJson<LegalEvidenceBundle>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
-    return { chat_id: id, answer }
+    const res = await postJson<LegalChatAnswerResponse>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
+    return { chat_id: res.chat_id, answer: res.result }
   },
   getDirections: (oaId) => getResult<DirectionCandidates>(`/oas/${oaId}/directions`),
   selectDirection: (unitId, candidateId) =>
@@ -132,7 +134,7 @@ const httpApi: typeof mockApi = {
       application_number: applicationNumber,
     })
   },
-  // GET /legal-chats/{id}: 대화 보기 (응답 모양 미정)
+  // GET /legal-chats/{id}: 대화 보기
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }
 
