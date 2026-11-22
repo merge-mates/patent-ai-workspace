@@ -159,6 +159,8 @@ def test_종속항을_대비하지_않은_보류는_결과_전체_status를_확�
     result, transport = run_scenario(answers=answers)
     assert [h.task for h in result.held_tasks] == ["f3_compare:oa_1:29-2:c1:claim2:dependent"]
     assert sum(1 for c in transport.calls if c["step"] == "f3.compare") == 1
+    # 건너뛴 청구항 2도 검색은 했다: run_f3 결과의 검색 기록에 남는다 (11/22 결정 1 (나))
+    assert any(r.claim == 2 for r in result.search_log)
     # 건너뜀은 기다리는 자료가 없는 정해진 일이라 status는 대비표가 정한다 (못 찾음)
     assert result.status.value == StatusValue.NOT_FOUND_IN_SCOPE
 
@@ -266,3 +268,25 @@ def test_건너뛴_청구항을_부모로_보지_않아_가지_종속항이_그_
     assert f"f3_compare:{unit}:claim2:dependent" in tasks
     # 3은 부모 2의 구성요소를 빌리지 못하는 가지라 가지 보류가 남는다 (조용히 빠지지 않음)
     assert f"f3_compare:{unit}:claim3:branch" in tasks
+
+
+# ---- 건너뛴 종속항도 검색은 한다 (11/22 재아 결정 1 (나)) ----
+def test_건너뛴_종속항도_검색_기록이_남고_모델_대비_호출은_그대로다():
+    embedded: list[str] = []
+
+    def embed(query: str) -> list[float]:
+        embedded.append(query)
+        return [1.0, 0.0] if "센서" in query else [0.0, 1.0]
+
+    searcher = make_searcher(load_f3_settings(), REPO, embed)
+    two = _answer(1, (1, "disclosed", (P23, FULL23)), (2, "difference_candidate"))
+    result = oa([rejection(1, "29-2", [1, 3], [citation("D1", D1)])])
+    out, calls, _ = _run_general(result, SPLITS, CLAIMS, [two, LID_ANSWER], searcher=searcher)
+    assert len(calls) == 1  # 대비(모델) 호출은 독립항 한 번뿐
+    assert LID in embedded  # 건너뛴 청구항 3의 구성요소 질의가 임베딩됨
+    logged = [r for r in out.search_log if r.claim == 3]
+    assert [(r.element_no, r.citation, r.round) for r in logged] == [(1, "D1", 1)]
+    assert logged[0].hit_chunk_ids  # BM25+벡터 하이브리드 상위 k가 기록에 남음
+    assert {r.claim for r in out.tables[0].rows} == {1}  # 대비표 줄은 만들지 않음
+    held = _held(out, HELD)
+    assert "검색은 함" in held.waiting_for and "대비는 생략" in held.waiting_for

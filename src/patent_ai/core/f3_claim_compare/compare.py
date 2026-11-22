@@ -318,17 +318,19 @@ def _log_status(result: SearchResult, scope: str) -> Status:
     return unverified(UnverifiedReason.BODY_MISSING)
 
 
-def _gather(
+def _search_elements(
     unit: JudgmentUnit,
     claim: int,
     items: list[_Item],
     cites: list[ResolvedCitation],
-    oa: OAResult,
     config: F3Config,
     searcher: Searcher,
-    repo: ChunkRepository,
     seen: _Collected,
 ) -> dict[str, _Candidate]:
+    """구성요소마다 인용문헌별로 검색(BM25+벡터)하고 검색 기록을 남긴다.
+
+    대비하는 청구항(_gather)과 대비를 건너뛴 종속항(_search_skipped)이 같이 쓴다.
+    """
     settings = config.settings
     search = settings.search
     mode = _mode(search.impl)
@@ -356,6 +358,23 @@ def _gather(
             for hit in result.hits:
                 found = candidates.setdefault(hit.chunk_id, _Candidate(hit, cite.label))
                 found.ranks[item.n] = hit.rank
+    return candidates
+
+
+def _gather(
+    unit: JudgmentUnit,
+    claim: int,
+    items: list[_Item],
+    cites: list[ResolvedCitation],
+    oa: OAResult,
+    config: F3Config,
+    searcher: Searcher,
+    repo: ChunkRepository,
+    seen: _Collected,
+) -> dict[str, _Candidate]:
+    settings = config.settings
+    search = settings.search
+    candidates = _search_elements(unit, claim, items, cites, config, searcher, seen)
     if not settings.use_examiner_paragraphs:
         return candidates  # 평가 누출 막기: 심사관 위치를 읽지도 않는다
     for cite in cites:
@@ -943,6 +962,23 @@ def _covered_by_rep(
     return {c.label for c in cites_of[claim]} <= {c.label for c in cites_of.get(rep, [])}
 
 
+def _search_skipped(
+    unit: JudgmentUnit,
+    view: _View,
+    cites: list[ResolvedCitation],
+    config: F3Config,
+    searcher: Searcher,
+    seen: _Collected,
+) -> None:
+    """대표 청구항 때문에 대비를 건너뛴 종속항: 검색만 하고 기록을 남긴다 (모델 호출 없음).
+
+    의견서 실무에서 독립항 다음에 종속항 후보 문단을 찾으므로, 대표 판정이 틀려도 후보 문단이
+    남는다 (11/22 결정). 대비표 줄·second_search는 만들지 않는다. 심사관 지정 조각도 읽지 않는다.
+    """
+    usable = [i for i in view.items if i.e.status.value == StatusValue.CONFIRMED]
+    _search_elements(unit, view.claim, usable, cites, config, searcher, seen)
+
+
 def _independent_collapsed(rows: list[ComparisonRow], lost: set[_Key], rep: int) -> bool | None:
     """독립항(대표 청구항) 줄이 모두 개시됨이면 True (무너짐). 줄이 없으면 None (알 수 없음).
 
@@ -1135,6 +1171,8 @@ def _compare_unit(
                 c for c in later if collapsed is False and _covered_by_rep(c, rep, cites_of, splits)
             ]
             for claim in skip_claims:
+                # 대비(모델)만 건너뛴다: 같은 검색은 하고 기록을 search_log에 남긴다
+                _search_skipped(unit, views[claim], cites_of[claim], config, searcher, seen)
                 logger.warning(
                     "compare %s: 대표 청구항 %d에 차이점이 있어 청구항 %d는 대비하지 않음",
                     unit.unit_id,
@@ -1145,7 +1183,7 @@ def _compare_unit(
                     seen,
                     f"f3_compare:{unit.unit_id}:claim{claim}:{DEPENDENT_SKIPPED}",
                     f"청구항 {claim}: 대표 청구항 {rep}에 차이 후보·불명 구성요소가"
-                    " 있어 종속항을 대비하지 않음 (필요하면 직접 요청)",
+                    " 있어 종속항을 대비하지 않음 (검색은 함, 대비는 생략. 필요하면 직접 요청)",
                 )
             if skip_claims:
                 # 건너뛴 청구항은 대비되지 않았으니 다른 종속항이 부모로 "이미 대비됨"으로 보면
