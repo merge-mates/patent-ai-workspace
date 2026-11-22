@@ -165,7 +165,12 @@ class RunCaseExecutor:
 
     def _run(self, run_id: str, oa_id: str) -> None:
         before = self._store.get_status(run_id)
-        resuming = before is not None and before.state == RunState.WAITING_FOR_HUMAN
+        if before is not None and before.state == RunState.WAITING_FOR_HUMAN:
+            # 사람 입력 API가 queued로 바꾼 뒤에만 넘긴다 (기다리는 실행을 몰래 처음부터 안 돌림)
+            logger.warning("실행 %s는 아직 사람을 기다리는 중이라 돌리지 않는다", run_id)
+            return
+        # 사람이 번호를 넣어 다시 queued가 된 실행이면 이어 돈다 (이 실행에 사람 번호가 있다)
+        numbers = self._human.numbers_for_run(run_id)
         # 기다리는 동안 취소됐으면(queued -> cancelled) 여기서 막혀 돌지 않는다
         try:
             self._store.transition(run_id, RunState.RUNNING, current_step=FIRST_STEP)
@@ -183,9 +188,9 @@ class RunCaseExecutor:
             case_input = self._inputs.case_input(oa_id).model_copy(
                 update={"checked_on": self._today()}
             )
-            if resuming:
+            if numbers:
                 case_input = case_input.model_copy(
-                    update={"resume_oa": self._resume_oa(run_id, oa_id)}
+                    update={"resume_oa": self._resume_oa(run_id, numbers)}
                 )
         except _CannotResume as exc:
             self._fail(run_id, exc.code, exc.message)
@@ -223,15 +228,11 @@ class RunCaseExecutor:
             return
         self._apply(run_id, oa_id, outcome, steps)
 
-    def _resume_oa(self, run_id: str, oa_id: str):
+    def _resume_oa(self, run_id: str, numbers: dict[str, str]):
         """기다리던 실행이 저장한 OA 정리에 사람이 넣은 번호를 덮는다 (#70)."""
         saved = self._oa_results.oa_result_of_run(run_id)
         if saved is None:
             raise _CannotResume("no_saved_oa_result", "이어 돌 OA 정리가 저장돼 있지 않습니다")
-        numbers = self._human.numbers_for_run(run_id)
-        if not numbers:
-            # 번호 없이 이어 돌면 같은 자리에서 또 멈춘다: 성공처럼 두지 않고 멈춘다
-            raise _CannotResume("no_human_input", "이어 돌 때 쓸 사람 입력 번호가 없습니다")
         return apply_human_numbers(saved, numbers)
 
     def _redo(self, run_id: str, oa_id: str) -> None:

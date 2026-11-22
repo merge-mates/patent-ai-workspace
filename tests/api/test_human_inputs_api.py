@@ -131,10 +131,16 @@ def test_human_inputs_api_둘_다_못_읽으면_하나씩_넣고_차례로_이�
     created = env.upload()
     run = f"/runs/{created['run_id']}"
 
-    env.client.patch(f"/cases/{created['case_id']}", json={"application_number": "1020990000001"})
+    first = env.client.patch(
+        f"/cases/{created['case_id']}", json={"application_number": "1020990000001"}
+    )
+    assert first.status_code == 200, first.text
     # 출원번호는 채웠고, 이번에는 발송번호를 기다리며 다시 멈춘다
     assert env.client.get(run).json()["waiting_for"] == "dispatch_number"
-    env.client.patch(f"/oas/{created['oa_id']}", json={"dispatch_number": "952099000000001"})
+    second = env.client.patch(
+        f"/oas/{created['oa_id']}", json={"dispatch_number": "952099000000001"}
+    )
+    assert second.status_code == 200, second.text
 
     assert env.client.get(run).json()["state"] == "succeeded"
     result = env.client.get(f"/oas/{created['oa_id']}/oa-result").json()["result"]
@@ -168,3 +174,23 @@ def test_human_inputs_api_맞아요는_정리_전이면_404(tmp_path, monkeypatc
     url = f"/oas/{created['oa_id']}/oa-result/confirmation"
     assert env.client.put(url).json()["code"] == "result_not_ready"
     assert env.client.get("/oas/oa_없음/oa-result/confirmation").json()["code"] == "oa_not_found"
+
+
+def test_human_inputs_api_번호를_넣으면_바로_대기로_바뀌고_두_번째는_409(waiting_app):
+    # 리뷰 막음: 실행기가 잡기 전에도 사람 기다림으로 남지 않고, 나중 번호가 몰래 이기지 않는다
+    env, created, _ = waiting_app
+    env.launch_enabled = False  # 실행기가 아직 안 잡은 순간
+    url = f"/cases/{created['case_id']}"
+
+    first = env.client.patch(url, json={"application_number": "10-2099-0000001"})
+    st = env.client.get(f"/runs/{created['run_id']}").json()
+    second = env.client.patch(url, json={"application_number": "10-2099-0000002"})
+
+    assert first.status_code == 200
+    assert (st["state"], st["waiting_for"]) == ("queued", None)
+    assert (second.status_code, second.json()["code"]) == (409, "not_waiting")
+    assert env.human.numbers_for_run(created["run_id"]) == {"application_number": "1020990000001"}
+    # 실행기가 잡으면 처음 넣은 번호로 이어 돈다
+    env.executor.execute(created["run_id"], created["oa_id"])
+    oa = env.client.get(f"/oas/{created['oa_id']}/oa-result").json()["result"]
+    assert oa["application_number"]["value"] == "1020990000001"

@@ -20,7 +20,7 @@ from patent_ai.core.f1_oa_reader.rules import (
     normalize_application_number,
     normalize_dispatch_number,
 )
-from patent_ai.core.runs.state import RunState
+from patent_ai.core.runs.state import InvalidRunTransition, RunState
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue
 from patent_ai.core.schemas.oa_result import _OA_FIELD_NAMES, OAResult, summarize_status
@@ -94,6 +94,20 @@ def apply_human_numbers(oa: OAResult, numbers: dict[str, str]) -> OAResult:
     return OAResult.model_validate(data)
 
 
+def _take_waiting(oa_id: str, run_id: str, kind: NumberKind, number: str, runs, human) -> None:
+    """기다리던 실행을 waiting → queued로 조건부 전이한 뒤에만 번호를 남긴다 (#269 리뷰 막음).
+
+    전이에 지면(이미 다른 PATCH가 가져감·취소됨) 번호를 남기지 않고 NotWaitingError (409).
+    그래서 실행기가 잡기 전에 두 번째 PATCH가 와도 나중 번호가 몰래 이기지 않고, 상태도 바로
+    queued로 보여 화면이 다시 폴링한다.
+    """
+    try:
+        runs.transition(run_id, RunState.QUEUED, expected=RunState.WAITING_FOR_HUMAN)
+    except InvalidRunTransition:
+        raise NotWaitingError(run_id) from None
+    human.add(oa_id, run_id, kind, number)
+
+
 def _waiting_run(oa, runs: RunStatusStore, kind: NumberKind) -> str | None:
     """그 OA의 가장 최근 실행이 이 번호를 기다리면 그 run_id."""
     run = oa.latest_run if oa else None
@@ -120,7 +134,7 @@ def enter_application_number(
     for ref in reversed(case.oas):  # 가장 늦게 올린 OA부터
         run_id = _waiting_run(store.get_oa(ref.oa_id), runs, "application_number")
         if run_id is not None:
-            human.add(ref.oa_id, run_id, "application_number", number)
+            _take_waiting(ref.oa_id, run_id, "application_number", number, runs, human)
             return NumberEntered(case_id, ref.oa_id, run_id)
     raise NotWaitingError(case_id)
 
@@ -140,7 +154,7 @@ def enter_dispatch_number(
     run_id = _waiting_run(oa, runs, "dispatch_number")
     if run_id is None:
         raise NotWaitingError(oa_id)
-    human.add(oa_id, run_id, "dispatch_number", number)
+    _take_waiting(oa_id, run_id, "dispatch_number", number, runs, human)
     return NumberEntered(oa.case_id, oa_id, run_id)
 
 

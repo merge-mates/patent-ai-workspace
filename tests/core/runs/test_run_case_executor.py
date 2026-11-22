@@ -381,19 +381,20 @@ def _waiting(tmp_path, monkeypatch):
     return env
 
 
-def test_resume_사람_번호가_없으면_failed_no_human_input(tmp_path, monkeypatch):
+def test_resume_아직_기다리는_실행은_돌리지_않는다(tmp_path, monkeypatch):
+    # 사람 입력 API가 queued로 바꾼 뒤에만 이어 돈다: 기다리는 실행을 몰래 처음부터 돌리지 않는다
     env = _waiting(tmp_path, monkeypatch)
     saved_before = list(env.oa_results.saved)
     env.executor.execute(RID, OID)
     st = env.store.get_status(RID)
-    assert st.state == RunState.FAILED and st.error["code"] == "no_human_input"
+    assert st.state == RunState.WAITING_FOR_HUMAN
     assert env.oa_results.saved == saved_before
 
 
 def test_resume_저장한_정리가_없으면_failed_no_saved_oa_result(tmp_path, monkeypatch):
     wire(monkeypatch)
     env = Env(tmp_path)
-    env.store.add(RID, OID, state=RunState.WAITING_FOR_HUMAN)
+    env.store.add(RID, OID)  # 번호를 넣어 queued가 된 실행처럼
     env.human.add(OID, RID, "application_number", "1020990000001")
     env.executor.execute(RID, OID)
     st = env.store.get_status(RID)
@@ -402,6 +403,7 @@ def test_resume_저장한_정리가_없으면_failed_no_saved_oa_result(tmp_path
 
 def test_resume_번호를_넣으면_같은_실행이_끝까지_돌고_결과가_저장된다(tmp_path, monkeypatch):
     env = _waiting(tmp_path, monkeypatch)
+    env.store.transition(RID, RunState.QUEUED, expected=RunState.WAITING_FOR_HUMAN)
     env.human.add(OID, RID, "application_number", "1020990000001")
     env.executor.execute(RID, OID)
     st = env.store.get_status(RID)
