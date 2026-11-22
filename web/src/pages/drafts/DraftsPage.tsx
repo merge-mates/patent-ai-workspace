@@ -123,7 +123,7 @@ export function DraftsPage() {
   }
   // 묶음 선택 출처: 고른 묶음 중 사람이 고른 것이 있나
   const picked = directions.flatMap((d) => (d.selection ? [d.selection] : []))
-  const humanPicked = picked.filter((s) => s.origin === 'human_selected' || s.origin === 'human_edited').length
+  const humanPicked = picked.filter((s) => s.origin === 'human_selected' || s.origin === 'human_edited' || s.origin === 'human_written').length
   const pickSource = humanPicked === 0 ? 'AI 기본값' : humanPicked === picked.length ? '직접 고름' : '일부 직접 고름'
 
   // 근거 링크는 의견서·보정 청구항 근거 목록에서 같은 위치를 찾아 원문 판으로

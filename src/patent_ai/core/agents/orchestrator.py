@@ -79,7 +79,6 @@ class WaitingFor(StrEnum):
 
     APPLICATION_NUMBER = "application_number"
     DISPATCH_NUMBER = "dispatch_number"
-    DIRECTION_SELECTION = "direction_selection"
 
 
 class RunOutcome(BaseModel):

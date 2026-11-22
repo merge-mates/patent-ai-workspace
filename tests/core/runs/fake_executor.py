@@ -32,9 +32,15 @@ class MemoryStatusStore(InMemoryRunStore):
         super().__init__()
         self.step_history: dict[str, list[str]] = {}
 
-    def add(self, run_id: str, oa_id: str = "oa_1", state: RunState = RunState.QUEUED) -> None:
+    def add(
+        self,
+        run_id: str,
+        oa_id: str = "oa_1",
+        state: RunState = RunState.QUEUED,
+        kind: str = "full",
+    ) -> None:
         self._id_maker = lambda: run_id
-        self.create_queued(oa_id)
+        self.create_queued(oa_id, kind)
         if state != RunState.QUEUED:  # 규칙을 거치지 않고 바로 그 상태로 시작 (테스트 준비용)
             with self._lock:
                 self._put(self._status[run_id].model_copy(update={"state": state}))

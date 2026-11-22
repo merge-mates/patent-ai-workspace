@@ -52,12 +52,13 @@ def test_status_직렬화는_늘_네_키():
     }
 
 
-def test_origin_네_값과_flag_두_값():
+def test_origin_다섯_값과_flag_두_값():
     assert {o.value for o in Origin} == {
         "ai_generated",
         "ai_default",
         "human_selected",
         "human_edited",
+        "human_written",
     }
     assert {f.value for f in Flag} == {"needs_human_judgment", "needs_human_review"}
 

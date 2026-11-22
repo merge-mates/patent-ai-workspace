@@ -24,7 +24,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     DuplicateDocumentError,
 )
 from patent_ai.core.runs.state import UNFINISHED_STATES, RunError, RunState, check_transition
-from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
+from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep, check_run_kind
 from patent_ai.db.ids import new_id
 
 __all__ = [
@@ -78,6 +78,7 @@ class RunRow:
     state: str
     current_step: str | None
     created_at: datetime
+    kind: str = "full"  # RunKind: full / redo_drafts (#70)
 
 
 @dataclass(frozen=True)
@@ -164,8 +165,8 @@ def case_name_of(application_number: str | None) -> str:
 
 
 class RunStore(Protocol):
-    def create_queued(self, oa_id: str) -> RunRow:
-        """queued 실행 한 줄을 만든다."""
+    def create_queued(self, oa_id: str, kind: str = "full") -> RunRow:
+        """queued 실행 한 줄을 만든다. kind는 RunKind (모르는 값은 ValueError)."""
         ...
 
     def latest_for_oa(self, oa_id: str) -> RunRow | None:
@@ -194,8 +195,10 @@ class CaseAppStore(Protocol):
 
     def get_oa(self, oa_id: str) -> OADetailRow | None: ...
 
-    def create_run(self, oa_id: str) -> RunRow:
-        """있는 OA에 queued 실행을 하나 더 만든다 (POST /oas/{id}/runs). OA 확인은 부르는 쪽."""
+    def create_run(self, oa_id: str, kind: str = "full") -> RunRow:
+        """있는 OA에 queued 실행을 하나 더 만든다 (POST /oas/{id}/runs). OA 확인은 부르는 쪽.
+
+        kind = redo_drafts는 사람 방향 선택 뒤 초안만 다시 만드는 작은 실행 (#70)."""
         ...
 
     def find_document_by_sha256(
@@ -229,11 +232,14 @@ class InMemoryRunStore:
         self._skipped: dict[str, list[SkippedStep]] = {}  # 실행별 넘긴 단계 (기록 순서)
         self._lock = threading.Lock()
 
-    def create_queued(self, oa_id: str) -> RunRow:
-        row = RunRow(self._id_maker(), oa_id, "queued", None, self._clock())
+    def create_queued(self, oa_id: str, kind: str = "full") -> RunRow:
+        check_run_kind(kind)
+        row = RunRow(self._id_maker(), oa_id, "queued", None, self._clock(), kind)
         with self._lock:
             self._rows.append(row)
-            self._status[row.id] = RunStatus(run_id=row.id, oa_id=oa_id, state=RunState.QUEUED)
+            self._status[row.id] = RunStatus(
+                run_id=row.id, oa_id=oa_id, state=RunState.QUEUED, kind=kind
+            )
         return row
 
     def latest_for_oa(self, oa_id: str) -> RunRow | None:
@@ -376,8 +382,8 @@ class InMemoryCaseAppStore:
             raise CaseNotFoundError(case_id)
         return self._add_oa(case, file)
 
-    def create_run(self, oa_id: str) -> RunRow:
-        return self._runs.create_queued(oa_id)
+    def create_run(self, oa_id: str, kind: str = "full") -> RunRow:
+        return self._runs.create_queued(oa_id, kind)
 
     def _refs(self, case: _Case) -> list[OARef]:
         return [OARef(oa_id) for oa_id in case.oa_ids]

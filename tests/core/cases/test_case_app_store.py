@@ -140,3 +140,23 @@ def test_find_document_by_sha256은_case_id를_주면_그_사건_안에서만_�
     assert store.find_document_by_sha256("same", case_id=y.case_id).oa_id == y2.oa_id
     assert store.find_document_by_sha256("same", case_id=x.case_id).oa_id == x.oa_id
     assert store.find_document_by_sha256("other", case_id=x.case_id) is None
+
+
+def test_실행_종류는_기본_full이고_작은_실행은_redo_drafts():
+    # 사람 방향 선택 뒤 초안만 다시 만드는 작은 실행을 구분한다 (#70)
+    ticks = iter(range(100))  # 부를 때마다 1초씩: 작은 실행이 뒤에 만들어진다
+    store = InMemoryCaseAppStore(clock=lambda: T0.replace(second=next(ticks)))
+    created = store.create_case(_file("kind"))
+    first = store.get_oa(created.oa_id).latest_run
+
+    redo = store.create_run(created.oa_id, kind="redo_drafts")
+
+    assert first.kind == "full"
+    assert redo.kind == "redo_drafts"
+    assert store.get_oa(created.oa_id).latest_run.kind == "redo_drafts"
+
+
+def test_모르는_실행_종류는_거부():
+    store = InMemoryRunStore(clock=lambda: T0)
+    with pytest.raises(ValueError, match="실행 종류"):
+        store.create_queued("oa_x", kind="partial")

@@ -86,8 +86,11 @@ def has_amendment(candidate: DirectionCandidate) -> bool:
 
 
 def selected_candidate(result: DirectionCandidates) -> DirectionCandidate | None:
-    """묶음에서 고른 후보 (AI 기본값이든 사람 선택이든). 고르지 않았으면 None."""
-    if result.selection is None:
+    """묶음에서 고른 후보 (AI 기본값이든 사람 선택이든).
+
+    고르지 않았거나 사람이 직접 쓴 방향이면 None (그 묶음 초안은 보류).
+    """
+    if result.selection is None or result.selection.candidate_id is None:
         return None
     return next(c for c in result.candidates if c.candidate_id == result.selection.candidate_id)
 
@@ -192,7 +195,16 @@ def build_opinion(
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         chosen = selected_candidate(by_unit[unit.unit_id])
         if chosen is None:
-            logger.warning("f4.opinion %s: 고른 방향이 없어 이 묶음 의견서는 보류", unit.unit_id)
+            sel = by_unit[unit.unit_id].selection
+            if sel is not None and sel.written_direction is not None:
+                logger.warning(
+                    "f4.opinion %s: 사람이 쓴 방향이라 이 묶음 의견서는 AI가 만들지 않음",
+                    unit.unit_id,
+                )
+            else:
+                logger.warning(
+                    "f4.opinion %s: 고른 방향이 없어 이 묶음 의견서는 보류", unit.unit_id
+                )
             held.append(unit.unit_id)
             continue
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)

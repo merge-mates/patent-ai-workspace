@@ -217,7 +217,7 @@ export const mockApi = {
     if (!found.candidates.some((c) => c.candidate_id === candidateId))
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
-    found.selection = { candidate_id: candidateId, origin: 'human_selected' }
+    found.selection = { candidate_id: candidateId, written_direction: null, origin: 'human_selected' }
     saveSelection(unitId, candidateId)
     // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
     return found
@@ -402,7 +402,7 @@ function saveAppNumber(caseId: string, n: string) {
 const needsAppNumber = (b: Bundle) =>
   b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
 
-// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 확신 낮은 묶음이 아직 안 골라졌으면 방향 고르기 기다림, 아니면 끝남.
+// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 아니면 끝남 (방향 고르기는 실행을 멈추지 않는다: 확신 낮은 묶음은 선택 null로 두고 실행은 succeeded).
 // mock 단순화: 출원번호를 기다리는 동안에도 뒤 단계 결과(예시)는 열어 둔다 (서버는 OA 정리까지만 있다)
 function runOf(b: Bundle): RunStatusLike {
   const run = loadRun(b.oa_id)
@@ -412,12 +412,8 @@ function runOf(b: Bundle): RunStatusLike {
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
-  const waiting = (directions[b.oa_id] ?? []).some(
-    (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
-  )
-  return waiting
-    ? { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'direction_selection' }
-    : { run_id, state: 'succeeded', current_step: null }
+  // 방향 고르기는 실행을 멈추지 않는다 (확신 낮은 묶음은 선택 null + 초안 보류, 실행은 succeeded)
+  return { run_id, state: 'succeeded', current_step: null }
 }
 // latest_run(getOA)에는 waiting_for가 없고 GET /runs/{id}에만 있다 (서버 oas.py LatestRun과 같게)
 type RunStatusLike = LatestRun & { waiting_for?: string | null }
@@ -436,8 +432,8 @@ function gate(b: Bundle, need: number) {
 }
 
 // 결과 엔드포인트의 계약 (안 B): "가장 최근에 결과가 확정된 실행"의 결과만 준다. 실행 중·실패·취소된 실행의 결과는 주지 않는다.
-// 판단: waiting_for_human은 서버 계약에 빈칸이다. mock은 "방향 후보까지 결과가 확정돼 사람이 고르기를 기다리는 상태"로 보고
-// 그 실행의 결과를 열어 둔다 (안 열면 방향을 고를 수 없어 올리기 → 방향 고르기 → 초안 흐름이 끊긴다).
+// 판단: waiting_for_human은 출원번호·발송번호를 기다리는 실행뿐이다. 그 실행도 그때까지 확정된 결과는 열어 둔다
+// (방향 고르기는 실행을 멈추지 않아 succeeded 실행의 결과로 본다).
 // 돌려주는 값은 결과가 속한 실행의 run_id (다시 돌리는 중이면 이전 실행 것이라 화면의 "이전 실행 결과"가 보인다)
 function gateResult(b: Bundle): string {
   const runId = lastDoneRunId(b)
@@ -474,7 +470,7 @@ function storeWrite(key: string, value: string | null) {
 }
 
 function saveSelection(unitId: string, candidateId: string) {
-  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, origin: 'human_selected' }))
+  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, written_direction: null, origin: 'human_selected' }))
 }
 
 // 예시와 human_text가 달라진 칸(= 사람이 바꾼 칸)만 모아 저장. 하나도 없으면 키를 지운다
@@ -532,7 +528,7 @@ function applySaved() {
       if (!unit) drop(key, '판단 단위가 예시에 없음')
       else if (!saved || typeof saved.candidate_id !== 'string') drop(key, '저장된 값을 읽을 수 없음')
       else if (!unit.candidates.some((c) => c.candidate_id === saved.candidate_id)) drop(key, '후보가 예시에 없음')
-      else unit.selection = { candidate_id: saved.candidate_id, origin: 'human_selected' }
+      else unit.selection = { candidate_id: saved.candidate_id, written_direction: null, origin: 'human_selected' }
     } else if (key.startsWith(`${STORE_PREFIX}draft:`)) {
       const draftId = key.slice(`${STORE_PREFIX}draft:`.length)
       const saved = readJson(key) as Partial<SavedDraft> | null | undefined
