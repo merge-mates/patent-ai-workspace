@@ -6,11 +6,14 @@
 - 발송일은 F1이 원문 글자만 둔다(`notice_date.value`는 비움). 여기서 날짜로 읽는다.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date
 
 from patent_ai.retrieval.law_index import article_loc
+
+logger = logging.getLogger(__name__)
 
 # 지금 F1이 내는 조문은 모두 특허법이다 (29조·42조, oa_result._KIND_BY_ARTICLE)
 LAW = "특허법"
@@ -75,6 +78,15 @@ _REF_IN_TEXT = re.compile(
 )
 # 조문 바로 앞에 붙은 법 이름 (`특허법`, `실용신안법 시행령`, `시행규칙`)
 _LAW_BEFORE = re.compile(r"(?P<law>[가-힣]+법)?\s*(?P<sub>시행령|시행규칙)?\s*$")
+# 법 이름처럼 보이지만 일반어인 끝말 (`진보성 판단 방법 29조 2항`의 "방법")
+_NOT_LAW_NAMES = {"처리법", "사용법", "제조법", "해석법", "계산법"}
+
+
+def _is_other_law(law: str | None) -> bool:
+    """특허법이 아닌 법 이름인가. "방법"으로 끝나는 말 등 일반어는 법 이름으로 보지 않는다."""
+    if not law or law == LAW:
+        return False
+    return not (law.endswith("방법") or law in _NOT_LAW_NAMES)
 
 
 def article_refs_in_text(text: str) -> list[ArticleRef]:
@@ -86,7 +98,8 @@ def article_refs_in_text(text: str) -> list[ArticleRef]:
     seen: set[tuple[int, int, int]] = set()
     for m in _REF_IN_TEXT.finditer(text):
         before = _LAW_BEFORE.search(text[: m.start()])
-        if before and (before["sub"] or (before["law"] and before["law"] != LAW)):
+        if before and (before["sub"] or _is_other_law(before["law"])):
+            logger.info("다른 법 조문은 건너뜀: %s", text[max(0, m.start() - 12) : m.end()])
             continue  # 특허법 시행령·실용신안법 등: 우리 색인의 특허법 조문이 아니다
         jo, gaji, hang = int(m["jo"]), int(m["gaji"] or 0), int(m["hang"])
         if (jo, gaji, hang) in seen:

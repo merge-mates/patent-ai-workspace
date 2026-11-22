@@ -100,6 +100,13 @@ def next_question(prev: LegalQuestion | None, ask: ChatAsk) -> tuple[LegalQuesti
     return question, changed
 
 
+def _claim_text(label: str, edition: str, by_search: bool, search_k: int) -> str:
+    """주장 글: 번호로 읽은 조문과 검색으로 찾은 조문을 구분한다. 사건 적용 판단은 쓰지 않는다."""
+    if by_search:
+        return f"질문 글로 검색한 조문 (BM25 상위 {search_k}): {label} ({edition})"
+    return f"질문에서 찾은 조문: {label} ({edition})"
+
+
 def _source_of(chunk: Chunk, label: str, as_of: date, checked_on: date, pool: LawPool):
     """조각 -> 근거(출처 확인에서 빠지면 None). 출처 확인은 무조건 도는 코드 단계다."""
     evidence = Evidence(
@@ -139,6 +146,16 @@ def _empty_status(statuses: list[Status], skipped: int, scope: str) -> Status:
     return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING)
 
 
+def _before_earliest(pool: LawPool, as_of: date) -> bool:
+    """기준일이 법령 조문 조각의 가장 이른 effective_from보다 앞서는가 (시작일 모름은 뺀다)."""
+    starts = [
+        c.edition.effective_from
+        for c in pool.chunks
+        if c.chunk_kind == "article" and c.edition.effective_from is not None
+    ]
+    return bool(starts) and as_of < min(starts)
+
+
 def _statute_candidates(
     question: LegalQuestion,
     refs: list[ArticleRef],
@@ -176,6 +193,10 @@ def _statute_candidates(
     elif res.status == "unverified":
         status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason(res.status_reason))
         statuses.append(status)
+    elif _before_earliest(pool, as_of):
+        # 기준일이 이 판 법령의 가장 이른 시행일보다 앞: 그때 판이 색인에 없다 (없음이 아니다)
+        status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.EDITION_UNKNOWN)
+        statuses.append(status)
     else:
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
         statuses.append(status)
@@ -209,6 +230,7 @@ def answer_question(
     logs: list[SearchLogEntry] = []
     statuses: list[Status] = []
     skipped, scope = 0, f"{pool.index_version} 법령 (찾지 않음)"
+    refs: list[ArticleRef] = []
 
     # STATUTE를 고른 때만 법령을 찾는다
     if LegalSourceKind.STATUTE in question.source_kinds:
@@ -230,7 +252,12 @@ def answer_question(
             claims.append(
                 LegalClaim(
                     no=len(claims) + 1,
-                    text=f"질문에서 찾은 조문: {label} ({source.evidence.edition or chunk.doc_id})",
+                    text=_claim_text(
+                        label,
+                        source.evidence.edition or chunk.doc_id,
+                        by_search=not refs,
+                        search_k=search_k,
+                    ),
                     sources=[source],
                     status=summarize_claim_status([source]),
                     # 근거 검토(모델)는 29b: 지금은 사람이 봐야 한다

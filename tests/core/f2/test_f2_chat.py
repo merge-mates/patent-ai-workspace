@@ -142,7 +142,10 @@ def test_법령을_안_고르면_법령을_찾지_않는다():
     b = _answer("특허법 제29조제2항", kinds=[G])
     assert b.claims == []
     assert [e.source_kind for e in b.search_log] == [G]
-    assert b.status.value == StatusValue.UNVERIFIED
+    assert (b.status.value, b.status.reason) == (
+        StatusValue.UNVERIFIED,
+        UnverifiedReason.BODY_MISSING,
+    )
 
 
 def test_심사기준_판례_심결은_body_missing으로만_기록한다():
@@ -190,3 +193,26 @@ def test_판본_모름_조각이_섞인_검색은_없음으로_내지_않는다(
     b = _answer("판본 모름 가짜 글", kinds=[S], repo=InMemoryChunkRepository({"law": [unknown]}))
     assert b.claims == []
     assert b.status.value == StatusValue.UNVERIFIED
+
+
+def test_번호_없는_질문_검색_0개_기준일이_가장_이른_판보다_앞이면_edition_unknown():
+    b = _answer("통상의 기술자 진보성", as_of=date(2010, 1, 1), kinds=[S])
+    assert b.claims == []
+    assert (b.status.value, b.status.reason) == (
+        StatusValue.UNVERIFIED,
+        UnverifiedReason.EDITION_UNKNOWN,
+    )
+
+
+def test_번호_없는_질문_검색_0개_범위_안이면_조회_범위_내_없음():
+    b = _answer("zzqqxx", kinds=[S])
+    assert b.claims == []
+    assert b.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert b.status.searched_scope
+
+
+def test_주장_글은_번호로_읽은_조문과_검색한_조문을_구분한다():
+    by_ref = _answer("특허법 제29조제2항", kinds=[S]).claims[0].text
+    by_search = _answer("통상의 기술자 진보성", kinds=[S]).claims[0].text
+    assert by_ref.startswith("질문에서 찾은 조문: ")
+    assert by_search.startswith("질문 글로 검색한 조문 (BM25 상위 3): ")
