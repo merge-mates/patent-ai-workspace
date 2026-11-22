@@ -38,6 +38,7 @@ function stepItems(
   todoText: string,
   previous: boolean,
   waitingFor: string | null,
+  counts: (string | undefined)[],
 ): StepItem[] {
   const doneText = previous ? '이전 결과' : '끝남'
   const ended = run === null || isRunEnded(run.state)
@@ -57,7 +58,9 @@ function stepItems(
         const waitAt = numberWait || !ready[0] ? 0 : 2
         if (i === waitAt) return { ...base, description: waitingForLabel(waitingFor), status: 'process' }
       }
-      return { ...base, description: i === 0 && ready[0] ? `직접 할 일 ${todoText}` : undefined }
+      // 끝난 실행: 정리는 직접 할 일, 대비·방향은 결과에서 센 개수 (초안 "고칠 곳"은 서버 초안에 검사 결과가 없어 비움)
+      if (!ready[i]) return base
+      return { ...base, description: i === 0 ? `직접 할 일 ${todoText}` : counts[i] }
     }
     if (run.state === 'failed' || run.state === 'cancelled') {
       if (ready[i]) return { ...base, description: i === 0 ? `직접 할 일 ${todoText}` : doneText }
@@ -72,6 +75,17 @@ function stepItems(
     if (i === firstMissing) return { ...base, description: <><div>찾는 중</div>{stepText}</>, status: 'process', disabled: true }
     return { ...base, description: '대기', status: 'wait', disabled: true }
   })
+}
+
+// 단계 막대 설명의 개수 (디자인 B): 대비 "차이점 후보 N" = 대비표 줄 가운데 차이점 후보,
+// 방향 "고를 것 N" = 직접 판단이 필요한데 아직 안 고른 묶음 (직접 할 일의 방향 고르기와 같은 셈).
+// 결과를 모르거나 목록이 비면(넘김·보류로 빈 목록 + 빈 이유) 비운다: "0"으로 보이면 셀 결과가 있는 것처럼 읽힌다
+function stepCounts(d: OALoaderData): (string | undefined)[] {
+  const tables = d.comparisons?.length ? d.comparisons : null
+  const dirs = d.directions?.length ? d.directions : null
+  const diffs = tables?.reduce((n, t) => n + t.rows.filter((x) => x.judgment === 'difference_candidate').length, 0)
+  const toPick = dirs?.filter((x) => x.flags.includes('needs_human_judgment') && x.selection === null).length
+  return [undefined, diffs === undefined ? undefined : `차이점 후보 ${diffs}`, toPick === undefined ? undefined : `고를 것 ${toPick}`, undefined]
 }
 
 // 사건 틀: 머리(이름·통지 종류·제출기일·사건 정보) → 단계 막대 + 직접 할 일·원문 버튼 → 본문(왼쪽) + 참고 원문 판(오른쪽).
@@ -199,7 +213,7 @@ export function CaseShell() {
               size="small"
               current={stepIdx}
               onChange={(i) => navigate(base + STEPS[i].path)}
-              items={stepItems(run, ready, todoText, previous, snap?.waitingFor ?? null)}
+              items={stepItems(run, ready, todoText, previous, snap?.waitingFor ?? null, stepCounts(data))}
             />
             {/* 실행이 도는 동안: 상태를 못 받았으면 알리고, 직접 새로 받는 버튼 */}
             {/* 실패·취소는 단계 결과가 다 있어도 보여야 한다 */}

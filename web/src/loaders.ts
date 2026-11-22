@@ -58,6 +58,8 @@ export interface OALoaderData {
   directions: DirectionCandidates[] | null
   // 판단 단위 (직접 할 일 "묶음 N" 번호). 결과가 아직 없거나 모르면 null
   units: JudgmentUnit[] | null
+  // 대비표 (단계 막대 "차이점 후보 N"을 세려고). 결과가 아직 없거나 모르면 null
+  comparisons: ComparisonTable[] | null
   // 이 OA의 법률 근거 묶음 (거절이유마다 "이 거절이유의 법리"). 아직 안 찾았으면 [] (지어내지 않고 그 줄을 뺀다)
   legal: LegalEvidenceBundle[]
   // 단계마다 결과가 있는지 (D5). 404 result_not_ready였으면 false. 그 밖의 오류로 알 수 없으면 null (모름)
@@ -83,7 +85,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
   let draftCheckMissing = false
-  const [oaResult, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
+  const [oaResult, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(missingAsNull),
     // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
     probe(api.getMaterials(oa.case_id), true),
@@ -113,6 +115,8 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
         },
       ),
     ),
+    // 단계 막대 "차이점 후보 N": 대비표를 받아 센다 (결과가 아직 없으면 null)
+    probe(api.getComparisons(oa.oa_id).then(itemsOf)),
   ])
   // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
   const warnings: string[] = []
@@ -127,6 +131,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const legal = known(legalP, '법률 근거') ?? []
   const units = known(unitsP, '인용발명 대비')
   const drafts = known(draftsP, '초안')
+  const comparisons = known(comparisonsP, '대비표')
   if (draftCheckMissing) warnings.push('초안 검사 결과가 없어요: 누락 검사·번호 불일치를 보일 수 없어요')
   const ready = {
     summary: oaResult !== null,
@@ -134,7 +139,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     directions: directionsP.unknown ? null : directions !== null,
     drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, materials, reviewItems, document, directions, units, legal, ready, warnings }
+  return { oa, oaResult, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings }
 }
 
 // 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)
