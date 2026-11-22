@@ -205,11 +205,14 @@ def run_case(
             )
         )
 
-    def skip(name: str, skipped: dict[str, str], why: str) -> dict[str, str]:
+    def skip(
+        name: str, skipped: dict[str, str], why: str, kind: str = "code_tool"
+    ) -> dict[str, str]:
         """단계를 돌리지 않고 넘긴다: 경고 + 단계 기록(확인되지 않음 + 이유). ok로 적지 않는다."""
         logger.warning("run_case %s: %s 단계를 넘김 (확인되지 않음): %s", run_id, name, why)
         # outcome skipped + 넘긴 이유. 서버 실행기는 이 줄을 보고 실행 상태에 넘긴 단계를 남긴다
-        note("code_tool", name, why, "skipped", StatusValue.UNVERIFIED.value)
+        # 고정 단계(prepare_units)를 넘길 때도 단계 종류를 그대로 남긴다 (agent_steps.step_kind)
+        note(kind, name, why, "skipped", StatusValue.UNVERIFIED.value)
         return {**skipped, name: why}
 
     def model_calls() -> int | None:
@@ -398,7 +401,7 @@ def run_case(
             state, prepare_input(state["results"], state["case_id"], state["texts"])
         )
         if isinstance(payload, InputMissing):
-            return {"skipped": skip("prepare_units", state["skipped"], payload.why)}
+            return {"skipped": skip("prepare_units", state["skipped"], payload.why, "fixed_stage")}
         return call_tool("prepare_units", state, payload, "고정 단계")
 
     def cut_node(state: _State) -> dict:

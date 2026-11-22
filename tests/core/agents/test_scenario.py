@@ -84,7 +84,7 @@ def test_사건_1건을_끝까지_돌고_도구마다_기록_한_줄(tmp_path, n
         ("code_tool", "extract_pages"),
         ("code_tool", "read_oa"),
         ("fixed_stage", "cut_to_oa"),
-        ("code_tool", "prepare_units"),  # 글자가 없어 넘긴 줄 (skip 기록은 code_tool로 적음)
+        ("fixed_stage", "prepare_units"),  # 글자가 없어 넘긴 고정 단계 줄
     ]
     assert [r.reason for r in steps.records][:3] == ["고정 단계", "고정 순서", "고정 단계"]
     assert all(isinstance(r, StepRecord) and r.run_id == "r_1" for r in steps.records)
