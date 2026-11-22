@@ -25,10 +25,8 @@
     "excluded_branch_conflict": 0
   },
   "cost": {
-    "usd": 0,
-    "input_tokens": 0,
-    "output_tokens": 0,
-    "external_calls": 0,
-    "seconds": 0.002
+    "usd": 0.201,
+    "input_tokens": 633867,
+    "external_calls": 78
   }
 }
