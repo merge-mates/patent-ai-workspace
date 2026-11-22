@@ -114,7 +114,10 @@ class RunCaseApp:
             self.executor.execute(run_id, oa_id)
 
     def upload(self, pdf: bytes = PDF) -> dict:
-        return self.client.post("/cases", files={"file": ("oa.pdf", pdf, "application/pdf")}).json()
+        """사건 하나를 올린다. 실패하면 그 자리에서 멈춘다 (뒤 단언이 엉뚱하게 깨지지 않게)."""
+        res = self.client.post("/cases", files={"file": ("oa.pdf", pdf, "application/pdf")})
+        assert res.status_code == 200, res.text
+        return res.json()
 
     def get(self, oa_id: str, name: str):
         return self.client.get(f"/oas/{oa_id}/{name}")

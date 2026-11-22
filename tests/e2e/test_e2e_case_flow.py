@@ -183,11 +183,6 @@ class _Server(RunCaseApp):
             ),
         )
 
-    def uploaded(self) -> dict:
-        res = self.client.post("/cases", files={"file": ("oa.pdf", PDF, "application/pdf")})
-        assert res.status_code == 200, res.text
-        return res.json()
-
     def poll(self, run_id: str) -> dict:
         # 화면은 GET /runs/{id}만 본다. 실패를 succeeded로 돌려주지 않는다
         for _ in range(50):
@@ -197,14 +192,13 @@ class _Server(RunCaseApp):
         raise AssertionError(f"실행이 끝나지 않음: {run}")
 
 
-PDF = b"%PDF-1.4 e2e"
 RESULTS = ("oa-result", "units", "comparisons", "clarity-reviews", "directions", "drafts")
 
 
 def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
     server = _Server(tmp_path, _all_responses())
     client = server.client
-    ids = server.uploaded()
+    ids = server.upload()
     case_id, oa_id, run_id = ids["case_id"], ids["oa_id"], ids["run_id"]
 
     run = server.poll(run_id)
@@ -246,7 +240,7 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
 def test_e2e_server_F1이_실패하면_failed와_이유가_남고_결과는_없다(tmp_path, offline):
     broken = TransportResponse("JSON 아님", 10, 10)
     server = _Server(tmp_path, {**_all_responses(), "f1.read_oa": [broken, broken]})
-    ids = server.uploaded()
+    ids = server.upload()
 
     run = server.poll(ids["run_id"])
     assert run["state"] == "failed"
