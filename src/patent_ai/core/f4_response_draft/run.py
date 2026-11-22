@@ -1,7 +1,9 @@
 """F4 진입 함수: 방향 후보 → 의견서 초안 → 보정 청구항 초안 → 한데 묶기.
 
-멈추지 않고 끝까지 돈다 (확신 낮은 묶음은 그 묶음만 보류). 사람을 기다릴지는 지휘가 정한다.
-단계가 예외로 실패하면 삼키지 않고 그대로 올린다 (지휘가 실행을 failed로 끝낸다).
+멈추지 않고 끝까지 돈다 (확신 낮은 묶음, 모델 호출이 실패한 묶음은 그 묶음만 보류).
+사람을 기다릴지는 지휘가 정한다. 방향 후보 호출이 모델을 부른 모든 묶음에서 실패하면(아무것도
+못 낸 것) 그 원래 예외를 올린다 (지휘가 실행을 failed로 끝낸다). 의견서·보정 실패는 늘 그 묶음 보류.
+호출 상한에 닿은 묶음은 limit_reached로 보류하고 끝낸다.
 """
 
 import logging
@@ -112,7 +114,14 @@ def _drafts_and_checks(
     amendment = build_amendments(
         inp, directions, opinion, ctx, options=options, limit_note=limit_note
     )
-    drafts = assemble_drafts(oa_id, opinion, amendment)
+    # 모델 호출 실패·상한으로 보류한 묶음의 status: 같은 등급에 가려지지 않게 맨 앞에 둔다.
+    # 실행 status와 초안 status가 같은 목록을 쓴다
+    lead_statuses = [
+        *[d.status for d in directions if not d.candidates and d.needs_recheck],
+        *opinion.failed_statuses,
+        *amendment.failed_statuses,
+    ]
+    drafts = assemble_drafts(oa_id, opinion, amendment, lead_statuses)
 
     # 보류한 묶음: 의견서 보류(확신 낮음) + 보정 보류(청구항 글자 없음 등), 묶음 순서 그대로
     held = [
@@ -154,7 +163,9 @@ def _drafts_and_checks(
     if unchecked:
         flag(Flag.NEEDS_HUMAN_REVIEW)
 
-    statuses = [d.status for d in directions] + ([drafts.status] if drafts else [])
+    # 모델 호출 실패(호출 상한 포함)로 보류한 묶음의 이유를 맨 앞에 둔다 (초안이 없어도 남는다)
+    statuses = list(lead_statuses)
+    statuses += [d.status for d in directions] + ([drafts.status] if drafts else [])
     # 확인됨일 때의 글: 보류·누락이 있으면 "모두 확인됨"이라고 쓰지 않고 사실대로 적는다
     # (status 값은 원문 확인 여부만 뜻하고, 사람이 봐야 할 것은 flags와 아래 칸들로 드러낸다)
     notes: list[str] = []

@@ -19,7 +19,6 @@ from patent_ai.core.f4_response_draft.directions import build_directions
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import STEP, build_opinion, drafts_from_opinion
 from patent_ai.core.llm.config import load_step_config
-from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, Origin, StatusValue, UnverifiedReason
@@ -244,17 +243,19 @@ def test_빈_글이_오면_한_번_다시_부른다():
     assert all(s.ai_text.strip() for s in part.sections)
 
 
-def test_다시_불러도_비면_실패가_그대로_드러난다():
+def test_다시_불러도_비면_그_묶음은_보류로_드러난다():
     bad = _text(_blank("opinion_inventive", "response"))
-    with pytest.raises(ModelOutputInvalid):
-        _run([bad, bad])
+    part, _, _ = _run([bad] * 4)  # 묶음 둘이 모두 실패: 단계 실패가 아니라 모두 보류
+    assert part.sections == [] and part.held_units == [UNIT_INVENTIVE, UNIT_CLARITY]
+    assert set(part.failed_reasons) == {UNIT_INVENTIVE, UNIT_CLARITY}
+    assert "ModelOutputInvalid" in part.failed_reasons[UNIT_INVENTIVE]
 
 
-def test_보정이_있는_방향인데_보정_설명이_없으면_출력_검사_실패():
+def test_보정이_있는_방향인데_보정_설명이_없으면_출력_검사_실패로_그_묶음_보류():
     bad = copy.deepcopy(_answer("opinion_inventive"))
     bad["amendment"] = None
-    with pytest.raises(ModelOutputInvalid):
-        _run([_text(bad), _text(bad)])
+    part, _, _ = _run([_text(bad)] * 4)
+    assert part.sections == [] and UNIT_INVENTIVE in part.failed_reasons
 
 
 def _argue_only_direction() -> dict:
@@ -286,9 +287,9 @@ def test_보정이_없는_방향이면_보정_설명_칸을_만들지_않는다(
     assert [s.key for s in part.sections] == ["case_info", "points", "response", "closing"]
 
 
-def test_보정이_없는_방향인데_보정_설명을_쓰면_출력_검사_실패():
-    with pytest.raises(ModelOutputInvalid):
-        _run_argue_only(_answer("opinion_inventive"))
+def test_보정이_없는_방향인데_보정_설명을_쓰면_출력_검사_실패로_그_묶음_보류():
+    part = _run_argue_only(_answer("opinion_inventive"))
+    assert part.sections == [] and UNIT_INVENTIVE in part.failed_reasons
 
 
 def test_방향_후보_결과가_없는_묶음이_있으면_멈춘다():

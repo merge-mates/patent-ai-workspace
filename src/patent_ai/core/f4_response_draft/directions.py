@@ -13,10 +13,18 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from patent_ai.core.bundle_errors import (
+    BUNDLE_ERRORS,
+    failed_status,
+    held_error_status,
+    is_dependent_skip,
+    is_limit,
+    raise_if_all_failed,
+    why,
+)
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
-from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import (
     Candidate,
@@ -28,6 +36,7 @@ from patent_ai.core.schemas.common import (
     StatusValue,
     UnverifiedReason,
 )
+from patent_ai.core.schemas.comparison import ComparisonTable
 from patent_ai.core.schemas.direction import (
     AmendmentCore,
     AmendmentLimit,
@@ -135,6 +144,11 @@ def _status_of(
     f3: list, bundle: LegalEvidenceBundle, unit: JudgmentUnit, gaps: list[Status]
 ) -> Status:
     """후보 status: F3 결과·대비 못 한 것·법률 근거 묶음이 모두 확인됨이어야 확인됨."""
+    # F3가 호출 상한으로 못 한 것이 있으면 그 이유(limit_reached)를 잃지 않는다.
+    # F3는 상한에 닿은 묶음의 대비표를 남기지 않으므로 "F3 결과 없음"보다 먼저 본다
+    limited = next((g for g in gaps if g.reason == UnverifiedReason.LIMIT_REACHED), None)
+    if limited is not None:
+        return limited
     if not f3:
         # 기대는 F3 결과가 없으면 "영향 없음"이 아니라 확인되지 않음이다
         logger.warning("f4.direction %s: 이 묶음의 F3 결과가 없음 (input_unverified)", unit.unit_id)
@@ -169,21 +183,36 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
     """
     statuses: list[Status] = []
     checks: list[str] = []
+    notes: list[str] = []  # status를 낮추지 않는 확인 사항 (종속항 건너뜀)
     needs_review = False
     for result in f3:
         if Flag.NEEDS_HUMAN_REVIEW in result.flags:
             needs_review = True
-        for c in getattr(result, "citations", []):
+        # 대비표만 인용문헌 목록(citations)이 있다. 명확성 검토 결과는 건너뛴다
+        if not isinstance(result, ComparisonTable):
+            continue
+        for c in result.citations:
             if not c.compared and c.skipped_status is not None:
                 statuses.append(c.skipped_status)
                 checks.append(f"인용문헌 {c.label}({c.number}) 대비 못 함: {c.skipped_reason}")
     held = [h for h in inp.held_tasks if _held_for(h.task, unit.unit_id)]
     for h in held:
-        statuses.append(Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED))
+        if is_dependent_skip(h.task):
+            # 독립항에 차이점이 있어 종속항을 대비하지 않은 정해진 건너뜀: 확인 사항 글만 싣고
+            # status·needs_human_review에는 넣지 않는다
+            notes.append(f"F3 보류: {h.waiting_for}")
+            continue
+        # F3가 호출 상한(limit_reached)으로 보류한 것은 그 이유를 유지한다
+        statuses.append(
+            held_error_status(h.task)
+            or Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+        )
         checks.append(f"F3 보류: {h.waiting_for}")
     if checks:
         logger.warning("f4.direction %s: F3가 대비하지 못한 것 %s", unit.unit_id, checks)
-    return F3Gaps(statuses=statuses, checks=checks, needs_review=needs_review or bool(checks))
+    return F3Gaps(
+        statuses=statuses, checks=[*checks, *notes], needs_review=needs_review or bool(checks)
+    )
 
 
 LEGAL_REVIEW_CHECK = "법률 근거: 근거 검토 전 (직접 검토 필요)"
@@ -386,6 +415,52 @@ def unit_variables(
     }
 
 
+def _failed_result(
+    unit: JudgmentUnit,
+    limit: ExtractedValue[AmendmentLimit],
+    evidence: list[Evidence],
+    flags: list[Flag],
+    error: Exception,
+) -> DirectionCandidates:
+    """모델 호출이 실패한 묶음의 자리 표시: 후보 0개, 확인되지 않음, 직접 판단 필요."""
+    return DirectionCandidates(
+        unit_id=unit.unit_id,
+        candidates=[],
+        selection=None,
+        amendment_limit=limit,
+        status=failed_status(error),
+        evidence=evidence,
+        needs_recheck=True,
+        recheck_reason=why(error),
+        flags=[Flag.NEEDS_HUMAN_JUDGMENT, *(f for f in flags if f != Flag.NEEDS_HUMAN_JUDGMENT)],
+    )
+
+
+def _over_limit_result(
+    unit: JudgmentUnit,
+    limit: ExtractedValue[AmendmentLimit],
+    evidence: list[Evidence],
+    flags: list[Flag],
+    max_units: int,
+    all_ids: list[str],
+) -> DirectionCandidates:
+    """판단 단위 상한 max_units 밖 묶음의 자리 표시: 호출 없이 limit_reached + 직접 판단 필요."""
+    return DirectionCandidates(
+        unit_id=unit.unit_id,
+        candidates=[],
+        selection=None,
+        amendment_limit=limit,
+        status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.LIMIT_REACHED),
+        evidence=evidence,
+        needs_recheck=True,
+        recheck_reason=(
+            f"판단 단위 상한 max_units {max_units}에 닿아 다루지 않음 "
+            f"(전체 {len(all_ids)}묶음 중 앞 {max_units}묶음만 다룸)"
+        ),
+        flags=[Flag.NEEDS_HUMAN_JUDGMENT, *(f for f in flags if f != Flag.NEEDS_HUMAN_JUDGMENT)],
+    )
+
+
 # ---- 단계 진입 ----
 def build_directions(
     inp: F4Input, ctx: RunContext, *, options: F4Options | None = None
@@ -394,7 +469,9 @@ def build_directions(
 
     모델은 단위마다 한 번, 출력 검사 실패 때 한 번 더 부른다.
 
-    모델 호출 실패(출력 검사 두 번 실패, 호출 상한 등)는 결과로 바꾸지 않고 예외를 그대로 던진다.
+    묶음 하나의 모델 호출 실패(출력 검사 두 번 실패, 전송 오류, 호출 상한)는 그 묶음만 후보 0개
+    + 확인되지 않음 + 직접 판단 필요로 남기고 다음 묶음으로 간다 (이유는 recheck_reason).
+    시도한 모든 묶음이 실패하면 단계가 못 돈 것이라 예외를 그대로 던진다 (호출 상한은 제외).
     """
     options = options or load_f4_options()
     if not inp.units:
@@ -403,9 +480,18 @@ def build_directions(
     ids = [u.unit_id for u in inp.units]
     if len(set(ids)) != len(ids):
         raise ValueError(f"판단 단위 unit_id에 중복이 있음: {ids}")
-    # 묶음이 상한보다 많으면 중간에 끊기지 않게 모델을 부르기 전에 멈춘다
-    if len(inp.units) > options.max_units:
-        raise ModelCallLimitExceeded("max_units", len(inp.units), options.max_units)
+    # 묶음이 상한보다 많으면 앞 max_units개만 모델을 부르고, 넘는 묶음은 부르지 않고 보류한다.
+    # 의견서·보정 단계는 이 결과(넘는 묶음은 후보 없음)를 받으므로 같은 묶음 집합을 다룬다.
+    ordered = sorted(inp.units, key=lambda u: (u.order, u.unit_id))
+    over_ids = {u.unit_id for u in ordered[options.max_units :]}
+    if over_ids:
+        logger.warning(
+            "f4.direction %s: 판단 단위 %d개가 상한 max_units %d를 넘어 %d개는 보류",
+            inp.oa.oa_id,
+            len(ordered),
+            options.max_units,
+            len(over_ids),
+        )
 
     limit = amendment_limit_of(inp.oa)
     # 보정 제한 스위치가 켜져 있는데 통지 종류를 모르면: 제한을 짐작하지 않고 확인을 요청한다
@@ -420,7 +506,8 @@ def build_directions(
         [NOTICE_KIND_CHECK] if ask_kind else [NOTICE_FINAL_UNLIMITED] if unlimited_final else []
     )
     results: list[DirectionCandidates] = []
-    for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
+    errors: list[Exception] = []  # 호출 실패로 보류한 묶음의 예외 (호출 상한은 담지 않음)
+    for unit in ordered:
         f3 = f3_results(inp, unit)
         bundle = legal_bundle_for(inp, unit)
         gaps = f3_gaps(inp, unit, f3)
@@ -460,8 +547,20 @@ def build_directions(
                 review,
             )
 
+        if unit.unit_id in over_ids:
+            # 상한 밖 묶음: 호출 없이 limit_reached 보류 (원문 글자 없이 상한 숫자와 범위만)
+            results.append(_over_limit_result(unit, limit, evidence, flags, options.max_units, ids))
+            continue
         variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)
-        out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
+        try:
+            out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
+        except BUNDLE_ERRORS as e:
+            # 이 묶음만 보류한다: 후보 없이 확인되지 않음 + 이유, 사람이 직접 판단한다
+            logger.warning("f4.direction %s: %s (이 묶음만 보류)", unit.unit_id, why(e))
+            results.append(_failed_result(unit, limit, evidence, flags, e))
+            if not is_limit(e):
+                errors.append(e)
+            continue
         result = build(out)
         if not result.candidates:
             logger.warning(
@@ -469,4 +568,5 @@ def build_directions(
                 unit.unit_id,
             )
         results.append(result)
+    raise_if_all_failed(STEP, len(ordered) - len(over_ids), errors)
     return results

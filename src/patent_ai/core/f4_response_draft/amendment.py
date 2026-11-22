@@ -14,6 +14,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from patent_ai.core.bundle_errors import BUNDLE_ERRORS, failed_status, why
 from patent_ai.core.f1_oa_reader.verify import raw_text_on_page
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.directions import f3_results, to_json, unit_variables
@@ -21,9 +22,10 @@ from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.f4_response_draft.opinion import OpinionPart, drafts_from_opinion, has_amendment
 from patent_ai.core.f4_response_draft.result import AmendmentOverlap
-from patent_ai.core.llm.errors import ModelCallLimitExceeded
+from patent_ai.core.f4_response_draft.spec_excerpt import excerpt_spec_text, full_spec_text
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.comparison import ComparisonTable, InventiveSummary, Judgment
 from patent_ai.core.schemas.direction import (
     AmendmentKind,
     DirectionCandidate,
@@ -38,6 +40,13 @@ logger = logging.getLogger(__name__)
 STEP = "f4.amendment"
 
 HELD_NO_SELECTION = "확신이 낮아 방향을 미리 고르지 않은 묶음입니다. 방향을 고르면 초안을 만듭니다."
+
+
+def _held_text(step: str, detail: str) -> str:
+    """호출 실패·상한·후보 없음으로 보류한 묶음의 청구항 자리 글 (어느 단계, 왜). 원문 없음."""
+    return f"{step} 단계: {detail}. 직접 판단이 필요합니다."
+
+
 HELD_SIBLING_NO_TEXT = (
     "같은 묶음의 다른 청구항 글자가 입력에 없어 이 묶음 초안을 만들지 못했습니다."
 )
@@ -82,6 +91,8 @@ class AmendmentPart(BaseModel):
     claims: list[AmendedClaim]  # 청구항 번호 순, 번호 중복 없음
     statuses: list[Status]  # claims와 같은 순서: 그 청구항의 명세서 근거 확인 상태
     held_units: list[str]  # 초안을 보류한 묶음
+    # 이 단계에서 모델 호출이 실패해(호출 상한 포함) 보류한 묶음의 status (이유를 잃지 않게)
+    failed_statuses: list[Status] = Field(default_factory=list)
     flags: list[Flag] = Field(default_factory=list)
     # 같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안을 싣지 않은 기록
     overlaps: list[AmendmentOverlap] = Field(default_factory=list)
@@ -170,7 +181,23 @@ def _basis_status(basis: list[Evidence], spec: PageText | None, needs_basis: boo
 def _spec_text(spec: PageText | None) -> str:
     if spec is None:
         return "(최초 명세서가 입력에 없음. spec_basis는 빈 목록으로 둡니다)"
-    return "\n\n".join(f"[쪽 {p.page}]\n{p.text}" for p in spec.pages)
+    return full_spec_text(spec)
+
+
+def _excerpt_query(inp: F4Input, unit: JudgmentUnit, f3: list, chosen: DirectionCandidate) -> str:
+    """발췌 질의: 차이점 구성요소 글자 + 대상 청구항 글자 + 고른 방향의 이름·이유·반박 글자."""
+    parts: list[str] = []
+    for t in f3:
+        if isinstance(t, ComparisonTable):
+            # 인용문헌에 개시됨이 아닌 줄(차이 후보·불명)의 구성요소와 요약의 차이점
+            parts += [r.element for r in t.rows if r.judgment != Judgment.DISCLOSED]
+            if isinstance(t.summary, InventiveSummary):
+                parts += t.summary.differences
+    texts = {c.claim: c.text for c in inp.claims_text}
+    parts += [texts[n] for n in unit.claims if n in texts]
+    # 고른 방향이 말하는 보정 내용: 보정 프롬프트 selected에 들어가는 그 글자
+    parts += [chosen.name, chosen.reason, *(r.response for r in chosen.per_rejection)]
+    return "\n".join(parts)
 
 
 def _held(unit: JudgmentUnit, texts: dict[int, str], reasons: dict[int, str]) -> list[AmendedClaim]:
@@ -201,11 +228,11 @@ def build_amendments(
 
     opinion.based_on의 후보로만 만들어 의견서와 같은 방향을 쓴다. opinion.held_units는 보류.
     limit_note는 프롬프트에 끼울 보정 제한 문구 자리다 (최후거절이유통지 제한, 지금은 빈 글자).
-    모델 호출 실패는 결과로 바꾸지 않고 예외를 그대로 던진다.
+    묶음 하나의 모델 호출 실패(호출 상한 포함)는 그 묶음만 보류한다 (청구항 자리에 이유를 남김).
+    모든 묶음이 실패해도 예외를 올리지 않는다 (단계 전체 실패는 방향 후보 단계가 올림).
     """
     options = options or load_f4_options()
-    if len(inp.units) > options.max_units:
-        raise ModelCallLimitExceeded("max_units", len(inp.units), options.max_units)
+    # 묶음 수 상한은 방향 후보 단계에서 한 번 자른다: 상한 밖 묶음은 후보가 없어 여기서 보류가 된다
     chosen_id = {b.unit_id: b.candidate_id for b in opinion.based_on}
     candidates = {c.candidate_id: c for d in directions for c in d.candidates}
     # 의견서가 다루지 않은 묶음을 조용히 빼면 대응 누락이 된다. 부르기 전에 멈춘다
@@ -223,6 +250,7 @@ def build_amendments(
     # 청구항 번호 -> 보류 자리 표시. 어느 묶음도 그 청구항의 실제 초안을 못 냈을 때만 결과에 남는다
     placeholders: dict[int, AmendedClaim] = {}
     held_units: list[str] = []
+    failed_statuses: list[Status] = []
     flags: list[Flag] = []
     overlaps: list[AmendmentOverlap] = []
 
@@ -260,7 +288,16 @@ def build_amendments(
             )
             held_units.append(unit.unit_id)
             flag(Flag.NEEDS_HUMAN_JUDGMENT)
-            hold(_held(unit, texts, dict.fromkeys(unit.claims, HELD_NO_SELECTION)))
+            # 방향 후보가 없거나(호출 실패) 의견서 호출이 실패한 묶음은 이유 글이 다르다
+            no_candidates = not any(d.candidates for d in directions if d.unit_id == unit.unit_id)
+            reason = HELD_NO_SELECTION
+            if unit.unit_id in opinion.failed_reasons:
+                reason = _held_text("의견서", opinion.failed_reasons[unit.unit_id])
+            elif no_candidates:
+                # 방향 후보 단계가 호출에 실패했거나 후보를 0개 냈다 (이유는 방향 결과에 있다)
+                d = next(d for d in directions if d.unit_id == unit.unit_id)
+                reason = _held_text("방향 후보", d.recheck_reason or "후보가 없음")
+            hold(_held(unit, texts, dict.fromkeys(unit.claims, reason)))
             continue
         chosen: DirectionCandidate = candidates[chosen_id[unit.unit_id]]
         if not has_amendment(chosen):
@@ -294,9 +331,29 @@ def build_amendments(
                 mode="json", include={"coarse", "name", "reason", "per_rejection", "amendment_core"}
             )
         )
-        variables["spec"] = _spec_text(inp.spec)
+        if options.spec_excerpt_enabled and inp.spec is not None:
+            # 프롬프트에만 발췌를 넣는다. 아래 근거 대조는 그대로 inp.spec 전체로 한다
+            variables["spec"] = excerpt_spec_text(
+                inp.spec,
+                _excerpt_query(inp, unit, f3, chosen),
+                top_n=options.spec_excerpt_top_n,
+                unit_id=unit.unit_id,
+            )
+        else:
+            variables["spec"] = _spec_text(inp.spec)
         variables["limit_note"] = limit_note
-        out = call_with_one_retry(STEP, variables, _checked_schema(allowed, required, deleted), ctx)
+        try:
+            out = call_with_one_retry(
+                STEP, variables, _checked_schema(allowed, required, deleted), ctx
+            )
+        except BUNDLE_ERRORS as e:
+            # 이 묶음만 보류한다: 청구항 자리에 이유를 남기고 다음 묶음으로 간다
+            logger.warning("f4.amendment %s: %s (이 묶음만 보류)", unit.unit_id, why(e))
+            held_units.append(unit.unit_id)
+            failed_statuses.append(failed_status(e))
+            flag(Flag.NEEDS_HUMAN_JUDGMENT)
+            hold(_held(unit, texts, dict.fromkeys(sorted(required), _held_text("보정", why(e)))))
+            continue
 
         for c in out.claims:
             basis = _verified_basis(
@@ -333,17 +390,28 @@ def build_amendments(
         claims=[c for c, _ in ordered],
         statuses=[s for _, s in ordered],
         held_units=held_units,
+        failed_statuses=failed_statuses,
         flags=flags,
         overlaps=overlaps,
     )
 
 
-def assemble_drafts(oa_id: str, opinion: OpinionPart, amendment: AmendmentPart) -> Drafts | None:
+def assemble_drafts(
+    oa_id: str,
+    opinion: OpinionPart,
+    amendment: AmendmentPart,
+    lead_statuses: list[Status] | None = None,
+) -> Drafts | None:
     """의견서와 보정 청구항을 Drafts 하나로 묶는다. 의견서 칸이 없으면(모든 묶음 보류) None."""
     # 보류한 청구항의 상태는 초안 전체 status에 넣지 않는다 (보류는 flags와 held_reason으로 보임)
     made = [s for c, s in zip(amendment.claims, amendment.statuses, strict=True) if c.ai_text]
     return drafts_from_opinion(
-        oa_id, opinion, claims=amendment.claims, more_statuses=made, more_flags=amendment.flags
+        oa_id,
+        opinion,
+        claims=amendment.claims,
+        more_statuses=made,
+        more_flags=amendment.flags,
+        lead_statuses=lead_statuses,
     )
 
 
