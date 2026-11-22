@@ -73,6 +73,11 @@ def test_사람이_넣은_번호는_숫자로_맞춘다(kind, text, want):
         ("application_number", "123"),
         ("application_number", "10-2099-0000001, 10-2099-0000002"),  # 둘 이상은 고르지 않는다
         ("dispatch_number", "10-2099-0000001"),
+        # 앞뒤에 숫자·글자가 붙으면 번호 꼴 한 조각만 골라내지 않는다
+        ("application_number", "110-2099-0000001"),
+        ("application_number", "991020990000001"),
+        ("application_number", "10-2099-0000001abc"),
+        ("application_number", "번호 10-2099-0000001 입니다"),
     ],
 )
 def test_꼴이_아닌_번호는_거부(kind, text):
@@ -80,12 +85,13 @@ def test_꼴이_아닌_번호는_거부(kind, text):
         normalize_number(kind, text)
 
 
-def test_사람_번호를_덮으면_값과_확인_글만_바뀌고_원문_글자는_남는다(monkeypatch):
+def test_사람_번호를_덮으면_값_글자_확인_글이_사람_것이고_쪽은_비운다(monkeypatch):
     oa = wire(monkeypatch)
 
     out = apply_human_numbers(oa, {"application_number": "1020990000009"})
 
     app = out.application_number
-    assert app.value == "1020990000009" and app.raw_text == oa.application_number.raw_text
+    # 글자도 사람 값으로, 원문 쪽은 비운다 (AI가 읽은 글자가 확인됨으로 남지 않게)
+    assert app.value == app.raw_text == "1020990000009" and app.page is None
     assert app.status.value == StatusValue.CONFIRMED and app.status.checked == HUMAN_CHECKED
     assert out.dispatch_number == oa.dispatch_number

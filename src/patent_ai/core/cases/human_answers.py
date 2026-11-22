@@ -16,7 +16,10 @@ from patent_ai.core.cases.human_inputs import HumanInputStore, NumberKind
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.start_run import OANotFoundError
 from patent_ai.core.cases.store import CaseAppStore, CaseNotFoundError
-from patent_ai.core.f1_oa_reader.case_grouping import read_number
+from patent_ai.core.f1_oa_reader.rules import (
+    normalize_application_number,
+    normalize_dispatch_number,
+)
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue
@@ -25,7 +28,10 @@ from patent_ai.core.schemas.oa_result import _OA_FIELD_NAMES, OAResult, summariz
 # 사람이 넣은 번호 칸의 확인 글 (원문에서 확인한 값이 아니라는 것을 드러낸다)
 HUMAN_CHECKED = "사람이 직접 입력함 (원문 대조 아님)"
 
-_READ_KIND = {"application_number": "application", "dispatch_number": "dispatch"}
+_NORMALIZE = {
+    "application_number": normalize_application_number,
+    "dispatch_number": normalize_dispatch_number,
+}
 
 
 class NotWaitingError(Exception):
@@ -55,22 +61,30 @@ class Confirmation:
 
 
 def normalize_number(kind: NumberKind, text: str) -> str:
-    """사람이 넣은 글자를 숫자만의 번호로. 꼴이 아니거나 번호가 둘 이상이면 InvalidNumberError."""
-    got = read_number(_READ_KIND[kind], text)
-    if got.status.value != StatusValue.CONFIRMED or got.value is None:
+    """사람이 넣은 글자를 숫자만의 번호로. 글자 전체가 그 번호 꼴이 아니면 InvalidNumberError.
+
+    앞뒤에 숫자·글자가 붙은 입력에서 번호 꼴 한 조각만 골라내지 않는다 (사람이 친 그대로만 받는다).
+    """
+    cleaned = text.strip().replace("-", "")
+    found = _NORMALIZE[kind](text.strip())
+    if not cleaned.isdigit() or found != cleaned:
         raise InvalidNumberError(kind)
-    return got.value
+    return found
 
 
 def apply_human_numbers(oa: OAResult, numbers: dict[str, str]) -> OAResult:
-    """저장한 OA 정리에 사람이 넣은 번호를 덮는다. 원문 글자·쪽은 그대로 두고 값과 상태만 바꾼다."""
+    """저장한 OA 정리에 사람이 넣은 번호를 덮는다.
+
+    칸의 글자(raw_text)도 사람 값으로 바꾸고 쪽은 비운다: 화면·의견서 입력이 raw_text를 먼저 읽어서,
+    AI가 읽은 옛 글자를 남기면 사람 값 대신 그 글자가 "확인됨"으로 쓰인다 (리뷰 막음).
+    AI가 읽은 원래 글자는 그 실행의 첫 OA 정리 줄에 남아 있다.
+    """
     update = {}
     for kind, value in numbers.items():
-        old: ExtractedValue[str] = getattr(oa, kind)
         update[kind] = ExtractedValue[str](
             value=value,
-            raw_text=old.raw_text,
-            page=old.page if old.raw_text else None,
+            raw_text=value,
+            page=None,
             status=Status(value=StatusValue.CONFIRMED, checked=HUMAN_CHECKED),
         )
     # 결과 전체 status는 칸을 모은 값이라 번호를 바꾸면 다시 모은다

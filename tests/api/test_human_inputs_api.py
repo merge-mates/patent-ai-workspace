@@ -15,11 +15,20 @@ from tests.core.run_case_fakes import wire
 UNKNOWN = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
 
 
+# 못 읽은 칸에 AI가 남긴 글자 (사람 값과 다른 번호 조각). 이어 돈 뒤 이 글자가 남으면 안 된다
+AI_TEXT = {"application_number": "10-2099-00000?1", "dispatch_number": "9-5-2099-0000000?1"}
+
+
 def _unread(monkeypatch, *fields):
-    """F1이 그 번호 칸을 못 읽은 것처럼 한다. read_oa를 부른 횟수를 센다."""
+    """F1이 그 번호 칸을 못 읽은 것처럼 한다 (깨진 글자 + 쪽). read_oa를 부른 횟수를 센다."""
     oa = wire(monkeypatch)
     oa = oa.model_copy(
-        update={f: getattr(oa, f).model_copy(update={"status": UNKNOWN}) for f in fields}
+        update={
+            f: getattr(oa, f).model_copy(
+                update={"status": UNKNOWN, "value": None, "raw_text": AI_TEXT[f], "page": 1}
+            )
+            for f in fields
+        }
     )
     calls = []
 
@@ -63,6 +72,8 @@ def test_human_inputs_api_출원번호를_넣으면_같은_실행이_이어_돌�
     # 사람이 넣은 값: 숫자로 맞추고, AI가 원문에서 읽은 값과 확인 글로 구분한다
     assert app["value"] == "1020990000001"
     assert app["status"]["value"] == "confirmed" and app["status"]["checked"] == HUMAN_CHECKED
+    # AI가 읽은 깨진 글자·원문 쪽이 "확인됨"으로 남지 않는다 (화면·의견서가 raw_text를 먼저 읽음)
+    assert app["raw_text"] == "1020990000001" and app["page"] is None
     # 이어 돈 뒤 F3·F4 결과도 같은 실행에서 열린다
     assert env.get(created["oa_id"], "drafts").json()["run_id"] == created["run_id"]
     assert env.human.numbers_for_run(created["run_id"]) == {"application_number": "1020990000001"}
