@@ -86,7 +86,7 @@ graph LR
 - 다음: PR
 - 막힌 것: 없음
 
-## m3-i1-24  (11/22~11/23)  상태: 초안  (이슈 #24, 계획 넷 = PR 넷. 24a·24b·24c는 Refs, 24d가 Closes #24)
+## m3-i1-24  (11/22~11/23)  상태: 승인 (11/22 은진 "오케이")  (이슈 #24, 계획 넷 = PR 넷. 24a·24b·24c는 Refs, 24d가 Closes #24)
 <!-- 이슈 #24 하나에 PR 넷. 24a(검색 계약 넓히기, 공유 자원)가 먼저다. 24b·24c(조각 만들기)는 24a 브랜치 위에서 시작하는 쌓인 PR(base = 24a 브랜치)이고 24a가 머지되면 base를 main으로 바꾼다. 24d가 셋을 모아 law-idx-v3를 만든다.
      requirements·design은 아직 `상태: 초안`이다 (m2-i3·m2-i3b도 같은 상태에서 승인함). 이 계획은 design 5-1절 표와 "바뀌는 것" 여섯을 따른다. -->
 **구현할 design 부분**: 5-1 색인 `law-idx-v3` (표, 바뀌는 것 1~6), 4절 판례·심결 날짜 거르기(`decided_on`), 8절 결정(한 표·`not_applicable`·`judgment_summary`·메타데이터 거르기·판단/당사자 표시)
@@ -124,7 +124,7 @@ graph LR
 #### task-a1: 조각 칸 + 마이그레이션 + 변환 (design 5-1 바뀜 1·2·3)
 - 합격 기준: #24 3, F2 requirements 4·5
 - 커밋 둘: ① 칸·마이그레이션·변환, ② 판례·심결 `not_applicable` 허용 (리뷰가 쉽게)
-- 마이그레이션 갈래 주의: #228 브랜치(`chore/228-invalid-output-reason`)의 `d9e4b1c7a352`(agent_steps.invalid_kind)도 down = `b3f8d2e6a914`다. 늦게 머지되는 쪽이 main을 받아 down_revision을 먼저 머지된 rev로 바꾼다 (head 둘이 되면 `alembic upgrade head`가 멈춤). PR 본문에 적는다.
+- 마이그레이션 갈래 주의: PR #257(`chore/228-invalid-output-reason`, #70 ①-2도 예정)의 `d9e4b1c7a352`(agent_steps.invalid_kind)도 down = `b3f8d2e6a914`다. 늦게 머지되는 쪽이 main을 받아 down_revision을 먼저 머지된 rev로 바꾼다 (head 둘이 되면 `alembic upgrade head`가 멈춤). PR 본문에 적는다.
 - 고칠 파일: `src/patent_ai/retrieval/schemas.py`(`ChunkKind`에 `judgment_summary`, `Chunk`에 `source_kind`·`decided_on`·`speaker`·`attrs`, 모두 선택 칸), `src/patent_ai/db/models/chunks.py`(`LawChunk`에만 새 칸 + 검사 함수), `src/patent_ai/db/migrations/versions/20261123_<rev>_law_chunks_source_meta.py`(down = `b3f8d2e6a914`), `src/patent_ai/retrieval/repository.py`(`chunk_to_row`·`row_to_chunk`, `from_jsonl`), `src/patent_ai/retrieval/law_index_db.py`(`_check`, `read_chunks_jsonl`), `src/patent_ai/db/index_dump.py`(`fixture_rows`), `src/patent_ai/retrieval/law_index.py`(조문 조각 `source_kind=statute`), `docs/features/retrieval/design.md`(5-1 `not_applicable` 뜻·`chunk_kind` 값), `docs/features/F2/design.md`(5-1 바뀜 3·4의 `rejection_ground`를 "7-3 1b로 미룸"으로), `docs/data-model.md`(조각 표 칸), 테스트(`tests/retrieval/test_schemas.py`, `test_row_mapping.py`, `test_law_index_db.py`, `test_index_dump.py`, `test_repository.py`, `tests/test_migrations.py`, `tests/test_db_models.py`)
 - 규칙:
   - 법령 표의 `not_applicable`은 `chunk_kind`가 `judgment`·`judgment_summary`일 때만. 검사 함수 `check_law_edition(chunk_kind, edition_status, source_kind)`는 `db/models/chunks.py`에 문자열만 받게 둔다 (db는 retrieval을 import하지 못하므로, retrieval 넣기·저장소와 db 덤프가 이 하나를 부른다).
