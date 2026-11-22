@@ -70,7 +70,7 @@ export function ComparePage() {
   const unitReason = unit.rejection_kind === 'clarity' ? emptyReasons.clarity : emptyReasons.comparisons
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       {unsupportedRows}
       {/* 좁은 화면에서는 이 줄만 옆으로 밀린다 */}
       <div style={{ overflowX: 'auto' }}>

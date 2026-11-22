@@ -242,7 +242,7 @@ export function DraftsPage() {
   const mismatchesOf = (title: string) => drafts.check.number_mismatches.filter((m) => m.where === title)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <CoverageTable model={coverage} />
       <FixList
         fixes={fixes}
@@ -284,7 +284,7 @@ export function DraftsPage() {
               const showAi = aiShown.includes(key)
               const startEdit = () => setEditing({ section: s.key, text: s.human_text ?? s.ai_text })
               return (
-                <div key={s.key} id={`op-${s.title}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div key={s.key} id={`op-${s.title}`} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <h3 className="headline1" style={{ margin: 0 }}>{`${i + 1}. ${s.title}`}</h3>
                     {edited && humanTag}

@@ -80,6 +80,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
+  let draftCheckMissing = false
   const [oaResult, materialsP, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(missingAsNull),
     // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
@@ -97,7 +98,19 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     probe(api.getLegalEvidence(oa.oa_id).then(itemsOf)),
     // 대비·초안 단계에 결과가 있는지만 알려고 부른다 (값은 쓰지 않고, 없는 것을 지어내지 않는다)
     probe(api.getUnits(oa.oa_id).then(itemsOf)),
-    probe(api.getDrafts(oa.oa_id)),
+    // 초안은 있는데 검사 결과(check)만 없으면(draft_check_missing) 초안 단계는 "있음"으로 보고 경고만 따로 단다
+    probe(
+      api.getDrafts(oa.oa_id).then(
+        () => true,
+        (e: unknown) => {
+          if (e instanceof ApiError && e.code === 'draft_check_missing') {
+            draftCheckMissing = true
+            return true
+          }
+          throw e
+        },
+      ),
+    ),
   ])
   // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
   const warnings: string[] = []
@@ -110,6 +123,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const legal = known(legalP, '법률 근거') ?? []
   const units = known(unitsP, '인용발명 대비')
   const drafts = known(draftsP, '초안')
+  if (draftCheckMissing) warnings.push('초안 검사 결과가 없어요: 누락 검사·번호 불일치를 보일 수 없어요')
   const ready = {
     summary: oaResult !== null,
     compare: unitsP.unknown ? null : units !== null,

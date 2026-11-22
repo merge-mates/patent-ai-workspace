@@ -211,7 +211,7 @@ export function DirectionsPage() {
     .join(', ')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
       {directions.length === 0 &&
