@@ -146,7 +146,7 @@ export const mockApi = {
   async getOAResult(oaId: string): Promise<OAResultResponse> {
     const b = await byOA(oaId)
     const runId = gateResult(b)
-    return { oa_id: b.oa_id, run_id: runId, status: b.oa_result.status.value, result: b.oa_result }
+    return { oa_id: b.oa_id, run_id: runId, status: b.oa_result.status.value, result: withHumanNumber(b) }
   },
   async getMaterials(caseId: string): Promise<CaseMaterials> {
     const b = await byCase(caseId)
@@ -294,7 +294,7 @@ export const mockApi = {
   async uploadDocument(_caseId: string, _file: File, _what: string): Promise<UploadedDocument> {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
-  // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버에는 아직 이 API가 없다)
+  // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버는 PATCH /cases/{id}, #70)
   async setApplicationNumber(caseId: string, applicationNumber: string): Promise<void> {
     const b = await byCase(caseId)
     saveAppNumber(b.case_id, applicationNumber)
@@ -398,6 +398,23 @@ function saveAppNumber(caseId: string, n: string) {
     console.warn(`[mock] 출원번호를 저장하지 못함 (${appNumberKey(caseId)})`, e)
   }
 }
+// 서버와 같게: 사람이 넣은 출원번호는 값·글자를 사람 것으로, 쪽은 비우고 "사람이 직접 입력함" 확인 글 (#70)
+function withHumanNumber(b: Bundle): OAResult {
+  const n = loadAppNumber(b.case_id)
+  if (n === null || b.oa_result.application_number.status.value === 'confirmed') return b.oa_result
+  const digits = n.replace(/-/g, '')
+  return {
+    ...b.oa_result,
+    application_number: {
+      value: digits,
+      raw_text: digits,
+      page: null,
+      status: { value: 'confirmed', reason: null, checked: '사람이 직접 입력함 (원문 대조 아님)', searched_scope: null },
+      candidates: [],
+    },
+  }
+}
+
 // 지휘(orchestrator)와 같은 규칙: 통지서에서 읽은 출원번호가 확인됨이 아니면(확인되지 않음·충돌) 사람에게 묻는다
 const needsAppNumber = (b: Bundle) =>
   b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
