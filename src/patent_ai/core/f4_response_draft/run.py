@@ -189,6 +189,7 @@ def _drafts_and_checks(
     if notes:
         checked = f"만든 방향 후보·초안의 입력 확인됨 ({'; '.join(notes)})"
     return F4Output(
+        checked_on=inp.checked_on,
         oa_id=oa_id,
         units=list(inp.units),
         directions=directions,

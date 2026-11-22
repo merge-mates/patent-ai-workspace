@@ -57,7 +57,7 @@ flowchart LR
 - **지휘에서 보이는 모양:** 도구 하나 `run_f4(F4Input) -> F4Output`, 종류 `code_tool` (`src/patent_ai/core/agents/tools_f4.py:21-23`). 지휘 설정 기본은 `plan: agent`(모델이 다음 code_tool을 고름)이고, `plan: fixed_order`일 때만 `fixed_order: [extract_pages, read_oa, run_f3, run_f2, run_f4]` 순서로 돈다 (`config/orchestrator.yaml:2-4`, 커밋 059429c).
   - 질문: `plan: agent`일 때 지휘가 F4를 언제 부르나 (F3·F2 결과가 다 있을 때만인지). 지금은 모델이 고르고 규칙이 없다 (`orchestrator.py:5`, 커밋 059429c).
 - **무조건 도는 코드 단계와의 관계:** [ADR 0003](../../decisions/0003-tech-stack.md)은 "초안 검사"·"사람 승인 전 멈춤"이 무조건 돈다고만 정하고, 초안 검사 폴더는 `f4_response_draft/`로 둔다 (ADR 0003 84줄). 지금 F4 안의 누락 검사(`f4/coverage.py`)를 초안 검사 때 `core/verify/`로 옮기는 것은 `coverage.py:4` 주석의 계획이다 (판단).
-  - **사람 승인 전 멈춤:** 지금 F4는 멈추지 않고 AI 기본값(1등)으로 바로 초안을 만들고 확신 낮은 묶음만 보류한다 (`run.py:3`). 이것은 [product.md](../../product.md) 4절 6단계·5절 F4 2번, [ADR 0001](../../decisions/0001-ai-amended-claim-draft.md) 11/17 보완, [api/README.md](../../api/README.md) `PUT /directions/{unit_id}/selection`과 같다. 어긋나는 것은 [ADR 0003](../../decisions/0003-tech-stack.md) 108줄 "사람이 고르기 전에는 다음 단계로 가지 않는다" 문장 하나다. #70에서 정함 (11/22): 실행은 멈추지 않는다. 확신 낮은 묶음은 선택 null + 초안 보류이고, 사람이 고르면 그 OA에 작은 실행을 새로 만들어 앞 방향 후보를 그대로 쓰고 초안만 다시 만든다. 직접 쓴 방향은 AI가 초안을 만들지 않는다.
+  - **사람 승인 전 멈춤:** 지금 F4는 멈추지 않고 AI 기본값(1등)으로 바로 초안을 만들고 확신 낮은 묶음만 보류한다 (`run.py:3`). 이것은 [product.md](../../product.md) 4절 6단계·5절 F4 2번, [ADR 0001](../../decisions/0001-ai-amended-claim-draft.md) 11/17 보완, [api/README.md](../../api/README.md) `PUT /directions/{unit_id}/selection`과 같다. [ADR 0003](../../decisions/0003-tech-stack.md) 108줄도 "그 묶음의 다음 단계(초안)로 가지 않는다"로 맞췄다 (#293). #70에서 정함 (11/22): 실행은 멈추지 않는다. 확신 낮은 묶음은 선택 null + 초안 보류이고, 사람이 고르면 그 OA에 작은 실행을 새로 만들어 앞 방향 후보를 그대로 쓰고 초안만 다시 만든다. 직접 쓴 방향은 AI가 초안을 만들지 않는다.
 - **단계 기록:** 모델 호출은 `core/llm`이 단계 이름 `f4.direction`·`f4.opinion`·`f4.amendment`로 `agent_steps`에 남긴다. F4 도구 호출 한 번은 지휘 단계 한 줄.
 
 ## 3. 데이터 모양
@@ -264,7 +264,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 
 ## 열린 질문
 - 정함 #211: 묶음 하나의 호출 실패는 그 묶음만 보류, 상한 도달(`max_units`·호출 상한)은 `limit_reached`로 보류하고 끝냄. 묶음 밖 상한(F1 읽기·지휘·F3 청구항 나누기)은 이슈 #241
-- #70에서 정함 (11/22): 실행은 멈추지 않는다. 확신 낮은 묶음은 선택 null + 초안 보류이고, 사람이 고르면 그 OA에 작은 실행을 새로 만들어 앞 방향 후보를 그대로 쓰고 초안만 다시 만든다. 직접 쓴 방향은 AI가 초안을 만들지 않는다. ADR 0003 108줄 문장은 이 결정에 맞춰 #70 후속 PR에서 고친다
+- #70에서 정함 (11/22): 실행은 멈추지 않는다. 확신 낮은 묶음은 선택 null + 초안 보류이고, 사람이 고르면 그 OA에 작은 실행을 새로 만들어 앞 방향 후보를 그대로 쓰고 초안만 다시 만든다. 직접 쓴 방향은 AI가 초안을 만들지 않는다. ADR 0003 108줄 문장도 이 결정에 맞췄다 (#293). 작은 실행은 앞 실행의 확인 기준일을 이어 쓴다 (#293)
 - 질문: `plan: agent`일 때 지휘가 F4를 언제 부르나
 - 질문: F3 결과에서 모델에 넣을 것, 보정 프롬프트의 명세서 전체 글자
 - 질문: F2 근거가 "확인되지 않음"일 때 확신도 상한
