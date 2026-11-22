@@ -1,0 +1,25 @@
+# 인용문헌 hybrid 둘째 점수 (#178 C안): m2-i2 hybrid 설정 그대로, 색인 cite-idx-v4(C안 공보·논문 더함), 범위 B(tune 30건 풀)+C
+experiment: m2-i3-cite-search-hybrid-noise-c
+feature: retrieval
+baseline: m2-i3-cite-search-bm25-noise-c   # 같은 색인·범위의 BM25
+goldset: tune
+goldset_version: 2   # 11/22 판 3 전에 먼저 잼 (재아 요청). 판 3 뒤 다시
+corpus: cite
+index_version: cite-idx-v4
+mode: hybrid
+impl: hybrid
+k: [1, 3, 5, 10]
+gold: retrieval/cite_gold.jsonl
+# eval/retrieval/noise_scope.py --pool retrieval/cite_pool_bc.yaml 가 만든다 (git 밖)
+noise_scope: retrieval/cite_noise_c.jsonl
+settings:
+  tokenizer: kiwi        # kiwipiepy 0.24.1
+  pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
+  bm25: {method: lucene, k1: 1.5, b: 0.75}   # bm25s 0.3.16
+  query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 녹화
+  hybrid:
+    rrf_k: 60                           # Cormack 외 SIGIR 2009
+    weights: {bm25: 0.5, vector: 0.5}   # 11/20 재아
+budget:
+  max_usd: 0
+  max_external_calls: 0

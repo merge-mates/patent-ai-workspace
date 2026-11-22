@@ -5,8 +5,10 @@
 | m1-i3-f1-effort-low | F1 | `settings.effort`: medium → low | field_accuracy 0.568 | -0.069 | $0.00 | [card](m1-i3-f1-effort-low/card.md) |
 | m1-i3-f1-effort-low-stream64k | F1 | `settings.effort`: medium → low (스트리밍·max_tokens 64000 판에서) | field_accuracy 0.653 | +0.067 | $0.00 | [card](m1-i3-f1-effort-low-stream64k/card.md) |
 | m1-i3-f1-effort-medium | F1 | `settings.effort`: (없음, 모델 기본 medium) → medium (#136 뒤 명시. 보내는 요청은 기준선과 같음) | field_accuracy 0.637 | +0.031 | $0.00 | [card](m1-i3-f1-effort-medium/card.md) |
+| m1-i3-f1-m1-remeasure | F1 | 없음 (M1 정리용 재측정, main 설정 그대로 10건 3회. 표 점수는 1회차, **3회 평균 0.742**. 기준선은 9건이라 대비 칸은 바로 견주지 않음) | field_accuracy 0.758 | +0.172 | - | [card](m1-i3-f1-m1-remeasure/card.md) |
 | m1-i3-f1-model-input-tables | F1 | `settings.model_input`: raw → tables_md | tables_md.confirmed 94.000 | 기준선 | $0.03 | [card](m1-i3-f1-model-input-tables/card.md) |
 | m1-i3-f1-pdf-tool | F1 | PDF 도구 4개 비교 (pdfplumber 유지 결정의 기준선) | pdfplumber.task2_with_cells 1.000 | 기준선 | - | [card](m1-i3-f1-pdf-tool/card.md) |
+| m1-i3-f1-prompt-null-wording | F1 | `prompts/f1/read_oa.md` null·문자열 예외 문구 맞추기 (이슈 #193 task 1, sha256 앞 12자 d680efd54818 → a2d095469fda, 커밋 9d99d3b) | field_accuracy 0.674 | +0.088 | $0.00 | [card](m1-i3-f1-prompt-null-wording/card.md) |
 | m1-i3-f1-read-oa-baseline | F1 | 기준선 (처음 정답 대비 채점, 바꾼 것 없음) | field_accuracy 0.605 | 기준선 | $0.00 | [card](m1-i3-f1-read-oa-baseline/card.md) |
 | m1-i3-f1-read-oa-prompt-hint | F1 | `prompts/f1/read_oa.md` 14·33·59번 줄 (힌트 칸이 없으면 null, raw_text는 칸 제목 빼고 본문만) | field_accuracy 0.441 | -0.196 | $0.00 | [card](m1-i3-f1-read-oa-prompt-hint/card.md) |
 | m1-i3-f1-read-oa-prompt-shape | F1 | `prompts/f1/read_oa.md`에 모양 규칙 3줄 (no_location은 객체, clarity_reason만 문자열, JSON 객체 하나로 끝냄·없는 키 금지) | field_accuracy 0.586 | -0.014 | $0.00 | [card](m1-i3-f1-read-oa-prompt-shape/card.md) |
@@ -24,7 +26,12 @@
 | m2-i2-law-bm25-v2 | 검색 (법령, 이슈 #66) | `index_version`: law-idx-v1 → law-idx-v2 (조각 같음, embedding만 더함) | hit@5 1.000 | +0.000 | $0.00 | [card](m2-i2-law-bm25-v2/card.md) |
 | m2-i2-law-vector-baseline | 검색 (법령, 이슈 #66) | `mode`·`impl`: bm25·law_bm25 → vector·vector (`law-idx-v2` = v1 조각 + text-embedding-3-small 벡터) | hit@5 0.316 | -0.684 | $0.00 | [card](m2-i2-law-vector-baseline/card.md) |
 | m2-i3-cite-search-bm25-noise-b | cite-search (이슈 #178 둘째 점수) | `noise_scope`: 없음(그 인용문헌 안) → `retrieval/cite_noise_b.jsonl` (B안: tune 인용문헌 전체 풀). 검색 설정·색인은 그대로 | hit@10 0.353 | -0.265 | $0.00 | [card](m2-i3-cite-search-bm25-noise-b/card.md) |
+| m2-i3-cite-search-bm25-noise-c | cite-search (이슈 #178 둘째 점수, C안) | 색인 `cite-idx-v1` → `cite-idx-v4`(C안 공보 115·tune 30건 인용 공보 더함), `noise_scope`: B(옛 tune 인용 16건 풀) → B(tune 30건 인용 풀) + C(OA마다 같은 IPC·비슷한 낱말 한국 공보, 그 OA 줄에만) | hit@10 0.265 | -0.088 | $0.00 | [card](m2-i3-cite-search-bm25-noise-c/card.md) |
+| m2-i3-cite-search-hybrid-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → hybrid (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-hybrid-noise-c/card.md) |
+| m2-i3-cite-search-vector-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → vector (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-vector-noise-c/card.md) |
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
+| m3-i1-cite-search-two-stage | cite-search (이슈 #212) | `impl`: hybrid(RRF) → two_stage (BM25 후보 N=100 → 그 후보만 벡터로 다시 순위) | hit@10 0.691 | -0.015 | $0.00 | [card](m3-i1-cite-search-two-stage/card.md) |
+| m3-i1-cite-search-weighted-sum | cite-search (이슈 #212, lane_extra C3) | `impl`: hybrid(RRF, 순위로 섞음) → weighted_sum (점수를 min-max로 맞춘 뒤 BM25 0.5 / 벡터 0.5 가중합) | hit@10 0.706 | +0.000 | $0.00 | [card](m3-i1-cite-search-weighted-sum/card.md) |
 | m3-i1-f3-rescore | F3 | 코드 판 (m2-f3-skeleton 849d18f 뼈대 → main 9eb8237: 부모 구성요소 넣기·second_search 기본 켬 등 그 사이 머지된 F3). 설정은 그 판의 config/f3.yaml 그대로 | search_recall 0.585 | +0.001 | $0.00 | [card](m3-i1-f3-rescore/card.md) |
 | m3-i1-f4-first-score | F4 | 코드 판 (m3-f4-skeleton 1731de3 → main 9eb8237)과 `final_rejection_limit` 기본값 false → true. 처음으로 F4 정답으로 채점 | direction_top1 0.104 | - | $0.00 | [card](m3-i1-f4-first-score/card.md) |
 | m3-i1-f4-rank-first | F4 | `prompts/f4/direction.md` 목록 순서 규칙 (순위 있는 후보 먼저, 보류 묶음은 low 후보 순서 그대로, f3de1ae). 채점기는 주 지표를 AI 기본 선택(순위 1, 없으면 목록 첫째)으로 셈 (5384320) | direction_top1 0.417 | +0.313 | $0.00 | [card](m3-i1-f4-rank-first/card.md) |

@@ -55,7 +55,7 @@ flowchart LR
 - **서브에이전트 루프 + 무조건 도는 코드 단계 둘.** 질의 바꾸기와 다시 찾기가 질문마다 달라 고정 파이프라인으로 못 짠다 ([product.md](../../product.md) 2절 "왜 에이전트인가"). 출처 확인과 근거 검토 순서는 건너뛸 수 없게 그래프 간선으로 고정한다.
 - 도구 목록: 7-1. 멈추는 조건: 거절이유(또는 질문)마다 주장이 다 출처 확인·근거 검토를 지났거나, 상한에 닿음. 최대 단계 수 `config/f2.yaml`의 `max_steps` [가정] (지휘의 `config/orchestrator.yaml` `max_steps`와 같은 자리 규칙, 상한은 모두 `config/f2.yaml` 한 곳).
 - 단계 기록: `agent_steps` (도구 호출, 검색 범위, 검색 결과 조각 ID, 모델 호출).
-- CQ 후보는 채점 실행에서만 모은다 (검색 계약 requirements 5). "못 찾음"은 정답 줄이 있어야 셀 수 있어서, 정답이 없는 앱 실행에서는 CQ를 모으지 않는다. 심사기준·판례 정답 줄(열린 질문 5, #35) 전에는 그 유형의 CQ가 0건 + 경고로 나오는 것이 정상이다.
+- CQ 후보는 채점 실행에서만 모은다 (검색 계약 requirements 5). "못 찾음"은 정답 줄이 있어야 셀 수 있어서, 정답이 없는 앱 실행에서는 CQ를 모으지 않는다. 심사기준·판례 정답 줄이 없는 동안(11/22 정함: M3에는 만들지 않음, [f2-evidence-gold.md](../../evaluation/f2-evidence-gold.md) 7절, 열린 질문 5) 그 유형의 CQ가 0건 + 경고로 나오는 것이 정상이다.
 
 ## 3. 데이터 모양
 ### 3-1. 앞 기능에서 받는 것
@@ -183,7 +183,7 @@ flowchart LR
   | `get_precedent` | 사건번호·심판번호 → 그 판례·심결 조각들 | 색인 전 `unverified(body_missing)` / 받은 판례 74건 밖의 사건번호 → 법령 API로 사건번호 조회([architecture.md](../../architecture.md) 6절 "그 밖은 필요할 때"), 실패 `unverified(lookup_failed)`, API에도 없음 `not_found_in_scope` (+ 찾아본 범위) / 받은 심결 12건 밖의 심판번호 → `not_found_in_scope` (+ 찾아본 범위: 받은 심결 12건, 실행 중에는 심판 API를 부르지 않음) |
   | `normalize_refs` | 글 → 조문·사건번호·날짜 꼴 맞춘 목록 (코드) | 못 읽음은 빈 목록 + 경고 |
 - **평가 세트·지표:**
-  - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 #35에서 더한다 (requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 조문 주 지표는 Hit@1, 같이 보는 지표는 Recall@5다. BM25 Hit@5 1.000·Recall@5 0.974(19줄)라 k=5로는 7-3 실험 1의 차이가 안 보이기 때문이다 (재아 님 11/20 리뷰). 심사기준·판례는 기준선을 잰 뒤 정한다. MRR은 채점기에 없어 지금은 쓰지 않는다 (검색 계약 "안 할 것"). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
+  - 검색: `data/goldsets/tune/retrieval/law_gold.jsonl` (v2, 19줄, 조문). 심사기준·판례 줄은 만들지 않는다 (11/22 정함: M3에는 심사기준·판례 검색 점수를 재지 않고 남은 1줄은 #24 색인 뒤 `law_gold`에 넣는다, [f2-evidence-gold.md](../../evaluation/f2-evidence-gold.md) 7절, requirements 열린 질문 5). 지표 Hit@k·Recall@k, 줄 평균 + OA 한 통 단위 Hit (그 OA의 모든 줄이 Hit). 조문 주 지표는 Hit@1, 같이 보는 지표는 Recall@5다. BM25 Hit@5 1.000·Recall@5 0.974(19줄)라 k=5로는 7-3 실험 1의 차이가 안 보이기 때문이다 (재아 님 11/20 리뷰). 심사기준·판례 지표는 #24 색인 뒤 정답 줄이 생기면 기준선을 재고 정한다. MRR은 채점기에 없어 지금은 쓰지 않는다 (검색 계약 "안 할 것"). 채점기 `eval.retrieval.score` (검색 계약). 이 점수는 `search_article` 도구 단독 점수다. 채점 질의는 조문 표기를 `[조문]`으로 가린 글이고 앱은 가리지 않으므로(앱은 조문 번호가 있으면 `get_article`로 읽음), 앱 전체가 아니라 "조문 번호 없이 찾을 때"를 잰다. OA 한 통 단위 집계는 채점기에 칸 하나를 더하는 일이라 검색 계약 PR로 한다.
   - 근거 검토: `data/goldsets/tune/f2/` 실제 질문 + 오류 주입 5종 (#35, 20개 이상). 지표 출처 존재·위치·판본 일치율, 뒷받침 판정 정확도, 주입 오류 탐지율·고친 비율. 채점기 `eval/run_eval.py --config experiments/<실험>/config.yaml` (`feature: f2`, 새 채점기는 #29).
   - 문턱: [확인 필요: 기준선 뒤]. 지킬 선: 없는 출처 0건, 확인하지 않은 위치 0건.
 - **데이터:** `law-idx-v2` (지금), `law-idx-v3` (#24 뒤). 평가 단위는 OA 한 통(출원번호 + 발송번호), 범위는 컴퓨터 비전 분야 tune 사건 ([product.md](../../product.md) 7절).
@@ -239,7 +239,7 @@ flowchart LR
 
 ## 9. 테스트 방법
 - 어디서: `research()` 입력 → 출력 한 곳. 출처 확인은 따로 촘촘히 (꼭 지킬 선).
-- 가짜 응답: 검색은 검색 계약 `fake` 구현 + `tests/fixtures/f2/chunks.jsonl`(지어낸 조문 두 판, 심사기준 문단, 판례 요지·전문). 모델은 녹화 응답 `tests/fixtures/f2/llm/`.
+- 가짜 응답 / 기록된 모델 응답: 검색은 검색 계약 `fake` 구현 + `tests/fixtures/f2/chunks.jsonl`(지어낸 조문 두 판, 심사기준 문단, 판례 요지·전문). 모델은 기록된 모델 응답 `tests/fixtures/f2/llm/` (사람이 쓴 답이면 가짜 응답).
 - 상태마다 하나씩 (`tests/fixtures/f2/`):
   - `confirmed`: 진보성 질문 → 조문·심사기준·판례 근거, 근거 검토 뒷받침.
   - `not_found_in_scope`: 어느 조각과도 안 겹치는 질문 → 다시 찾기 1번 뒤 빈 결과 + 찾아본 범위.
@@ -247,13 +247,13 @@ flowchart LR
   - 시점 없음: 같은 조문 두 판 → 현행판 조각만 나온다 (`as_of = checked_on`).
   - 출원일판 ≠ 발송일판: 근거는 발송일판, 출원일판은 `further_review`의 `other_edition`.
   - `unverified(body_missing)`: 심사기준·심결 색인 없음. 그 유형 조각이 0개면 `search`를 부르지 않는다 (가짜 검색기 호출 0번).
-  - 기준일이 색인의 가장 이른 판보다 앞섬: `get_article`(조문 번호 앎) → 법령 API 녹화 응답으로 그 판, 녹화 없으면 `lookup_failed` / `search_article`(번호 모름) → `edition_unknown`, 법령 API 호출 0번 / 심사기준 → `edition_unknown` (셋 다 `not_found_in_scope`가 아님).
-  - 74건 밖 사건번호: 법령 API 녹화 응답에 있음 → 근거, 없음 → `not_found_in_scope`.
+  - 기준일이 색인의 가장 이른 판보다 앞섬: `get_article`(조문 번호 앎) → 법령 API 기록된 응답으로 그 판, 기록 없으면 `lookup_failed` / `search_article`(번호 모름) → `edition_unknown`, 법령 API 호출 0번 / 심사기준 → `edition_unknown` (셋 다 `not_found_in_scope`가 아님).
+  - 74건 밖 사건번호: 법령 API 기록된 응답에 있음 → 근거, 없음 → `not_found_in_scope`.
   - 심결 내용 검색: 사건번호 없는 진보성 질문 → `search_precedent`가 심결 조각도 낸다.
   - 상한: `max_model_calls`를 1로 두고 거절이유 3개 → ④ 3개 저장, 못 다룬 2개는 `unverified`.
   - 받은 12건 밖의 심판번호 → `not_found_in_scope` + 찾아본 범위.
   - `unverified(input_unverified)`: F1 조문이 `unverified`인 거절이유.
-  - 오류 주입 5종: 녹화 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
+  - 오류 주입 5종: 기록된 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
   - 부딪힘: 글 시점 ≠ 선택 시점 → `clarifications` 1건, 판례 검색은 두 날짜 중 이른 날로 끝나 있음, 조문·심사기준은 확인 대기.
   - 대화 두 번: 두 번째에 시점 바꿈 → `scope_changed`, `prior_evidence` 유지.
   - 사건번호만 입력 "2007후3660" → `get_precedent`로 읽음.
@@ -262,4 +262,4 @@ flowchart LR
   - OA 흐름: 거절이유 3개인 가짜 `OAResult` → ④ 3개, 모두 `origin = ai_generated`. 질의에 등록공보 글 0자 (등록공보 판을 넘기면 멈춤).
   - OA 발송일 `unverified` → 조문·심사기준·판례·심결 검색 모두 보류, 결과 `input_unverified`.
   - 판례 날짜: 선고일이 OA 발송일보다 뒤인 판례 조각 하나 + 날짜 모름 심결 조각 하나 → 앞의 것은 검색 결과에서 빠지고(`get_precedent`로 읽으면 `further_review`), 뒤의 것은 `skipped_unknown_date` 1로 `search_log`에 남는다. 이 둘만 있으면 결과는 `unverified(edition_unknown)`.
-  - 사건 적용 표현: 녹화 응답의 답 글(따옴표 안 원문 인용 밖)에 "이 사건에 적용"·"등록 가능"을 넣으면 거부하지 않고 그 주장에 `needs_human_review` + 경고. 판례 인용 안의 "적용된다"는 걸리지 않는다.
+  - 사건 적용 표현: 기록된 모델 응답의 답 글(따옴표 안 원문 인용 밖)에 "이 사건에 적용"·"등록 가능"을 넣으면 거부하지 않고 그 주장에 `needs_human_review` + 경고. 판례 인용 안의 "적용된다"는 걸리지 않는다.

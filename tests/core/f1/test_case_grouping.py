@@ -24,9 +24,11 @@ from patent_ai.core.schemas.case_materials import (
     HeldTask,
     LookupResult,
     MissingMaterial,
+    ReviewItem,
 )
-from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import Flag, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
+from patent_ai.core.schemas.propagation import finalize_case_materials
 
 # --- T1 번호 읽기·정규화 -------------------------------------------------------
 
@@ -455,7 +457,7 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같다():
     got = build_case_materials(
         "c_1",
         _fixture_grouped(oa),
-        oa,
+        [oa],
         received_citations={KR_D1},
         lookup_failures={US_D2: LookupResult.BODY_MISSING},
     )
@@ -467,7 +469,7 @@ def test_materials_인용문헌_2건_중_1건_없음은_fixture와_같다():
     assert (m.lookup_result, m.ask_upload) == (LookupResult.BODY_MISSING, True)
     # 보류는 없는 인용문헌의 F3 대비만, 그 작업은 빠진 자료를 기다린다
     (h,) = got.held_tasks
-    assert (h.task, h.waiting_for) == ("F3 대비: D2 US20990000001A1", m.what)
+    assert (h.task, h.waiting_for) == ("f3_compare:oa_1:D2", m.what)
     assert m.depends_on_tasks == [h.task]
 
 
@@ -476,7 +478,7 @@ def test_materials_빠진_것이_없으면_missing_held_비어_있음():
     got = build_case_materials(
         "c_1",
         _fixture_grouped(oa),
-        oa,
+        [oa],
         received_citations={KR_D1, US_D2},
     )
     assert got.missing == [] and got.held_tasks == []
@@ -484,7 +486,7 @@ def test_materials_빠진_것이_없으면_missing_held_비어_있음():
 
 def test_materials_이유가_없으면_lookup_failed():
     oa = _fixture_oa()
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     assert [m.lookup_result for m in got.missing] == [LookupResult.LOOKUP_FAILED]
 
 
@@ -504,7 +506,7 @@ def test_materials_지원_안_하는_나라는_올려_달라고_안_함():
         country_supported=False,
         flags=[Flag.NEEDS_HUMAN_REVIEW],
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     assert (m.lookup_result, m.ask_upload) == (LookupResult.UNSUPPORTED_COUNTRY, False)
     assert len(got.held_tasks) == 1
@@ -525,7 +527,7 @@ def test_materials_번호를_못_읽은_인용문헌은_lookup_failed_올려_달
         }
     )
     oa = _oa_with_citation(number=unread)
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
     # 번호 값이 없으면 원문 글자로 이름을 만든다
@@ -539,7 +541,7 @@ def test_materials_같은_인용문헌이_여러_거절이유에_있어도_한_�
     rej1 = oa.rejections[0]
     rej2 = oa.rejections[1].model_copy(update={"citations": [rej1.citations[1]]})
     oa = oa.model_copy(update={"rejections": [rej1, rej2, *oa.rejections[2:]]})
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     assert len(got.missing) == 1 and len(got.held_tasks) == 1
 
 
@@ -548,7 +550,7 @@ def test_materials_인용문헌이_0건이면_경고(caplog):
     oa = oa.model_copy(
         update={"rejections": [r.model_copy(update={"citations": []}) for r in oa.rejections]}
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations=set())
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations=set())
     assert got.missing == []
     assert "인용문헌이 0건" in caplog.text
 
@@ -570,7 +572,7 @@ def test_materials_나라를_못_읽은_인용문헌은_지원_안_함이_아니
     oa = _oa_with_citation(
         country=unknown_country, country_supported=False, flags=[Flag.NEEDS_HUMAN_REVIEW]
     )
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     # 나라 모름 ≠ 지원 안 함: 조회 못 한 것으로 보고 올려 달라고 한다
     assert (m.lookup_result, m.ask_upload) == (LookupResult.LOOKUP_FAILED, True)
@@ -586,23 +588,50 @@ def test_materials_같은_열쇠_문서는_하나만_올린_것_우선(caplog):
         ],
         oa.application_number.value,
     )
-    got = build_case_materials("c_1", grouped, oa, received_citations={KR_D1, US_D2})
+    got = build_case_materials("c_1", grouped, [oa], received_citations={KR_D1, US_D2})
     assert [d.document_id for d in got.documents] == ["d_up"]
     assert "d_api" in caplog.text
 
 
-def test_materials_확인_안_된_자료는_목록에_두고_검토할_사항에_셈():
+def test_materials_개수는_목록_줄_수와_같다():
     oa = _fixture_oa()
-    base = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1, US_D2})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations=set())
+    assert got.review_items is not None
+    assert got.review_items_count == len(got.review_items) > 0
+    assert any(i.kind == "missing_material" for i in got.review_items)
+
+
+def test_materials_확인_안_된_자료는_목록에_두고_문서_줄로_검토할_사항에_센다():
+    oa = _fixture_oa()
+    base = build_case_materials(
+        "c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1, US_D2}
+    )
     other = group_materials(
         [_m("d_other", "oa", app="10-2099-0009999", number="9-5-2099-012345678")],
         oa.application_number.value,
     )
     got = build_case_materials(
-        "c_1", _fixture_grouped(oa) + other, oa, received_citations={KR_D1, US_D2}
+        "c_1", _fixture_grouped(oa) + other, [oa], received_citations={KR_D1, US_D2}
     )
-    assert "d_other" in [d.document_id for d in got.documents]
-    assert got.review_items_count == base.review_items_count + 1
+    docs = [d.document_id for d in got.documents]
+    assert "d_other" in docs
+    # 다른 출원번호 자료는 문서 줄 하나(충돌)로 늘고, 개수 = 줄 수
+    (line,) = [i for i in got.review_items if i.target.startswith("materials.documents")]
+    assert (line.kind, line.target) == ("conflict", f"materials.documents[{docs.index('d_other')}]")
+    assert got.review_items_count == base.review_items_count + 1 == len(got.review_items)
+
+
+def test_materials_끝에서_마무리를_거쳐_빠진_자료가_맨_위():
+    oa = _fixture_oa()
+    got = build_case_materials(
+        "c_1",
+        _fixture_grouped(oa),
+        [oa],
+        received_citations={KR_D1},
+        lookup_failures={US_D2: LookupResult.BODY_MISSING},
+    )
+    assert got.review_items[0].kind == "missing_material"
+    assert all(i.target.startswith(("materials.", "oa_result[oa_1]")) for i in got.review_items)
 
 
 # --- 빠진 자료 올리기 (T7) ----------------------------------------------------------
@@ -628,11 +657,64 @@ def test_upload_빠진_자료에_답하면_missing과_그_보류만_빠지고_�
     # 검토할 사항: 빠진 인용문헌 한 줄이 빠지고 직접 검토 한 줄만 남는다
     assert after.review_items_count == before.review_items_count - 1 == 1
     assert before.missing  # 원래 값은 바꾸지 않는다
+    # 목록에서도 그 빠진 자료 줄이 빠지고 개수는 목록 길이와 같다
+    assert [i.kind for i in after.review_items] == ["needs_human_review"]
+    assert len(after.review_items) == after.review_items_count
+    assert len(before.review_items) == before.review_items_count == 2
+
+
+def test_upload_확인_안_된_문서를_올리면_끝에_더한_문서_줄이_생기고_경로가_맞다():
+    before = _fixture_materials()
+    (g,) = group_materials(
+        [_m("doc_up_9", "oa", app="10-2099-0009999", number="9-5-2099-012345678")], CASE
+    )
+    assert g.status.value == StatusValue.CONFLICT
+    after = answer_missing(before, "D2 US20990000001A1 본문", g)
+    idx = len(after.documents) - 1
+    assert after.documents[idx].document_id == "doc_up_9"
+    # 빠진 자료 줄은 빠지고, 새 문서 줄이 그 문서 위치를 가리킨다. 개수 = 줄 수
+    pairs = [(i.kind, i.target) for i in after.review_items]
+    assert pairs == [
+        ("conflict", f"materials.documents[{idx}]"),
+        ("needs_human_review", "oa_result[oa_1].rejections[2]"),
+    ]
+    assert after.review_items_count == len(after.review_items) == 2
+
+
+def test_upload_남은_빠진_자료_줄의_경로가_새_목록_위치를_가리킨다():
+    before = _fixture_materials()
+    extra = MissingMaterial(
+        what="D3 X 본문",
+        lookup_result="body_missing",
+        ask_upload=True,
+        depends_on_tasks=[],
+        citation_key="X",
+    )
+    item = ReviewItem(
+        kind="missing_material", target="materials.missing[1]", label=extra.what, reason="x"
+    )
+    m = CaseMaterials.model_validate(
+        before.model_dump()
+        | {
+            "missing": [*before.model_dump()["missing"], extra.model_dump()],
+            "review_items": [*(i.model_dump() for i in before.review_items), item.model_dump()],
+            "review_items_count": 3,
+        }
+    )
+    after = answer_missing(m, "D2 US20990000001A1 본문", _uploaded_citation())
+    (left,) = [i for i in after.review_items if i.kind == "missing_material"]
+    assert left.label == "D3 X 본문" and left.target == "materials.missing[0]"
+
+
+def test_upload_목록이_없는_옛_6번은_조용히_넘기지_않고_거부():
+    old = _fixture_materials().model_copy(update={"review_items": None, "review_items_count": 0})
+    with pytest.raises(ValueError, match="review_items"):
+        answer_missing(old, "D2 US20990000001A1 본문", _uploaded_citation())
 
 
 def test_upload_다른_보류_작업은_남는다():
     before = _fixture_materials()
-    other = HeldTask(task="F3 대비: D3 X", waiting_for="D3 X 본문")
+    other = HeldTask(task="f3_compare:oa_1:D3", waiting_for="D3 X 본문")
     before = before.model_copy(update={"held_tasks": [*before.held_tasks, other]})
     after = answer_missing(before, "D2 US20990000001A1 본문", _uploaded_citation())
     assert after.held_tasks == [other]
@@ -660,7 +742,7 @@ def test_upload_올려_달라고_하지_않은_자료면_오류():
 
 def test_key_빠진_자료_줄에_인용문헌_키가_남는다():
     oa = _fixture_oa()
-    got = build_case_materials("c_1", _fixture_grouped(oa), oa, received_citations={KR_D1})
+    got = build_case_materials("c_1", _fixture_grouped(oa), [oa], received_citations={KR_D1})
     (m,) = got.missing
     assert m.citation_key == US_D2
 
@@ -680,7 +762,7 @@ def test_key_키가_있는_인용문헌_자료는_다시_만들어도_빠진_자
     )
     # 받은 번호(received_citations)에 US_D2가 없어도, 저장된 문서의 키로 받은 것으로 친다
     got = build_case_materials(
-        "c_1", _fixture_grouped(oa) + uploaded, oa, received_citations={KR_D1}
+        "c_1", _fixture_grouped(oa) + uploaded, [oa], received_citations={KR_D1}
     )
     assert got.missing == [] and got.held_tasks == []
     doc = next(d for d in got.documents if d.document_id == "doc_up_1")
@@ -699,3 +781,138 @@ def test_key_묶기는_인용문헌_키를_그대로_둔다():
 def test_key_인용문헌이_아닌_자료에_키가_있으면_거부():
     with pytest.raises(ValidationError):
         MaterialInput(document_id="d1", kind="oa", source="uploaded", citation_key=KR_D1)
+
+
+def test_upload_확인_안_된_문서_줄의_순서가_마무리를_다시_돌린_것과_같다():
+    # 같은 입력이면 같은 ⑥ (design 2절): 같은 종류 안에서 문서 줄이 결과 줄보다 앞
+    oa = _fixture_oa()
+    unv = {"value": "unverified", "reason": "body_missing"}
+    oa = OAResult.model_validate(
+        oa.model_dump()
+        | {"status": unv, "response_due": oa.model_dump()["response_due"] | {"status": unv}}
+    )
+    before = finalize_case_materials([oa], _fixture_materials())
+    (g,) = group_materials([_m("doc_up_9", "oa", app=APP, number=None)], CASE)
+    assert g.status.value == StatusValue.UNVERIFIED
+    after = answer_missing(before, "D2 US20990000001A1 본문", g)
+    assert after.review_items == finalize_case_materials([oa], after).review_items
+
+
+# --- OA 전부·글자 추출 상태·보류 작업 이름 (#140 task-3) --------------------------------
+
+
+US_D3 = "US20990000002A1"  # 지어낸 번호: 둘째 OA에만 나오는 인용문헌
+
+
+def _second_oa(oa: OAResult) -> OAResult:
+    # 같은 사건의 다음 통지: 발송번호가 다르다 (지어낸 값). 첫 OA에서 D2였던 US_D2를 D1로 부르고,
+    # 이 OA에만 나오는 인용문헌(US_D3)을 D2로 부른다
+    d = oa.model_dump(mode="json")
+    d["oa_id"] = "oa_2"
+    d["dispatch_number"]["value"] = "952099000000002"
+    d["dispatch_number"]["raw_text"] = "9-5-2099-000000002"
+    cites = d["rejections"][0]["citations"]
+    d1 = dict(cites[1], label="D1")  # US_D2를 다른 라벨로
+    d2 = dict(cites[1], label="D2", number=dict(cites[1]["number"], value=US_D3))
+    d["rejections"][0]["citations"] = [d1, d2]
+    return OAResult.model_validate(d)
+
+
+def test_oas_두_OA가_같은_문헌을_다른_라벨로_불러도_빠진_자료는_한_줄이다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
+    # 번호(US_D2)가 같으면 한 줄 (첫 OA의 라벨 이름), OA2에만 있는 US_D3은 따로 한 줄
+    m_d2, m_d3 = got.missing
+    assert m_d2.what == "D2 US20990000001A1 본문"
+    assert m_d2.depends_on_tasks == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D1"]
+    assert m_d3.what == "D2 US20990000002A1 본문"
+    assert m_d3.depends_on_tasks == ["f3_compare:oa_2:D2"]
+    # 보류 이름은 OA마다 자기 라벨. waiting_for는 합친 줄의 이름
+    assert [(h.task, h.waiting_for) for h in got.held_tasks] == [
+        ("f3_compare:oa_1:D2", m_d2.what),
+        ("f3_compare:oa_2:D1", m_d2.what),
+        ("f3_compare:oa_2:D2", m_d3.what),
+    ]
+
+
+def test_oas_같은_문헌이_아니면_합치지_않는다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    # US_D2는 받았고 OA2에만 있는 US_D3만 빠짐: OA1 쪽 줄은 생기지 않는다
+    got = build_case_materials(
+        "c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1, US_D2}
+    )
+    (m,) = got.missing
+    assert m.what == "D2 US20990000002A1 본문"
+    assert [h.task for h in got.held_tasks] == ["f3_compare:oa_2:D2"]
+
+
+def test_oas_두_OA의_결과_줄이_다_남는다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    got = build_case_materials(
+        "c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1, US_D2}
+    )
+    targets = [i.target for i in got.review_items]
+    assert any(t.startswith("oa_result[oa_1]") for t in targets)
+    assert any(t.startswith("oa_result[oa_2]") for t in targets)
+    assert got.review_items_count == len(got.review_items)
+
+
+def test_oas_올리면_두_OA의_보류가_다_사라진다():
+    oa1 = _fixture_oa()
+    oa2 = _second_oa(oa1)
+    got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
+    after = answer_missing(got, "D2 US20990000001A1 본문", _uploaded_citation())
+    # 다른 라벨(oa_2의 D1)로 기다리던 보류도 같이 사라지고, OA2에만 있는 문헌 것은 남는다
+    assert [m.what for m in after.missing] == ["D2 US20990000002A1 본문"]
+    assert [h.task for h in after.held_tasks] == ["f3_compare:oa_2:D2"]
+
+
+def test_text_status_스캔본은_문서의_text_status만_정하고_묶기_status는_그대로():
+    oa = _fixture_oa()
+    scanned = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING)
+    got = build_case_materials(
+        "c_1",
+        _fixture_grouped(oa),
+        [oa],
+        received_citations={KR_D1},
+        text_status={"doc_oa_1": scanned},
+    )
+    by_id = {d.document_id: d for d in got.documents}
+    assert by_id["doc_oa_1"].text_status == scanned
+    assert by_id["doc_oa_1"].status.value == StatusValue.CONFIRMED
+    # 글자 상태를 안 준 문서는 None (합치지 않음)
+    assert by_id["doc_cit_kr_1"].text_status is None
+    # 원인 줄이 생긴다
+    assert any(
+        i.target == "materials.documents[0]" and i.reason == "body_missing"
+        for i in got.review_items
+    )
+
+
+def test_oas_인용문헌이_없는_OA만_있으면_경고하고_빠진_자료_없음(caplog):
+    oa = _fixture_oa()
+    empty = oa.model_copy(update={"rejections": []})
+    with caplog.at_level("WARNING"):
+        got = build_case_materials("c_1", [], [empty], received_citations=set())
+    assert got.missing == [] and got.held_tasks == []
+    assert "인용문헌이 0건" in caplog.text
+
+
+def test_oas_한_OA만_번호를_못_읽어도_이름이_같으면_빠진_자료는_한_줄이다():
+    # OA1은 번호를 읽고(값 US_D2), OA2는 못 읽었지만 원문 글자가 같아 이름이 같다
+    oa1 = _fixture_oa()
+    d = _second_oa(oa1).model_dump(mode="json")
+    first = d["rejections"][0]["citations"][0]
+    first["label"] = "D2"
+    first["number"] = first["number"] | {"value": None, "raw_text": US_D2}
+    first["number"]["status"] = {"value": "unverified", "reason": "not_extracted"}
+    d["rejections"][0]["citations"] = [first]
+    d["rejections"][0]["status"] = first["number"]["status"]
+    oa2 = OAResult.model_validate(d | {"status": first["number"]["status"]})
+    got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
+    (m,) = got.missing
+    assert m.what == "D2 US20990000001A1 본문" and m.citation_key == US_D2
+    assert m.depends_on_tasks == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D2"]

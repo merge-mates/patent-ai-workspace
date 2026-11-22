@@ -50,6 +50,16 @@ export const runStateLabel: Record<RunState, string> = {
   cancelled: '취소',
 }
 
+// 사람 기다림 단계 글자 (waiting_for 값마다).
+// 방향 고르기만 "고르기 기다림". 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
+// (서버는 waiting_for 없이 waiting_for_human이 되지 않는다: core/runs/state.py)
+export function waitingForLabel(w: string | null): string {
+  if (w === 'application_number') return '출원번호 입력 기다림'
+  if (w === 'dispatch_number') return '발송번호 확인 기다림'
+  if (w === 'direction_selection') return '고르기 기다림'
+  return '사람 기다림'
+}
+
 export const lookupResultLabel: Record<LookupResult, string> = {
   lookup_failed: '조회 실패',
   body_missing: '본문 미확보',

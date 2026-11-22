@@ -19,7 +19,7 @@
 3. 재아가 F3 대비에 쓸 검색 방식(BM25 / 벡터 / 하이브리드)을 고르려고, 같은 68줄에서 세 방식의 Hit@k와 못 찾은 줄을 나란히 본다.
 
 ## 입력과 출력
-- **입력 자료:** 인용문헌 PDF `data/raw/cited_v2/<출원번호>/` (데이터 카드 [`docs/data/cited-patents.md`](../../data/cited-patents.md)), OA 당시 청구항 `data/raw/cases/<출원번호>/<출원번호>_청구항이력.txt`, 검색 정답 `data/goldsets/tune/search_v0/tune_search_gold_1118_검수완료.json` (은진 님, 11/18 검수 완료).
+- **입력 자료:** 인용문헌 PDF `data/raw/cited_v2/<출원번호>/` (데이터 카드 [`docs/data/cited-patents.md`](../../data/cited-patents.md)), OA 당시 청구항 `data/processed/cases/<출원번호>/<발송번호>/<출원번호>_청구항이력.txt` (OA 시점으로 자른 입력, #159), 검색 정답 `data/goldsets/tune/search_v0/tune_search_gold_1118_검수완료.json` (은진 님, 11/18 검수 완료).
 - **외부 모델로 보내는 것 (벡터):** 인용문헌 조각 글과 OA 당시 청구항(질의)을 OpenAI 임베딩 API `text-embedding-3-small`로 보낸다 (11/20 재아). **유료 API**(단가 $0.02 / 입력 토큰 100만, OpenAI 모델 페이지(공식 문서). 조각 1,998개 기준 몇 센트 [가정: 조각당 약 300토큰으로 어림, 색인 때 호출 기록으로 잼]). [architecture.md](../../architecture.md) 7절 "공보·인용문헌 원문: 보냄". 벡터·질의 벡터 파일은 git 밖.
 - **필요한 판:** 질의 = OA 당시 청구항 전문 (계약 design 7-1). 출원번호 + 발송번호로 고른다. 질의는 `청구항이력.txt`(+ OA 앞뒤를 가르는 `행정이력.txt`)에서만 만든다. 사건 폴더의 등록공보·결정서·결정본문은 채점 확인용이라 AI 입력·질의로 쓰지 않는다 (은진 님, 11/19).
 - **채점 범위:** 인용문헌이 있는 tune 8건 전부 (11/19 청구항이력 8건 다 들어옴).

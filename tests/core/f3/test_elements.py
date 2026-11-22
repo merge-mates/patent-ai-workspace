@@ -1,4 +1,4 @@
-"""구성요소 나누기(B1) 테스트: 손으로 지어낸 청구항 + 가짜 전송층(기록된 모델 응답). 진짜 호출 없음.
+"""구성요소 나누기(B1) 테스트: 손으로 지어낸 청구항 + 가짜 전송층(가짜 응답). 진짜 호출 없음.
 
 기대값은 구현 계획(B1)과 F3 뼈대 설계 4절에서 가져왔다. 프롬프트 문구는 테스트하지 않는다.
 """
@@ -35,7 +35,7 @@ CONTROL = "상기 습도 센서의 값이 기준보다 낮으면 상기 물통�
 
 
 def _answer(claim: int, elements: list[str], depends_on=(), quote=None) -> TransportResponse:
-    """기록된 모델 응답 하나 (ClaimElements 모양 JSON)."""
+    """가짜 응답 하나 (ClaimElements 모양 JSON)."""
     body = {
         "claim": claim,
         "depends_on": list(depends_on),
