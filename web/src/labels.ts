@@ -156,3 +156,7 @@ export const coarseLabel: Record<CoarseDirection, string> = {
 // 대응 방향·초안(F4)의 확신 낮음 보류는 "직접 판단 필요". 둘을 같은 "보류"로 쓰지 않는다
 export const COMPARE_UNVERIFIED_TEXT = '원문 확인 필요'
 export const LOW_CONFIDENCE_TEXT = '직접 판단 필요'
+
+// 사람이 넣은 번호 칸의 확인 글 (서버 core/cases/human_answers.py HUMAN_CHECKED와 같은 글자, #70).
+// 화면은 이 글자로 "직접 입력" 꼬리표를 단다. 서버와 같은지는 tests/web/test_web_human_checked.py가 본다
+export const HUMAN_ENTERED_CHECKED = '사람이 직접 입력함 (원문 대조 아님)'

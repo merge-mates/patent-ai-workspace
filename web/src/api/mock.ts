@@ -1,6 +1,7 @@
 // mock 모드 (VITE_API_MODE=mock): 서버 없이 fixture를 돌려준다.
 // fixture는 scripts/web_fixtures.py가 가짜 통지서 + 기록된 모델 응답으로 만든 것 (git에 있음).
 // 시연용 실제 결과(web/.demo/*.json, git 밖)는 VITE_DEMO=1일 때만 더 읽는다.
+import { HUMAN_ENTERED_CHECKED } from '../labels'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { OAResult, RejectionKind } from '../types/generated/OAResult'
 import type { PageText } from '../types/generated/PageText'
@@ -409,7 +410,7 @@ function withHumanNumber(b: Bundle): OAResult {
       value: digits,
       raw_text: digits,
       page: null,
-      status: { value: 'confirmed', reason: null, checked: '사람이 직접 입력함 (원문 대조 아님)', searched_scope: null },
+      status: { value: 'confirmed', reason: null, checked: HUMAN_ENTERED_CHECKED, searched_scope: null },
       candidates: [],
     },
   }
