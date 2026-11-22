@@ -23,3 +23,11 @@ def test_사건끼리_oa_id가_겹치지_않는다():
     # 겹치면 /cases/<id>가 다른 사건의 OA 화면으로 가 버린다
     oa_ids = [c["oa_id"] for c in web_fixtures.CASES]
     assert len(oa_ids) == len(set(oa_ids))
+
+
+@pytest.mark.parametrize("case", web_fixtures.CASES, ids=lambda c: c["case_id"])
+def test_묶음이_서버_계약과_같은_꼴이다(case):
+    # 서버 CaseRecord는 materials.case_id == case_id를 강제한다. run_id는 r_<oa_id> 꼴
+    bundle = web_fixtures._run_one(case)
+    assert bundle["materials"]["case_id"] == bundle["case_id"]
+    assert bundle["run_id"] == f"r_{bundle['oa_id']}"

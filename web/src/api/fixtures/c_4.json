@@ -3,7 +3,7 @@
   "case_name": "가상의 상태 표시 시연 장치",
   "last_opened_at": "2099-02-02T10:00:00",
   "oa_id": "oa_4",
-  "run_id": "r_oa_4_c_4",
+  "run_id": "r_oa_4",
   "oa_result": {
     "status": {
       "value": "conflict",
@@ -631,7 +631,7 @@
     "claim_rows": []
   },
   "materials": {
-    "case_id": "c_all_statuses",
+    "case_id": "c_4",
     "documents": [
       {
         "document_id": "doc_oa_1",

@@ -98,6 +98,8 @@ def _from_fixture_dir(c: dict) -> dict:
     d = c["fixture_dir"]
     oa = OAResult.model_validate_json((d / "oa_result.json").read_text("utf-8"))
     materials = CaseMaterials.model_validate_json((d / "case_materials.json").read_text("utf-8"))
+    # 서버는 ⑥의 case_id가 사건 id와 같아야 한다 (CaseRecord). fixture 폴더 이름 대신 사건 id로
+    materials = CaseMaterials.model_validate(materials.model_dump() | {"case_id": c["case_id"]})
     pages = PageText.model_validate_json((d / "pages.json").read_text("utf-8"))
     # None(마무리 안 한 ⑥)은 빈 목록으로 바꾸지 않는다: "0건"처럼 보이면 안 된다
     review = materials.review_items
@@ -106,7 +108,7 @@ def _from_fixture_dir(c: dict) -> dict:
         "case_name": c["case_name"],
         "last_opened_at": c["last_opened_at"],
         "oa_id": c["oa_id"],
-        "run_id": f"r_{c['oa_id']}_{c['case_id']}",
+        "run_id": f"r_{c['oa_id']}",  # 다른 사건과 같은 꼴
         "oa_result": oa.model_dump(mode="json"),
         "materials": materials.model_dump(mode="json"),
         "review_items": None if review is None else [r.model_dump(mode="json") for r in review],
