@@ -63,12 +63,23 @@ class _Inputs:
         )
 
 
+class _CaseFill:
+    """F1 뒤 사건 채우기 기록 (#261). 채우는 규칙은 tests/core/cases/test_case_fill.py가 본다."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def fill_after_f1(self, oa_id, run_id, result, text_status):
+        self.calls.append((oa_id, run_id, result.oa_id, text_status))
+
+
 class Env:
     def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None):
         self.store = store or MemoryStatusStore()
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.store)
         self.step_results = InMemoryStepResultStore()
+        self.case_fill = _CaseFill()
         self.inputs = _Inputs(tmp_path, with_texts)
         self.lock = threading.Lock()
         self.executor = RunCaseExecutor(
@@ -76,6 +87,7 @@ class Env:
             registry=self.registry,
             oa_results=self.oa_results,
             step_results=self.step_results,
+            case_fill=self.case_fill,
             inputs=self.inputs,
             cases=cases or _Cases(),
             config_path=real_config(tmp_path),
@@ -244,3 +256,28 @@ def test_run_case_서버에서는_한_번에_하나만_돈다(env):
     second.join(10)
     assert env.store.get_status("r_a").state == RunState.SUCCEEDED
     assert env.store.get_status("r_b").state == RunState.SUCCEEDED
+
+
+def test_run_case_F1_정리를_저장한_뒤_사건_번호와_사건_자료를_채운다(env):
+    # #261: 채우기가 없으면 사건 이름이 "출원번호 확인 전"에 남고 사건 자료가 404다
+    st = env.run()
+    assert st.state == RunState.SUCCEEDED
+    assert [(oa, run, res_oa) for oa, run, res_oa, _ in env.case_fill.calls] == [(OID, RID, OID)]
+    assert env.case_fill.calls[0][3] is not None  # 글자 추출 상태를 넘긴다
+
+
+def test_run_case_실패하면_사건을_채우지_않는다(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    env = Env(tmp_path, cases=_Cases(found=("c_옛", "oa_옛")))
+    env.run()
+    assert env.case_fill.calls == []
+
+
+def test_run_case_사건_채우기가_실패하면_failed_result_save_failed(env):
+    def boom(*a):
+        raise RuntimeError("postgres://비밀")
+
+    env.case_fill.fill_after_f1 = boom
+    st = env.run()
+    assert st.state == RunState.FAILED and st.error["code"] == "result_save_failed"
+    assert "비밀" not in st.error["message"]

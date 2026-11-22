@@ -252,6 +252,17 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
     oa = client.get(f"/oas/{oa_id}").json()
     assert oa["latest_run"]["run_id"] == run_id and oa["latest_run"]["state"] == "succeeded"
     assert results() == first
+    # #261: F1이 읽은 출원번호가 사건 이름이 되고, 발송번호가 OA에 남고, 사건 자료가 열린다
+    assert case["case_name"] == "1020990000001"
+    assert client.get("/cases").json()[0]["application_number"] == "1020990000001"
+    assert oa["dispatch_number"] == "952099000000001"
+    materials = client.get(f"/cases/{case_id}/materials")
+    assert materials.status_code == 200, materials.text
+    body = materials.json()
+    assert body["run_id"] == run_id
+    assert [d["document_id"] for d in body["result"]["documents"]] == [oa["document_id"]]
+    # 자동 조회(#54) 전이라 인용문헌 본문은 "올려 주세요"로 남는다 (지어내지 않음)
+    assert body["result"]["missing"] and all(m["ask_upload"] for m in body["result"]["missing"])
     # 모델 호출은 모두 이 실행 이름으로, 기록된 응답만 썼다
     assert server.recorder.records and {r.run_id for r in server.recorder.records} == {run_id}
 

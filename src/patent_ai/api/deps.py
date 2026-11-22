@@ -12,6 +12,7 @@ from fastapi import Depends
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from patent_ai.core.cases.case_fill import PostgresCaseFill
 from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
@@ -31,6 +32,7 @@ from patent_ai.core.runs.launcher import RunLauncher, ThreadLauncher
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
+from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.settings import get_settings
 
 
@@ -139,6 +141,11 @@ def _new_run_context(run_id: str) -> RunContext:
     return RunContext(run_id=run_id, budget=CallBudget(), recorder=MemoryRecorder())
 
 
+def _latest_oa_result(oa_id: str) -> OAResult | None:
+    saved = get_oa_result_store().latest_visible_oa_result(oa_id)
+    return saved.result if saved else None
+
+
 @lru_cache
 def _run_case_executor() -> RunCaseExecutor:
     """앱에 하나. 잠금 하나를 같이 써야 "한 번에 하나만 실행"이 지켜진다.
@@ -151,6 +158,8 @@ def _run_case_executor() -> RunCaseExecutor:
         registry=get_cancel_registry(),
         oa_results=get_oa_result_store(),
         step_results=get_step_result_store(),
+        # F1 뒤 사건 출원번호·발송번호와 사건 자료(⑥) (#261)
+        case_fill=PostgresCaseFill(factory, _latest_oa_result),
         # F3·F4 글자: OA 당시 청구항 판 + 최초 명세서 (#205)
         # 못 찾으면 F3·F4는 넘긴 이유와 함께 빈다
         inputs=PostgresRunInputSource(factory, texts=PostgresTextsSource(factory)),
