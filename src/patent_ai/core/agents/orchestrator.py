@@ -7,6 +7,8 @@
 - fixed_order 단계의 도구가 아직 없으면: 설정 skip_if_missing에 있는 이름만 "확인되지 않음"으로
   넘기고(경고 + 단계 기록에 이유), 없는 이름은 설정 오류로 failed (오타를 조용히 넘기지 않는다).
 - cut_to_oa(fixed_stage)는 decide가 stop을 낼 때 그래프 간선으로 늘 지난다 (지휘가 고르지 못함).
+- 사건 채우기(fill_case, #54): cut_to_oa 바로 앞에서 읽은 출원번호·발송번호로 사건을 OA 시점까지
+  채우고, 채운 사건에서 F3·F4 글자를 다시 만든다. 부르는 쪽이 fill_case를 주지 않으면 건너뛴다.
 - run_f3·run_f2·run_f4 입력은 앞 단계 결과와 실행 입력(CaseInput)으로 만든다 (step_inputs.py).
   입력을 못 만들면 그 단계를 "확인되지 않음(input_unverified)"으로 넘기고 이유를 남긴다.
 - 사건 상태는 따로 없다: 단계 결과를 results(도구 이름 -> 결과 스키마 객체)에 쌓아 돌려준다.
@@ -78,6 +80,21 @@ class CaseStore(Protocol):
         ...
 
 
+class FilledTexts(BaseModel):
+    """사건 채우기 결과: 채운 사건에서 만든 F3·F4 글자(못 만들면 None)와 무엇을 했는지 한 줄."""
+
+    texts: F3Inputs | None = None
+    reason: str  # 단계 기록·넘긴 이유에 남긴다 (원문 글자 없음)
+
+
+class CaseFiller(Protocol):
+    """서버가 넣어 주는 사건 채우기 (#54). F1이 번호를 읽은 뒤, F3 앞에서 한 번 부른다."""
+
+    def fill(self, oa_id: str, application_number: str, dispatch_number: str) -> FilledTexts:
+        """못 가져온 것은 예외가 아니라 reason에. 예외는 버그·DB 실패일 때만 (실행 failed)."""
+        ...
+
+
 class WaitingFor(StrEnum):
     """사람을 기다리는 이유."""
 
@@ -112,6 +129,8 @@ class _State(TypedDict):
     waiting_for: WaitingFor | None
     case_id: str  # 같은 출원번호의 기존 사건이 있으면 그 사건
     skipped: dict[str, str]  # 넘긴 단계 이름 -> 이유
+    texts: F3Inputs | None  # F3·F4가 읽는 글자 (처음엔 CaseInput.texts, 사건 채우기 뒤 바뀜)
+    fill_why: str | None  # 사건 채우기에서 글자를 못 만든 이유 (F3·F4 넘긴 이유에 붙인다)
 
 
 def _name_list(cfg: dict, key: str) -> list[str]:
@@ -135,6 +154,7 @@ def run_case(
     *,
     ctx: RunContext,
     steps: StepRecorder,
+    fill_case: CaseFiller | None = None,
 ) -> RunOutcome:
     """사건 1건을 그래프로 돌려 RunOutcome을 돌려준다. ctx·steps는 서버가 실행마다 만든다."""
     if store is None:
@@ -325,17 +345,41 @@ def run_case(
             name, state, payload, "고정 순서" if plan == "fixed_order" else "지휘 선택"
         )
 
+    def with_fill_why(state: _State, payload: dict | InputMissing) -> dict | InputMissing:
+        """글자가 없어 넘길 때 사건 채우기에서 못 만든 이유를 붙인다 (왜 없는지 보이게)."""
+        if isinstance(payload, InputMissing) and state["texts"] is None and state["fill_why"]:
+            return InputMissing(f"{payload.why} / 사건 채우기: {state['fill_why']}")
+        return payload
+
     def run_f3_node(state: _State) -> dict:
-        payload = f3_input(state["results"], state["case_id"], case_input.texts)
-        return chosen_tool("run_f3", state, payload)
+        payload = f3_input(state["results"], state["case_id"], state["texts"])
+        return chosen_tool("run_f3", state, with_fill_why(state, payload))
 
     def run_f2_node(state: _State) -> dict:
         payload = f2_input(state["results"], case_input.checked_on)
         return chosen_tool("run_f2", state, payload)
 
     def run_f4_node(state: _State) -> dict:
-        payload = f4_input(state["results"], case_input.texts, case_input.checked_on)
-        return chosen_tool("run_f4", state, payload)
+        payload = f4_input(state["results"], state["texts"], case_input.checked_on)
+        return chosen_tool("run_f4", state, with_fill_why(state, payload))
+
+    def fill_case_node(state: _State) -> dict:
+        """사건을 OA 시점까지 채우고 글자를 다시 만든다 (#54). check_oa가 번호를 확인한 뒤에만."""
+        if fill_case is None:
+            return {}
+        oa = state["results"]["read_oa"]
+        try:
+            out = fill_case.fill(oa_id, oa.application_number.value, oa.dispatch_number.value)
+        except Exception:
+            note("fixed_stage", "fill_case", "사건 채우기 실패", "failed")
+            raise
+        if out.texts is None:
+            # 글자를 못 만들어도 실행은 이어 간다 (F3·F4가 이유와 함께 넘겨진다).
+            # 부르는 쪽이 넣어 준 글자가 있으면 그대로 쓴다
+            note("fixed_stage", "fill_case", out.reason, "ok", StatusValue.UNVERIFIED.value)
+            return {"fill_why": out.reason}
+        note("fixed_stage", "fill_case", out.reason, "ok", out.texts.claims_status.value.value)
+        return {"texts": out.texts, "fill_why": None}
 
     def cut_node(state: _State) -> dict:
         return call_tool("cut_to_oa", state, {"materials": case_input.materials}, "고정 단계")
@@ -347,13 +391,14 @@ def run_case(
         return s["next_tool"]
 
     def after_check(s: _State) -> str:
-        return END if s["error"] or s["waiting_for"] else "cut_to_oa"
+        return END if s["error"] or s["waiting_for"] else "fill_case"
 
     g = StateGraph(_State)
     g.add_node("extract_pages", extract_pages_node)
     g.add_node("decide", decide_node)
     g.add_node("read_oa", read_oa_node)
     g.add_node("check_oa", check_oa_node)
+    g.add_node("fill_case", fill_case_node)
     g.add_node("cut_to_oa", cut_node)
     g.add_edge(START, "extract_pages")
     g.add_conditional_edges(
@@ -370,8 +415,9 @@ def run_case(
     g.add_conditional_edges(
         "read_oa", lambda s: END if s["error"] else "check_oa", ["check_oa", END]
     )
-    # read_oa → check_oa → cut_to_oa 는 고정 간선: 지휘가 건너뛸 수 없다
-    g.add_conditional_edges("check_oa", after_check, ["cut_to_oa", END])
+    # read_oa → check_oa → fill_case → cut_to_oa 는 고정 간선: 지휘가 건너뛸 수 없다
+    g.add_conditional_edges("check_oa", after_check, ["fill_case", END])
+    g.add_edge("fill_case", "cut_to_oa")
     g.add_conditional_edges("cut_to_oa", lambda s: END if s["error"] else "decide", ["decide", END])
 
     try:
@@ -384,6 +430,8 @@ def run_case(
                 "waiting_for": None,
                 "case_id": case_input.case_id,
                 "skipped": {},
+                "texts": case_input.texts,
+                "fill_why": None,
             }
         )
     except Exception:

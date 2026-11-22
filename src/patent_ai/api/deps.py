@@ -13,6 +13,9 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from patent_ai.core.cases.case_fill import PostgresCaseFill
+from patent_ai.core.cases.case_source.fill import PostgresCaseSourceFill
+from patent_ai.core.cases.case_source.filler import SourceCaseFiller
+from patent_ai.core.cases.case_source.local_folder import load_case_source
 from patent_ai.core.cases.human_inputs import HumanInputStore
 from patent_ai.core.cases.human_inputs_pg import PostgresHumanInputStore
 from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
@@ -176,6 +179,8 @@ def _run_case_executor() -> RunCaseExecutor:
     취소 표시·결과 저장소는 취소 API·결과 API가 쓰는 것과 같은 것을 넘긴다.
     """
     factory = sessionmaker(_engine())
+    texts = PostgresTextsSource(factory)
+    source = load_case_source()  # config/case_source.yaml (지금은 받아 둔 폴더, #54)
     return RunCaseExecutor(
         store=get_run_status_store(),
         registry=get_cancel_registry(),
@@ -185,7 +190,9 @@ def _run_case_executor() -> RunCaseExecutor:
         case_fill=PostgresCaseFill(factory, _latest_oa_result),
         # F3·F4 글자: OA 당시 청구항 판 + 최초 명세서 (#205)
         # 못 찾으면 F3·F4는 넘긴 이유와 함께 빈다
-        inputs=PostgresRunInputSource(factory, texts=PostgresTextsSource(factory)),
+        inputs=PostgresRunInputSource(factory, texts=texts),
+        # F1 뒤·F3 앞: OA 시점까지 이력·출원서·청구항 판을 채우고 글자를 다시 만든다 (#54)
+        fill_case=SourceCaseFiller(PostgresCaseSourceFill(factory, source), texts, source.name),
         cases=PostgresCaseLookup(factory),
         config_path=ORCHESTRATOR_CONFIG,
         make_ctx=_new_run_context,

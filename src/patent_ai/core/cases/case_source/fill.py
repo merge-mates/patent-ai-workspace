@@ -39,6 +39,7 @@ from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.propagation import finalize_case_materials
 from patent_ai.db.ids import new_id
 from patent_ai.db.models import OA, Case, CaseEvent, ClaimVersion, Document
+from patent_ai.git_paths import REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +113,17 @@ def plan_fill(
 
 
 def stored_file(path: Path) -> StoredFile:
-    """출원서 파일 정보. DB에는 경로·해시만 둔다 (원본은 받아 둔 폴더 그대로)."""
+    """출원서 파일 정보. DB에는 경로·해시만 둔다 (원본은 받아 둔 폴더 그대로).
+
+    저장소 안이면 저장소 뿌리 기준 상대 경로로 둔다 (올린 OA `work/uploads/…`와 같이, 서버를
+    컨테이너(/app)에서 돌리든 맥에서 돌리든 같은 줄이 읽히게).
+    """
+    try:
+        shown = str(path.resolve().relative_to(REPO_ROOT.resolve()))
+    except ValueError:
+        shown = str(path)
     return StoredFile(
-        path=str(path),
+        path=shown,
         sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         received_at=now_utc(),
     )

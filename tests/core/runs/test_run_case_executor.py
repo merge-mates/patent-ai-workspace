@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from patent_ai.core.agents.orchestrator import CaseInput
+from patent_ai.core.agents.orchestrator import CaseInput, FilledTexts
 from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputNotFound
@@ -77,7 +77,7 @@ class _CaseFill:
 
 
 class Env:
-    def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None):
+    def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None, fill_case=None):
         self.store = store or MemoryStatusStore()
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.store)
@@ -101,6 +101,7 @@ class Env:
             selections=self.selections,
             human=self.human,
             lock=self.lock,
+            fill_case=fill_case,
         )
 
     def run(self, run_id=RID, oa_id=OID):
@@ -160,6 +161,29 @@ def test_run_case_청구항_글자가_없으면_F3_F4는_넘긴_이유가_남고
     assert set(skipped) == {"run_f3", "run_f2", "run_f4"}
     assert skipped["run_f3"].startswith("input_unverified")
     assert skipped["run_f4"].startswith("input_unverified")
+
+
+class _FillCase:
+    """F1 뒤·F3 앞 사건 채우기 (#54). 채우는 규칙은 tests/core/cases/case_source가 본다."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def fill(self, oa_id, application_number, dispatch_number):
+        self.calls.append((oa_id, application_number, dispatch_number))
+        return FilledTexts(texts=texts(), reason="local_folder로 채움")
+
+
+def test_run_case_실행_입력에_글자가_없어도_사건을_채우면_F3_F4까지_돈다(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    fill = _FillCase()
+    env = Env(tmp_path, with_texts=False, fill_case=fill)
+    st = env.run()
+    assert st.state == RunState.SUCCEEDED
+    assert [c[0] for c in fill.calls] == [OID]
+    assert env.step_results.step_result(RID, "f3") is not None
+    assert env.step_results.step_result(RID, "f4") is not None
+    assert env.store.skipped_steps(RID) == []
 
 
 def test_run_case_단계가_실패하면_failed이고_예외_원문은_이유에_없다(tmp_path, monkeypatch):
