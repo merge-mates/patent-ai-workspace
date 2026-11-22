@@ -217,3 +217,6 @@ graph LR
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
+
+## 이슈 #212 (2단계·가중합 impl 실험, 작은 이슈: 이슈 본문 체크리스트가 계획)
+- [이슈 #212](https://github.com/merge-mates/patent-ai-workspace/issues/212) (설계는 design.md 7-6절)
