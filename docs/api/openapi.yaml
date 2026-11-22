@@ -539,6 +539,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /drafts/{draft_id}:
+    patch:
+      summary: Patch Draft
+      operationId: patch_draft_drafts__draft_id__patch
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Draft Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftPatchIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Drafts'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/case-check:
+    get:
+      summary: Get Case Check
+      operationId: get_case_check_oas__oa_id__case_check_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseCheck'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /oas/{oa_id}/oa-result/confirmation:
     put:
       summary: Put Confirmation
@@ -881,6 +935,54 @@ components:
       required:
       - source
       title: Candidate[str]
+    CaseCheck:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        items:
+          items:
+            $ref: '#/components/schemas/CaseCheckItem'
+          type: array
+          title: Items
+        unsupported_rejections:
+          items:
+            type: integer
+          type: array
+          title: Unsupported Rejections
+      additionalProperties: false
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - items
+      - unsupported_rejections
+      title: CaseCheck
+    CaseCheckItem:
+      properties:
+        name:
+          type: string
+          title: Name
+        result:
+          type: string
+          enum:
+          - ok
+          - warn
+          - fail
+          title: Result
+        detail:
+          type: string
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - result
+      - detail
+      title: CaseCheckItem
     CaseDetail:
       properties:
         case_id:
@@ -1717,6 +1819,26 @@ components:
       required:
       - dispatch_number
       title: DispatchNumberIn
+    DraftPatchIn:
+      properties:
+        section:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Section
+        claim:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Claim
+        text:
+          type: string
+          title: Text
+      type: object
+      required:
+      - text
+      title: DraftPatchIn
+      description: '둘 중 정확히 하나: 의견서 칸 key(section) 또는 보정 청구항 번호(claim).'
     Drafts:
       properties:
         status:

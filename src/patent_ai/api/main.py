@@ -10,6 +10,7 @@ from patent_ai.api import (
     deps,
     directions,
     documents,
+    drafts,
     health,
     human_inputs,
     oas,
@@ -44,6 +45,7 @@ def create_app(startup_store: RunStatusStore | None = None) -> FastAPI:
     app.include_router(runs.router)
     app.include_router(results.router)
     app.include_router(directions.router)
+    app.include_router(drafts.router)
     app.include_router(human_inputs.router)
     return app
 
