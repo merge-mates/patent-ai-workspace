@@ -45,7 +45,7 @@ def test_law_chunks_새_칸_upgrade는_옛_행을_statute로_채우고_downgrade
 
     from patent_ai.settings import get_settings
 
-    prev, rev = "d9e4b1c7a352", "c7e2a5d9f103"
+    prev, rev = "e2b7d5c9a184", "c7e2a5d9f103"
     # CI는 테스트 전에 head까지 올려 두므로 앞 revision으로 내려가서 시작한다
     _alembic("upgrade", "head")
     _alembic("downgrade", prev)

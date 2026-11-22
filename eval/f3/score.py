@@ -5,6 +5,15 @@
    - 검색 단계가 가져온 조각(search_log, 구성요소별 상위 k의 합집합) -> search_hit / search_recall
    - 모델이 근거로 고른 조각(rows의 "AI 찾음" evidence) -> selected_hit / selected_recall
    이 정답 위치와 겹치는지 (겹침 규칙은 검색 채점기의 CiteMatcher 그대로, search-gold.md 2절 3번).
+   대표 청구항 먼저 규칙으로 LLM 대비를 건너뛴 종속항 줄(보류 task가 `:dependent`로 끝남,
+   core/bundle_errors.py의 is_dependent_skip와 같은 규칙)은 검색은 했으므로 search_hit/recall에는
+   검색 기록으로 세고, selected_hit/recall은 분모에서 빼서 failures.skipped_dependent_rows로
+   따로 센다 (대비를 안 한 것이라 0점이 아니다). 검색 기록이 아예 없는 건너뛴 줄은
+   not_searched_rows에도 센다.
+   주의: skipped_dependent_rows가 0이 아닌 실행의 selected_*는 이전 셈법(건너뛴 줄 0점)과 분모가
+   다르다. 옛 셈법 값은 selected_recall_incl_skipped로 같이 낸다.
+   건너뛴 줄은 1차 검색만 했고 기준선은 2차 검색(round 2)이 search_log에 섞이므로, 비교는 1차 기록만
+   센 search_recall_round1로 한다 (모든 줄).
    예측에 "심사관 지정" 줄이 있으면 지정 번호를 준 실행이라 오염이다. 채점을 멈춘다.
 ② 신규성 한 문헌 규칙 위반 수 (failures.novelty_multi_citation, 0이어야 한다).
 ③ 명확성 문구 위치 일치: F1 정답 clarity_terms가 OA 당시 청구항 글자에서 나오는 자리와
@@ -42,6 +51,7 @@ from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
 from eval.retrieval.matchers import CiteMatcher
 from eval.retrieval.metrics import random_hit, random_recall
+from patent_ai.core.bundle_errors import is_dependent_skip
 from patent_ai.core.f3_claim_compare.textmatch import find_all_spans
 from patent_ai.retrieval.repository import (
     ChunkRepository,
@@ -66,6 +76,7 @@ NEEDS_HUMAN_GOLD = (
 FAILURE_KEYS = (
     "missing_prediction",
     "not_searched_rows",
+    "skipped_dependent_rows",
     "excluded_no_location",
     "excluded_clarity",
     "excluded_same_as_other",
@@ -141,6 +152,32 @@ def _chunk_ids(
     return searched, selected, sorted(elements), [list(p) for p in sorted(parents)]
 
 
+def _searched_round1(pred: F3Pred, rejection: int, claim: int, doc_id: str) -> set[str]:
+    """검색 기록 중 1차(round 1) 검색이 가져온 조각만 (2차 검색을 뺀다)."""
+    units = {u.unit_id for u in pred.units if u.rejection == rejection}
+    found: set[str] = set()
+    for log in pred.search_log:
+        if log.unit_id in units and log.claim == claim and log.doc_id == doc_id and log.round == 1:
+            found |= set(log.hit_chunk_ids)
+    return found
+
+
+_HELD_PREFIX = "f3_compare:"
+
+
+def _skipped_dependent(pred: F3Pred | None) -> set[tuple[str, int]]:
+    """대비를 건너뛴 (판단 단위, 청구항). 보류 task `f3_compare:<단위>:claim<N>:dependent`."""
+    skipped: set[tuple[str, int]] = set()
+    for held in pred.held_tasks if pred else []:
+        if not (held.task.startswith(_HELD_PREFIX) and is_dependent_skip(held.task)):
+            continue
+        body = held.task.removeprefix(_HELD_PREFIX).rsplit(":", 1)[0]  # 끝의 ":dependent" 뗌
+        unit_id, _, claim = body.rpartition(":claim")
+        if unit_id and claim.isdigit():
+            skipped.add((unit_id, int(claim)))
+    return skipped
+
+
 def _score_cite(
     cfg: F3EvalConfig,
     rows: list[GoldRow],
@@ -175,21 +212,42 @@ def _score_cite(
         if not kept:
             failures["excluded_gold_not_in_scope"] += 1
             continue
-        marks = per_oa.setdefault(dispatch, {k: [] for k in ("sh", "sr", "lh", "lr", "rr", "rh")})
+        marks = per_oa.setdefault(
+            dispatch, {k: [] for k in ("sh", "sr", "sr1", "lh", "lr", "li", "rr", "rh")}
+        )
         pred = by_dispatch.get(dispatch)
+        skipped_dep = False
+        round1: set[str] = set()
         if pred is None:
             missing.add(dispatch)
             searched, selected, elements, parents = set(), set(), [], []
         else:
             searched, selected, elements, parents = _chunk_ids(pred, rejection, claim, doc_id)
+            units = {u.unit_id for u in pred.units if u.rejection == rejection}
+            skipped_dep = any((u, claim) in _skipped_dependent(pred) for u in units)
+            round1 = _searched_round1(pred, rejection, claim, doc_id)
+            if skipped_dep:
+                if any(
+                    t.unit_id in units and r.claim == claim
+                    for t in pred.comparisons
+                    for r in t.rows
+                ):
+                    # 앱이 보류를 잘못 붙인 것: 건너뛰었다면서 그 청구항 대비 줄이 있다
+                    raise EvalError(
+                        f"건너뛴 종속항(청구항 {claim})에 대비 줄이 있다 (:dependent 보류 확인)"
+                    )
+                failures["skipped_dependent_rows"] += 1  # 검색만 하고 대비는 생략 (0점 아님)
             if not elements and not parents:
                 failures["not_searched_rows"] += 1  # 그 청구항 × 문헌을 찾은 기록이 없다 (0점)
         found_search = sum(1 for m in kept if m & searched)
         found_selected = sum(1 for m in kept if m & selected)
         marks["sh"].append(float(found_search > 0))
         marks["sr"].append(found_search / len(kept))
-        marks["lh"].append(float(found_selected > 0))
-        marks["lr"].append(found_selected / len(kept))
+        marks["sr1"].append(sum(1 for m in kept if m & round1) / len(kept))
+        marks["li"].append(found_selected / len(kept))  # 옛 셈법: 건너뛴 줄도 0점으로 넣는다
+        if not skipped_dep:  # 대비를 건너뛴 줄은 선택 지표 분모에서 뺀다
+            marks["lh"].append(float(found_selected > 0))
+            marks["lr"].append(found_selected / len(kept))
         # 무작위 기준선: 같은 범위(N개)에서 검색이 가져온 만큼(k)을 아무렇게나 뽑았을 때의 기대값.
         # 가져온 조각이 0개면 무작위도 0 (함수가 k=0을 막는다)
         if searched:
@@ -231,9 +289,16 @@ def _score_cite(
         raise EvalError(
             "검색 정답 줄을 빼고 남은 줄이 0개다 (설정 index_version과 색인 조각을 확인)"
         )
+    dropped = sum(1 for oa in per_oa.values() if oa["sr"] and not oa["lr"])
+    if dropped:
+        logger.warning(
+            "정답 줄이 모두 대비를 건너뛴 줄이라 selected 평균에서 빠진 OA %d개", dropped
+        )
     names = {
         "sh": "search_hit",
         "sr": "search_recall",
+        "sr1": "search_recall_round1",
+        "li": "selected_recall_incl_skipped",
         "lh": "selected_hit",
         "lr": "selected_recall",
         "rr": "random_search_recall",

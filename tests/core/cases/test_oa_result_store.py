@@ -61,7 +61,7 @@ def test_사람_기다림_실행의_결과는_돌려줌(runs, results):
     rid = runs.create_queued("oa_1").id
     results.save_oa_result("oa_1", rid, load_oa_result())
     runs.transition(rid, RunState.RUNNING)
-    runs.transition(rid, RunState.WAITING_FOR_HUMAN, waiting_for="direction_selection")
+    runs.transition(rid, RunState.WAITING_FOR_HUMAN, waiting_for="application_number")
     assert results.latest_visible_oa_result("oa_1").run_id == rid
 
 

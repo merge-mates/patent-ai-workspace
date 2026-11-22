@@ -1,6 +1,7 @@
 // mock 모드 (VITE_API_MODE=mock): 서버 없이 fixture를 돌려준다.
 // fixture는 scripts/web_fixtures.py가 가짜 통지서 + 기록된 모델 응답으로 만든 것 (git에 있음).
 // 시연용 실제 결과(web/.demo/*.json, git 밖)는 VITE_DEMO=1일 때만 더 읽는다.
+import { HUMAN_ENTERED_CHECKED } from '../labels'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { OAResult, RejectionKind } from '../types/generated/OAResult'
 import type { PageText } from '../types/generated/PageText'
@@ -146,7 +147,7 @@ export const mockApi = {
   async getOAResult(oaId: string): Promise<OAResultResponse> {
     const b = await byOA(oaId)
     const runId = gateResult(b)
-    return { oa_id: b.oa_id, run_id: runId, status: b.oa_result.status.value, result: b.oa_result }
+    return { oa_id: b.oa_id, run_id: runId, status: b.oa_result.status.value, result: withHumanNumber(b) }
   },
   async getMaterials(caseId: string): Promise<CaseMaterials> {
     const b = await byCase(caseId)
@@ -217,7 +218,7 @@ export const mockApi = {
     if (!found.candidates.some((c) => c.candidate_id === candidateId))
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
-    found.selection = { candidate_id: candidateId, origin: 'human_selected' }
+    found.selection = { candidate_id: candidateId, written_direction: null, origin: 'human_selected' }
     saveSelection(unitId, candidateId)
     // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
     return found
@@ -294,7 +295,7 @@ export const mockApi = {
   async uploadDocument(_caseId: string, _file: File, _what: string): Promise<UploadedDocument> {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
-  // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버에는 아직 이 API가 없다)
+  // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버는 PATCH /cases/{id}, #70)
   async setApplicationNumber(caseId: string, applicationNumber: string): Promise<void> {
     const b = await byCase(caseId)
     saveAppNumber(b.case_id, applicationNumber)
@@ -398,11 +399,28 @@ function saveAppNumber(caseId: string, n: string) {
     console.warn(`[mock] 출원번호를 저장하지 못함 (${appNumberKey(caseId)})`, e)
   }
 }
+// 서버와 같게: 사람이 넣은 출원번호는 값·글자를 사람 것으로, 쪽은 비우고 "사람이 직접 입력함" 확인 글 (#70)
+function withHumanNumber(b: Bundle): OAResult {
+  const n = loadAppNumber(b.case_id)
+  if (n === null || b.oa_result.application_number.status.value === 'confirmed') return b.oa_result
+  const digits = n.replace(/-/g, '')
+  return {
+    ...b.oa_result,
+    application_number: {
+      value: digits,
+      raw_text: digits,
+      page: null,
+      status: { value: 'confirmed', reason: null, checked: HUMAN_ENTERED_CHECKED, searched_scope: null },
+      candidates: [],
+    },
+  }
+}
+
 // 지휘(orchestrator)와 같은 규칙: 통지서에서 읽은 출원번호가 확인됨이 아니면(확인되지 않음·충돌) 사람에게 묻는다
 const needsAppNumber = (b: Bundle) =>
   b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
 
-// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 확신 낮은 묶음이 아직 안 골라졌으면 방향 고르기 기다림, 아니면 끝남.
+// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 아니면 끝남 (방향 고르기는 실행을 멈추지 않는다: 확신 낮은 묶음은 선택 null로 두고 실행은 succeeded).
 // mock 단순화: 출원번호를 기다리는 동안에도 뒤 단계 결과(예시)는 열어 둔다 (서버는 OA 정리까지만 있다)
 function runOf(b: Bundle): RunStatusLike {
   const run = loadRun(b.oa_id)
@@ -412,12 +430,8 @@ function runOf(b: Bundle): RunStatusLike {
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
-  const waiting = (directions[b.oa_id] ?? []).some(
-    (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
-  )
-  return waiting
-    ? { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'direction_selection' }
-    : { run_id, state: 'succeeded', current_step: null }
+  // 방향 고르기는 실행을 멈추지 않는다 (확신 낮은 묶음은 선택 null + 초안 보류, 실행은 succeeded)
+  return { run_id, state: 'succeeded', current_step: null }
 }
 // latest_run(getOA)에는 waiting_for가 없고 GET /runs/{id}에만 있다 (서버 oas.py LatestRun과 같게)
 type RunStatusLike = LatestRun & { waiting_for?: string | null }
@@ -436,8 +450,8 @@ function gate(b: Bundle, need: number) {
 }
 
 // 결과 엔드포인트의 계약 (안 B): "가장 최근에 결과가 확정된 실행"의 결과만 준다. 실행 중·실패·취소된 실행의 결과는 주지 않는다.
-// 판단: waiting_for_human은 서버 계약에 빈칸이다. mock은 "방향 후보까지 결과가 확정돼 사람이 고르기를 기다리는 상태"로 보고
-// 그 실행의 결과를 열어 둔다 (안 열면 방향을 고를 수 없어 올리기 → 방향 고르기 → 초안 흐름이 끊긴다).
+// 판단: waiting_for_human은 출원번호·발송번호를 기다리는 실행뿐이다. 그 실행도 그때까지 확정된 결과는 열어 둔다
+// (방향 고르기는 실행을 멈추지 않아 succeeded 실행의 결과로 본다).
 // 돌려주는 값은 결과가 속한 실행의 run_id (다시 돌리는 중이면 이전 실행 것이라 화면의 "이전 실행 결과"가 보인다)
 function gateResult(b: Bundle): string {
   const runId = lastDoneRunId(b)
@@ -474,7 +488,7 @@ function storeWrite(key: string, value: string | null) {
 }
 
 function saveSelection(unitId: string, candidateId: string) {
-  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, origin: 'human_selected' }))
+  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, written_direction: null, origin: 'human_selected' }))
 }
 
 // 예시와 human_text가 달라진 칸(= 사람이 바꾼 칸)만 모아 저장. 하나도 없으면 키를 지운다
@@ -532,7 +546,7 @@ function applySaved() {
       if (!unit) drop(key, '판단 단위가 예시에 없음')
       else if (!saved || typeof saved.candidate_id !== 'string') drop(key, '저장된 값을 읽을 수 없음')
       else if (!unit.candidates.some((c) => c.candidate_id === saved.candidate_id)) drop(key, '후보가 예시에 없음')
-      else unit.selection = { candidate_id: saved.candidate_id, origin: 'human_selected' }
+      else unit.selection = { candidate_id: saved.candidate_id, written_direction: null, origin: 'human_selected' }
     } else if (key.startsWith(`${STORE_PREFIX}draft:`)) {
       const draftId = key.slice(`${STORE_PREFIX}draft:`.length)
       const saved = readJson(key) as Partial<SavedDraft> | null | undefined

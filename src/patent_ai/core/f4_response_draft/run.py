@@ -1,7 +1,9 @@
 """F4 진입 함수: 방향 후보 → 의견서 초안 → 보정 청구항 초안 → 한데 묶기.
 
-멈추지 않고 끝까지 돈다 (확신 낮은 묶음은 그 묶음만 보류). 사람을 기다릴지는 지휘가 정한다.
-단계가 예외로 실패하면 삼키지 않고 그대로 올린다 (지휘가 실행을 failed로 끝낸다).
+멈추지 않고 끝까지 돈다 (확신 낮은 묶음, 모델 호출이 실패한 묶음은 그 묶음만 보류).
+사람을 기다릴지는 지휘가 정한다. 방향 후보 호출이 모델을 부른 모든 묶음에서 실패하면(아무것도
+못 낸 것) 그 원래 예외를 올린다 (지휘가 실행을 failed로 끝낸다). 의견서·보정 실패는 늘 그 묶음 보류.
+호출 상한에 닿은 묶음은 limit_reached로 보류하고 끝낸다.
 """
 
 import logging
@@ -25,7 +27,11 @@ from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Flag, worst_status
-from patent_ai.core.schemas.direction import AmendmentLimit
+from patent_ai.core.schemas.direction import (
+    AmendmentLimit,
+    DirectionCandidates,
+    DirectionSelection,
+)
 from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
@@ -57,15 +63,65 @@ def final_limit_note(oa: OAResult, options: F4Options) -> str:
 def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -> F4Output:
     """OA 하나의 대응 방향 후보와 초안을 만든다. 모델 호출 순서는 방향 → 의견서 → 보정."""
     options = options or load_f4_options()
-    oa_id = inp.oa.oa_id
-
     directions = build_directions(inp, ctx, options=options)
+    return _drafts_and_checks(inp, directions, ctx, options)
+
+
+def redo_drafts(
+    inp: F4Input,
+    prev: F4Output,
+    selections: dict[str, DirectionSelection],
+    *,
+    ctx: RunContext,
+    options: F4Options | None = None,
+) -> F4Output:
+    """사람이 방향을 고른 뒤 초안만 다시 만든다 (#70). 방향 후보는 앞 실행(prev) 것을 그대로 쓴다.
+
+    selections: 묶음(unit_id) -> 사람 선택. 없는 묶음은 앞 실행의 선택을 그대로 둔다.
+    직접 쓴 방향(written_direction)은 AI가 초안을 만들지 않아 그 묶음은 보류로 남는다.
+    의견서·보정은 OA 하나에 하나라 모든 묶음을 다시 잇는다 (바뀌지 않은 묶음은 같은 입력이라
+    진짜 전송층에서는 모델 호출 캐시에 걸려 비용이 다시 들지 않는다).
+    """
+    options = options or load_f4_options()
+    if prev.oa_id != inp.oa.oa_id:
+        raise ValueError(f"앞 실행 결과의 OA({prev.oa_id})가 입력 OA({inp.oa.oa_id})와 다름")
+    by_unit = {d.unit_id: d for d in prev.directions}
+    unknown = sorted(set(selections) - set(by_unit))
+    if unknown:
+        raise ValueError(f"앞 실행에 방향 후보가 없는 묶음: {unknown}")
+    directions = [
+        # 다시 검사한다: 후보 밖 id·origin 어긋남은 DirectionCandidates가 거부한다
+        DirectionCandidates.model_validate(
+            {
+                **d.model_dump(mode="json"),
+                "selection": selections[d.unit_id].model_dump(mode="json"),
+            }
+        )
+        if d.unit_id in selections
+        else d
+        for d in prev.directions
+    ]
+    return _drafts_and_checks(inp, directions, ctx, options)
+
+
+def _drafts_and_checks(
+    inp: F4Input, directions: list[DirectionCandidates], ctx: RunContext, options: F4Options
+) -> F4Output:
+    """방향 후보(고른 것 포함)로 의견서 → 보정 → 묶기, 그리고 누락·보류 검사."""
+    oa_id = inp.oa.oa_id
     opinion = build_opinion(inp, directions, ctx, options=options)
     limit_note = final_limit_note(inp.oa, options)
     amendment = build_amendments(
         inp, directions, opinion, ctx, options=options, limit_note=limit_note
     )
-    drafts = assemble_drafts(oa_id, opinion, amendment)
+    # 모델 호출 실패·상한으로 보류한 묶음의 status: 같은 등급에 가려지지 않게 맨 앞에 둔다.
+    # 실행 status와 초안 status가 같은 목록을 쓴다
+    lead_statuses = [
+        *[d.status for d in directions if not d.candidates and d.needs_recheck],
+        *opinion.failed_statuses,
+        *amendment.failed_statuses,
+    ]
+    drafts = assemble_drafts(oa_id, opinion, amendment, lead_statuses)
 
     # 보류한 묶음: 의견서 보류(확신 낮음) + 보정 보류(청구항 글자 없음 등), 묶음 순서 그대로
     held = [
@@ -107,7 +163,9 @@ def run_f4(inp: F4Input, *, ctx: RunContext, options: F4Options | None = None) -
     if unchecked:
         flag(Flag.NEEDS_HUMAN_REVIEW)
 
-    statuses = [d.status for d in directions] + ([drafts.status] if drafts else [])
+    # 모델 호출 실패(호출 상한 포함)로 보류한 묶음의 이유를 맨 앞에 둔다 (초안이 없어도 남는다)
+    statuses = list(lead_statuses)
+    statuses += [d.status for d in directions] + ([drafts.status] if drafts else [])
     # 확인됨일 때의 글: 보류·누락이 있으면 "모두 확인됨"이라고 쓰지 않고 사실대로 적는다
     # (status 값은 원문 확인 여부만 뜻하고, 사람이 봐야 할 것은 flags와 아래 칸들로 드러낸다)
     notes: list[str] = []

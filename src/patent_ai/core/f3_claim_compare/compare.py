@@ -14,12 +14,20 @@
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.bundle_errors import (
+    BUNDLE_ERRORS,
+    DEPENDENT_SKIPPED,
+    hold_for_error,
+    is_limit,
+)
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation, resolve_citations
+from patent_ai.core.f3_claim_compare.clarity import SpecIndex, build_spec_index
+from patent_ai.core.f3_claim_compare.effects import Difference, extract_effects
 from patent_ai.core.f3_claim_compare.elements import ClaimElement, SplitClaim
 from patent_ai.core.f3_claim_compare.examiner import (
     examiner_locations,
@@ -61,6 +69,8 @@ from patent_ai.retrieval.schemas import Chunk, SearchResult
 logger = logging.getLogger(__name__)
 
 STEP = "f3.compare"
+# 설정 compare_variant=recall일 때 쓰는 단계 (프롬프트 파일만 다르고 출력 모양·검사는 같다)
+STEP_RECALL = "f3.compare_recall"
 EMBED_STEP = "f3.embed"
 _MODES = ("bm25", "vector", "hybrid")
 
@@ -93,10 +103,16 @@ class CompareAnswer(BaseModel):
 
 # ---- 이 단계가 돌려주는 것 ----
 class CompareOutput(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     tables: list[ComparisonTable] = Field(default_factory=list)
     held_tasks: list[HeldTask] = Field(default_factory=list)
+    # 호출 실패(상한 제외)로 보류한 묶음의 원래 예외와 모델 호출까지 간 묶음 수
+    # (모델을 부르기 전에 보류로 끝난 묶음, 예: 인용문헌 본문 없음은 세지 않는다).
+    # run_f3가 "모든 묶음 실패 = 단계 전체가 못 돔"을 가르고 마지막 원래 예외를 올리는 데 쓴다
+    # (결과 모양이 아니라 저장하지 않는다)
+    call_errors: list[Exception] = Field(default_factory=list, exclude=True)
+    units_tried: int = 0
     search_log: list[SearchLogRow] = Field(default_factory=list)
     examiner_locations: list[ExaminerLocationRow] = Field(default_factory=list)
 
@@ -336,17 +352,19 @@ def _log_status(result: SearchResult, scope: str) -> Status:
     return unverified(UnverifiedReason.BODY_MISSING)
 
 
-def _gather(
+def _search_elements(
     unit: JudgmentUnit,
     claim: int,
     items: list[_Item],
     cites: list[ResolvedCitation],
-    oa: OAResult,
     config: F3Config,
     searcher: Searcher,
-    repo: ChunkRepository,
     seen: _Collected,
 ) -> dict[str, _Candidate]:
+    """구성요소마다 인용문헌별로 검색(BM25+벡터)하고 검색 기록을 남긴다.
+
+    대비하는 청구항(_gather)과 대비를 건너뛴 종속항(_search_skipped)이 같이 쓴다.
+    """
     settings = config.settings
     search = settings.search
     mode = _mode(search.impl)
@@ -374,6 +392,23 @@ def _gather(
             for hit in result.hits:
                 found = candidates.setdefault(hit.chunk_id, _Candidate(hit, cite.label))
                 found.ranks[item.n] = hit.rank
+    return candidates
+
+
+def _gather(
+    unit: JudgmentUnit,
+    claim: int,
+    items: list[_Item],
+    cites: list[ResolvedCitation],
+    oa: OAResult,
+    config: F3Config,
+    searcher: Searcher,
+    repo: ChunkRepository,
+    seen: _Collected,
+) -> dict[str, _Candidate]:
+    settings = config.settings
+    search = settings.search
+    candidates = _search_elements(unit, claim, items, cites, config, searcher, seen)
     if not settings.use_examiner_paragraphs:
         return candidates  # 평가 누출 막기: 심사관 위치를 읽지도 않는다
     for cite in cites:
@@ -458,10 +493,54 @@ def _check(
     return judged, errors
 
 
+def _compare_step(settings: F3Settings) -> str:
+    """설정 스위치(compare_variant)로 어느 대비 단계(프롬프트)를 부를지 고른다."""
+    return STEP_RECALL if settings.compare_variant == "recall" else STEP
+
+
 def _item_line(item: _Item, claim: int) -> str:
     """모델에 보여 줄 구성요소 한 줄. 부모 청구항에서 온 것은 어느 청구항 것인지 덧붙인다."""
     line = f"{item.n}: {' '.join(item.e.text.split())}"
     return line if item.e.claim == claim else f"{line} (청구항 {item.e.claim}의 구성요소)"
+
+
+def _by_element(items: list[_Item], shown: list[_Candidate]) -> str:
+    """구성요소마다 그 구성요소 검색에서 온 후보 문단(검색 순위 순)을 묶은 JSON 글.
+
+    어느 구성요소 검색에도 안 잡힌 후보(도면 설명 등)는 맨 끝 element_no null 묶음에 둔다.
+    출력 모양·근거 검사는 그대로다: 근거는 여전히 후보 chunk_id와 원문 글자로 대조한다.
+    """
+    groups = [
+        {
+            "element_no": item.n,
+            "candidates": [
+                {
+                    "chunk_id": c.chunk.chunk_id,
+                    "citation": c.label,
+                    "rank": c.ranks[item.n],
+                    "text": c.chunk.text,
+                }
+                for c in sorted(
+                    (c for c in shown if item.n in c.ranks),
+                    key=lambda c: (c.ranks[item.n], c.label, c.chunk.chunk_id),
+                )
+            ],
+        }
+        for item in items
+    ]
+    wanted = {item.n for item in items}
+    rest = [c for c in shown if not wanted & c.ranks.keys()]
+    if rest:
+        groups.append(
+            {
+                "element_no": None,
+                "candidates": [
+                    {"chunk_id": c.chunk.chunk_id, "citation": c.label, "text": c.chunk.text}
+                    for c in rest
+                ],
+            }
+        )
+    return json.dumps(groups, ensure_ascii=False, indent=1)
 
 
 def _ask(
@@ -472,6 +551,7 @@ def _ask(
     candidates: Mapping[str, _Candidate],
     min_chars: int,
     ctx: RunContext,
+    step: str = STEP,
 ) -> dict[tuple[int, str], _Judged]:
     """모델 1회. 형식이나 대조 검사에 떨어지면 검사 오류를 붙여 한 번만 더 부른다.
 
@@ -494,12 +574,17 @@ def _ask(
         ),
         "retry_note": "",
     }
+    if step == STEP_RECALL:
+        # recall 프롬프트만: 후보를 한 덩어리로 주지 않고 구성요소마다 그 검색 문단을 나눠 준다.
+        # 끔(standard) 변수·프롬프트는 그대로라 캐시 키가 안 바뀐다
+        del variables["candidates"]
+        variables["candidates_by_element"] = _by_element(items, shown)
 
     def check(answer: CompareAnswer):
         return _check(answer, claim, pairs, candidates, min_chars)
 
     who = f"compare 청구항 {claim}"
-    return call_checked(STEP, variables, CompareAnswer, check, ctx=ctx, who=who)
+    return call_checked(step, variables, CompareAnswer, check, ctx=ctx, who=who)
 
 
 # ---- 3) 줄 만들기 ----
@@ -665,7 +750,14 @@ def _second_round(
     if candidates:
         items = list({i.n: i for i, _ in missing}.values())
         again = _ask(
-            claim, view.claim_text, items, pairs, candidates, settings.min_quote_chars, ctx
+            claim,
+            view.claim_text,
+            items,
+            pairs,
+            candidates,
+            settings.min_quote_chars,
+            ctx,
+            _compare_step(settings),
         )
     else:
         logger.warning("compare 청구항 %d: 두 번째 검색에서 새 조각이 0개", claim)
@@ -698,7 +790,8 @@ def _compare_claim(
     if usable and candidates:
         min_chars = config.settings.min_quote_chars
         pairs = [(i.n, label) for i in usable for label in labels]
-        judged = _ask(claim, view.claim_text, usable, pairs, candidates, min_chars, ctx)
+        step = _compare_step(config.settings)
+        judged = _ask(claim, view.claim_text, usable, pairs, candidates, min_chars, ctx, step)
     elif usable:
         # 후보가 하나도 없으면 모델을 부르지 않는다: 모두 "조회 범위 내 없음"
         logger.warning("compare 청구항 %d: 후보 조각이 0개라 모델을 부르지 않음", claim)
@@ -770,8 +863,25 @@ def _status_note(rows: list[ComparisonRow], key: _Key, mark: Judgment) -> str:
     return f" (조회 범위 내 없음{where}, 없다는 판단 아님)"
 
 
+def _open_differences(rows: list[ComparisonRow], lost: set[_Key]) -> list[Difference]:
+    """효과 후보를 찾을 차이점: 개시됨이 없고 글자를 확인한 구성요소 (번호는 1부터)."""
+    marks = _element_marks(rows, lost)
+    open_ = [
+        (location, text)
+        for (claim, location), (text, mark) in marks.items()
+        if mark != Judgment.DISCLOSED and (claim, location) not in lost
+    ]
+    # 부모 구성요소가 종속항마다 되풀이돼도 같은 구성요소는 한 번만 보낸다
+    unique = list(dict.fromkeys(open_))
+    return [Difference(n, location, text) for n, (location, text) in enumerate(unique, start=1)]
+
+
 def _inventive_summary(
-    rows: list[ComparisonRow], lost: set[_Key], rej: Rejection, settings: F3Settings
+    rows: list[ComparisonRow],
+    lost: set[_Key],
+    rej: Rejection,
+    settings: F3Settings,
+    effects: list[str],
 ) -> InventiveSummary:
     marks = _element_marks(rows, lost)
     # 차이점: 대비한 어느 문헌에서도 개시됨 줄이 없는 구성요소.
@@ -791,14 +901,11 @@ def _inventive_summary(
         # 심사관 쪽 글을 쓰지 않는 실행: 결합 논리 원문도 싣지 않는다
         logger.warning("compare 거절이유 %d: 설정에 따라 심사관 결합 논리를 싣지 않음", rej.no)
         combination = "심사관 결합 논리를 싣지 않음 (use_examiner_paragraphs=false)"
-    logger.warning(
-        "compare 거절이유 %d: 효과 후보는 아직 뽑지 않음 (빈 목록, 직접 검토 필요)", rej.no
-    )
     return InventiveSummary(
         kind="inventive_step",
         differences=differences,
         combination=combination,
-        effect_candidates=[],
+        effect_candidates=effects,
     )
 
 
@@ -858,6 +965,65 @@ def _novelty_summary(
     return NoveltySummary(kind="novelty", citation=label, verdict=verdict, reason=reason)
 
 
+# ---- 진보성: 독립항 먼저 ----
+
+
+def _lost_elements(views: Mapping[int, _View]) -> set[_Key]:
+    """나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)."""
+    return {
+        (v.claim, i.e.element_location)
+        for v in views.values()
+        for i in v.items
+        if i.e.status.value != StatusValue.CONFIRMED
+    }
+
+
+def _covered_by_rep(
+    claim: int,
+    rep: int,
+    cites_of: Mapping[int, list[ResolvedCitation]],
+    splits: Mapping[int, SplitClaim],
+) -> bool:
+    """대표 청구항의 차이점 때문에 이 종속항 대비를 건너뛰어도 되나.
+
+    둘 다 맞아야 한다: (1) 이 청구항이 대표 청구항을 거슬러 올라가 인용해 대표의 구성요소를 다
+    가진다 (인용 가지가 여럿이면 어느 가지에 대표가 있는지 몰라 아님), (2) 이 청구항에 붙은
+    인용문헌이 모두 대표 청구항에도 붙어 있다.
+    """
+    family = ancestors(claim, splits)
+    if not family or rep not in family or _has_branch(claim, splits):
+        return False
+    return {c.label for c in cites_of[claim]} <= {c.label for c in cites_of.get(rep, [])}
+
+
+def _search_skipped(
+    unit: JudgmentUnit,
+    view: _View,
+    cites: list[ResolvedCitation],
+    config: F3Config,
+    searcher: Searcher,
+    seen: _Collected,
+) -> None:
+    """대표 청구항 때문에 대비를 건너뛴 종속항: 검색만 하고 기록을 남긴다 (모델 호출 없음).
+
+    의견서 실무에서 독립항 다음에 종속항 후보 문단을 찾으므로, 대표 판정이 틀려도 후보 문단이
+    남는다 (11/22 결정). 대비표 줄·second_search는 만들지 않는다. 심사관 지정 조각도 읽지 않는다.
+    """
+    usable = [i for i in view.items if i.e.status.value == StatusValue.CONFIRMED]
+    _search_elements(unit, view.claim, usable, cites, config, searcher, seen)
+
+
+def _independent_collapsed(rows: list[ComparisonRow], lost: set[_Key], rep: int) -> bool | None:
+    """독립항(대표 청구항) 줄이 모두 개시됨이면 True (무너짐). 줄이 없으면 None (알 수 없음).
+
+    기준은 design 3-3의 지금 규칙 그대로다. 못 가린 것(불명)도 개시됨이 아니라 무너짐이 아니다.
+    """
+    marks = _element_marks([r for r in rows if r.claim == rep], lost)
+    if not marks:
+        return None
+    return all(mark == Judgment.DISCLOSED for _, mark in marks.values())
+
+
 # ---- 단위 하나 ----
 def _labels_for(oa: OAResult, rejection_no: int, claim: int, group: list[ResolvedCitation]):
     """그 청구항에 심사관이 적용한 인용문헌만. 청구항 줄이 없거나 인용이 비면 묶음 전부."""
@@ -872,6 +1038,69 @@ def _hold(seen: _Collected, task: str, waiting_for: str) -> None:
         seen.held.append(HeldTask(task=task, waiting_for=waiting_for))
 
 
+def _hold_error(seen: _Collected, unit_id: str, error: Exception) -> None:
+    held = hold_for_error("f3_compare", unit_id, error)
+    _hold(seen, held.task, held.waiting_for)
+
+
+def _effect_candidates(
+    unit: JudgmentUnit,
+    oa: OAResult,
+    rows: list[ComparisonRow],
+    lost: set[_Key],
+    config: F3Config,
+    ctx: RunContext,
+    seen: _Collected,
+    spec_index: Callable[[], SpecIndex] | None,
+) -> list[str]:
+    """진보성 차이점의 효과 반박 후보 (최초 명세서에서 뽑고 코드가 원문 위치를 확인한다).
+
+    차이점이 없으면 부르지 않는다. 최초 명세서가 없으면 못 뽑고 본문 미확보 보류를 남긴다
+    (`f3_compare:<oa_id>:spec`, 효과 후보 칸은 빈 목록). 원문 대조에 떨어진 문장은 빼고
+    건수만 보류 `f3_compare:<unit_id>:effect`로 남긴다. 효과 단계의 모델 호출이 실패해도
+    대비표는 버리지 않는다: 효과 후보만 빈 목록 + 보류 `f3_compare:<unit_id>:effect:<이유>`.
+    """
+    differences = _open_differences(rows, lost)
+    if not differences:
+        return []
+    index = spec_index() if spec_index else build_spec_index(config.inputs.spec, config.settings)
+    if index.searcher is None:
+        logger.warning(
+            "compare %s: 최초 명세서 글자가 없어 효과 후보를 뽑지 못함 (확인되지 않음)",
+            unit.unit_id,
+        )
+        waiting = "최초 명세서 본문 (올려 주면 효과 후보 뽑기)"
+        _hold(seen, f"f3_compare:{oa.oa_id}:spec", waiting)
+        # 진보성 단위마다도 남긴다: F4가 그 묶음 후보 확인 사항에 싣는다 (`<unit_id>` 접두로 찾음)
+        _hold(seen, f"f3_compare:{unit.unit_id}:spec", waiting)
+        return []
+    try:
+        found = extract_effects(differences, index, config, ctx=ctx, who=f"effect {unit.unit_id}")
+    except BUNDLE_ERRORS as e:
+        # 대비 줄은 이미 나왔다: 표는 남기고 효과 후보만 못 뽑은 것으로 보류한다 (#211 방식)
+        _hold_error(seen, f"{unit.unit_id}:effect", e)
+        return []
+    if found.dropped:
+        logger.warning(
+            "compare %s: 효과 문장 %d건이 명세서 원문과 맞지 않아 뺌", unit.unit_id, found.dropped
+        )
+        _hold(
+            seen,
+            f"f3_compare:{unit.unit_id}:effect",
+            f"효과 문장 {found.dropped}건이 최초 명세서 원문과 맞지 않아 뺌 (직접 확인)",
+        )
+    if not found.lines and not found.dropped:
+        # 모델이 고른 문장이 하나도 없다: 빈 목록이 조용히 지나가지 않게 알린다
+        logger.warning(
+            "compare %s: 차이점 %d개에서 효과 문장을 못 찾음 (조회 범위: 명세서 조각 상위 %d, "
+            "없다는 판단 아님)",
+            unit.unit_id,
+            len(differences),
+            config.settings.effect_search.k,
+        )
+    return found.lines
+
+
 def compare_unit(
     unit: JudgmentUnit,
     oa: OAResult,
@@ -881,6 +1110,33 @@ def compare_unit(
     ctx: RunContext,
     searcher: Searcher,
     repo: ChunkRepository,
+    spec_index: Callable[[], SpecIndex] | None = None,
+) -> CompareOutput:
+    """판단 단위 하나를 대비한다. 모델 호출이 실패하면 그 단위만 보류한 결과를 돌려준다.
+
+    실패 전에 같은 단위에서 이미 나온 "필요한 자료" 보류(본문 미확보 등)는 버리지 않고 남긴다.
+    실패한 단위의 대비표와 검색 기록은 남기지 않는다 (일부만 있는 표를 확인된 것처럼 두지 않음).
+    """
+    seen = _Collected()
+    try:
+        return _compare_unit(unit, oa, splits, config, ctx, searcher, repo, seen, spec_index)
+    except BUNDLE_ERRORS as e:
+        _hold_error(seen, unit.unit_id, e)
+        # BUNDLE_ERRORS는 모델 호출에서만 나므로 이 묶음은 모델을 부른 묶음으로 센다
+        errors = [] if is_limit(e) else [e]
+        return CompareOutput(held_tasks=seen.held, call_errors=errors, units_tried=1)
+
+
+def _compare_unit(
+    unit: JudgmentUnit,
+    oa: OAResult,
+    splits: Mapping[int, SplitClaim],
+    config: F3Config,
+    ctx: RunContext,
+    searcher: Searcher,
+    repo: ChunkRepository,
+    seen: _Collected,
+    spec_index: Callable[[], SpecIndex] | None = None,
 ) -> CompareOutput:
     """진보성·신규성 판단 단위 하나를 대비한다.
 
@@ -892,7 +1148,6 @@ def compare_unit(
     rej = next(r for r in oa.rejections if r.no == unit.rejection)
     searcher = _cached(searcher)  # 같은 검색은 한 번만
     settings = config.settings
-    seen = _Collected()
     resolved = resolve_citations(rej, oa.oa_id, repo, settings.search.index_version)
     for r in resolved:
         if r.held_task is not None:
@@ -910,6 +1165,7 @@ def compare_unit(
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
     # 어느 묶음에서든 대비된 청구항 (신규성은 문헌마다 묶음이 따로라 합쳐서 본다)
     compared_anywhere: set[int] = set()
+    called_model = False  # 청구항 대비(모델 호출)까지 갔는가 ("모든 묶음 실패"의 분모)
     for group in groups:
         rows: list[ComparisonRow] = []
         # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
@@ -919,21 +1175,6 @@ def compare_unit(
         compared_anywhere |= set(compared)
         # 청구항마다 대비 목록 (부모에서 온 구성요소 포함)
         views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
-        # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
-        lost: set[tuple[int, str]] = {
-            (v.claim, i.e.element_location)
-            for v in views.values()
-            for i in v.items
-            if i.e.status.value != StatusValue.CONFIRMED
-        }
-        for c, v in views.items():
-            if v.branch_blocked:
-                # 부모 없이 확인됨으로 나가지 않게: 줄은 input_unverified로 내리고 보류를 남긴다
-                _hold(
-                    seen,
-                    f"f3_compare:{unit.unit_id}:claim{c}:branch",
-                    "인용 가지마다 대비 (직접 검토 필요)",
-                )
         for claim in unit.claims:
             if claim not in has_elements:
                 logger.warning(
@@ -944,9 +1185,65 @@ def compare_unit(
                     f"f3_compare:{unit.unit_id}:claim{claim}",
                     f"청구항 {claim} 구성요소 나누기",
                 )
-            elif claim in views:
-                rows += _compare_claim(
-                    unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+        # 진보성은 독립항(대표 청구항)을 먼저 대비한다. 독립항 줄이 모두 개시됨(무너짐)일 때만
+        # 나머지 종속항을 대비하고, 아니면 종속항은 대비하지 않고 이유를 보류로 남긴다.
+        # 신규성은 청구항마다 따로 판정하므로 이 순서를 쓰지 않는다
+        rep = unit.representative_claim
+        in_order = [c for c in unit.claims if c in views]
+        staged = unit.rejection_kind == RejectionKind.INVENTIVE_STEP and rep in views
+        first = [rep] if staged else in_order
+        later = [c for c in in_order if c not in first]
+        for claim in first:
+            called_model = True
+            rows += _compare_claim(
+                unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+            )
+        if later:
+            lost_first = _lost_elements({c: views[c] for c in first})
+            collapsed = _independent_collapsed(rows, lost_first, rep)
+            # 독립항 줄이 하나도 없으면(대비 불가) 무너졌는지 모르므로 그대로 대비한다.
+            # 무너지지 않았어도 대표 청구항의 구성요소를 다 갖지 않았거나 대표에 없는
+            # 인용문헌이 더 붙은 종속항은 건너뛰지 않는다 (대표 대비로 그 구성요소·문헌이
+            # 가려지지 않음, 11/21 부모 구성요소 결정)
+            skip_claims = [
+                c for c in later if collapsed is False and _covered_by_rep(c, rep, cites_of, splits)
+            ]
+            for claim in skip_claims:
+                # 대비(모델)만 건너뛴다: 같은 검색은 하고 기록을 search_log에 남긴다
+                _search_skipped(unit, views[claim], cites_of[claim], config, searcher, seen)
+                logger.warning(
+                    "compare %s: 대표 청구항 %d에 차이점이 있어 청구항 %d는 대비하지 않음",
+                    unit.unit_id,
+                    rep,
+                    claim,
+                )
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{claim}:{DEPENDENT_SKIPPED}",
+                    f"청구항 {claim}: 대표 청구항 {rep}에 차이 후보·불명 구성요소가"
+                    " 있어 종속항을 대비하지 않음 (검색은 함, 대비는 생략. 필요하면 직접 요청)",
+                )
+            if skip_claims:
+                # 건너뛴 청구항은 대비되지 않았으니 다른 종속항이 부모로 "이미 대비됨"으로 보면
+                # 안 된다: 건너뛴 청구항을 빼고 남은 청구항의 대비 목록을 다시 만든다
+                compared = {c: labels for c, labels in compared.items() if c not in skip_claims}
+                views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
+            for claim in later:
+                if claim not in skip_claims:
+                    called_model = True
+                    rows += _compare_claim(
+                        unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
+                    )
+        # 실제로 대비한 청구항만 아래에서 센다
+        # 나누기에서 원문 위치를 못 정한 구성요소 (요약에서 불명으로 센다)
+        lost = _lost_elements(views)
+        for c, v in views.items():
+            if v.branch_blocked:
+                # 부모 없이 확인됨으로 나가지 않게: 줄은 input_unverified로 내리고 보류를 남긴다
+                _hold(
+                    seen,
+                    f"f3_compare:{unit.unit_id}:claim{c}:branch",
+                    "인용 가지마다 대비 (직접 검토 필요)",
                 )
         if not rows:
             labels = "·".join(c.label for c in group)
@@ -964,7 +1261,13 @@ def compare_unit(
                 frozenset(c for c, v in views.items() if v.branch_blocked),
             )
             if novelty
-            else _inventive_summary(rows, lost, rej, settings)
+            else _inventive_summary(
+                rows,
+                lost,
+                rej,
+                settings,
+                _effect_candidates(unit, oa, rows, lost, config, ctx, seen, spec_index),
+            )
         )
         if unverified_claims:
             # 부모 구성요소를 온전히 대비하지 못한 종속항의 줄은 확인되지 않음으로 낮춘다
@@ -977,7 +1280,7 @@ def compare_unit(
             # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified
             bad = unverified(UnverifiedReason.INPUT_UNVERIFIED)
             rows = [r.model_copy(update={"status": bad}) for r in rows]
-        # 대비표에는 늘 직접 검토 필요를 붙인다: 진보성은 효과 후보를 아직 뽑지 않았고,
+        # 대비표에는 늘 직접 검토 필요를 붙인다: 진보성 효과 후보는 반박 후보일 뿐이고,
         # 신규성 요약 표시는 AI 정리일 뿐이라 "차이 있음"도 결론처럼 읽히면 안 된다.
         # (대비 안 한 인용, 확인 안 된 단위도 이 표시로 사람에게 간다)
         tables.append(
@@ -1010,6 +1313,7 @@ def compare_unit(
     return CompareOutput(
         tables=tables,
         held_tasks=seen.held,
+        units_tried=1 if called_model else 0,
         search_log=seen.search_log,
         examiner_locations=seen.examiner,
     )
@@ -1029,10 +1333,26 @@ def compare_units(
     total = _Collected()
     tables: list[ComparisonTable] = []
     searcher = _cached(searcher)  # 단위가 달라도 같은 (구성요소, 문헌) 검색은 한 번만
+    tried = 0
+    errors: list[Exception] = []
+    spec: list[SpecIndex] = []
+
+    def spec_index() -> SpecIndex:
+        # 출원서 색인은 효과 후보가 필요한 첫 단위에서 한 번만 만들어 단위들이 같이 쓴다
+        if not spec:
+            spec.append(build_spec_index(config.inputs.spec, config.settings))
+        return spec[0]
+
     for unit in sorted(units, key=lambda u: u.order):
         if unit.rejection_kind == RejectionKind.CLARITY:
             continue
-        out = compare_unit(unit, oa, splits, config, ctx=ctx, searcher=searcher, repo=repo)
+        # 호출 실패는 compare_unit이 그 단위만 보류한 결과로 돌려준다.
+        # 모델을 부르기 전에 보류로 끝난 단위(본문 없음 등)는 tried에 세지 않는다
+        out = compare_unit(
+            unit, oa, splits, config, ctx=ctx, searcher=searcher, repo=repo, spec_index=spec_index
+        )
+        tried += out.units_tried
+        errors += out.call_errors
         tables += out.tables
         total.search_log += out.search_log
         total.examiner += out.examiner_locations
@@ -1043,6 +1363,8 @@ def compare_units(
     return CompareOutput(
         tables=tables,
         held_tasks=total.held,
+        call_errors=errors,
+        units_tried=tried,
         search_log=total.search_log,
         examiner_locations=total.examiner,
     )

@@ -59,6 +59,10 @@ class PredClarity(_Loose):
     claim_location: str
 
 
+class PredHeld(_Loose):
+    task: str
+
+
 class F3Pred(_Loose):
     oa_id: str
     units: list[PredUnit] = Field(default_factory=list)
@@ -66,3 +70,4 @@ class F3Pred(_Loose):
     clarity_reviews: list[PredClarity] = Field(default_factory=list)
     search_log: list[PredSearch] = Field(default_factory=list)
     examiner_locations: list[dict] = Field(default_factory=list)
+    held_tasks: list[PredHeld] = Field(default_factory=list)  # 건너뛴 종속항 판별에 쓴다

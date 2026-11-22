@@ -7,7 +7,6 @@ import pytest
 
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f3_claim_compare.run import run_f3
-from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.transport import TransportResponse
 from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from tests.core.f3 import scenario
@@ -36,12 +35,13 @@ def test_한_바퀴를_돌면_판단_단위와_대비표와_명확성_검토가_
     (review,) = result.clarity_reviews
     assert (review.unit_id, review.claim, review.term) == ("oa_1:42-4-2:c2", 2, scenario.MODULE)
     assert len(result.search_log) == 3  # 구성요소 3개 × D1
-    # 단계 순서: 청구항 나누기 → 대비 → 명확성
+    # 단계 순서: 청구항 나누기 → 대비(독립항 먼저, 무너졌으니 종속항) → 효과 후보 → 명확성
     assert [c["step"] for c in transport.calls] == [
         "f3.split_elements",
         "f3.split_elements",
         "f3.compare",
         "f3.compare",
+        "f3.effect",
         "f3.clarity",
     ]
 
@@ -95,13 +95,6 @@ def test_대상_청구항이_인용하는_앞_청구항도_나눈다():
     assert [c["step"] for c in transport.calls].count("f3.split_elements") == 2
     assert result.units[0].unit_id == "oa_1:29-2:c2" and result.units[0].claims == [2]
     assert result.clarity_reviews[0].claim == 2
-
-
-def test_단계가_실패하면_삼키지_않고_예외로_올린다():
-    answers = scenario.responses()
-    answers["f3.compare"] = [TransportResponse("대비 결과입니다", 100, 50)] * 2
-    with pytest.raises(ModelOutputInvalid):
-        _run(answers=answers)
 
 
 def test_청구항_판이_확인되지_않으면_결과_전체가_input_unverified():
