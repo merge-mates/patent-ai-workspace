@@ -137,10 +137,13 @@ def main(
         need = {f["chunk_id"] for c in cqs for f in c.get("found") or []}
         gold_docs = {c["row_id"].split(":")[-1] for c in cqs}
         chunks: Chunks = {}
+        chunk_versions: set[str] = set()
         for line in Path(args.chunks).read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             ch = json.loads(line)
+            if ch.get("index_version"):
+                chunk_versions.add(ch["index_version"])
             # 상위 조각과 정답 문헌 조각만 메모리에 둔다 (색인 전체는 수백 MB)
             if ch["chunk_id"] in need or ch["doc_id"] in gold_docs:
                 chunks[ch["chunk_id"]] = (
@@ -157,6 +160,24 @@ def main(
                 oa_docs[g["row_id"].split(":")[0]].update(g.get("doc_ids") or [])
     except (OSError, json.JSONDecodeError, KeyError, yaml.YAMLError) as e:
         print(f"확인표 만들기 실패: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+    # CQ 후보를 만든 색인 판과 조각 파일의 판이 다르면 조각 번호가 맞아도 글이 다를 수 있다
+    cq_versions = {c["index_version"] for c in cqs if c.get("index_version")}
+    if cq_versions and chunk_versions and not cq_versions <= chunk_versions:
+        print(
+            f"색인 판이 다르다: CQ 후보 {sorted(cq_versions)}, 조각 파일 {sorted(chunk_versions)}"
+            " (확인표를 쓰지 않음)",
+            file=sys.stderr,
+        )
+        return 1
+    # 상위 조각이 하나라도 빠지면 "가장 위 노이즈"가 다른 조각으로 바뀐다 (#256 리뷰): 쓰지 않는다
+    missing = need - chunks.keys()
+    if missing:
+        print(
+            f"CQ 후보의 상위 조각 {len(missing)}개가 조각 파일에 없다 (확인표를 쓰지 않음)."
+            " --chunks가 CQ 후보를 만든 색인 판의 파일인지 본다",
+            file=sys.stderr,
+        )
         return 1
     rows = build_review_rows(cqs, chunks, pool_docs, oa_docs)
     if not rows:

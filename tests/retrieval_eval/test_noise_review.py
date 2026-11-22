@@ -11,9 +11,12 @@ import json
 from eval.retrieval.noise_review import build_review_rows, main
 
 
-def cq(row_id: str, found: list[tuple[str, str]], query: str = "가짜 질의") -> dict:
+def cq(
+    row_id: str, found: list[tuple[str, str]], query: str = "가짜 질의", version: str = "idx-v1"
+) -> dict:
     return {
         "row_id": row_id,
+        "index_version": version,
         "query": query,
         "items": [{"kind": "paragraph", "start": 5, "end": 5, "label": "[0005]"}],
         "found": [{"chunk_id": cid, "label": lab, "score": 1.0} for cid, lab in found],
@@ -41,8 +44,13 @@ CHUNKS = {
         {"kind": "paragraph", "start": 2, "end": 2, "label": "[0002]"},
         "C 노이즈 글",
     ),
+    "v:KR4A:p3": (
+        "KR4A",
+        {"kind": "paragraph", "start": 3, "end": 3, "label": "[0003]"},
+        "다른 OA 노이즈 글",
+    ),
 }
-POOL = {"KR1A": {}, "KR2A": {}, "KR3A": {"only_oas": ["OA1"]}}
+POOL = {"KR1A": {}, "KR2A": {}, "KR3A": {"only_oas": ["OA1"]}, "KR4A": {}}
 OA_DOCS = {"OA1": {"KR1A", "KR2A"}}
 
 
@@ -63,18 +71,30 @@ def test_줄마다_가장_위_노이즈_조각과_종류를_고른다():
     assert rows[1]["노이즈_종류"] == "C" and rows[1]["B_출처"] == ""
 
 
-def test_명령은_csv를_쓴다(tmp_path):
+def test_B_노이즈가_그_OA_인용문헌이_아니면_다른_OA다():
+    # KR4A는 풀에 있지만(only_oas 없음 = B) OA1이 인용하지 않았다
+    rows = build_review_rows(
+        [cq("OA1:r1:c1:KR1A", [("v:KR4A:p3", "[0003]")])], CHUNKS, POOL, OA_DOCS
+    )
+    assert rows[0]["노이즈_종류"] == "B" and rows[0]["B_출처"] == "다른 OA"
+    assert rows[0]["노이즈_문헌"] == "KR4A"
+
+
+def _write_inputs(tmp_path, cqs: list[dict], chunks=CHUNKS, version: str = "idx-v1") -> list[str]:
+    """명령 입력 파일 넷을 쓰고 --out 앞까지의 argv를 돌려준다."""
     cq_p = tmp_path / "cq.jsonl"
     cq_p.write_text(
-        json.dumps(cq("OA1:r1:c1:KR1A", [("v:KR2A:p1", "[0001]")]), ensure_ascii=False) + "\n",
-        encoding="utf-8",
+        "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cqs), encoding="utf-8"
     )
     ch_p = tmp_path / "chunks.jsonl"
     ch_p.write_text(
         "".join(
-            json.dumps({"chunk_id": k, "doc_id": d, "location": loc, "text": t}, ensure_ascii=False)
+            json.dumps(
+                {"chunk_id": k, "index_version": version, "doc_id": d, "location": loc, "text": t},
+                ensure_ascii=False,
+            )
             + "\n"
-            for k, (d, loc, t) in CHUNKS.items()
+            for k, (d, loc, t) in chunks.items()
         ),
         encoding="utf-8",
     )
@@ -91,12 +111,36 @@ def test_명령은_csv를_쓴다(tmp_path):
         + "\n",
         encoding="utf-8",
     )
+    return ["--cq", str(cq_p), "--chunks", str(ch_p), "--pool", str(pool_p), "--gold", str(gold_p)]
+
+
+def test_명령은_csv를_쓴다(tmp_path):
+    argv = _write_inputs(tmp_path, [cq("OA1:r1:c1:KR1A", [("v:KR2A:p1", "[0001]")])])
     out = tmp_path / "out.csv"
-    argv = ["--cq", str(cq_p), "--chunks", str(ch_p), "--pool", str(pool_p)]
-    argv += ["--gold", str(gold_p), "--out", str(out)]
-    assert main(argv, ignored=lambda p: True) == 0  # tmp 경로는 git 밖으로 본다
+    assert main([*argv, "--out", str(out)], ignored=lambda p: True) == 0  # tmp는 git 밖으로 본다
     got = list(csv.DictReader(out.open(encoding="utf-8-sig")))
     assert got[0]["B_출처"] == "같은 OA" and got[0]["판정"] == ""
+
+
+def test_상위_조각이_조각_파일에_없으면_쓰지_않고_1로_끝낸다(tmp_path, capsys):
+    # #256 리뷰 재현: KR2A 조각이 빠지면 가장 위 노이즈가 KR3A(C)로 바뀐 표가 써졌다
+    chunks = {k: v for k, v in CHUNKS.items() if k != "v:KR2A:p1"}
+    cqs = [cq("OA1:r1:c1:KR1A", [("v:KR2A:p1", "[0001]"), ("v:KR3A:p2", "[0002]")])]
+    argv = _write_inputs(tmp_path, cqs, chunks=chunks)
+    out = tmp_path / "out.csv"
+    assert main([*argv, "--out", str(out)], ignored=lambda p: True) == 1
+    assert not out.exists()
+    assert "1개" in capsys.readouterr().err
+
+
+def test_CQ와_조각_파일의_색인_판이_다르면_1로_끝낸다(tmp_path, capsys):
+    cqs = [cq("OA1:r1:c1:KR1A", [("v:KR2A:p1", "[0001]")], version="idx-v1")]
+    argv = _write_inputs(tmp_path, cqs, version="idx-v2")
+    out = tmp_path / "out.csv"
+    assert main([*argv, "--out", str(out)], ignored=lambda p: True) == 1
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "idx-v1" in err and "idx-v2" in err
 
 
 def test_명령은_git에_들어갈_수_있는_경로에는_쓰지_않는다(tmp_path):
