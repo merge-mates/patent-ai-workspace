@@ -57,6 +57,14 @@ export interface NumberEnteredOut {
   run_id: string
 }
 
+// PUT·GET /oas/{id}/oa-result/confirmation 응답 (openapi ConfirmationOut): 정리 결과 "맞아요".
+// run_id = 지금 보이는 OA 정리를 낸 실행. 확인한 적 없거나 다른 실행의 정리면 confirmed_at이 null
+export interface ConfirmationOut {
+  oa_id: string
+  run_id: string
+  confirmed_at: string | null
+}
+
 // GET /cases 의 한 줄
 export interface CaseSummary {
   case_id: string

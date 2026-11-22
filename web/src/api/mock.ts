@@ -19,6 +19,7 @@ import type {
   RunStatus,
   CreatedRun,
   NumberEnteredOut,
+  ConfirmationOut,
   UploadedDocument,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
@@ -313,6 +314,19 @@ export const mockApi = {
     saveDispatchNumber(b.case_id, dispatchNumber.trim())
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: currentRunId(b) }
   },
+  // 정리 결과 "맞아요": 지금 보이는 정리(그 run_id)를 확인했다고 남긴다. 다시 돌려 run_id가 바뀌면 확인은 null (서버와 같게)
+  async getOAResultConfirmation(oaId: string): Promise<ConfirmationOut> {
+    const b = await byOA(oaId)
+    const runId = gateResult(b)
+    return { oa_id: b.oa_id, run_id: runId, confirmed_at: loadConfirmedAt(b.oa_id, runId) }
+  },
+  async confirmOAResult(oaId: string): Promise<ConfirmationOut> {
+    const b = await byOA(oaId)
+    const runId = gateResult(b)
+    const at = new Date().toISOString()
+    saveConfirmedAt(b.oa_id, runId, at)
+    return { oa_id: b.oa_id, run_id: runId, confirmed_at: at }
+  },
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
   async rerunOA(oaId: string): Promise<CreatedRun> {
     const b = await byOA(oaId)
@@ -429,6 +443,22 @@ function saveDispatchNumber(caseId: string, n: string) {
   }
 }
 
+// 사람이 한 정리 결과 확인 (mock만, sessionStorage): OA + 그 정리 run_id마다 확인 시각. "mock 처음으로"로 지워진다
+const confirmKey = (oaId: string, runId: string) => `patent_ai:mock:v1:confirm:${oaId}:${runId}`
+function loadConfirmedAt(oaId: string, runId: string): string | null {
+  try {
+    return sessionStorage.getItem(confirmKey(oaId, runId))
+  } catch {
+    return null
+  }
+}
+function saveConfirmedAt(oaId: string, runId: string, at: string) {
+  try {
+    sessionStorage.setItem(confirmKey(oaId, runId), at)
+  } catch (e) {
+    console.warn(`[mock] 정리 확인을 저장하지 못함 (${confirmKey(oaId, runId)})`, e)
+  }
+}
 // 서버와 같게: 사람이 넣은 출원번호는 값·글자를 사람 것으로, 쪽은 비우고 "사람이 직접 입력함" 확인 글 (#70)
 function withHumanNumber(b: Bundle): OAResult {
   let r = b.oa_result
