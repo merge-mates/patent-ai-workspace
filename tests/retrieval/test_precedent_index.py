@@ -93,6 +93,17 @@ def test_당사자_주장_판단_모름을_제목으로_가름():
     )
 
 
+def test_당사자_주장_아래_판단_소제목은_모름():
+    # "2. 원고 주장의 요지" 아래 "가. 진보성 판단의 위법"은 원고 주장 글이라 court가 아니다
+    sp = {
+        k: c.speaker
+        for k, c in _by_id(chunk_precedent(_load("party_subhead_judge.json"), V)).items()
+    }
+    assert sp["r2-1"] == "unknown"
+    assert sp["r2-2"] == "unknown"
+    assert sp["r3-1"] == "court"  # 위에 주장 제목이 없는 "3. 판단 / 가. 진보성"은 그대로
+
+
 def test_제목이_없는_글은_법원이_대법원이어도_모름():
     chunks = _by_id(chunk_precedent(_load("supreme_no_summary.json"), V))
     assert "r0-0" not in chunks  # "상고이유를 본다." 한 마디 머리말은 조각을 만들지 않는다
@@ -449,3 +460,31 @@ def test_번호_앞_머리말은_20자_넘으면_남고_짧으면_버림():
     assert parts[0].lines == [long_pre]
     parts2 = split_numbered(["상고이유를 본다.", "1. 상고이유 제1점에 대하여", "법리 글이다."])
     assert [p.key for p in parts2] == ["r1-0"]
+
+
+def test_심결_이유_조각이_0개면_오류():
+    pages = ["심 결 일 2099. 10. 1.\n주 문 기각한다.\n이 유\n청구는 이유 없다.\n"]
+    with pytest.raises(PrecedentIndexError, match="이유 조각이 0개"):
+        chunk_trial(pages, TRIAL_FILE, V)
+
+
+def test_판례_이유_조각이_0개면_경고만_요지는_남김(caplog):
+    data = _load("patent_court.json")
+    data["PrecService"]["판례내용"] = "【이    유】<br/>청구는 이유 없다.<br/>"
+    with caplog.at_level(logging.WARNING):
+        chunks = chunk_precedent(data, V)
+    assert {c.chunk_kind for c in chunks} == {"judgment_summary"}
+    assert "판례_2099허1001: 이유 조각이 0개다 (요지 4개만)" in caplog.text
+
+
+def test_명령_이유_없는_판례_수를_한_줄로_셈(tmp_path, monkeypatch, caplog):
+    _fake_pdf(monkeypatch)
+    cfg = _config(tmp_path, expected=2)
+    raw = Path(yaml.safe_load(cfg.read_text(encoding="utf-8"))["precedent_dir"])
+    p = raw / "body_patent_court.json"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["PrecService"]["판례내용"] = "【이    유】<br/>청구는 이유 없다.<br/>"
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        assert main(["--config", str(cfg)]) == 0
+    assert "이유 조각이 0개인 판례: 1건 (전체 2건)" in caplog.text

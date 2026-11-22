@@ -10,7 +10,8 @@
   제목만 있는 1단계 줄은 아래 2단계 조각 글 앞에 붙인다. 판결 끝 서명(대법관·재판장·판사) 줄은 뺀다.
 - speaker: 짧은 제목 줄로 정한다. 주장 → party, 판단·법리·결론·상고이유에 대하여·여부 → court,
   경위·기초사실·쟁점·원심 요지 → unknown, 주장과 판단이 함께 있는 제목 → unknown.
-  제목이 없는 긴 줄은 위 단계 제목을 따르고, 그것도 없으면 대법원만 court, 나머지는 unknown.
+  제목이 없는 긴 줄은 위 단계 제목을 따르고, 그것도 없으면 unknown (대법원도).
+  당사자 주장 제목 아래에서 court로 읽힌 소제목은 unknown (주장 글이 법원 판단으로 보이지 않게).
 - doc_id `판례_<사건번호>`, 판본 not_applicable, decided_on = 선고일자(못 읽으면 null + 경고).
 - chunk_id `<index_version>:<doc_id>:<위치 키>`. 요지는 `s<n>`(판시사항)·`h<n>`(판결요지),
   이유는 `r<1단계 번호>-<2단계 번호>` (번호 없는 머리말은 `r0-0`).
@@ -141,14 +142,15 @@ def _is_court_heading(heading: str) -> bool:
 def _speaker(heads: list[str]) -> Speaker:
     """가장 가까운(깊은) 제목부터 위로 보고, 제목으로 못 정하면 unknown (design 8절).
 
-    당사자 주장 제목 아래의 소제목은 주장 안의 글이라 party로 둔다. "…여부", 주장 문장 속 "판단"도
-    마찬가지이고, "심판부의 판단"처럼 20자 이하 제목에 판단·소결·결론이 있어야 court로 바뀐다.
+    당사자 주장 제목 아래의 소제목은 주장 안의 글이다. "…여부", 주장 문장 속 "판단"처럼 약한 court
+    말이면 party로 둔다. "진보성 판단의 위법"처럼 20자 이하 제목에 판단·소결·결론이 있어도 주장 글일
+    수 있어 court로 정하지 않고 unknown으로 둔다 (못 정하면 unknown).
     """
     for i in range(len(heads) - 1, -1, -1):
         s = classify_heading(heads[i])
-        if s == "court" and not _is_court_heading(heads[i]):
-            if any(classify_heading(h) == "party" for h in heads[:i]):
-                return "party"
+        if s == "court" and any(classify_heading(h) == "party" for h in heads[:i]):
+            # 위에 주장 제목: 약한 court는 주장 글(party), 강한 court 제목도 확신 못 함
+            return "unknown" if _is_court_heading(heads[i]) else "party"
         if s:
             return s
     return "unknown"
@@ -395,6 +397,9 @@ def chunk_precedent(data: dict, index_version: str, max_chars: int | None = None
             chunks, max_chars, part.key, part.label, lines,
             kind="judgment", speaker=_speaker(part.heads), **fixed,
         )  # fmt: skip
+    if not any(c.chunk_kind == "judgment" for c in chunks):
+        # 요지만 있는 판례가 정상일 수 있어 멈추지 않고 경고만 (빌드 끝에 수를 센다)
+        logger.warning("%s: 이유 조각이 0개다 (요지 %d개만)", doc_id, len(chunks))
     return chunks
 
 
@@ -531,6 +536,9 @@ def chunk_trial(
             chunks, max_chars, part.key, part.label, lines,
             kind="judgment", speaker=_speaker(part.heads), **fixed,
         )  # fmt: skip
+    # 심결 12건은 모두 이유가 있어야 한다. 0개면 색인에서 조용히 빠지므로 멈춘다
+    if not chunks:
+        raise PrecedentIndexError(f"{doc_id}: 이유 조각이 0개다")
     return chunks
 
 
@@ -586,15 +594,19 @@ def build_precedent_chunks(cfg: dict) -> list[Chunk]:
             raise PrecedentIndexError(f"받은 기록이 없다: {p}")
         logs.append(json.loads(p.read_text(encoding="utf-8")))
     chunks: list[Chunk] = []
-    for fname in select_precedents(logs, int(cfg["expected_precedents"])):
+    picked = select_precedents(logs, int(cfg["expected_precedents"]))
+    no_reason = 0  # 이유 조각이 0개인 판례 수
+    for fname in picked:
         p = raw_dir / fname
         if not p.exists():
             raise PrecedentIndexError(f"판례 파일이 없다: {p}")
-        chunks.extend(
-            chunk_precedent(
-                json.loads(p.read_text(encoding="utf-8")), index_version, _max_chars(cfg)
-            )
+        one = chunk_precedent(
+            json.loads(p.read_text(encoding="utf-8")), index_version, _max_chars(cfg)
         )
+        no_reason += not any(c.chunk_kind == "judgment" for c in one)
+        chunks.extend(one)
+    if no_reason:
+        logger.warning("이유 조각이 0개인 판례: %d건 (전체 %d건)", no_reason, len(picked))
     if not chunks:
         logger.warning("판례 조각이 0개다: %s", raw_dir)
         raise PrecedentIndexError("판례 조각이 0개다")
