@@ -5,13 +5,17 @@ PATCH /drafts/{draft_id}: 의견서 칸 하나(section) 또는 보정 청구항 
   AI 원문과 같은 글을 보내면 고친 것을 되돌린다 (human_text 없음, origin ai_generated).
 - 고칠 초안은 지금 화면에 보이는 초안이다: OA 정리와 같은 실행(보여 줄 실행)의 F4 결과.
   그 실행의 F4 결과 줄 안 drafts만 바꿔 저장하므로 다시 열면(GET drafts) 고친 글이 나온다.
+- 그 OA에 진행 중 실행이 있으면 받지 않는다 (RunInProgressError → 409). 그 실행이 끝나면 새 초안이
+  보이게 되어, 옛 실행 줄에 저장한 고침이 화면에서 사라지기 때문이다 (방향 고르기와 같은 규칙).
 - 중간 결과(F1·F2·F3)와 방향 후보는 고치지 않는다.
 """
 
 from __future__ import annotations
 
 from patent_ai.core.cases.results import OAResultStore
+from patent_ai.core.cases.start_run import RunInProgressError, has_active_run
 from patent_ai.core.cases.step_results import StepBody, StepResultStore
+from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.schemas.common import Origin
 from patent_ai.core.schemas.drafts import AmendedClaim, Drafts, OpinionKey, OpinionSection
@@ -81,6 +85,7 @@ def edit_draft(
     section: str | None,
     claim: int | None,
     text: str,
+    store: CaseAppStore,
     oa_results: OAResultStore,
     step_results: StepResultStore,
 ) -> Drafts:
@@ -88,6 +93,12 @@ def edit_draft(
     if not draft_id.startswith(_PREFIX):
         raise DraftNotFoundError(draft_id)
     oa_id = draft_id.removeprefix(_PREFIX)
+    oa = store.get_oa(oa_id)
+    if oa is None:
+        raise DraftNotFoundError(draft_id)
+    # 도는 실행이 끝나면 다른 초안이 보이게 되어 지금 고친 글이 사라진다: 끝난 뒤 고친다
+    if has_active_run(oa.latest_run.state if oa.latest_run else None):
+        raise RunInProgressError(oa_id)
     saved = oa_results.latest_visible_oa_result(oa_id)
     if saved is None:
         raise DraftNotFoundError(draft_id)

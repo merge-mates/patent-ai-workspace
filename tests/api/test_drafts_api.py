@@ -7,7 +7,7 @@
 import pytest
 
 from tests.api.test_results_api import _env
-from tests.core.run_case_fakes import wire
+from tests.core.run_case_fakes import wire, wire_broken_pdf
 
 
 @pytest.fixture
@@ -96,8 +96,9 @@ def test_drafts_api_없는_초안이면_404_draft_not_found(env):
         assert r.status_code == 404 and r.json()["code"] == "draft_not_found", draft_id
 
 
-def test_drafts_api_결과_전이면_404_draft_not_found(env):
-    env.launch_enabled = False
+def test_drafts_api_보여_줄_결과가_없으면_404_draft_not_found(env, monkeypatch):
+    # 실행이 실패해 보여 줄 초안이 없다 (실행 전·실행 중이면 위 409)
+    wire_broken_pdf(monkeypatch, secret="원문")
     oa_id = env.upload()["oa_id"]
     r = env.client.patch(f"/drafts/dr:{oa_id}", json={"section": "closing", "text": "x"})
     assert r.status_code == 404 and r.json()["code"] == "draft_not_found"
@@ -138,3 +139,13 @@ def test_drafts_api_보류된_청구항은_고칠_수_없다(env):
     r = env.client.patch(f"/drafts/dr:{oa_id}", json={"claim": 2, "text": "2. 사람이 씀"})
     assert r.status_code == 422 and r.json()["code"] == "claim_not_editable"
     assert _claim(_drafts(env, oa_id), 2)["human_text"] is None
+
+
+def test_drafts_api_진행_중인_실행이_있으면_409_run_in_progress(env):
+    # 그 실행이 끝나면 새 초안이 보여 지금 고친 글이 사라지므로 받지 않는다 (#305 리뷰)
+    oa_id = env.upload()["oa_id"]
+    env.launch_enabled = False
+    assert env.client.post(f"/oas/{oa_id}/runs").status_code == 200  # queued로 남는다
+    r = env.client.patch(f"/drafts/dr:{oa_id}", json={"section": "closing", "text": "고침"})
+    assert r.status_code == 409 and r.json()["code"] == "run_in_progress"
+    assert _section(_drafts(env, oa_id), "closing")["human_text"] is None  # 저장 안 됨

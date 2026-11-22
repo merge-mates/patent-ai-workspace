@@ -28,6 +28,7 @@ from patent_ai.core.cases.draft_edits import (
     edit_draft,
 )
 from patent_ai.core.cases.results import OAResultStore
+from patent_ai.core.cases.start_run import RunInProgressError
 from patent_ai.core.cases.step_results import StepResultStore
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.drafts import Drafts
@@ -52,7 +53,9 @@ _INVALID = "의견서 칸(section)이나 청구항 번호(claim) 하나와 비�
 
 
 @router.patch("/drafts/{draft_id:path}", response_model=Drafts)
-def patch_draft(draft_id: str, body: DraftPatchIn, results: Results, steps: Steps) -> Drafts:
+def patch_draft(
+    draft_id: str, body: DraftPatchIn, unit: Unit, results: Results, steps: Steps
+) -> Drafts:
     # 본문 꼴(text 없음 등)이 틀리면 공통 처리기가 422 validation_error로 답한다
     try:
         return edit_draft(
@@ -60,11 +63,14 @@ def patch_draft(draft_id: str, body: DraftPatchIn, results: Results, steps: Step
             section=body.section,
             claim=body.claim,
             text=body.text,
+            store=unit.store,
             oa_results=results,
             step_results=steps,
         )
     except DraftNotFoundError:
         raise AppError(404, "draft_not_found", "초안을 찾을 수 없습니다") from None
+    except RunInProgressError:
+        raise AppError(409, "run_in_progress", "이미 진행 중인 실행이 있습니다") from None
     except ClaimNotEditableError:
         raise AppError(422, "claim_not_editable", "고칠 수 있는 보정 초안이 없습니다") from None
     except InvalidDraftEditError:
