@@ -60,10 +60,10 @@ graph LR
 - 먼저: 없음
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- 다음: task-1·task-2 동시
-- 막힌 것:
+- [x] task-1 (42588f0, 리뷰 통과·참고 5)
+- [x] task-2 (f3d3c0c + 리뷰 고칠 것 둘 8e5f46a: 넘긴 단계 기록 종류 fixed_stage, 화면 넘김 라벨 `web/src/labels.ts` 두 줄 — 계획 밖 파일)
+- 다음: 309b
+- 막힌 것: 없음
 
 ## m3-i2-309b  (11/23)  상태: 승인 (재아 사전 승인 11/23, plan-reviewer 통과: 막음 없음, 고칠 것 15 반영)  (이슈 #309, Refs)  브랜치 `feat/309-recheck-cite` (309a 위에)
 **구현할 design 부분**: design.md 3절 (가), 4-1·4-2·4-4·4-5, 5절 설정·보류, 7-2 `*_rechecked` 지표   **맡은 합격 기준**: requirements.md 1, 3, 4, 7(표의 재료)
