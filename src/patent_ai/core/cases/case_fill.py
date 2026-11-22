@@ -108,8 +108,10 @@ def plan_number_fill(
     fill_app = merge_into = None
     if app is not None and case_number is None:
         if owner_of_number is not None and owner_of_number != case_id:
-            # 같은 출원번호 사건이 이미 있다: 번호를 넣지 않고(unique) 그 사건으로 옮긴다
-            merge_into = owner_of_number
+            # 같은 출원번호 사건이 이미 있다: 번호를 넣지 않고(unique) 그 사건으로 옮긴다.
+            # 발송번호를 알 때만 (같은 OA인지 모르면 옮기지 않는다. 사람이 넣은 뒤 이어 돌 때 합침)
+            if disp is not None or event_number is not None:
+                merge_into = owner_of_number
         else:
             fill_app = app
     elif app is not None and case_number != app:

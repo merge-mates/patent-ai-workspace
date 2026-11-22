@@ -81,6 +81,14 @@ def test_같은_출원번호_사건이_따로_있으면_그_사건에_합치라�
     assert fill.dispatch_number == DISP
 
 
+def test_발송번호를_모르면_합치지_않고_사람_입력을_기다린다():
+    # requirements "발송번호가 다를 때" 붙인다: 모르면 같은 OA인지 몰라 임시 사건에 둔다.
+    # 사람이 발송번호를 넣어 이어 돌면 그때 합친다 (중복 OA가 기존 사건에 묻히지 않게)
+    fill = plan_number_fill("c_tmp", None, None, _unread(_oa(), "dispatch_number"), "c_old")
+    assert fill.merge_into is None and fill.application_number is None
+    assert fill.case_number is None
+
+
 def test_합칠_사건이_없으면_merge_into는_비어_있다():
     assert plan_number_fill("c_1", None, None, _oa(), None).merge_into is None
     assert plan_number_fill("c_1", None, None, _oa(), owner_of_number="c_1").merge_into is None
