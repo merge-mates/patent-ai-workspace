@@ -3,11 +3,19 @@
 순서: 청구항 나누기(거절이유 대상 청구항 + 그들이 인용하는 앞 청구항) -> 판단 단위 ->
 (청구항 판이 확인되지 않았으면) 단위 낮추기 -> 대비 방식(설정 impl)으로 진보성·신규성 대비 ->
 명확성 검토 -> 한 결과로 모으기. 대비 방식만 갈아 끼우고 나머지는 어느 방식이든 같다.
-단계가 예외로 실패하면 삼키지 않는다 (지휘가 실행 failed로 남긴다).
+묶음(판단 단위) 하나의 모델 호출 실패는 그 묶음만 보류한다 (확인되지 않음 + 이유, #166 (가)).
+모든 묶음이 실패하면 단계 전체가 못 돈 것이라 예외로 올린다 (지휘가 실행 failed로 남긴다).
+호출 상한에 닿은 묶음은 실패가 아니라 limit_reached로 보류하고 끝낸다 (ADR 0003 상한).
+프로그래밍·설정 오류는 잡지 않는다.
 """
 
 import logging
 
+from patent_ai.core.bundle_errors import (
+    held_error_status,
+    is_dependent_skip,
+    raise_if_all_failed,
+)
 from patent_ai.core.f3_claim_compare.clarity import review_clarity_units
 from patent_ai.core.f3_claim_compare.compare import (
     f3_query_embedder,
@@ -132,6 +140,15 @@ def run_f3(
     # 4) 명확성 검토 (대비 방식과 따로)
     clarity = review_clarity_units(units, oa_result, config, ctx=ctx)
 
+    # 모델을 부른 모든 묶음의 호출이 실패했다면 남은 결과가 없는 것: 단계 전체 실패다.
+    # 부르기 전에 보류로 끝난 묶음(인용문헌 본문 없음 등)은 분모에서 뺀다.
+    # 마지막 원래 예외를 그대로 올린다 (원인 종류가 바뀌지 않게)
+    raise_if_all_failed(
+        f"run_f3 {oa_id}",
+        compared.units_tried + clarity.units_tried,
+        [*compared.call_errors, *clarity.call_errors],
+    )
+
     tables = compared.tables
     for h in compared.held_tasks + clarity.held_tasks:
         if all(h.task != old.task for old in held):
@@ -140,7 +157,9 @@ def run_f3(
         [u.status for u in units] + [t.status for t in tables] + [r.status for r in clarity.reviews]
     )
     # 보류한 작업이 있으면 그만큼 결과를 못 만든 것이다. 확인됨으로 모으지 않는다
-    statuses += [_held_status(h, oa_id) for h in held]
+    # (독립항에 차이점이 있어 종속항을 대비하지 않은 보류는 이유를 남길 뿐 status를 낮추지 않는다:
+    #  기다리는 자료가 없는 정해진 건너뜀이다)
+    statuses += [s for h in held if (s := _held_status(h, oa_id)) is not None]
     # 대비표·명확성 검토가 하나도 안 나온 단위도 마찬가지 (보류로 안 잡힌 경우까지)
     done = {t.unit_id for t in tables} | {r.unit_id for r in clarity.reviews}
     empty = [u.unit_id for u in units if u.unit_id not in done]
@@ -162,14 +181,21 @@ def run_f3(
     )
 
 
-def _held_status(held: HeldTask, oa_id: str) -> Status:
+def _held_status(held: HeldTask, oa_id: str) -> Status | None:
     """보류한 작업 하나가 결과 전체 status에 주는 값.
 
     인용문헌 본문을 기다리는 보류(`f3_compare:<oa_id>:D2`)는 본문 미확보,
     그 밖(청구항 글자·대상 청구항·짚은 문구·대비할 구성요소가 없음)은 못 뽑음.
     """
+    if is_dependent_skip(held.task):
+        return None  # 독립항에 차이점이 있어 종속항을 대비하지 않음 (결과 status를 낮추지 않음)
+    error_status = held_error_status(held.task)  # 모델 호출 실패·호출 상한 보류
+    if error_status is not None:
+        return error_status
     parts = held.task.split(":")
-    waits_for_body = parts[:2] == ["f3_compare", oa_id] and len(parts) == 3
+    waits_for_body = parts[:2] == ["f3_compare", oa_id] and (
+        len(parts) == 3 or held.task.endswith(":spec")  # 진보성 단위의 명세서 보류도 본문 미확보
+    )
     reason = UnverifiedReason.BODY_MISSING if waits_for_body else UnverifiedReason.NOT_EXTRACTED
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
 

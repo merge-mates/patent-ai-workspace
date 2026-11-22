@@ -22,6 +22,7 @@ _SETTING_KEYS = (
     "min_quote_chars",
     "search",
     "clarity_search",
+    "effect_search",
 )
 
 
