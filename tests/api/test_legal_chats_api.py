@@ -6,9 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from patent_ai.api import deps
-from patent_ai.api.deps import LegalIndex, get_legal_chat_unit, get_legal_index, get_today
+from patent_ai.api.deps import get_legal_chat_unit, get_legal_index, get_today
 from patent_ai.api.main import create_app
+from patent_ai.core.f2_legal_research import index as legal_index
 from patent_ai.core.f2_legal_research.chat_store import InMemoryLegalChatStore
+from patent_ai.core.f2_legal_research.index import LegalIndex
+from patent_ai.core.f2_legal_research.run import F2Settings
 from patent_ai.core.f2_legal_research.tools import LawPool
 from patent_ai.retrieval.contract import get_searcher
 from patent_ai.retrieval.repository import InMemoryChunkRepository
@@ -33,6 +36,11 @@ def _index(repo) -> LegalIndex:
     pool = LawPool.load(repo, IV)
     searcher = get_searcher("bm25", repo, {"index_version": IV, "tokenizer": "char_bigram"})
     return LegalIndex(pool, searcher)
+
+
+class NoClose(InMemoryChunkRepository):
+    def close(self):
+        pass
 
 
 def _client(index) -> TestClient:
@@ -123,13 +131,12 @@ def test_legal_chats_api_색인을_못_읽으면_body_missing_묶음(caplog):
 
 
 def test_legal_chats_api_색인_판이_없으면_못_읽은_것으로_본다(monkeypatch, caplog):
-    deps._load_legal_pool.cache_clear()
-    deps._load_legal_index.cache_clear()
-    monkeypatch.setattr(deps, "make_law_repo", lambda: InMemoryChunkRepository({"law": []}))
+    deps._cached_legal_index.cache_clear()
+    monkeypatch.setattr(legal_index, "open_law_repo", lambda: NoClose({"law": []}))
     with caplog.at_level("WARNING"):
         assert get_legal_index() is None
     assert any("색인" in r.message for r in caplog.records)
-    deps._load_legal_index.cache_clear()
+    deps._cached_legal_index.cache_clear()
 
 
 def test_legal_chats_api_색인_조각이_0개면_못_읽은_것으로_본다(monkeypatch, caplog):
@@ -139,13 +146,15 @@ def test_legal_chats_api_색인_조각이_0개면_못_읽은_것으로_본다(mo
         def has_index_version(self, corpus, index_version):
             return True
 
-    deps._load_legal_pool.cache_clear()
-    deps._load_legal_index.cache_clear()
-    monkeypatch.setattr(deps, "make_law_repo", lambda: EmptyPool({"law": []}))
+        def close(self):
+            pass
+
+    deps._cached_legal_index.cache_clear()
+    monkeypatch.setattr(legal_index, "open_law_repo", lambda: EmptyPool({"law": []}))
     with caplog.at_level("WARNING"):
         assert get_legal_index() is None
     assert any("0개" in str(r.exc_info[1]) for r in caplog.records if r.exc_info)
-    deps._load_legal_index.cache_clear()
+    deps._cached_legal_index.cache_clear()
 
 
 def test_legal_chats_api_색인_캐시는_메모리_조각만_두고_세션을_닫는다(monkeypatch):
@@ -166,18 +175,16 @@ def test_legal_chats_api_색인_캐시는_메모리_조각만_두고_세션을_�
         calls["made"] += 1
         return Tracked()
 
-    deps._load_legal_pool.cache_clear()
-    deps._load_legal_index.cache_clear()
-    monkeypatch.setattr(deps, "make_law_repo", make)
-    monkeypatch.setattr(deps, "get_f2_settings", lambda: type("S", (), {"index_version": IV})())
+    deps._cached_legal_index.cache_clear()
+    monkeypatch.setattr(legal_index, "open_law_repo", make)
+    monkeypatch.setattr(deps, "get_f2_settings", lambda: F2Settings(index_version=IV))
     first = get_legal_index()
     assert first is not None
     assert calls == {"made": 1, "closed": 1}  # 읽은 뒤 닫았다
     first.searcher.search("특허법 제29조", "law", "bm25", 3)  # 원 repo(DB)를 다시 부르지 않는다
     assert get_legal_index() is first
     assert calls == {"made": 1, "closed": 1}
-    deps._load_legal_pool.cache_clear()
-    deps._load_legal_index.cache_clear()
+    deps._cached_legal_index.cache_clear()
 
 
 def test_legal_chats_api_본문이_객체가_아니면_invalid_question(client):

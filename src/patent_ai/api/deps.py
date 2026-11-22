@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -32,8 +31,8 @@ from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.f2_legal_research.chat_store import LegalChatStore
 from patent_ai.core.f2_legal_research.chat_store_pg import PostgresLegalChatStore
-from patent_ai.core.f2_legal_research.run import F2Settings, load_f2_settings, make_law_repo
-from patent_ai.core.f2_legal_research.tools import LawPool
+from patent_ai.core.f2_legal_research.index import LegalIndex, load_legal_index
+from patent_ai.core.f2_legal_research.run import F2Settings, load_f2_settings
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.limits import CallBudget, RunContext
 from patent_ai.core.runs.cancel import CancelRegistry
@@ -44,8 +43,6 @@ from patent_ai.core.runs.step_log_pg import PostgresCallRecorder, PostgresStepRe
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
 from patent_ai.core.schemas.oa_result import OAResult
-from patent_ai.retrieval.contract import Searcher, get_searcher
-from patent_ai.retrieval.repository import InMemoryChunkRepository
 from patent_ai.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -247,59 +244,21 @@ def get_legal_chat_unit() -> Iterator[LegalChatUnit]:
         yield _PgLegalChatUnit(session)
 
 
-@dataclass(frozen=True)
-class LegalIndex:
-    """법령 색인 한 판: 조각 묶음(pool)과 BM25 검색기. 프로세스에 한 번만 만든다."""
-
-    pool: LawPool
-    searcher: Searcher
-
-
-# 법령 BM25 기준선과 같은 낱말 자르기 (experiments/m2-i2-law-bm25-char-bigram)
-LAW_BM25_TOKENIZER = "char_bigram"
-
-
 @lru_cache
 def get_f2_settings() -> F2Settings:
     return load_f2_settings()
 
 
 @lru_cache
-def _load_legal_pool() -> LawPool:
-    """색인 조각을 한 번 읽어 메모리에 둔다. 읽은 뒤 DB 세션은 닫는다.
-
-    실패나 조각 0개는 예외라 캐시되지 않는다 (색인이 들어온 뒤 다시 시도).
-    """
-    iv = get_f2_settings().index_version
-    repo = make_law_repo()
-    try:
-        if not repo.has_index_version("law", iv):
-            raise RuntimeError(f"법령 색인 {iv}이 저장소에 없음")
-        pool = LawPool.load(repo, iv)
-    finally:
-        close = getattr(repo, "close", None)
-        if close is not None:
-            close()
-    if not pool.chunks:
-        raise RuntimeError(f"법령 색인 {iv}의 조각이 0개")
-    return pool
-
-
-@lru_cache
-def _load_legal_index() -> LegalIndex:
-    """캐시에는 메모리 조각만 둔다. BM25도 메모리 repo 위에 만들어 DB를 다시 보지 않는다."""
-    pool = _load_legal_pool()
-    mem_repo = InMemoryChunkRepository({"law": list(pool.chunks)})
-    searcher = get_searcher(
-        "bm25", mem_repo, {"index_version": pool.index_version, "tokenizer": LAW_BM25_TOKENIZER}
-    )
-    return LegalIndex(pool, searcher)
+def _cached_legal_index() -> LegalIndex:
+    """실패나 조각 0개는 예외라 캐시되지 않는다 (색인이 들어온 뒤 다시 시도)."""
+    return load_legal_index(get_f2_settings())
 
 
 def get_legal_index() -> LegalIndex | None:
     """색인을 못 읽으면 None (라우터가 확인되지 않음 묶음을 낸다). 이유는 경고로 남긴다."""
     try:
-        return _load_legal_index()
+        return _cached_legal_index()
     except Exception:
         logger.warning("법률 질문: 법령 색인을 못 읽음", exc_info=True)
         return None

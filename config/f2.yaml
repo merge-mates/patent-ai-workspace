@@ -3,3 +3,6 @@
 index_version: law-idx-v2
 # 법률 질문 탭(chat.py): 조문 번호 없는 질문을 BM25로 찾을 때 가져올 조문 수
 chat_search_k: 3
+# 법률 질문 검색기: 검색 방식과 낱말 자르기 (기준선 m2-i2-law-bm25-char-bigram)
+search_method: bm25
+tokenizer: char_bigram

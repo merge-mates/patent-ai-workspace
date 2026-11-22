@@ -68,6 +68,9 @@ class F2Settings(BaseModel):
 
     index_version: str  # 법령 색인 판 (law corpus)
     chat_search_k: int = Field(default=3, ge=1)  # 법률 질문: 번호 없는 질문의 BM25 조문 수
+    # 법률 질문 검색기: 방식과 낱말 자르기 (기준선 experiments/m2-i2-law-bm25-char-bigram)
+    search_method: str = "bm25"
+    tokenizer: str = "char_bigram"
 
 
 class F2Input(BaseModel):
