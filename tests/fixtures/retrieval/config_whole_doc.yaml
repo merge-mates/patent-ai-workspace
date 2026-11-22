@@ -1,0 +1,11 @@
+experiment: m2-i3-retrieval-whole-doc-fake
+goldset: tune
+goldset_version: 1
+corpus: cite
+index_version: cite-idx-v1
+mode: hybrid
+impl: whole_doc_llm
+k: [1, 3, 5, 10]
+gold: retrieval/gold_two_lines.jsonl
+settings:
+  index_version: cite-idx-v1
