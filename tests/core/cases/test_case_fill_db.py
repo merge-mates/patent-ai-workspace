@@ -76,13 +76,38 @@ def test_실행_뒤_사건_이름_발송번호_사건_자료가_채워진다(fac
     assert again.result == saved.result
 
 
-def test_같은_출원번호_사건이_있으면_임시_사건에_번호를_넣지_않는다(factory):
-    first = _upload(factory, "fill_261_a")
+def _next_oa(oa_id: str) -> OAResult:
+    """같은 출원번호, 다른 발송번호의 다음 OA."""
+    oa = _oa(oa_id)
+    return oa.model_copy(
+        update={"dispatch_number": oa.dispatch_number.model_copy(update={"value": DISP2})}
+    )
+
+
+DISP2 = "952099000000002"
+
+
+def test_같은_출원번호_사건이_있으면_올린_OA를_그_사건의_다음_OA로_옮긴다(factory):
+    # 출원번호 unique에 걸려 실패하지 않고, 기존 사건으로 옮긴다 (#272)
+    first = _upload(factory, "fill_272_a")
     fill = PostgresCaseFill(factory, lambda oa_id: None)
     fill.fill_after_f1(first.oa_id, first.run_id, _oa(first.oa_id), None)
-    second = _upload(factory, "fill_261_b")
-    # 출원번호 unique에 걸려 실패하지 않고, 번호를 넣지 않은 채 남는다 (합치기는 아직 없음)
-    fill.fill_after_f1(second.oa_id, second.run_id, _oa(second.oa_id), None)
+    second = _upload(factory, "fill_272_b")
+    fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
     with factory() as s:
-        assert PostgresCaseAppStore(s).get_case(second.case_id).case_name == "출원번호 확인 전"
+        store = PostgresCaseAppStore(s)
+        assert [r.oa_id for r in store.get_case(first.case_id).oas] == [
+            first.oa_id,
+            second.oa_id,
+        ]
+        oa = store.get_oa(second.oa_id)
+        assert (oa.case_id, oa.dispatch_number) == (first.case_id, DISP2)
+        assert store.find_document_by_sha256("fill_272_b_" + "a" * 20).case_id == first.case_id
+        assert store.get_case(second.case_id).oas == []
+    saved = PostgresCaseMaterialsStore(factory).latest_case_materials(first.case_id)
+    assert saved.run_id == second.run_id
+    assert [d.document_id for d in saved.result.documents] == [
+        first.document_id,
+        second.document_id,
+    ]
     assert PostgresCaseMaterialsStore(factory).latest_case_materials(second.case_id) is None

@@ -8,10 +8,17 @@
    자동 조회(#54) 전이라 인용문헌 본문은 받은 것이 없어 "올려 주세요"(lookup_failed)로 남는다.
    #54가 붙으면 받은 인용문헌과 못 받은 이유를 이 자리로 넘긴다.
 
+3. 같은 출원번호 사건이 이미 있으면 (F1 requirements "실패할 때", #272): 임시 사건에 번호를
+   넣지 않고(출원번호 unique) OA·이력 줄·원문 문서를 그 사건 끝(다음 OA)으로 옮긴다.
+   결과·실행은 oa_id로 묶여 있어 따라간다. 빈 임시 사건은 지우지 않고 "합침(기존 사건 ID)"
+   표시(`cases.merged_into_case_id`)를 달아 목록에서 숨긴다. 사건 자료는 합친 사건에 다시 만든다.
+   이력 순서는 날짜로 끼우지 않고 맨 뒤에 붙인다 (올린 OA엔 이력 순서가 없어서. #54 뒤에 맞춤).
+
 하지 않는 것 (조용히 넘기지 않고 경고를 남긴다):
-- 같은 출원번호 사건이 이미 있을 때 기존 사건에 합치기 (F1 requirements "실패할 때").
-  지금은 임시 사건에 번호를 넣지 않고 그대로 둔다 (DB의 출원번호 unique 때문에 넣을 수도 없다).
+- 합칠 사건에 같은 파일이 이미 있을 때 합치기 (올릴 때 409로 막히는 드문 경우). 임시 사건 그대로.
 - 사건 출원번호와 다른 번호를 읽었을 때 사건 번호 바꾸기.
+- 합친 뒤 F2~F4 다시 돌리기: 이번 실행은 임시 사건 자료로 돌았다. 사람이 다시 실행하면
+  합친 사건 자료로 돈다.
 """
 
 from __future__ import annotations
@@ -22,7 +29,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from patent_ai.core.cases.materials import InMemoryCaseMaterialsStore, SavedCaseMaterials
@@ -36,7 +43,7 @@ from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.core.schemas.propagation import finalize_case_materials
-from patent_ai.db.models import OA, Case, CaseEvent, CaseMaterialsRow
+from patent_ai.db.models import OA, Case, CaseEvent, CaseMaterialsRow, Document
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +61,14 @@ class CaseFillSink(Protocol):
 # 사건 자료가 아직 없을 때 404 result_not_ready 메시지 (이유 없는 404가 되지 않게)
 NOT_READY_NO_NUMBER = (
     "출원번호 확인 전이라 사건 자료를 만들지 않았습니다 "
-    "(실행 전이거나, 출원번호를 못 읽었거나, 같은 출원번호 사건이 이미 있음)"
+    "(실행 전이거나, 출원번호를 못 읽었거나, 같은 출원번호 사건에 같은 파일이 이미 있음)"
 )
 NOT_READY = "사건 자료가 아직 없습니다 (실행이 끝나기 전)"
+
+
+def merged_message(target_case_id: str) -> str:
+    """합쳐진 임시 사건의 사건 자료를 물을 때 (#272). 자료는 합친 사건에 있다."""
+    return f"같은 출원번호 사건 {target_case_id}에 합쳐졌습니다. 그 사건의 자료를 보세요"
 
 
 def materials_not_ready_message(application_number_known: bool) -> str:
@@ -71,6 +83,8 @@ class NumberFill:
     application_number: str | None  # 사건에 넣을 출원번호
     dispatch_number: str | None  # OA 이력 줄에 넣을 발송번호
     case_number: str | None  # 채운 뒤 사건 출원번호 (모르면 None: 사건 자료를 못 만든다)
+    # 같은 출원번호의 기존 사건 id: 이 OA를 그 사건의 다음 OA로 옮긴다 (#272). 아니면 None
+    merge_into: str | None = None
 
 
 def _confirmed(v: ExtractedValue[str]) -> str | None:
@@ -91,16 +105,11 @@ def plan_number_fill(
     """
     app = _confirmed(result.application_number)
     disp = _confirmed(result.dispatch_number)
-    fill_app = None
+    fill_app = merge_into = None
     if app is not None and case_number is None:
         if owner_of_number is not None and owner_of_number != case_id:
-            # 합치기는 아직 없다: 번호를 넣지 않고 남긴다 (조용히 넘기지 않게 경고)
-            logger.warning(
-                "사건 %s: 출원번호 %s의 사건 %s가 이미 있어 번호를 넣지 않음 (합치기 미구현)",
-                case_id,
-                app,
-                owner_of_number,
-            )
+            # 같은 출원번호 사건이 이미 있다: 번호를 넣지 않고(unique) 그 사건으로 옮긴다
+            merge_into = owner_of_number
         else:
             fill_app = app
     elif app is not None and case_number != app:
@@ -111,6 +120,8 @@ def plan_number_fill(
             app,
         )
     fill_disp = disp if disp is not None and event_number is None else None
+    if merge_into is not None:
+        return NumberFill(None, fill_disp, app, merge_into)
     return NumberFill(fill_app, fill_disp, case_number or fill_app)
 
 
@@ -157,6 +168,13 @@ def case_materials_after_f1(
     )
     # 문서 줄을 합쳤으니 검토할 사항을 다시 모은다 (개수 = 줄 수 검사도 다시)
     return finalize_case_materials(case_oas, merged)
+
+
+def _warn_not_merged(case_id: str, target: str) -> None:
+    """합치지 못했을 때 (같은 파일이 기존 사건에 있음). 임시 사건은 번호 없이 그대로 둔다."""
+    logger.warning(
+        "사건 %s: 같은 출원번호 사건 %s에 같은 파일이 이미 있어 합치지 않음", case_id, target
+    )
 
 
 def _case_oas(order: list[str], current: OAResult, others: dict[str, OAResult]) -> list[OAResult]:
@@ -209,6 +227,12 @@ class PostgresCaseFill:
             fill = plan_number_fill(
                 case.id, case.application_number, event.doc_number, result, owner
             )
+            if fill.merge_into is not None:
+                if _merge_oa_pg(s, oa, event, fill.merge_into):
+                    case = s.get(Case, fill.merge_into)
+                else:
+                    _warn_not_merged(case.id, fill.merge_into)
+                    fill = NumberFill(None, fill.dispatch_number, None)
             if fill.application_number is not None:
                 case.application_number = fill.application_number
             if fill.dispatch_number is not None:
@@ -239,6 +263,34 @@ class PostgresCaseFill:
             else:
                 row.body, row.run_id = body, run_id
             s.commit()
+
+
+def _merge_oa_pg(s: Session, oa: OA, event: CaseEvent, target_id: str) -> bool:
+    """OA·그 이력 줄·원문 문서를 같은 출원번호의 기존 사건 끝(다음 OA)으로 옮긴다 (#272).
+
+    OA 순서는 올린 시각(oas.created_at) 그대로라 맨 뒤에 붙는다. 이력 순서(seq)는 기존 사건에
+    순서가 있을 때만 그 다음 번호를 준다 (날짜로 끼우지 않는다).
+    같은 파일이 그 사건에 이미 있으면 옮기지 않고 False (uq_documents_case_sha256).
+    """
+    doc = s.get(Document, oa.document_id) if oa.document_id else None
+    if doc is not None:
+        dup = s.scalars(
+            select(Document.id).where(Document.case_id == target_id, Document.sha256 == doc.sha256)
+        ).first()
+        if dup is not None:
+            return False
+    last_seq = s.scalar(select(func.max(CaseEvent.seq)).where(CaseEvent.case_id == target_id))
+    source_id = oa.case_id
+    oa.case_id = event.case_id = target_id
+    event.seq = last_seq + 1 if last_seq is not None else None
+    if doc is not None:
+        doc.case_id = target_id
+    s.flush()
+    # OA가 다 빠진 임시 사건은 지우지 않고 "합침(기존 사건 ID)" 표시를 단다 (목록에서 숨김)
+    if s.scalar(select(OA.id).where(OA.case_id == source_id).limit(1)) is None:
+        s.get(Case, source_id).merged_into_case_id = target_id
+        s.flush()
+    return True
 
 
 # --- 메모리 (테스트용) --------------------------------------------------------------
@@ -273,14 +325,21 @@ class InMemoryCaseFill:
                 result,
                 self._cases.case_with_number(app) if app else None,
             )
+            case_id = oa.case_id
+            if fill.merge_into is not None:
+                if not self._cases.merge_oa(oa_id, fill.merge_into):
+                    _warn_not_merged(case_id, fill.merge_into)
+                    fill = NumberFill(None, fill.dispatch_number, None)
+                else:
+                    case_id = fill.merge_into
             self._cases.fill_numbers(oa_id, fill.application_number, fill.dispatch_number)
             if fill.case_number is None:
                 return
-            order = [r.oa_id for r in self._cases.get_case(oa.case_id).oas]
+            order = [r.oa_id for r in self._cases.get_case(case_id).oas]
             others = {o: r for o in order if o != oa_id and (r := self._latest(o)) is not None}
-            saved: SavedCaseMaterials | None = self._materials.latest_case_materials(oa.case_id)
+            saved: SavedCaseMaterials | None = self._materials.latest_case_materials(case_id)
             body = case_materials_after_f1(
-                oa.case_id,
+                case_id,
                 fill.case_number,
                 oa.document_id,
                 result,
@@ -288,4 +347,4 @@ class InMemoryCaseFill:
                 saved.result if saved else None,
                 text_status,
             )
-            self._materials.put(oa.case_id, run_id, body)
+            self._materials.put(case_id, run_id, body)
