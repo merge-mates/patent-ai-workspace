@@ -1,0 +1,115 @@
+{
+  "status": {
+    "value": "unverified",
+    "reason": "input_unverified",
+    "checked": null,
+    "searched_scope": null
+  },
+  "evidence": [],
+  "origin": "ai_generated",
+  "needs_recheck": false,
+  "recheck_reason": null,
+  "flags": [],
+  "oa_id": "oa_1",
+  "application_number": {
+    "value": null,
+    "raw_text": null,
+    "page": null,
+    "status": {
+      "value": "unverified",
+      "reason": "input_unverified",
+      "checked": null,
+      "searched_scope": null
+    },
+    "candidates": []
+  },
+  "dispatch_number": {
+    "value": null,
+    "raw_text": null,
+    "page": null,
+    "status": {
+      "value": "unverified",
+      "reason": "input_unverified",
+      "checked": null,
+      "searched_scope": null
+    },
+    "candidates": []
+  },
+  "notice_date": {
+    "value": null,
+    "raw_text": null,
+    "page": null,
+    "status": {
+      "value": "unverified",
+      "reason": "input_unverified",
+      "checked": null,
+      "searched_scope": null
+    },
+    "candidates": []
+  },
+  "response_due": {
+    "value": null,
+    "raw_text": null,
+    "page": null,
+    "status": {
+      "value": "unverified",
+      "reason": "input_unverified",
+      "checked": null,
+      "searched_scope": null
+    },
+    "candidates": []
+  },
+  "notice_kind": {
+    "value": "unknown",
+    "raw_text": null,
+    "page": null,
+    "status": {
+      "value": "unverified",
+      "reason": "input_unverified",
+      "checked": null,
+      "searched_scope": null
+    },
+    "candidates": []
+  },
+  "examined_claims": {
+    "value": null,
+    "raw_text": null,
+    "page": null,
+    "status": {
+      "value": "unverified",
+      "reason": "input_unverified",
+      "checked": null,
+      "searched_scope": null
+    },
+    "candidates": []
+  },
+  "examined_claim_version": null,
+  "examiner_hints": {
+    "allowable_claims": {
+      "value": null,
+      "raw_text": null,
+      "page": null,
+      "status": {
+        "value": "unverified",
+        "reason": "input_unverified",
+        "checked": null,
+        "searched_scope": null
+      },
+      "candidates": []
+    },
+    "amendment_note": {
+      "value": null,
+      "raw_text": null,
+      "page": null,
+      "status": {
+        "value": "unverified",
+        "reason": "input_unverified",
+        "checked": null,
+        "searched_scope": null
+      },
+      "candidates": []
+    }
+  },
+  "rejections": [],
+  "claim_rows": []
+}

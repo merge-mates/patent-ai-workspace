@@ -434,3 +434,64 @@ def test_several_publications_each_judged_by_date(tmp_path):
     (plan,) = plan_case(case, pub_date=lambda p: dates[p.name])
     assert early in plan.copy_files
     assert dict(plan.dropped_files)[late] == "OA 뒤 공개"
+
+
+def test_audit_skips_non_oa_subfolders_with_warning(tmp_path, capsys):
+    # 쪽 텍스트 같은 하위 폴더가 <출원번호>/ 아래 생겨도 OA 폴더로 세지 않는다 (#159)
+    (plan,) = plan_case(_make_case(tmp_path / "src"))
+    out = tmp_path / "out"
+    write_plan(plan, out)
+    (out / APP / "pages").mkdir()
+    (out / APP / "pages" / "x.txt").write_text("x", encoding="utf-8")
+    assert audit(out) == []
+    assert main(["--audit", str(out)]) == 0
+    captured = capsys.readouterr()
+    assert "OA 폴더 1개" in captured.out
+    assert "건너뜀" in captured.err and "pages" in captured.err
+
+
+# --- #159: report 입력은 사람이 --allow-report로 한 번 만든다 ---
+# 출력·검사·로그는 훅과 settings deny가 막는 goldsets 아래 report 폴더에만 (PR #226 리뷰)
+
+
+def test_allow_report_cuts_report_bundle_into_goldsets_report(tmp_path, capsys):
+    report = tmp_path / "goldsets" / "report"
+    src = report / "case_full"
+    _make_case(src)
+    out = report / "cases_at_oa"
+    log = report / "split_cases.log"
+    args = ["--src", str(src), "--out", str(out), "--log", str(log), "--write", "--allow-report"]
+    assert main(args) == 0
+    assert (out / APP / OA1 / f"{APP}_행정이력.txt").exists()
+    assert log.exists()
+    assert main(["--audit", str(out), "--allow-report"]) == 0
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [
+        ("processed", "cases"),  # 개발 세션이 읽는 입력 폴더
+        ("processed", "report", "cases"),  # report라는 이름만 있고 훅이 막지 않는 자리
+    ],
+)
+def test_allow_report_refuses_output_outside_goldsets_report(tmp_path, capsys, parts):
+    src = tmp_path / "goldsets" / "report" / "case_full"
+    _make_case(src)
+    out = tmp_path.joinpath(*parts)
+    assert main(["--src", str(src), "--out", str(out), "--write", "--allow-report"]) == 1
+    assert not out.exists()
+    assert main(["--audit", str(out), "--allow-report"]) == 1
+    assert "goldsets/report" in capsys.readouterr().err
+
+
+def test_allow_report_refuses_log_outside_goldsets_report(tmp_path, capsys):
+    # 로그에는 report 사건 파일 이름(출원번호·발송번호)이 들어가 work/에 남기면 안 된다
+    report = tmp_path / "goldsets" / "report"
+    src = report / "case_full"
+    _make_case(src)
+    out = report / "cases_at_oa"
+    log = tmp_path / "work" / "split.log"
+    args = ["--src", str(src), "--out", str(out), "--log", str(log), "--write", "--allow-report"]
+    assert main(args) == 1
+    assert not out.exists() and not log.exists()
+    assert "goldsets/report" in capsys.readouterr().err

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from patent_ai.core.f1_oa_reader.case_grouping import (
     AS_FILED_VERSION,
@@ -385,6 +385,15 @@ def _plan_oas(
 
 def plan_case_rows(record: CaseRecord) -> CaseRows:
     """묶기 결과 → 표 줄. 저장할 수 없으면 CaseStoreError (DB에 닿기 전에 막는다)."""
+    # 마무리 안 한 ⑥(review_items None)은 0건처럼 조용히 저장되면 안 되니 거부하고,
+    # model_copy 등으로 검사를 건너뛴 어긋난 값(개수≠줄 수)도 저장 전에 다시 검사한다
+    if record.materials.review_items is None:
+        raise CaseStoreError("사건 자료 review_items가 None: 마무리(finalize) 안 한 ⑥은 저장 안 함")
+    try:
+        CaseMaterials.model_validate(record.materials.model_dump())
+    except ValidationError as e:
+        # 설명대로 저장 거부는 CaseStoreError 하나로 올린다 (검사 오류는 원인으로 붙임)
+        raise CaseStoreError(f"사건 자료 검사 실패 (검토할 사항 개수·줄 수 등): {e}") from e
     case_number = read_number("application", record.application_number).value
     if case_number is None:
         raise CaseStoreError(f"사건 출원번호 꼴이 아님: {record.application_number!r}")
