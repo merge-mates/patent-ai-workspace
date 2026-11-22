@@ -258,10 +258,10 @@ graph LR
 - 확인 방법: `uv run pytest tests/api/test_legal_chats_api.py`, `npm run build`(web), 화면 스크린샷
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- 다음: task-1
+- [x] task-1 (c8aa508, 리뷰 반영 c21d845: 옛 시점 BM25 0개는 `unverified(edition_unknown)`, 검색 조문 문구 나눔)
+- [x] task-2 (2f5c49f, 마이그레이션 `d4a8c2e6b915`. 저장소 모양은 계획과 조금 다름: `create(case_id, now) -> LegalChat`, `add_turn(chat_id, question, scope_changed, bundle, now) -> LegalChatTurn`. 시각을 밖에서 받아 테스트가 쉬움)
+- [x] task-3 (087cefa·0e033fa, 리뷰 반영 e369f10: 색인 캐시는 메모리 조각만 두고 DB 세션을 닫음(`PostgresChunkRepository.close()` 추가), 요청 스키마를 OpenAPI에 실음). 저장본 못 읽음은 500 `chat_corrupt`
+- 다음: /check, PR
 - 막힌 것: 없음
 
 ## m3-i2-29b  (뒤에)  상태: 계획 전  (이슈 #29, Closes)
