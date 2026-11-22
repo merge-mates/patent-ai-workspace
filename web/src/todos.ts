@@ -47,6 +47,20 @@ function unitText(unitId: string): string {
   return m ? `${articleLabel(m[1])} · 청구항 ${m[2]}` : unitId
 }
 
+// 검토할 사항 줄의 target → 그 카드로 가는 길 (F5 design 6절 "줄을 누르면 target의 카드로").
+// 거절이유·청구항 줄은 정리 단계의 그 거절이유 줄(펼쳐짐), 빠진 자료는 사건 자료 카드.
+// 머리 칸(출원번호·제출기일 등)은 접힌 "사건 정보"라 갈 자리가 없어 null (패널 줄에 쪽 링크는 달지 않는다)
+export function reviewTargetGo(target: string, r: OAResult | null): TodoGo | null {
+  const ri = rejectionIndex(target)
+  const rej = ri === null ? undefined : r?.rejections[ri]
+  if (rej) return { kind: 'anchor', id: `rejection-${rej.no}`, label: `거절이유 ${rej.no} 보기` }
+  const ci = /^oa_result\[[^\]]*\]\.claim_rows\[(\d+)\]/.exec(target)?.[1]
+  const row = ci === undefined ? undefined : r?.claim_rows[Number(ci)]
+  if (row?.rejection != null) return { kind: 'anchor', id: `rejection-${row.rejection}`, label: `거절이유 ${row.rejection} 보기` }
+  if (target.startsWith('materials.')) return { kind: 'anchor', id: 'materials', label: '자료 보기' }
+  return null
+}
+
 export interface DirectTodoList {
   todos: DirectTodo[]
   // false면 방향 고르기 줄을 세지 못한 것이라 todos 길이는 "이 이상"이다
