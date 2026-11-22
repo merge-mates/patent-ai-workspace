@@ -156,7 +156,7 @@ graph LR
 
 #### task-a4: 채점기 검색 범위에 `chunk_kinds` (design 5-1 바뀜 6. 판례 줄 날짜는 #35 정답이 생긴 뒤)
 - 합격 기준: v3에서 조문 정답 줄 점수가 v2와 비교된다 (조문 줄 범위에 심사기준·판례가 섞이지 않음)
-- 고칠 파일: `eval/retrieval/gold.py`(정답 줄 `chunk_kinds`, 없으면 law 말뭉치는 `[article]`), `eval/retrieval/score.py`(`search`·`repo.chunks`·`count_chunks`에 넘김), `eval/GUIDE.md`(칸 하나), `tests/retrieval_eval/` 채점기 테스트
+- 고칠 파일: `eval/retrieval/gold.py`(정답 줄 `chunk_kinds`, 없으면 law corpus는 `[article]`), `eval/retrieval/score.py`(`search`·`repo.chunks`·`count_chunks`에 넘김), `eval/GUIDE.md`(칸 하나), `tests/retrieval_eval/` 채점기 테스트
 - 테스트할 경우: law 줄 칸 없음 → `[article]`로 찾음 (판례 조각이 더 잘 맞아도 안 걸림) / 무작위 기준선 범위 크기 = 조문 조각 수 / cite 줄은 그대로
 - 확인 방법: `uv run pytest tests/retrieval_eval` + `uv run python eval/run_eval.py --config experiments/m2-i2-law-bm25-v2/config.yaml --chunks data/processed/law/law-idx-v2.jsonl` → `scores.json`의 metrics·failures가 전과 같음 (commit·seconds 칸이 바뀌므로 비교 뒤 파일은 `git checkout`으로 되돌린다)
 - 먼저: task-a2
