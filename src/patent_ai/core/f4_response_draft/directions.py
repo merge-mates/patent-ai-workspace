@@ -186,6 +186,20 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
     return F3Gaps(statuses=statuses, checks=checks, needs_review=needs_review or bool(checks))
 
 
+LEGAL_REVIEW_CHECK = "법률 근거: 근거 검토 전 (직접 검토 필요)"
+
+
+def legal_needs_review(bundle: LegalEvidenceBundle) -> bool:
+    """법률 근거 묶음이나 그 주장에 직접 검토 필요가 있나 (#28: 근거 검토 전 F2 묶음).
+
+    묶음 status는 주장 status만 모아 확인됨이 될 수 있어, 주장의 표시를 따로 옮기지 않으면
+    근거 검토를 안 한 법률 근거가 후보에서 "확인됨 + 표시 없음"으로 보인다.
+    """
+    return Flag.NEEDS_HUMAN_REVIEW in bundle.flags or any(
+        Flag.NEEDS_HUMAN_REVIEW in c.flags for c in bundle.claims
+    )
+
+
 def _evidence_of(f3: list) -> list[Evidence]:
     """F3 결과에 붙은 근거만 모은다 (대비표 줄 + 명확성 결과의 명세서 정의). 같은 근거는 한 번만."""
     found: list[Evidence] = []
@@ -411,15 +425,16 @@ def build_directions(
         bundle = legal_bundle_for(inp, unit)
         gaps = f3_gaps(inp, unit, f3)
         status, evidence = _status_of(f3, bundle, unit, gaps.statuses), _evidence_of(f3)
-        review = [Flag.NEEDS_HUMAN_REVIEW] if gaps.needs_review else []
-        unit_checks = [*checks, *gaps.checks]
+        legal_review = legal_needs_review(bundle)
+        review = [Flag.NEEDS_HUMAN_REVIEW] if gaps.needs_review or legal_review else []
+        unit_checks = [*checks, *gaps.checks, *([LEGAL_REVIEW_CHECK] if legal_review else [])]
         # 청구항 글자 없이 모델을 부르면 후보가 글자를 못 보고 나온 것이라 사람이 보게 표시한다
         missing = missing_claim_texts(inp, unit)
         if missing:
             logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
         flags = (
             [Flag.NEEDS_HUMAN_REVIEW]
-            if missing or ask_kind or unlimited_final or gaps.needs_review
+            if missing or ask_kind or unlimited_final or gaps.needs_review or legal_review
             else []
         )
 

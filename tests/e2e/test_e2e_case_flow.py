@@ -1,15 +1,15 @@
-"""끝에서 끝까지(E2E) 테스트: 사건 하나가 F1 → F3 → F2(넘김) → F4로 돈다 (이슈 #166 T3).
+"""끝에서 끝까지(E2E) 테스트: 사건 하나가 F1 → F3 → F2 → F4로 돈다 (이슈 #166 T3, F2는 #28).
 
 네트워크·API 키·DB 없음. 확인 명령: `uv run pytest -k e2e`
 - core 단계(지금 돈다): 지어낸 통지서 하나(tests/fixtures/e2e/)를 진짜 F1 코드(read_oa 규칙+모델
   합치기)로 읽고, 그 결과가 그대로 F3·F4 입력으로 이어진다. #180의 한 바퀴 테스트는 read_oa 자리에
   F4 fixture의 OA를 끼웠는데, 여기서는 끼우지 않는다. 바꿔 끼우는 것은 두 곳뿐이다:
-  extract_pages(한글 PDF를 테스트에서 못 만들어 쪽 글자 fixture로)와 F3 검색 자원(DB·임베딩 대신
-  메모리 저장소). 모델 답은 가짜 응답(FakeTransport).
+  extract_pages(한글 PDF를 테스트에서 못 만들어 쪽 글자 fixture로)와 F3 검색 자원·F2 법령 조각
+  (DB·임베딩 대신 메모리 저장소). 모델 답은 가짜 응답(FakeTransport).
 - 통지서는 F4 fixture 사건(fixtures/f4/case_basic.json)과 같은 사건으로 지었다: 청구항 1~3,
   진보성(청구항 1·2, D1) + 명확성(청구항 2 '적당한 간격'). 그래서 F3·F4 가짜 응답을 같이 쓴다.
-- 서버 단계(올리기 → 실행 → 폴링 → 다시 열기)는 아래 test_server_* 에 기대하는 모양만 적어 두고
-  건너뛴다. run_case를 서버 실행기에 잇는 것, F3·F4 결과 저장·다시 열기 API가 아직 없다.
+- 서버 단계(올리기 → 실행 → 폴링 → 다시 열기)는 아래 test_e2e_server_*: 진짜 앱·실행기 위에서
+  같은 사건을 돌린다. 저장소는 메모리, 실행은 그 자리에서 바로.
 """
 
 from pathlib import Path
@@ -18,6 +18,10 @@ import pytest
 
 from patent_ai.core.agents.orchestrator import CaseInput, run_case
 from patent_ai.core.agents.steps import MemoryStepRecorder
+from patent_ai.core.cases.run_inputs import RunInputNotFound
+from patent_ai.core.cases.store import InMemoryCaseAppStore
+from patent_ai.core.f2_legal_research import run as f2_run
+from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare import run as f3_run
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
@@ -26,23 +30,15 @@ from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import StatusValue
 from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
-
-# F3·F4 가짜 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것을 쓴다 (같은 사건이라 한 곳에)
-from tests.core.agents.test_fixed_order_f3_f4 import CHECKED_ON, _real_config, _responses, _texts
+from tests.core.f2 import fakes as f2_fakes
 from tests.core.f3 import scenario
+
+# F3·F4 가짜 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것 (같은 사건이라 한 곳에)
+from tests.core.run_case_app import NewCase, RunCaseApp
+from tests.core.run_case_fakes import CHECKED_ON, real_config, responses, texts
 
 ROOT = Path(__file__).resolve().parents[2]
 E2E = ROOT / "tests" / "fixtures" / "e2e"
-
-
-class _Store:
-    """같은 OA·같은 사건이 없는 새 사건."""
-
-    def find_oa(self, application_number, dispatch_number):
-        return None
-
-    def find_case(self, application_number):
-        return None
 
 
 def _read_oa_answer() -> TransportResponse:
@@ -51,12 +47,13 @@ def _read_oa_answer() -> TransportResponse:
 
 @pytest.fixture
 def offline(monkeypatch):
-    """PDF 글자 읽기와 F3 검색 자원만 바꿔 끼운다 (read_oa·F3·F4 코드는 진짜)."""
+    """PDF 글자 읽기와 F3 검색 자원·F2 법령 조각만 바꿔 끼운다 (read_oa·F3·F2·F4 코드는 진짜)."""
     pages = PageText.model_validate_json((E2E / "notice.pages.json").read_text("utf-8"))
     monkeypatch.setattr("patent_ai.core.f1_oa_reader.pages.extract_pages", lambda p, d: pages)
     monkeypatch.setattr(
         f3_run, "make_search_resources", lambda config, ctx: (scenario.searcher(), scenario.REPO)
     )
+    monkeypatch.setattr(f2_run, "make_law_repo", f2_fakes.repo)
 
 
 def _run(tmp_path, responses):
@@ -67,35 +64,33 @@ def _run(tmp_path, responses):
         case_id="c_1",
         oa_document=tmp_path / "oa.pdf",
         oa_document_id="d_1",
-        texts=_texts(),
+        texts=texts(),
         checked_on=CHECKED_ON,
     )
     steps = MemoryStepRecorder()
     # 저장소 설정(config/orchestrator.yaml)의 순서 그대로, plan만 fixed_order
-    out = run_case(case, "oa_1", "r_1", _Store(), _real_config(tmp_path), ctx=ctx, steps=steps)
+    out = run_case(case, "oa_1", "r_1", NewCase(), real_config(tmp_path), ctx=ctx, steps=steps)
     return out, steps, recorder
 
 
 def _all_responses() -> dict:
-    return {"f1.read_oa": [_read_oa_answer()], **_responses()}
+    return {"f1.read_oa": [_read_oa_answer()], **responses()}
 
 
-def test_e2e_한_사건이_F1부터_F4까지_돌고_F2는_넘긴_이유가_남는다(tmp_path, offline):
+def test_e2e_한_사건이_F1_F3_F2_F4로_돈다(tmp_path, offline):
     out, steps, _ = _run(tmp_path, _all_responses())
 
     assert out.state == "succeeded" and out.error is None
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f4"]
+    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f2", "run_f4"]
     assert [(r.tool_name, r.outcome) for r in steps.records] == [
         ("extract_pages", "ok"),
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
         ("run_f3", "ok"),
-        ("run_f2", "skipped"),
+        ("run_f2", "ok"),
         ("run_f4", "ok"),
     ]
-    # F2는 결과 없이 넘긴 이유만 (성공으로 숨기지 않는다)
-    assert "run_f2" not in out.results
-    assert list(out.skipped) == ["run_f2"] and "tool_missing" in out.skipped["run_f2"]
+    assert out.skipped == {}
 
 
 def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, offline):
@@ -120,11 +115,18 @@ def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, o
     assert f3.comparisons and f3.clarity_reviews
     assert [r.unit_id for r in f3.clarity_reviews] == ["oa_1:42-4-2:c2"]
     assert f4.directions and f4.drafts
+    # F2: F3 판단 단위마다 발송일 시행판 조문 근거 묶음 하나
+    f2 = out.results["run_f2"]
+    assert isinstance(f2, F2Result) and f2.oa_id == "oa_1"
+    assert [b.unit_id for b in f2.bundles] == [u.unit_id for u in f3.units]
+    assert [b.claims[0].sources[0].identifier for b in f2.bundles] == [
+        "특허법 제29조제2항",
+        "특허법 제42조제4항제2호",
+    ]
 
 
 def test_e2e_기록된_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
-    responses = _all_responses()
-    out, _, recorder = _run(tmp_path, responses)
+    out, _, recorder = _run(tmp_path, _all_responses())
     assert out.state == "succeeded"
     # 모든 호출이 이 실행 이름으로 기록되고, 실패·상한 초과가 없다
     assert recorder.records and all(r.run_id == "r_1" for r in recorder.records)
@@ -139,8 +141,7 @@ def test_e2e_F1_모델_답이_두_번_검사에_떨어지면_failed로_끝나고
     tmp_path, offline
 ):
     broken = TransportResponse("JSON 아님", 10, 10)
-    responses = {**_all_responses(), "f1.read_oa": [broken, broken]}
-    out, steps, _ = _run(tmp_path, responses)
+    out, steps, _ = _run(tmp_path, {**_all_responses(), "f1.read_oa": [broken, broken]})
 
     assert out.state == "failed"
     assert out.error["code"] == "ModelOutputInvalid" and out.error["message"]
@@ -148,47 +149,102 @@ def test_e2e_F1_모델_답이_두_번_검사에_떨어지면_failed로_끝나고
     assert (steps.records[-1].tool_name, steps.records[-1].outcome) == ("read_oa", "failed")
 
 
-# ---- 서버 단계: 기대하는 모양 (docs/api/README.md). 빈칸이 채워지면 skip을 지운다 ----
-SERVER_GAPS = (
-    "서버 E2E 빈칸: (1) run_case를 실행기(#187 core/runs/executor.py)에 잇는 실행기, "
-    "(2) F3·F4 결과 저장 + GET /oas/{id}/units·comparisons·clarity-reviews·directions·drafts, "
-    "(3) 사건 자료에서 CaseInput.texts(OA 당시 청구항·명세서)를 꺼내는 길"
+# ---- 서버 단계: 올리기 → 실행 → 폴링 → 다시 열기 (요청·응답 모양은 docs/api/README.md) ----
+# 앱은 진짜 라우터·진짜 실행기(RunCaseExecutor)·진짜 run_case다. 바꿔 끼우는 것은
+# 저장소(Postgres 대신 메모리), 실행 방법(백그라운드 스레드 대신 그 자리에서 바로),
+# 모델 전송층(기록된 응답), 실행 입력 글자(texts: #205가 저장된 청구항 판에서 만든다.
+# 여기서는 위 core 단계와 같은 글자를 준다)뿐이다.
+
+
+class _MemoryRunInputs:
+    """PostgresRunInputSource 대신: 올린 OA의 사건·문서로 실행 입력을 만든다.
+
+    메모리 저장소엔 파일 경로가 없어 oa_document는 지어 준다 (글자 읽기는 offline이 바꿔 끼운다).
+    올린 파일이 실행기까지 가는지는 db 테스트(tests/core/cases/test_run_inputs_db.py)가 본다.
+    """
+
+    def __init__(self, cases: InMemoryCaseAppStore, upload_dir: Path) -> None:
+        self._cases = cases
+        self._upload_dir = upload_dir
+
+    def case_input(self, oa_id: str) -> CaseInput:
+        oa = self._cases.get_oa(oa_id)
+        if oa is None:
+            raise RunInputNotFound(oa_id)
+        return CaseInput(
+            case_id=oa.case_id,
+            oa_document=self._upload_dir / "oa.pdf",
+            oa_document_id=oa.document_id,
+            texts=texts(),
+        )
+
+
+class _Server(RunCaseApp):
+    """서버 E2E용 앱: 모델 호출 기록을 실행끼리 하나로 모아 밖에서 본다."""
+
+    def __init__(self, tmp_path: Path, answers: dict) -> None:
+        self.recorder = MemoryRecorder()
+        transport = FakeTransport(answers)
+        super().__init__(
+            tmp_path,
+            make_inputs=lambda cases: _MemoryRunInputs(cases, tmp_path),
+            make_ctx=lambda run_id: RunContext(
+                run_id=run_id, budget=CallBudget(), recorder=self.recorder, transport=transport
+            ),
+        )
+
+    def poll(self, run_id: str) -> dict:
+        # 화면은 GET /runs/{id}만 본다. 실패를 succeeded로 돌려주지 않는다
+        for _ in range(50):
+            run = self.client.get(f"/runs/{run_id}").json()
+            if run["state"] not in ("queued", "running"):
+                return run
+        raise AssertionError(f"실행이 끝나지 않음: {run}")
+
+
+RESULTS = (
+    "oa-result",
+    "units",
+    "comparisons",
+    "clarity-reviews",
+    "legal-evidence",
+    "directions",
+    "drafts",
 )
 
 
-@pytest.mark.skip(reason=SERVER_GAPS)
-def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):  # pragma: no cover
-    """올리기 → 실행 → 폴링 → 결과 받기 → 다시 열기. 요청·응답 모양은 docs/api/README.md."""
-    from fastapi.testclient import TestClient
-
-    from patent_ai.api.main import app
-
-    client = TestClient(app)
-    pdf = (tmp_path / "oa.pdf").write_bytes(b"%PDF-1.4 e2e") and (tmp_path / "oa.pdf")
-    made = client.post("/cases", files={"file": ("oa.pdf", pdf.read_bytes(), "application/pdf")})
-    assert made.status_code == 200
-    ids = made.json()
+def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
+    server = _Server(tmp_path, _all_responses())
+    client = server.client
+    ids = server.upload()
     case_id, oa_id, run_id = ids["case_id"], ids["oa_id"], ids["run_id"]
 
-    # 폴링: 화면은 GET /runs/{id}만 본다. 실패를 succeeded로 돌려주지 않는다
-    for _ in range(50):
-        run = client.get(f"/runs/{run_id}").json()
-        if run["state"] not in ("queued", "running"):
-            break
+    run = server.poll(run_id)
     assert run["state"] == "succeeded", run
-    assert [s["step"] for s in run["skipped_steps"]] == ["run_f2"]
-    assert [w["code"] for w in run["warnings"]] == ["step_skipped"]
+    assert run["error"] is None
+    # F2도 돌아 넘긴 단계가 없다
+    assert run["skipped_steps"] == [] and run["warnings"] == []
 
     def results() -> dict:
-        names = ("oa-result", "units", "comparisons", "clarity-reviews", "directions", "drafts")
-        got = {n: client.get(f"/oas/{oa_id}/{n}") for n in names}
-        assert {n: r.status_code for n, r in got.items()} == dict.fromkeys(names, 200)
+        got = {n: client.get(f"/oas/{oa_id}/{n}") for n in RESULTS}
+        assert {n: r.status_code for n, r in got.items()} == dict.fromkeys(RESULTS, 200)
         return {n: r.json() for n, r in got.items()}
 
     first = results()
-    # F2는 넘겨서 결과가 없다: 404 result_not_ready가 아니라 이유가 붙은 빈 목록이어야 한다
-    legal = client.get(f"/oas/{oa_id}/legal-evidence")
-    assert legal.status_code == 200 and legal.json().get("empty_reason")
+    # 저장된 것이 이 실행의 F1·F2·F3·F4 결과다 (빈 목록이 아니다)
+    assert first["oa-result"]["run_id"] == run_id
+    for name in RESULTS[1:]:
+        assert first[name]["run_id"] == run_id and first[name]["result"], name
+    assert [u["unit_id"] for u in first["units"]["result"]] == [
+        f"{oa_id}:29-2:c1",
+        f"{oa_id}:42-4-2:c2",
+    ]
+    # F2 법률 근거 묶음도 저장되어 판단 단위마다 하나, 이유 없이 열린다 (다시 열기 비교에도 들어감)
+    legal = first["legal-evidence"]
+    assert legal["empty_reason"] is None
+    assert [b["unit_id"] for b in legal["result"]] == [
+        u["unit_id"] for u in first["units"]["result"]
+    ]
 
     # 다시 열기: 사건 → OA 목록 → latest_run → 같은 결과
     case = client.get(f"/cases/{case_id}").json()
@@ -196,3 +252,19 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):  #
     oa = client.get(f"/oas/{oa_id}").json()
     assert oa["latest_run"]["run_id"] == run_id and oa["latest_run"]["state"] == "succeeded"
     assert results() == first
+    # 모델 호출은 모두 이 실행 이름으로, 기록된 응답만 썼다
+    assert server.recorder.records and {r.run_id for r in server.recorder.records} == {run_id}
+
+
+def test_e2e_server_F1이_실패하면_failed와_이유가_남고_결과는_없다(tmp_path, offline):
+    broken = TransportResponse("JSON 아님", 10, 10)
+    server = _Server(tmp_path, {**_all_responses(), "f1.read_oa": [broken, broken]})
+    ids = server.upload()
+
+    run = server.poll(ids["run_id"])
+    assert run["state"] == "failed"
+    assert run["error"]["code"] == "step_failed"
+    assert run["error"]["message"] == "read_oa: 실패 (ModelOutputInvalid)"
+    for name in RESULTS:
+        res = server.client.get(f"/oas/{ids['oa_id']}/{name}")
+        assert (res.status_code, res.json()["code"]) == (404, "result_not_ready"), name

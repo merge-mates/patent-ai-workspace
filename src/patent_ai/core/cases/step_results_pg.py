@@ -1,4 +1,4 @@
-"""F3·F4 결과 저장·읽기의 Postgres 구현 (이슈 #191 T2). 표는 db/models/results.py StepResultRow.
+"""F2·F3·F4 결과 저장·읽기의 Postgres 구현 (이슈 #191 T2). 표는 db/models/results.py StepResultRow.
 
 실행기가 백그라운드 스레드에서 부르므로 `PostgresOAResultStore`처럼 세션 만드는 함수를 받아
 호출마다 새 세션을 열고 커밋한다.

@@ -5,6 +5,9 @@
 정해 git 밖 파일로 쓴다. 정답 파일(cite_gold.jsonl)은 바꾸지 않는다 (주 점수·VERSION 그대로).
 
 B안: 풀 = 풀 표(docs)에 적은 문헌 전체 (tune 인용문헌, 같은 OA의 다른 인용문헌 포함).
+C안: OA마다 같은 IPC·비슷한 낱말로 고른 공보. 풀 표에서 `only_oas`를 단 문헌으로,
+     그 OA의 줄에만 넣는다 (11/21 은진 결정: 줄마다 노이즈 수가 비슷하게 맞도록).
+     넣는 조건은 B안과 같다.
 넣는 조건 (이슈 #178):
 - 그 출원의 우선일 **전**에 공개된 것만 (당일 공개는 뺌)
 - 그 출원 자신의 공보, 정답 인용문헌과 같은 특허(같은 출원번호)의 다른 공보, 비특허 문헌은 뺀다
@@ -44,6 +47,8 @@ class PoolDoc(BaseModel):
 
     app_no: str | None  # 그 공보의 출원번호 (같은 특허 가리기). 비특허는 null
     date: date
+    # C안 문헌이면 넣을 OA 발송번호들. 없으면(B안) 모든 줄의 후보다
+    only_oas: list[str] | None = Field(default=None, min_length=1)
 
 
 class PoolOa(BaseModel):
@@ -69,6 +74,11 @@ class PoolTable(BaseModel):
         missing = [d for d, v in self.docs.items() if not d.startswith(NPL_PREFIX) and not v.app_no]
         if missing:
             raise ValueError(f"특허 문헌에 app_no가 없다: {', '.join(missing)}")
+        # C안 문헌의 OA가 표에 없으면 오타다. 조용히 어느 줄에도 안 들어가는 일을 막는다
+        listed = {o for v in self.docs.values() for o in v.only_oas or []}
+        stray = sorted(listed - set(self.oas))
+        if stray:
+            raise ValueError(f"only_oas의 발송번호가 oas에 없다: {', '.join(stray)}")
         return self
 
 
@@ -127,6 +137,9 @@ def build_noise_scope(
         for doc_id in sorted(table.docs):
             if doc_id in gold_docs:
                 continue
+            only = table.docs[doc_id].only_oas
+            if only is not None and _oa_no(r.row_id) not in only:
+                continue  # 다른 OA의 C안 문헌: 이 줄의 후보가 아니라 빼는 이유로 세지 않는다
             why = _skip_reason(doc_id, table.docs[doc_id], oa, gold_apps)
             if why:
                 rep.excluded[why] += 1

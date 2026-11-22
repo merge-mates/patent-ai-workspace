@@ -1,12 +1,13 @@
 """지휘 그래프 뼈대와 run_case(). 서버는 run_case 하나만 부른다.
 
 그래프: extract_pages(늘 처음) -> decide -> read_oa -> check_oa -> cut_to_oa -> decide
-        -> run_f3 -> decide -> run_f4 -> decide -> 끝
+        -> run_f3 -> decide -> run_f2 -> decide -> run_f4
+        -> decide -> 끝
 - decide: plan=agent면 모델이 다음 code_tool을 고르고, plan=fixed_order면 설정 순서대로.
 - fixed_order 단계의 도구가 아직 없으면: 설정 skip_if_missing에 있는 이름만 "확인되지 않음"으로
   넘기고(경고 + 단계 기록에 이유), 없는 이름은 설정 오류로 failed (오타를 조용히 넘기지 않는다).
 - cut_to_oa(fixed_stage)는 decide가 stop을 낼 때 그래프 간선으로 늘 지난다 (지휘가 고르지 못함).
-- run_f3·run_f4 입력은 앞 단계 결과와 실행 입력 글자(CaseInput.texts)로 만든다 (step_inputs.py).
+- run_f3·run_f2·run_f4 입력은 앞 단계 결과와 실행 입력(CaseInput)으로 만든다 (step_inputs.py).
   입력을 못 만들면 그 단계를 "확인되지 않음(input_unverified)"으로 넘기고 이유를 남긴다.
 - 사건 상태는 따로 없다: 단계 결과를 results(도구 이름 -> 결과 스키마 객체)에 쌓아 돌려준다.
 - 도구가 실패하면 그 자리에서 끝내고 state=failed (성공으로 끝나지 않는다).
@@ -22,9 +23,10 @@ import yaml
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
-from patent_ai.core.agents.step_inputs import InputMissing, f3_input, f4_input
+from patent_ai.core.agents.step_inputs import InputMissing, f2_input, f3_input, f4_input
 from patent_ai.core.agents.steps import StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
+from patent_ai.core.agents.tools_f2 import register_f2_tools
 from patent_ai.core.agents.tools_f3 import register_f3_tools
 from patent_ai.core.agents.tools_f4 import register_f4_tools
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
@@ -150,6 +152,7 @@ def run_case(
 
     registry = ToolRegistry()
     register_f1_tools(registry)
+    register_f2_tools(registry)
     register_f3_tools(registry)
     register_f4_tools(registry)
     code_tools = {t.name for t in registry.list(kind="code_tool")}
@@ -316,6 +319,10 @@ def run_case(
         payload = f3_input(state["results"], state["case_id"], case_input.texts)
         return chosen_tool("run_f3", state, payload)
 
+    def run_f2_node(state: _State) -> dict:
+        payload = f2_input(state["results"], case_input.checked_on)
+        return chosen_tool("run_f2", state, payload)
+
     def run_f4_node(state: _State) -> dict:
         payload = f4_input(state["results"], case_input.texts, case_input.checked_on)
         return chosen_tool("run_f4", state, payload)
@@ -343,11 +350,12 @@ def run_case(
         "extract_pages", lambda s: END if s["error"] else "decide", ["decide", END]
     )
     g.add_node("run_f3", run_f3_node)
+    g.add_node("run_f2", run_f2_node)
     g.add_node("run_f4", run_f4_node)
     g.add_conditional_edges(
-        "decide", after_decide, ["extract_pages", "read_oa", "run_f3", "run_f4", END]
+        "decide", after_decide, ["extract_pages", "read_oa", "run_f3", "run_f2", "run_f4", END]
     )
-    for name in ("run_f3", "run_f4"):
+    for name in ("run_f3", "run_f2", "run_f4"):
         g.add_conditional_edges(name, lambda s: END if s["error"] else "decide", ["decide", END])
     g.add_conditional_edges(
         "read_oa", lambda s: END if s["error"] else "check_oa", ["check_oa", END]

@@ -37,6 +37,7 @@ import demoFiles from 'virtual:demo-results'
 import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
 import { directTodos } from '../todos'
 import { ApiError } from './errors'
+import type { ResultList } from './resultList'
 
 // fixture 한 묶음 = 사건 하나 + OA 하나
 interface Bundle {
@@ -113,6 +114,10 @@ function summaryOf(b: Bundle): CaseSummary {
   }
 }
 
+// 결과 목록 + 빈 이유. mock 예시에는 빈 이유가 없어서, 비면 서버가 이유를 모를 때 쓰는 글자를 그대로 쓴다 (지어내지 않음)
+const MOCK_EMPTY_REASON = '확인되지 않음: 이 실행에 결과가 없음'
+const listOf = <T,>(items: T[]): ResultList<T> => ({ items, emptyReason: items.length === 0 ? MOCK_EMPTY_REASON : null })
+
 // 이번 화면 세션에서 올린 파일 (이름:크기). 409 흉내용
 const uploadedKeys = new Set<string>()
 
@@ -135,7 +140,7 @@ export const mockApi = {
       case_id: b.case_id,
       case_name: b.case_name,
       document_id: b.document?.document_id ?? null,
-      latest_run: runOf(b),
+      latest_run: latestOf(runOf(b)),
     }
   },
   async getOAResult(oaId: string): Promise<OAResultResponse> {
@@ -180,30 +185,30 @@ export const mockApi = {
     return found.document
   },
   // ②③④는 스키마가 아직 없어 예시 데이터 (types/provisional/examples.ts)
-  async getUnits(oaId: string): Promise<JudgmentUnit[]> {
+  async getUnits(oaId: string): Promise<ResultList<JudgmentUnit>> {
     gateResult(await byOA(oaId))
-    return exampleUnits[oaId] ?? []
+    return listOf(exampleUnits[oaId] ?? [])
   },
-  async getComparisons(oaId: string): Promise<ComparisonTable[]> {
+  async getComparisons(oaId: string): Promise<ResultList<ComparisonTable>> {
     gateResult(await byOA(oaId))
-    return ofOA(exampleComparisons, oaId)
+    return listOf(ofOA(exampleComparisons, oaId))
   },
-  async getClarityReviews(oaId: string): Promise<ClarityReview[]> {
+  async getClarityReviews(oaId: string): Promise<ResultList<ClarityReview>> {
     gateResult(await byOA(oaId))
-    return ofOA(exampleClarity, oaId)
+    return listOf(ofOA(exampleClarity, oaId))
   },
-  async getLegalEvidence(oaId: string): Promise<LegalEvidenceBundle[]> {
+  async getLegalEvidence(oaId: string): Promise<ResultList<LegalEvidenceBundle>> {
     gateResult(await byOA(oaId))
-    return ofOA(exampleLegal, oaId)
+    return listOf(ofOA(exampleLegal, oaId))
   },
   // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
   async askLegal(q: LegalQuestion, chatId?: string): Promise<LegalAnswer> {
     return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q) }
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
-  async getDirections(oaId: string): Promise<DirectionCandidates[]> {
+  async getDirections(oaId: string): Promise<ResultList<DirectionCandidates>> {
     gateResult(await byOA(oaId))
-    return directions[oaId] ?? []
+    return listOf(directions[oaId] ?? [])
   },
   async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
     const list = Object.values(directions).flat()
@@ -289,6 +294,11 @@ export const mockApi = {
   async uploadDocument(_caseId: string, _file: File, _what: string): Promise<UploadedDocument> {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
+  // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버에는 아직 이 API가 없다)
+  async setApplicationNumber(caseId: string, applicationNumber: string): Promise<void> {
+    const b = await byCase(caseId)
+    saveAppNumber(b.case_id, applicationNumber)
+  },
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
   async rerunOA(oaId: string): Promise<CreatedRun> {
     const b = await byOA(oaId)
@@ -372,19 +382,46 @@ function phaseOf(oaId: string): number {
   return Math.min(Math.floor(elapsedOf(run) / STEP_MS), RUN_STEPS.length)
 }
 
-// 실행이 끝나면: 확신 낮은 묶음이 아직 안 골라졌으면 사람 기다림, 아니면 끝남
-function runOf(b: Bundle): LatestRun {
+// 사람이 넣은 출원번호 (mock만, sessionStorage). "mock 처음으로"(patent_ai:mock: 지우기)로 함께 지워진다
+const appNumberKey = (caseId: string) => `patent_ai:mock:v1:appnum:${caseId}`
+function loadAppNumber(caseId: string): string | null {
+  try {
+    return sessionStorage.getItem(appNumberKey(caseId))
+  } catch {
+    return null
+  }
+}
+function saveAppNumber(caseId: string, n: string) {
+  try {
+    sessionStorage.setItem(appNumberKey(caseId), n)
+  } catch (e) {
+    console.warn(`[mock] 출원번호를 저장하지 못함 (${appNumberKey(caseId)})`, e)
+  }
+}
+// 지휘(orchestrator)와 같은 규칙: 통지서에서 읽은 출원번호가 확인됨이 아니면(확인되지 않음·충돌) 사람에게 묻는다
+const needsAppNumber = (b: Bundle) =>
+  b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
+
+// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 확신 낮은 묶음이 아직 안 골라졌으면 방향 고르기 기다림, 아니면 끝남.
+// mock 단순화: 출원번호를 기다리는 동안에도 뒤 단계 결과(예시)는 열어 둔다 (서버는 OA 정리까지만 있다)
+function runOf(b: Bundle): RunStatusLike {
   const run = loadRun(b.oa_id)
   if (!run) return { run_id: b.run_id, state: 'succeeded', current_step: null }
   const phase = phaseOf(b.oa_id)
   const run_id = currentRunId(b)
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
+  if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
   const waiting = (directions[b.oa_id] ?? []).some(
     (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
   )
-  return { run_id, state: waiting ? 'waiting_for_human' : 'succeeded', current_step: null }
+  return waiting
+    ? { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'direction_selection' }
+    : { run_id, state: 'succeeded', current_step: null }
 }
+// latest_run(getOA)에는 waiting_for가 없고 GET /runs/{id}에만 있다 (서버 oas.py LatestRun과 같게)
+type RunStatusLike = LatestRun & { waiting_for?: string | null }
+const latestOf = (r: RunStatusLike): LatestRun => ({ run_id: r.run_id, state: r.state, current_step: r.current_step })
 
 // run_id로 사건 묶음 찾기: 다시 돌린 실행은 fixture의 run_id에 꼬리가 붙어 있다
 async function byRun(runId: string): Promise<Bundle> {
