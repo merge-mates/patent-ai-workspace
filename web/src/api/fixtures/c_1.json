@@ -1518,7 +1518,8 @@
           "reason": null,
           "checked": "출원번호 대조",
           "searched_scope": null
-        }
+        },
+        "citation_key": null
       }
     ],
     "missing": [
@@ -1528,7 +1529,8 @@
           "F3 대비: D2 KR20990000012A"
         ],
         "lookup_result": "lookup_failed",
-        "ask_upload": true
+        "ask_upload": true,
+        "citation_key": "KR20990000012A"
       }
     ],
     "held_tasks": [

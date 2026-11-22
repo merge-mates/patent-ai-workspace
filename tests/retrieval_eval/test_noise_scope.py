@@ -162,3 +162,34 @@ def test_범위_파일_읽기_검사(tmp_path):
     )
     with pytest.raises(RetrievalEvalError, match="중복"):
         load_noise_scope(p)
+
+
+# C안 (이슈 #178): OA마다 같은 IPC·비슷한 낱말로 고른 공보는 그 OA의 범위에만 넣는다
+# (11/21 은진 결정).
+# B안 문헌(only_oas 없음)은 지금처럼 모든 줄에 넣는다. 넣는 조건(우선일 등)은 C안에도 같다.
+
+
+def table_c() -> PoolTable:
+    t = table().model_dump(mode="json")
+    t["docs"]["KR6000A"] = {"app_no": "P6", "date": "2013-01-01", "only_oas": ["OA1"]}
+    t["docs"]["KR7000A"] = {"app_no": "P7", "date": "2013-01-01", "only_oas": ["OA2"]}
+    # OA1 우선일 뒤라 OA1 범위에서도 빠진다
+    t["docs"]["KR8000A"] = {"app_no": "P8", "date": "2016-01-01", "only_oas": ["OA1"]}
+    return PoolTable.model_validate(t)
+
+
+def test_C안_문헌은_그_OA_범위에만_들어간다():
+    rows = [row("OA1:r1:c1:KR1000A", "KR1000A"), row("OA2:r1:c1:KR2000A", "KR2000A")]
+    scope, rep = build_noise_scope(rows, table_c())
+    assert scope["OA1:r1:c1:KR1000A"] == ["KR1000A", "KR2000A", "KR6000A"]
+    assert "KR6000A" not in scope["OA2:r1:c1:KR2000A"]
+    assert "KR7000A" in scope["OA2:r1:c1:KR2000A"]
+    # 다른 OA의 C안 문헌은 빼는 이유로 세지 않는다 (애초에 그 줄의 후보가 아님)
+    assert rep.excluded["after_priority"] == 2 + 1 + 0  # OA1: KR3000A·KR4000A·KR8000A, OA2: 없음
+
+
+def test_C안_문헌의_OA가_표에_없으면_표를_못_읽는다():
+    t = table().model_dump(mode="json")
+    t["docs"]["KR6000A"] = {"app_no": "P6", "date": "2013-01-01", "only_oas": ["OA9"]}
+    with pytest.raises(ValueError, match="OA9"):
+        PoolTable.model_validate(t)

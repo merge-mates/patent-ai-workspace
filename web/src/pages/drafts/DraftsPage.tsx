@@ -1,4 +1,5 @@
 import { Alert, App, Button, Input, Segmented, Space, Tooltip, Typography } from 'antd'
+import { EmptyReason } from '../../components/EmptyReason'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useRouteLoaderData } from 'react-router'
 import { api, API_MODE } from '../../api'
@@ -55,7 +56,7 @@ function claimKind(before: string, text: string): '보정' | '삭제' | '그대�
 
 // 5 초안 단계: 대응 현황 표 → 제출 전에 고칠 곳 → 초안 본문(의견서 / 보정 청구항)
 export function DraftsPage() {
-  const { drafts: initial, directions, caseCheck } = useLoaderData() as DraftsLoaderData
+  const { drafts: initial, directions, caseCheck, draftsEmptyReason } = useLoaderData() as DraftsLoaderData
   const { oaResult } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
   const { openCite } = useContext(SourceContext)
@@ -69,6 +70,8 @@ export function DraftsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h2 className="heading2">대응 현황 · 거절이유 × 청구항</h2>
         <span className="body1 t2">초안이 아직 없어 대응 현황을 셀 수 없어요</span>
+        {/* 실행이 끝났는데 초안이 없으면 서버가 준 이유 (모든 묶음 보류·F4 넘김 등) */}
+        {draftsEmptyReason && <EmptyReason what="초안" reason={draftsEmptyReason} />}
         {API_MODE === 'mock' && <span className="label2 t3">예시 초안은 '가상의 영상 처리 장치' 사건에만 있어요</span>}
       </div>
     )
@@ -239,7 +242,7 @@ export function DraftsPage() {
   const mismatchesOf = (title: string) => drafts.check.number_mismatches.filter((m) => m.where === title)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <CoverageTable model={coverage} />
       <FixList
         fixes={fixes}
@@ -281,7 +284,7 @@ export function DraftsPage() {
               const showAi = aiShown.includes(key)
               const startEdit = () => setEditing({ section: s.key, text: s.human_text ?? s.ai_text })
               return (
-                <div key={s.key} id={`op-${s.title}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div key={s.key} id={`op-${s.title}`} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <h3 className="headline1" style={{ margin: 0 }}>{`${i + 1}. ${s.title}`}</h3>
                     {edited && humanTag}

@@ -5,7 +5,8 @@ import { LegalBundleView } from '../../components/LegalBundleView'
 import { sourceKindLabel } from '../../labels'
 import type { LegalEvidenceBundle, LegalSourceKind } from '../../types/generated/LegalEvidenceBundle'
 
-const KINDS: LegalSourceKind[] = ['statute', 'guideline', 'precedent', 'trial']
+// 찾을 곳 순서는 디자인 B 고친 판(PQuestion): 법령 · 판례 · 심결 · 심사기준
+const KINDS: LegalSourceKind[] = ['statute', 'precedent', 'trial', 'guideline']
 const EXAMPLES = ['진보성 판단에서 결합 동기는 어디서 찾나', '특허법 제42조제4항제2호', "청구항 '상기' 표현이 앞에 없을 때"]
 
 // 시점 고르기: 현행 / 날짜 고르기 (디자인의 Select)
