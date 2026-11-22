@@ -33,5 +33,5 @@
 | m3-i1-cite-search-two-stage | cite-search (이슈 #212) | `impl`: hybrid(RRF) → two_stage (BM25 후보 N=100 → 그 후보만 벡터로 다시 순위) | hit@10 0.691 | -0.015 | $0.00 | [card](m3-i1-cite-search-two-stage/card.md) |
 | m3-i1-cite-search-weighted-sum | cite-search (이슈 #212, lane_extra C3) | `impl`: hybrid(RRF, 순위로 섞음) → weighted_sum (점수를 min-max로 맞춘 뒤 BM25 0.5 / 벡터 0.5 가중합) | hit@10 0.706 | +0.000 | $0.00 | [card](m3-i1-cite-search-weighted-sum/card.md) |
 | m3-i1-f3-rescore | F3 | 코드 판 (m2-f3-skeleton 849d18f 뼈대 → main 9eb8237: 부모 구성요소 넣기·second_search 기본 켬 등 그 사이 머지된 F3). 설정은 그 판의 config/f3.yaml 그대로 | search_recall 0.585 | +0.001 | $0.00 | [card](m3-i1-f3-rescore/card.md) |
-| m3-i1-f4-first-score | F4 | 코드 판 (m3-f4-skeleton 1731de3 → main 9eb8237)과 `final_rejection_limit` 기본값 false → true. 처음으로 F4 정답으로 채점 | direction_top1 0.104 | - | $0.00 | [card](m3-i1-f4-first-score/card.md) |
-| m3-i1-f4-rank-first | F4 | `prompts/f4/direction.md` 목록 순서 규칙 (순위 있는 후보 먼저, 보류 묶음은 low 후보 순서 그대로, f3de1ae). 채점기는 주 지표를 AI 기본 선택(순위 1, 없으면 목록 첫째)으로 셈 (5384320) | direction_top1 0.417 | +0.313 | $0.00 | [card](m3-i1-f4-rank-first/card.md) |
+| m3-i1-f4-first-score | F4 | 코드 판 (m3-f4-skeleton 1731de3 → main 9eb8237)과 `final_rejection_limit` 기본값 false → true. 처음으로 F4 정답으로 채점 | direction_top1 0.479 | - | $0.00 | [card](m3-i1-f4-first-score/card.md) |
+| m3-i1-f4-rank-first | F4 | `prompts/f4/direction.md` 목록 순서 규칙 (순위 있는 후보 먼저, 보류 묶음은 low 후보 순서 그대로, f3de1ae). 채점기는 주 지표를 AI 기본 선택(순위 1, 없으면 목록 첫째)으로 셈 (5384320) | direction_top1 0.417 | -0.061 | $0.00 | [card](m3-i1-f4-rank-first/card.md) |
