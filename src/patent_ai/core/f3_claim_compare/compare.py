@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.bundle_errors import BUNDLE_ERRORS, hold_for_error, is_limit
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation, resolve_citations
 from patent_ai.core.f3_claim_compare.elements import ClaimElement, SplitClaim
 from patent_ai.core.f3_claim_compare.examiner import (
@@ -93,10 +94,16 @@ class CompareAnswer(BaseModel):
 
 # ---- 이 단계가 돌려주는 것 ----
 class CompareOutput(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     tables: list[ComparisonTable] = Field(default_factory=list)
     held_tasks: list[HeldTask] = Field(default_factory=list)
+    # 호출 실패(상한 제외)로 보류한 묶음의 원래 예외와 모델 호출까지 간 묶음 수
+    # (모델을 부르기 전에 보류로 끝난 묶음, 예: 인용문헌 본문 없음은 세지 않는다).
+    # run_f3가 "모든 묶음 실패 = 단계 전체가 못 돔"을 가르고 마지막 원래 예외를 올리는 데 쓴다
+    # (결과 모양이 아니라 저장하지 않는다)
+    call_errors: list[Exception] = Field(default_factory=list, exclude=True)
+    units_tried: int = 0
     search_log: list[SearchLogRow] = Field(default_factory=list)
     examiner_locations: list[ExaminerLocationRow] = Field(default_factory=list)
 
@@ -839,6 +846,11 @@ def _hold(seen: _Collected, task: str, waiting_for: str) -> None:
         seen.held.append(HeldTask(task=task, waiting_for=waiting_for))
 
 
+def _hold_error(seen: _Collected, unit_id: str, error: Exception) -> None:
+    held = hold_for_error("f3_compare", unit_id, error)
+    _hold(seen, held.task, held.waiting_for)
+
+
 def compare_unit(
     unit: JudgmentUnit,
     oa: OAResult,
@@ -848,6 +860,31 @@ def compare_unit(
     ctx: RunContext,
     searcher: Searcher,
     repo: ChunkRepository,
+) -> CompareOutput:
+    """판단 단위 하나를 대비한다. 모델 호출이 실패하면 그 단위만 보류한 결과를 돌려준다.
+
+    실패 전에 같은 단위에서 이미 나온 "필요한 자료" 보류(본문 미확보 등)는 버리지 않고 남긴다.
+    실패한 단위의 대비표와 검색 기록은 남기지 않는다 (일부만 있는 표를 확인된 것처럼 두지 않음).
+    """
+    seen = _Collected()
+    try:
+        return _compare_unit(unit, oa, splits, config, ctx, searcher, repo, seen)
+    except BUNDLE_ERRORS as e:
+        _hold_error(seen, unit.unit_id, e)
+        # BUNDLE_ERRORS는 모델 호출에서만 나므로 이 묶음은 모델을 부른 묶음으로 센다
+        errors = [] if is_limit(e) else [e]
+        return CompareOutput(held_tasks=seen.held, call_errors=errors, units_tried=1)
+
+
+def _compare_unit(
+    unit: JudgmentUnit,
+    oa: OAResult,
+    splits: Mapping[int, SplitClaim],
+    config: F3Config,
+    ctx: RunContext,
+    searcher: Searcher,
+    repo: ChunkRepository,
+    seen: _Collected,
 ) -> CompareOutput:
     """진보성·신규성 판단 단위 하나를 대비한다.
 
@@ -859,7 +896,6 @@ def compare_unit(
     rej = next(r for r in oa.rejections if r.no == unit.rejection)
     searcher = _cached(searcher)  # 같은 검색은 한 번만
     settings = config.settings
-    seen = _Collected()
     resolved = resolve_citations(rej, oa.oa_id, repo, settings.search.index_version)
     for r in resolved:
         if r.held_task is not None:
@@ -877,6 +913,7 @@ def compare_unit(
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
     # 어느 묶음에서든 대비된 청구항 (신규성은 문헌마다 묶음이 따로라 합쳐서 본다)
     compared_anywhere: set[int] = set()
+    called_model = False  # 청구항 대비(모델 호출)까지 갔는가 ("모든 묶음 실패"의 분모)
     for group in groups:
         rows: list[ComparisonRow] = []
         # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
@@ -912,6 +949,7 @@ def compare_unit(
                     f"청구항 {claim} 구성요소 나누기",
                 )
             elif claim in views:
+                called_model = True
                 rows += _compare_claim(
                     unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
                 )
@@ -977,6 +1015,7 @@ def compare_unit(
     return CompareOutput(
         tables=tables,
         held_tasks=seen.held,
+        units_tried=1 if called_model else 0,
         search_log=seen.search_log,
         examiner_locations=seen.examiner,
     )
@@ -996,10 +1035,16 @@ def compare_units(
     total = _Collected()
     tables: list[ComparisonTable] = []
     searcher = _cached(searcher)  # 단위가 달라도 같은 (구성요소, 문헌) 검색은 한 번만
+    tried = 0
+    errors: list[Exception] = []
     for unit in sorted(units, key=lambda u: u.order):
         if unit.rejection_kind == RejectionKind.CLARITY:
             continue
+        # 호출 실패는 compare_unit이 그 단위만 보류한 결과로 돌려준다.
+        # 모델을 부르기 전에 보류로 끝난 단위(본문 없음 등)는 tried에 세지 않는다
         out = compare_unit(unit, oa, splits, config, ctx=ctx, searcher=searcher, repo=repo)
+        tried += out.units_tried
+        errors += out.call_errors
         tables += out.tables
         total.search_log += out.search_log
         total.examiner += out.examiner_locations
@@ -1010,6 +1055,8 @@ def compare_units(
     return CompareOutput(
         tables=tables,
         held_tasks=total.held,
+        call_errors=errors,
+        units_tried=tried,
         search_log=total.search_log,
         examiner_locations=total.examiner,
     )

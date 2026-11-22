@@ -29,7 +29,6 @@ from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import STEP as OPINION_STEP
 from patent_ai.core.f4_response_draft.opinion import build_opinion
 from patent_ai.core.llm.config import load_step_config
-from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, Origin, StatusValue, UnverifiedReason
@@ -223,22 +222,29 @@ def test_묶음_밖_청구항을_고치면_출력_검사_실패_뒤_한_번_다�
     assert [c.claim for c in part.claims] == [1, 2]
 
 
-def test_다시_불러도_묶음_밖이면_실패가_그대로_드러난다():
-    with pytest.raises(ModelOutputInvalid):
-        _run(["amendment_inventive", _clarity_with_claim(3), _clarity_with_claim(3)])
+def test_다시_불러도_묶음_밖이면_그_묶음만_보류로_드러난다():
+    # 앞 묶음 초안은 남고, 두 번 다 틀린 묶음은 받지 않고 청구항 자리에 보류 이유를 남긴다
+    part, _, _ = _run(["amendment_inventive", _clarity_with_claim(3), _clarity_with_claim(3)])
+    assert part.held_units == [UNIT_CLARITY]
+    by_claim = {c.claim: c for c in part.claims}
+    assert by_claim[1].ai_text is not None
+    assert by_claim[2].ai_text is None and by_claim[2].held_reason
 
 
-def test_고른_방향이_고치기로_한_청구항이_답에_없으면_출력_검사_실패():
+def test_고른_방향이_고치기로_한_청구항이_답에_없으면_출력_검사_실패로_묶음_보류():
     empty = {"claims": []}
-    with pytest.raises(ModelOutputInvalid):
-        _run([empty, empty])
+    part, _, _ = _run([empty] * 4)
+    assert part.held_units == [UNIT_INVENTIVE, UNIT_CLARITY]
+    assert all(
+        "보정 단계" in c.held_reason and "ModelOutputInvalid" in c.held_reason for c in part.claims
+    )
 
 
-def test_보정_글자가_비면_출력_검사_실패():
+def test_보정_글자가_비면_출력_검사_실패로_묶음_보류():
     blank = copy.deepcopy(_answer("amendment_inventive"))
     blank["claims"][0]["text"] = "  "
-    with pytest.raises(ModelOutputInvalid):
-        _run([blank, blank])
+    part, _, _ = _run([blank] * 4)
+    assert part.held_units == [UNIT_INVENTIVE, UNIT_CLARITY]
 
 
 # ---- 삭제하는 청구항 ----
@@ -277,8 +283,8 @@ def test_삭제로_표시하고_다른_글을_쓰면_출력_검사_실패_뒤_�
     part, transport, _ = _run_delete([bad, _delete_amendment("(삭제)")])
     assert len(_calls(transport)) == 2
     assert part.claims[1].ai_text.strip() == "(삭제)"
-    with pytest.raises(ModelOutputInvalid):
-        _run_delete([bad, bad])
+    held, _, _ = _run_delete([bad, bad])  # 두 번 다 틀리면 그 묶음 보류
+    assert UNIT_INVENTIVE in held.held_units
 
 
 # ---- 한 청구항이 여러 묶음에 걸침 ----
