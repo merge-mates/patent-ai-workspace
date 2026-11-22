@@ -331,3 +331,23 @@ def test_질의는_그_OA의_입력_폴더에서만_읽는다(env):
     shutil.rmtree(env.cases / "10-2099-0000001" / OA)
     assert env.run() == 1  # 남은 사건이 모두 질의를 못 만들어 0줄
     assert not env.out.exists()
+
+
+def test_자른_입력과_자르지_않은_이력의_정답이_바이트까지_같다(env, tmp_path):
+    # 입력 자르기(scripts/split_cases_at_oa.py)를 거쳐도 질의가 그대로인지 (PR #226 리뷰 참고)
+    from scripts.split_cases_at_oa import plan_case, write_plan
+
+    app = "10-2099-0000001"
+    bundle = tmp_path / "bundle" / app
+    bundle.mkdir(parents=True)
+    for f in (env.cases / app / OA).glob("*이력.txt"):
+        shutil.copy(f, bundle / f.name)
+    cut = tmp_path / "cut"
+    for plan in plan_case(bundle):
+        write_plan(plan, cut)
+    assert env.run() == 0
+    uncut_bytes = env.out.read_bytes()
+    env.out.unlink()
+    env.cases = cut
+    assert env.run() == 0
+    assert env.out.read_bytes() == uncut_bytes
