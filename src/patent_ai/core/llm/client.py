@@ -50,6 +50,19 @@ def _input_tokens_upper_bound(prompt: str) -> int:
     return len(prompt.encode("utf-8"))
 
 
+# 출력 검사 오류 종류 짧은 코드 (#228). 기록에 이 순서로 잇는다
+_INVALID_KIND_ORDER = ("not_json", "unknown_key", "missing_key", "bad_value")
+# Pydantic 오류 type -> 짧은 코드. 여기 없는 type(타입·값·모양 틀림)은 모두 bad_value
+_PYDANTIC_KIND = {"extra_forbidden": "unknown_key", "missing": "missing_key"}
+
+
+def _invalid_kind(e: ValidationError) -> str:
+    """스키마 검사 오류를 짧은 코드로 줄인다. 오류의 type만 보고 위치·입력 값은 안 본다
+    (모르는 키의 이름·답 글자는 모델이 쓴 원문이라 기록에 남기지 않는다)."""
+    kinds = {_PYDANTIC_KIND.get(err["type"], "bad_value") for err in e.errors()}
+    return ",".join(k for k in _INVALID_KIND_ORDER if k in kinds)
+
+
 class ModelResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -155,7 +168,14 @@ def call_model(
     # 전송 중 실패한 호출: usage = 끊기기 전에 받은 토큰 (출력은 None일 수 있음),
     # usage_unknown=True = 청구된 토큰을 아예 모름 -> 토큰·비용을 None(확인되지 않음)
     def record(
-        resp, elapsed_ms, from_cache, outcome, transport_try, usage=None, usage_unknown=False
+        resp,
+        elapsed_ms,
+        from_cache,
+        outcome,
+        transport_try,
+        usage=None,
+        usage_unknown=False,
+        invalid_kind=None,
     ):
         if recorder is None:
             _warn_no_recorder(run_id, step)
@@ -183,6 +203,7 @@ def call_model(
                 outcome=outcome,
                 transport_try=transport_try,
                 stop_reason=resp.stop_reason if resp else None,
+                invalid_kind=invalid_kind,
             )
         )
 
@@ -248,11 +269,13 @@ def call_model(
         try:
             parsed = output_schema.model_validate(json.loads(resp.text))
         except json.JSONDecodeError as e:
-            record(resp, elapsed_ms, hit is not None, failed, tries)
-            raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason) from e
+            kind = "not_json"
+            record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
+            raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason, kind) from e
         except ValidationError as e:
-            record(resp, elapsed_ms, hit is not None, failed, tries)
-            raise ModelOutputInvalid(f"스키마 검사 실패: {e}", resp.stop_reason) from e
+            kind = _invalid_kind(e)
+            record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
+            raise ModelOutputInvalid(f"스키마 검사 실패: {e}", resp.stop_reason, kind) from e
 
     # 검사를 통과한 답만 캐시에 쓴다 (위에서 예외가 나면 여기까지 오지 않음)
     if cache is not None and hit is None:

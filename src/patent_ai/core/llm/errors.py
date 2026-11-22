@@ -12,9 +12,13 @@ class ModelOutputInvalid(Exception):
     닿아 잘린 것이다 (모양이 틀린 답과 가르려고 둔다. 호출 기록에는 output_truncated).
     """
 
-    def __init__(self, message: str, stop_reason: str | None = None) -> None:
+    def __init__(
+        self, message: str, stop_reason: str | None = None, invalid_kind: str | None = None
+    ) -> None:
         super().__init__(message)
         self.stop_reason = stop_reason
+        # 오류 종류 짧은 코드 (CallRecord.invalid_kind와 같음, #228)
+        self.invalid_kind = invalid_kind
 
     @property
     def truncated(self) -> bool:

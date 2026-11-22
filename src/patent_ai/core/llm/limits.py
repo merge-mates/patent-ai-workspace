@@ -66,6 +66,10 @@ class CallRecord:
     transport_try: int
     # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 답을 못 받았거나 모르면 None
     stop_reason: str | None = None
+    # 출력 검사에 떨어진 오류 종류 (#228). 답 원문 글자 없이 짧은 코드만 남긴다:
+    # not_json / unknown_key / missing_key / bad_value (여럿이면 이 순서로 쉼표로 잇는다).
+    # 검사를 통과했거나 검사 전에 끝난 호출은 None
+    invalid_kind: str | None = None
 
 
 class CallRecorder(Protocol):

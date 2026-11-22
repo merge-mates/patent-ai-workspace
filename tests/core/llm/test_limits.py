@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from patent_ai.core.llm.cache import MemoryCache
 from patent_ai.core.llm.client import call_model
@@ -344,6 +344,66 @@ def test_stop_reason을_모르면_None이고_검사_실패는_invalid_output(tmp
         run(t, cfg, CallBudget(), rec, schema=Strict)
     assert [(r.outcome, r.stop_reason) for r in rec.records] == [("invalid_output", None)]
     assert (e.value.stop_reason, e.value.truncated) == (None, False)
+
+
+# ---- 출력 검사에 떨어진 호출은 오류 종류를 짧은 코드로 남긴다 (#228) ----
+class Shaped(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str
+    count: int
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("그냥 글", "not_json"),
+        ('{"title": "가", "count": 1, "몰래": "비밀 글"}', "unknown_key"),
+        ('{"title": "가"}', "missing_key"),
+        ('{"title": "가", "count": "많이"}', "bad_value"),
+        # 여러 종류가 같이 나오면 정해진 순서로 겹치지 않게 잇는다
+        ('{"count": "많이", "몰래": 1}', "unknown_key,missing_key,bad_value"),
+        # JSON이지만 객체가 아님 (리스트) = 칸 모양이 틀림
+        ("[1, 2]", "bad_value"),
+    ],
+)
+def test_검사_실패_기록에_오류_종류가_남는다(tmp_path, text, kind):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse(text, 10, 3, "end_turn"))
+    with pytest.raises(ModelOutputInvalid) as e:
+        run(t, cfg, CallBudget(), rec, schema=Shaped)
+    assert [(r.outcome, r.invalid_kind) for r in rec.records] == [("invalid_output", kind)]
+    assert e.value.invalid_kind == kind
+
+
+def test_오류_종류에는_답_원문_글자가_들어가지_않는다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse('{"비밀키": "비밀 청구항 글", "count": "비밀"}', 10, 3))
+    with pytest.raises(ModelOutputInvalid):
+        run(t, cfg, CallBudget(), rec, schema=Shaped)
+    kind = rec.records[0].invalid_kind
+    assert "비밀" not in kind
+    assert set(kind.split(",")) <= {"not_json", "unknown_key", "missing_key", "bad_value"}
+
+
+def test_잘린_답도_오류_종류를_남긴다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse('{"title": "진보', 10, 256, "max_tokens"))
+    with pytest.raises(ModelOutputInvalid):
+        run(t, cfg, CallBudget(), rec, schema=Shaped)
+    assert [(r.outcome, r.invalid_kind) for r in rec.records] == [("output_truncated", "not_json")]
+
+
+def test_검사를_통과하거나_검사_전에_끝난_호출은_오류_종류가_None(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    budget, rec = CallBudget(), MemoryRecorder()
+    t = scripted(TransportResponse('{"title": "가", "count": 1}', 10, 3, "end_turn"))
+    run(t, cfg, budget, rec, schema=Shaped)
+    with pytest.raises(ModelCallLimitExceeded):
+        run(t, cfg, budget, rec, schema=Shaped, attempt=2)
+    assert [r.invalid_kind for r in rec.records] == [None, None]
 
 
 def test_성공·캐시_적중·전송_오류_기록의_stop_reason(tmp_path):
