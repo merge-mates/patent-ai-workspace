@@ -28,7 +28,7 @@ class RetrievalEvalConfig(BaseEvalConfig):
     # 둘째 점수(이슈 #178): 줄마다 검색 범위 doc_id 목록 파일 (gold와 같은 기준 상대 경로).
     # 없으면 주 점수(그 인용문헌 안에서만). 만드는 법은 eval/retrieval/noise_scope.py
     noise_scope: str | None = None
-    # 모델을 부르는 impl(whole_doc_llm)만 지킨다 (모델을 안 부르는 impl은 쓸 일이 없다)
+    # 지금은 whole_doc_llm 채점만 지킨다 (다른 impl은 읽기만 하고 검사하지 않는다)
     budget: Budget | None = None
 
     @model_validator(mode="after")

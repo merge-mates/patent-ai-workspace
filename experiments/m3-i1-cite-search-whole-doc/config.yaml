@@ -13,5 +13,5 @@ k: [1, 3, 5, 10]
 gold: retrieval/cite_gold.jsonl
 settings: {}
 budget:
-  max_usd: 1             # 11/22 재아 허락: 2회 합쳐 약 $0.42 (1회 약 $0.21)
+  max_usd: 1             # 회당 상한 (실행마다 새로 셈). 11/22 재아 허락: 1회 약 $0.21, 2회 합쳐 약 $0.42
   max_external_calls: 150
