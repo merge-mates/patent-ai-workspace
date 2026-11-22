@@ -50,7 +50,7 @@ export interface OALoaderData {
   oaResult: OAResultResponse | null
   // 사건 자료 목록이 아직 없거나 서버에 엔드포인트가 아직 없으면 null
   materials: CaseMaterials | null
-  // API v0에 목록이 없거나 아직 없으면 null (개수만, 또는 모름)
+  // 검토할 사항 목록. 따로 받은 목록이 없으면 사건 자료 ⑥의 review_items. 그것도 None이면 null (개수와 상관없이 모름)
   reviewItems: ReviewItem[] | null
   // 원문 쪽 글자를 못 받으면 null (원문 보기에서 알린다)
   document: PageText | null
@@ -81,7 +81,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
   let draftCheckMissing = false
-  const [oaResult, materialsP, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
+  const [oaResult, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(missingAsNull),
     // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
     probe(api.getMaterials(oa.case_id), true),
@@ -119,6 +119,8 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     return p.value
   }
   const materials = known(materialsP, '사건 자료')
+  // 목록 엔드포인트가 없으면(서버) ⑥의 review_items를 쓴다. None(모름)은 개수가 있어도 null로 둔다 (0건으로 그리지 않음)
+  const reviewItems = reviewList ?? materials?.review_items ?? null
   const directions = known(directionsP, '대응 방향')
   const legal = known(legalP, '법률 근거') ?? []
   const units = known(unitsP, '인용발명 대비')

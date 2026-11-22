@@ -107,7 +107,7 @@ export function CaseShell() {
   const previous = isPreviousResult(data.oaResult, data.oa.latest_run)
   const runError = snap?.error ?? null
   const ready: (boolean | null)[] = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
-  const reviewCount = data.reviewItems?.length ?? data.materials?.review_items_count ?? null
+  const reviewCount = data.reviewItems?.length ?? null
 
   // 아무것도 안 골랐으면 통지서 첫 거절이유가 있는 쪽을 기본으로 (없으면 1쪽)
   const defaultPage = r?.rejections.map((x) => x.article.page).find((p) => p !== null) ?? 1
