@@ -66,7 +66,7 @@ def _register(name, hits_fn, result_index_version=IV, override=None):
         def __init__(self, repo, settings, embed):
             self.embed = embed
 
-        def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
+        def search(self, query, corpus, mode, k, doc_ids=None, as_of=None, **kw):
             head = {"k": k, "corpus": corpus, "mode": mode, **(override or {})}
             return _result(hits_fn(), index_version=result_index_version, **head)
 

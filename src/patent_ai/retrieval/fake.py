@@ -14,11 +14,13 @@ from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
 from patent_ai.retrieval.schemas import (
     Chunk,
+    ChunkKind,
     Corpus,
     Mode,
     SearchHit,
     SearchResult,
     SearchScope,
+    SourceKind,
 )
 
 
@@ -55,11 +57,24 @@ class FakeSearcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
         # fake는 bm25·vector만 한다. hybrid는 hybrid impl이 섞는다 (래퍼가 더는 막지 않음)
         if mode not in ("bm25", "vector"):
             raise ModeNotSupportedError(f"fake 구현은 bm25·vector만 한다 (받은 값 {mode!r})")
-        scope = SearchScope(doc_ids=doc_ids, as_of=as_of, k=k)
+        scope = SearchScope(
+            doc_ids=doc_ids,
+            as_of=as_of,
+            k=k,
+            chunk_kinds=chunk_kinds,
+            source_kinds=source_kinds,
+            decided_on_or_before=decided_on_or_before,
+        )
+        # 거르기 인자 묶음: 저장소 조회·세기에 같은 범위를 쓴다
+        flt = {"chunk_kinds": chunk_kinds, "source_kinds": source_kinds}
         base = {
             "corpus": corpus,
             "index_version": self._index_version,
@@ -68,11 +83,18 @@ class FakeSearcher:
         }
         qvec = self._query_vector(query) if mode == "vector" else None
 
-        # 거른 문헌 조각이 0개면 본문이 없는 것 (기준일과 상관없이 문헌 기준)
-        if self._repo.count_chunks(corpus, self._index_version, doc_ids) == 0:
+        # 문헌·자료 유형으로 거른 조각이 0개면 본문이 없는 것 (기준일·선고일과 상관없이)
+        if self._repo.count_chunks(corpus, self._index_version, doc_ids, **flt) == 0:
             return SearchResult(**base, status="unverified", status_reason="body_missing")
 
-        chunks = self._repo.chunks(corpus, self._index_version, doc_ids, as_of)
+        chunks = self._repo.chunks(
+            corpus,
+            self._index_version,
+            doc_ids,
+            as_of,
+            decided_on_or_before=decided_on_or_before,
+            **flt,
+        )
         scored = [(self._score(c, mode, query, qvec), c) for c in chunks]
         # 점수 0 이하는 뺀다. 점수 내림차순, 같으면 chunk_id 오름차순
         scored = [(s, c) for s, c in scored if s > 0]
@@ -80,16 +102,27 @@ class FakeSearcher:
 
         # 기준일 검색에서 판본을 몰라 빠진 조각 수
         skipped = (
-            self._repo.count_unverified_edition(corpus, self._index_version, doc_ids)
+            self._repo.count_unverified_edition(
+                corpus,
+                self._index_version,
+                doc_ids,
+                decided_on_or_before=decided_on_or_before,
+                **flt,
+            )
             if as_of is not None
             else 0
         )
+        # 선고일 거르기를 걸었을 때 선고일 모름으로 빠진 판례·심결 수
+        unknown_date = (
+            self._repo.count_unknown_date(corpus, self._index_version, doc_ids, **flt)
+            if decided_on_or_before is not None
+            else 0
+        )
+        extra = {"skipped_unverified_edition": skipped, "skipped_unknown_date": unknown_date}
         hits = [
             SearchHit(**c.model_dump(), score=s, rank=i)
             for i, (s, c) in enumerate(scored[:k], start=1)
         ]
         if not hits:
-            return SearchResult(
-                **base, status="not_found_in_scope", skipped_unverified_edition=skipped
-            )
-        return SearchResult(**base, skipped_unverified_edition=skipped, hits=hits)
+            return SearchResult(**base, status="not_found_in_scope", **extra)
+        return SearchResult(**base, **extra, hits=hits)

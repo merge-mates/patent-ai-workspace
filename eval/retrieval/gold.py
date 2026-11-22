@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from eval.retrieval.errors import RetrievalEvalError
-from patent_ai.retrieval.schemas import Corpus, Edition, LocKind
+from patent_ai.retrieval.schemas import ChunkKind, Corpus, Edition, LocKind
 
 
 class GoldItem(BaseModel):
@@ -49,9 +49,21 @@ class GoldRow(BaseModel):
     as_of: date | None = None
     items: list[GoldItem]
     exclude: str | None = None  # null / no_location / clarity / same_as_other
+    # 이 줄을 찾을 조각 종류 (검색 범위). 없으면 law는 조문(article)만, cite는 거르지 않음
+    chunk_kinds: list[ChunkKind] | None = None
+
+    def search_chunk_kinds(self) -> list[ChunkKind] | None:
+        """search·저장소에 넘길 chunk_kinds. law 조문 줄에 심사기준·판례가 섞이지 않게 한다."""
+        if self.chunk_kinds is not None:
+            return self.chunk_kinds
+        return ["article"] if self.corpus == "law" else None
 
     @model_validator(mode="after")
     def _check_row(self) -> GoldRow:
+        if self.chunk_kinds is not None and len(self.chunk_kinds) == 0:
+            raise ValueError(
+                f"row_id {self.row_id!r}: chunk_kinds가 빈 목록이다 (없으면 칸을 뺀다)"
+            )
         # 메시지에 질의 글자는 넣지 않는다 (row_id만)
         if not _ROW_ID[self.corpus].match(self.row_id):
             form = (

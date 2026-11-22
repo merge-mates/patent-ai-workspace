@@ -143,8 +143,8 @@ flowchart LR
 
 ### 7-6. 2단계·가중합 (이슈 #212, 11/22 밤 실험용)
 - 새 impl 둘. 둘 다 7-4처럼 안쪽 검색기를 `get_searcher`로 만들고, 결과 `mode = "hybrid"` (Mode에 다른 값이 없음), 정렬 `(-점수, chunk_id)`.
-- `two_stage` (`retrieval/two_stage.py`): BM25가 범위 안 위 N개를 후보로 고르고, 그 후보만 벡터 점수로 다시 줄세운다. 점수 = 벡터 점수. 설정 `two_stage: {candidates: N}` (1 이상의 정수, 아니면 `ValueError`). BM25 후보가 0개면 순수 벡터로 되돌아가지 않고 `not_found_in_scope`.
-- `weighted_sum` (`retrieval/weighted_sum.py`): 방식마다 돌려준 조각의 점수를 min-max로 [0, 1]에 맞추고(전부 같으면 1.0, 안 돌려준 조각은 0) `w_bm25·bm25 + w_vector·vector`. 설정 `weighted_sum: {weights: {bm25: w, vector: 1-w}}` (검사는 `hybrid.weights`와 같음).
+- `two_stage` (`retrieval/two_stage.py`): BM25가 범위 안 위 N개를 후보로 고르고, 그 후보만 벡터 점수로 다시 줄세운다. 점수 = 벡터 점수. 설정 `two_stage: {candidates: N}` (1 이상의 정수, 아니면 `ValueError`). BM25 후보가 0개면 순수 벡터로 되돌아가지 않고 `not_found_in_scope`. `chunk_kinds`·`source_kinds`·`decided_on_or_before`는 안쪽 두 검색기에 그대로 넘기고, `body_missing`은 자료 유형으로 거른 범위로 판단하며, `skipped_*` 건수는 두 쪽 중 큰 값이다 ([retrieval design](../retrieval/design.md) 7-1).
+- `weighted_sum` (`retrieval/weighted_sum.py`): 방식마다 돌려준 조각의 점수를 min-max로 [0, 1]에 맞추고(전부 같으면 1.0, 안 돌려준 조각은 0) `w_bm25·bm25 + w_vector·vector`. 설정 `weighted_sum: {weights: {bm25: w, vector: 1-w}}` (검사는 `hybrid.weights`와 같음). 새 거르기 인자와 `skipped_*` 건수는 `two_stage`와 같은 규칙으로 처리한다.
 - 기본 impl은 그대로 `hybrid`(RRF)다. 기본을 바꿀지는 재아가 실험 결과를 보고 정한다.
 
 ## 8. 이 기능 안의 결정

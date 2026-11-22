@@ -85,3 +85,130 @@ graph LR
 - [x] task-1
 - 다음: PR
 - 막힌 것: 없음
+
+## m3-i1-24  (11/22~11/23)  상태: 승인 (11/22 은진 "오케이")  (이슈 #24, 계획 넷 = PR 넷. 24a·24b·24c는 Refs, 24d가 Closes #24)
+<!-- 이슈 #24 하나에 PR 넷. 24a(검색 계약 넓히기, 공유 자원)가 먼저다. 24b·24c(조각 만들기)는 24a 브랜치 위에서 시작하는 쌓인 PR(base = 24a 브랜치)이고 24a가 머지되면 base를 main으로 바꾼다. 24d가 셋을 모아 law-idx-v3를 만든다.
+     requirements·design은 아직 `상태: 초안`이다 (m2-i3·m2-i3b도 같은 상태에서 승인함). 이 계획은 design 5-1절 표와 "바뀌는 것" 여섯을 따른다. -->
+**구현할 design 부분**: 5-1 색인 `law-idx-v3` (표, 바뀌는 것 1~6), 4절 판례·심결 날짜 거르기(`decided_on`), 8절 결정(한 표·`not_applicable`·`judgment_summary`·메타데이터 거르기·판단/당사자 표시)
+**맡은 합격 기준**: #24 본문 1(조문·심사기준 + 기준일 → 그 시점 판), 2(판본 모름 → "확인되지 않음"), 3(같은 조문·같은 절의 두 판이 둘 다 남음). F2 requirements 3(시점·판본), 4(출처·판본·원문 위치), 5(요지/전문, 판단/당사자 구분을 조각에 남김). F2 검색 점수(Hit@k·CQ, #28 본문 3~5)는 이 계획 밖 (#28 다음 계획, Closes #28)
+**목표** (한 줄): 특허법·시행령 조문(v1·v2 그대로) + 심사기준 8판의 신규성·진보성·명확성 장 + 판례 74건 + 심결 12건을 판본·선고일과 같이 `law_chunks` 한 표의 새 판 `law-idx-v3`로 넣고, 자료 유형·날짜로 미리 걸러 찾을 수 있게 한다.
+**끝나면 보여 줄 것** (데모 한 줄): `uv run pytest tests/retrieval tests/retrieval_eval` → 심사기준 같은 절 두 판 중 기준일 판만 나오고, 판본 모름은 `skipped_unverified_edition`, 선고일이 기준일 뒤인 판례는 빠지고 날짜 모름은 `skipped_unknown_date`에 센다 (검색은 건수만 내고, 0개 + 건수 > 0을 `unverified(edition_unknown)`으로 바꾸는 것은 지금처럼 F2 도구 몫). 데이터로는 `make index-dump CORPUS=law` 뒤 `.fingerprint.json`에 `law-idx-v3` 지문.
+**어림 크기**: 24a 코드 약 250 + 테스트 약 250 (400 넘음: 검색 계약 한 번에 리뷰하려고 한 PR, 커밋별 리뷰 순서를 PR 본문에), 24b 약 180 + 150, 24c 약 200 + 170, 24d 약 60 + 60 (+ 데이터 카드).
+**이번에 안 하는 것** (design에 있지만 뒤로):
+- `rejection_ground` 칸과 선필터는 7-3 실험 1b에서 (조문 조각에만 붙는 칸이라 v3 조각 모양과 따로 간다). v3에서는 칸을 만들지 않는다.
+- 심결 더 받기(requirements 열린 질문 9), 74건 밖 판례 법령 API 조회, 조 조각(7-3 1d), 조각 앞말(1c). 심사기준은 세 장 밖을 넣지 않는다.
+- F2 도구(`search_guideline`·`search_precedent`·`get_precedent`)를 v3에 붙이는 일은 #28 다음 계획.
+**정한 작은 것** (추천대로 정함, 바꿀 수 있음):
+- 새 칸은 넷이고 **법령 표(`law_chunks`)에만** 둔다 (`ChunkColumns` 공통 칸이 아니라 `LawChunk`에. 인용문헌 표는 안 바뀜): `source_kind`(`statute`/`guideline`/`precedent`/`trial`, NOT NULL + CHECK, v1·v2 행은 마이그레이션에서 `statute`로 채움), `decided_on`(date, 판례·심결만), `speaker`(`court`/`party`/`unknown`, 판례·심결만), `attrs`(JSONB: 법원·사건명·심결 결과·IPC 같은 후보 칸. 거르기에는 안 쓰고 보이기·나중 거르기용).
+- 심사기준 장 범위: 제3부 제2장 신규성, 제3부 제3장 진보성, 제2부 제4장 청구범위 기재요건(명확성, 42조 4항). 판마다 장 첫 쪽·끝 쪽은 장 제목으로 찾고, 못 찾으면 그 판에서 멈추고 알린다 (빈 판으로 넘어가지 않음).
+- 이름: 날짜 거르기 인자는 `decided_on_or_before` (그날 포함).
+- 판례 요지 조각의 `speaker`는 `court` (판시사항·판결요지는 법원이 쓴 글).
+- 임베딩: v2와 같은 모델(`law_search.embed`). 조문 조각은 v2 벡터를 다시 쓰고 새 글만 보낸다. [가정] 고유 글 1만 개 안쪽, $0.05 안쪽. 유료 호출이라 24d에서 돌리기 전에 은진 OK.
+
+```mermaid
+graph LR
+    a1[24a task-a1 칸·마이그레이션] --> a2[24a task-a2 검색 거르기]
+    a2 --> a3[24a task-a3 가장 이른 판]
+    a2 --> a4[24a task-a4 채점기 범위]
+    a1 --> b1[24b task-b1 심사기준 조각]
+    a1 --> c1[24c task-c1 판례 조각]
+    c1 --> c2[24c task-c2 심결 조각]
+    a3 --> d1[24d task-d1 v3 빌드]
+    a4 --> d1
+    b1 --> d1
+    c2 --> d1
+    d1 --> d2[24d task-d2 돌리기·덤프·카드]
+```
+
+### 24a: 검색 계약 넓히기 (공유 자원: 마이그레이션·검색 계약·채점기, 재아 리뷰)  주인: 은진
+#### task-a1: 조각 칸 + 마이그레이션 + 변환 (design 5-1 바뀜 1·2·3)
+- 합격 기준: #24 3, F2 requirements 4·5
+- 커밋 둘: ① 칸·마이그레이션·변환, ② 판례·심결 `not_applicable` 허용 (리뷰가 쉽게)
+- 마이그레이션 갈래 주의: PR #257(`chore/228-invalid-output-reason`, #70 ①-2도 예정)의 `d9e4b1c7a352`(agent_steps.invalid_kind)도 down = `b3f8d2e6a914`다. 늦게 머지되는 쪽이 main을 받아 down_revision을 먼저 머지된 rev로 바꾼다 (head 둘이 되면 `alembic upgrade head`가 멈춤). PR 본문에 적는다.
+- 고칠 파일: `src/patent_ai/retrieval/schemas.py`(`ChunkKind`에 `judgment_summary`, `Chunk`에 `source_kind`·`decided_on`·`speaker`·`attrs`, 모두 선택 칸), `src/patent_ai/db/models/chunks.py`(`LawChunk`에만 새 칸 + 검사 함수), `src/patent_ai/db/migrations/versions/20261123_<rev>_law_chunks_source_meta.py`(down = `b3f8d2e6a914`), `src/patent_ai/retrieval/repository.py`(`chunk_to_row`·`row_to_chunk`, `from_jsonl`), `src/patent_ai/retrieval/law_index_db.py`(`_check`, `read_chunks_jsonl`), `src/patent_ai/db/index_dump.py`(`fixture_rows`), `src/patent_ai/retrieval/law_index.py`(조문 조각 `source_kind=statute`), `docs/features/retrieval/design.md`(5-1 `not_applicable` 뜻·`chunk_kind` 값), `docs/features/F2/design.md`(5-1 바뀜 3·4의 `rejection_ground`를 "7-3 1b로 미룸"으로), `docs/data-model.md`(조각 표 칸), 테스트(`tests/retrieval/test_schemas.py`, `test_row_mapping.py`, `test_law_index_db.py`, `test_index_dump.py`, `test_repository.py`, `tests/test_migrations.py`, `tests/test_db_models.py`)
+- 규칙:
+  - 법령 표의 `not_applicable`은 `chunk_kind`가 `judgment`·`judgment_summary`일 때만. 검사 함수 `check_law_chunk(chunk_kind, edition_status, source_kind, decided_on, speaker)`(인용문헌은 `check_cite_chunk_meta`)는 `db/models/chunks.py`에 문자열만 받게 둔다 (db는 retrieval을 import하지 못하므로, retrieval 넣기·저장소와 db 덤프가 이 하나를 부른다).
+  - `decided_on`·`speaker`는 `source_kind`가 `precedent`·`trial`일 때만 값이 있을 수 있다. 인용문헌 조각은 새 칸이 모두 비어야 한다.
+  - 옛 JSONL(새 칸 없음)의 `source_kind`는 함수 하나 `fill_law_defaults(chunk) -> Chunk`가 `statute`로 채운다. `from_jsonl`과 `read_chunks_jsonl` 둘 다 이것을 부른다 (마이그레이션으로 채운 DB 행과 `content_sha256`이 같게).
+- 테스트할 경우: 판례 조각 `not_applicable` 넣기 통과 / 조문 조각 `not_applicable` 거부 (세 곳) / 새 칸 왕복(메모리·행 변환·덤프 fixture) / 옛 v1 JSONL을 읽으면 `statute` / v2 JSONL 다시 넣기 → 내용 같음(멈추지 않음) / `judgment_summary` 값 / 인용문헌 조각에 `source_kind` 거부 / 마이그레이션 upgrade·downgrade (DB)
+- 확인 방법: `uv run pytest tests/retrieval tests/test_db_models.py` + `make test-db` (`tests/test_migrations.py`·`tests/test_retrieval_db.py`)
+
+#### task-a2: `search()`와 세기의 미리 거르기 (design 5-1 바뀜 4)
+- 합격 기준: #24 1·2, F2 requirements 3
+- 고칠 파일: `src/patent_ai/retrieval/contract.py`(`Searcher.search`·`CheckedSearcher` 검사), `schemas.py`(`SearchScope`에 같은 칸, `SearchResult.skipped_unknown_date`), `repository.py`(메모리·Postgres), `fake.py`, `bm25.py`, `vector.py`, `hybrid.py`, `src/patent_ai/core/f2_legal_research/tools.py`(`search_article`에 `chunk_kinds=["article"]`만), `docs/features/retrieval/design.md`(`search` 모양·결과 예시·상태 설명), 테스트(`tests/retrieval/test_contract.py`, `test_fake_search.py`, `test_bm25.py`, `test_vector.py`, `test_hybrid.py`, `test_repository.py`, `tests/test_retrieval_db.py`)
+- 만들 모양:
+  - `search(query, corpus, mode, k, doc_ids=None, as_of=None, *, chunk_kinds=None, source_kinds=None, decided_on_or_before=None)`. 모두 점수 매기기 전에 거른다.
+  - 저장소: `chunks`·`count_chunks`·`count_unverified_edition`이 같은 세 인자를 받고, `count_unknown_date(corpus, index_version, doc_ids, chunk_kinds, source_kinds) -> int`를 더한다. 검색기는 body_missing 판단·`skipped_*` 건수를 이 거른 범위로 센다.
+  - `decided_on_or_before`는 `decided_on ≤ 날짜`만 남기고, `decided_on`이 null인 판례·심결 조각은 빼서 `skipped_unknown_date`에 센다 (조문·심사기준은 그냥 통과). `decided_on_or_before=None`이면 `skipped_unknown_date = 0`.
+  - 상태는 지금 계약 그대로: 그 범위 조각 0개 → `unverified(body_missing)`, 거른 뒤 0개 → `not_found_in_scope` + `skipped_unverified_edition`·`skipped_unknown_date` 건수. `edition_unknown`으로 바꾸는 것은 F2 도구 몫(design 2절 3단계)이라 `StatusReason`은 안 늘린다. 채점기 `excluded_body_missing` 셈도 그대로 맞다.
+  - hybrid는 두 쪽 건수 중 큰 값 (지금 `skipped_unverified_edition`과 같은 규칙).
+  - `CheckedSearcher` 검사: 빈 목록(`[]`)은 `doc_ids`처럼 오류, 모르는 kind 값 오류, `corpus="cite"`에 `source_kinds`·`decided_on_or_before`를 주면 오류.
+- 테스트할 경우: 심사기준 같은 절 두 판 + `as_of` → 그날 판만 / `chunk_kinds=[guideline]`이면 조문·판례 안 나오고 조문의 판본 모름 조각도 안 셈 / 심사기준 0개 + `chunk_kinds=[guideline]` → `body_missing` / `source_kinds=[trial]` / 선고일이 기준일 뒤 → 빠짐 / 날짜 모름 하나만 → 0개 + `not_found_in_scope` + `skipped_unknown_date=1` / 날짜 거르기 없음 → 0 / 빈 목록·모르는 값·cite에 판례 인자 → 오류 / 거르기 없이 부르면 전과 같은 결과 / Postgres 저장소가 메모리와 같은 결과 (DB)
+- 확인 방법: `uv run pytest tests/retrieval tests/core/f2` + `make test-db`
+- 먼저: task-a1
+
+#### task-a3: 가장 이른 판 시행일 세기 (design 5-1 바뀜 5)
+- 합격 기준: #24 2 (가장 이른 판보다 앞선 기준일 → F2 도구가 `edition_unknown`을 내는 재료. 유형 조각 수는 a2의 `count_chunks(chunk_kinds=…)`)
+- 고칠 파일: `repository.py`(`earliest_effective_from(corpus, index_version, chunk_kinds, source_kinds=None) -> date | None`, 메모리·Postgres), `tests/retrieval/test_repository.py`, `tests/test_retrieval_db.py`
+- 테스트할 경우: 심사기준 2판 → 가장 이른 시행일 / 유형 조각 0개 → None / 판본 모름만 → None / 판례(`not_applicable`) → None
+- 확인 방법: `uv run pytest tests/retrieval/test_repository.py` + `make test-db`
+- 먼저: task-a2 (같은 파일 `repository.py`)
+
+#### task-a4: 채점기 검색 범위에 `chunk_kinds` (design 5-1 바뀜 6. 판례 줄 날짜는 #35 정답이 생긴 뒤)
+- 합격 기준: v3에서 조문 정답 줄 점수가 v2와 비교된다 (조문 줄 범위에 심사기준·판례가 섞이지 않음)
+- 고칠 파일: `eval/retrieval/gold.py`(정답 줄 `chunk_kinds`, 없으면 law 말뭉치는 `[article]`), `eval/retrieval/score.py`(`search`·`repo.chunks`·`count_chunks`에 넘김), `eval/GUIDE.md`(칸 하나), `tests/retrieval_eval/` 채점기 테스트
+- 테스트할 경우: law 줄 칸 없음 → `[article]`로 찾음 (판례 조각이 더 잘 맞아도 안 걸림) / 무작위 기준선 범위 크기 = 조문 조각 수 / cite 줄은 그대로
+- 확인 방법: `uv run pytest tests/retrieval_eval` + `uv run python eval/run_eval.py --config experiments/m2-i2-law-bm25-v2/config.yaml --chunks data/processed/law/law-idx-v2.jsonl` → `scores.json`의 metrics·failures가 전과 같음 (commit·seconds 칸이 바뀌므로 비교 뒤 파일은 `git checkout`으로 되돌린다)
+- 먼저: task-a2
+
+### 24b: 심사기준 조각 (8판 × 세 장)  주인: 은진  (24a 브랜치 위 쌓인 PR)
+#### task-b1: 심사기준 PDF → 조각
+- 합격 기준: #24 1·3, F2 requirements 4
+- 고칠 파일: `src/patent_ai/retrieval/guideline_index.py`(새), `config/index/guidelines.yaml`(판 표: 파일·예규·시행일·변환본 여부), `tests/retrieval/test_guideline_index.py`, `tests/fixtures/retrieval/guideline/`(지어낸 쪽 글. 원문 안 넣음)
+- 만들 함수: `chapter_pages(pages, chapter) -> range`(장 제목으로 쪽 범위, 못 찾으면 오류), `chunk_guideline(pages, doc_id, edition, index_version) -> list[Chunk]`(절 제목 `6.4.1` 아래 문단 묶음, 쪽을 넘으면 쪽에서 자름, 머리·꼬리말 줄 버림, `loc_label` = `<쪽>쪽 (제3부 제3장 6.4.1)`, 변환본 판은 `(변환본 쪽)`), `guideline_editions(table) -> dict`(시행일 → 다음 판 전날, 마지막은 현행). `doc_id` = `심사기준_<예규번호>_<시행일>`, `chunk_kind=guideline`, `source_kind=guideline`, `loc_kind=page`. 쪽 글은 `pdftotext -layout`(poppler) 또는 `pdfplumber` 중 실제 판 하나에서 덜 깨지는 쪽을 task 안에서 골라 카드에 적는다.
+- 명령: `uv run python -m patent_ai.retrieval.guideline_index --config config/index/guidelines.yaml` → `data/processed/law/guideline-v3.jsonl` (판본 `law-idx-v3`). 파일이 없거나 한 판이라도 장을 못 찾으면 종료 1 + 이유 한 줄, 판마다 조각 수를 찍는다.
+- 테스트할 경우: 절 둘이 한 쪽 / 절 하나가 두 쪽 → 두 조각 / 머리말 줄 버림 / 장 범위 밖 쪽 안 들어감 / 장 제목 못 찾음 → 오류 / 같은 절 두 판 → `chunk_id`가 다르고 둘 다 남음 / 시행 기간 이어짐 (앞 판 끝 = 다음 판 시작 전날) / 같은 입력 같은 바이트
+- 확인 방법: `uv run pytest tests/retrieval/test_guideline_index.py`
+- 먼저: 24a task-a1
+
+### 24c: 판례·심결 조각  주인: 은진  (24a 브랜치 위 쌓인 PR, 24b와 파일 안 겹침)
+#### task-c1: 판례 74건 JSON → 요지·전문 조각
+- 합격 기준: F2 requirements 4·5, design 8절 (요지/전문, 판단/당사자)
+- 고칠 파일: `src/patent_ai/retrieval/precedent_index.py`(새), `tests/retrieval/test_precedent_index.py`, `tests/fixtures/retrieval/precedent/`(지어낸 판례 JSON 둘)
+- 만들 함수: `chunk_precedent(data, index_version) -> list[Chunk]`: 판시사항·판결요지는 `[1]` 칸마다 `judgment_summary`, 판례내용은 【이 유】 아래 번호 문단(`1.`, `가.`)마다 `judgment`. `doc_id=판례_<사건번호>`, `decided_on`=선고일자, `edition=not_applicable`, `speaker`는 문단 제목 규칙("원고의 주장"·"상고이유 주장" → `party`, "판단" 아래 → `court`, 못 정하면 `unknown`. 요지 조각은 `court`), `attrs`에 법원명·사건명. `<br/>` 정리. `select_precedents(logs, expected)`: 받은 기록 셋에서 성공한 것 + v2 기록의 신규성 아님 8건 뺌 + 사건명 (상)·(디) 뺌 → 건수가 `expected`(설정 값 74)가 아니면 멈춤.
+- 명령: `uv run python -m patent_ai.retrieval.precedent_index --config config/index/precedents.yaml` → `data/processed/law/precedent-v3.jsonl` (판례·심결 같이, c2에서 심결을 더함). 건수가 다르거나 파일이 없으면 종료 1 + 이유 한 줄.
+- 테스트할 경우: 요지 칸 셋 → 조각 셋 / 이유 번호 문단 / 당사자 주장·판단·모름 / 선고일 못 읽음 → `decided_on=null` + 경고 / 요지 없는 판례 → 전문만 / 뺄 판례 거르기 / 같은 입력 같은 바이트
+- 확인 방법: `uv run pytest tests/retrieval/test_precedent_index.py`
+- 먼저: 24a task-a1
+
+#### task-c2: 심결 12건 PDF → 전문 조각
+- 합격 기준: F2 requirements 4
+- 고칠 파일: `src/patent_ai/retrieval/precedent_index.py`(심결 함수), `tests/retrieval/test_precedent_index.py`, `tests/fixtures/retrieval/trial/`(지어낸 쪽 글)
+- 만들 함수: `chunk_trial(pages, file_name, index_version) -> list[Chunk]`: "이 유" 아래 번호 문단마다 `judgment`, `doc_id=심결_<심판번호>`(파일명 13자리 → `2026원634` 꼴), `decided_on`=심결일(못 뽑으면 null + 경고), `source_kind=trial`, `attrs`에 결과(원결정 취소/기각)·유형(README 표).
+- 테스트할 경우: 번호 문단 / 심결일 못 뽑음 → null + 경고 / 파일명 → 심판번호 / 이유 제목 없음 → 오류
+- 확인 방법: `uv run pytest tests/retrieval/test_precedent_index.py`
+- 먼저: task-c1
+- 주의: 심결 12건 다수는 심결일이 2025~2026년이라 OA 발송일(2019~2022) 기준 검색에서는 대부분 `decided_on_or_before`로 빠진다. 데이터 카드에 날짜 분포를 적는다.
+
+### 24d: `law-idx-v3` 만들기와 덤프 (Closes #24)  주인: 은진
+#### task-d1: v3 빌드 명령 + 설정
+- 합격 기준: #24 1·2·3 (실제 데이터 모양에서)
+- 고칠 파일: `src/patent_ai/retrieval/law_v3.py`(새: 조문 v2 JSONL + `guideline-v3.jsonl` + `precedent-v3.jsonl`을 `law-idx-v3` 판으로 모으고 조문 `chunk_id` 앞머리를 바꿈, 조문 벡터는 v2 것을 그대로 둠), `src/patent_ai/core/index_embed.py`(`embed_missing(chunks, step, ctx) -> list[Chunk]`: `embedding is None`인 조각의 고유 글만 모델 호출 모듈로 임베딩. 같은 판 안에서 채움), `config/index/law-idx-v3.yaml`, `tests/retrieval/test_law_v3.py`, `tests/core/test_index_embed.py`
+- 명령: `uv run python -m patent_ai.retrieval.law_v3 --config config/index/law-idx-v3.yaml` → `data/processed/law/law-idx-v3.unembedded.jsonl`, 그 뒤 `uv run --env-file <.env> python -m patent_ai.core.index_embed missing --config config/index/law-idx-v3.yaml` → `data/processed/law/law-idx-v3.jsonl`. 입력 파일이 없거나 유형 하나가 0개면 종료 1 + 이유 한 줄.
+- 테스트할 경우: 세 유형이 한 판으로 / 조문 조각 수·글·벡터가 v2와 같음 / 유형별 0개면 멈춤 (빈 판 안 냄) / 같은 입력 같은 바이트 / `embed_missing`: 가짜 embed 호출 글 수 = 새 고유 글 수, 이미 벡터가 있는 조각은 안 보냄, 벡터 없는 조각 0개면 호출 0번
+- 확인 방법: `uv run pytest tests/retrieval/test_law_v3.py tests/core/test_index_embed.py`
+- 먼저: 24a 전체, 24b, 24c
+
+#### task-d2: 돌리기 (사람 OK가 필요한 단계) + 데이터 카드
+- 할 일: 24b·24c 명령 → `law_v3` 빌드 → `embed_missing` (유료, 돌리기 전 은진 OK, 비용 한 줄 기록) → 공유 DB `alembic current` 확인 뒤 `uv run alembic upgrade head` → `law_index_db --index-version law-idx-v3` → `make index-dump CORPUS=law` → 지문·`.revision` 확인. 마이그레이션 판이 바뀌므로 cite 덤프의 `.revision`도 새 rev로 바꿔야 한다 (표는 안 바뀌고 `.revision`만, 재아 님 몫).
+- 고칠 파일: `docs/data/law-go-kr.md`(4절 `law-idx-v3`: 유형별 조각 수, 판본 모름·날짜 모름 수, 심사기준 글자 뽑는 도구·판, 판례 고른 규칙, 심결 날짜 분포, 임베딩 비용), `docs/data/trials-kipris.md`(색인 위치), `experiments/m3-i1-law-bm25-v3/`(`card.md`·`config.yaml`·`scores.json`), `experiments/index.md`(`uv run python eval/make_index.py`로 다시 만듦)
+- 확인 방법: `uv run python eval/run_eval.py --config experiments/m3-i1-law-bm25-v3/config.yaml` (`m2-i2-law-bm25-v2` 설정에서 `index_version`만 v3) → 조문 Hit@1·Recall@5가 v2와 같음 (같아야 a4가 맞음). 점수 한 줄을 PR 본문에.
+- 재아 님께 알릴 것 (PR 본문 + 스레드): 새 마이그레이션 rev, 덤프 이름(`law-idx-v3`)·지문, 드라이브에서 바꿀 파일(law 셋, cite `.revision`), `index-load` 순서.
+
+### 진행
+- [x] 24a: task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · task-a2 (4a25c69·950e8ad) · task-a3 (dd7b1d4) · task-a4 (7cd0587). v2 실제 점수 비교는 24d task-d2로 (로컬 jsonl 없음, 공유 DB가 새 마이그레이션 전)
+- [ ] 24b: task-b1
+- [ ] 24c: task-c1 · task-c2
+- [ ] 24d: task-d1 · task-d2
+- 다음: 24a /check, PR (DB 테스트는 CI)
+- 막힌 것: 없음
