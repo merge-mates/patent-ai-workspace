@@ -35,7 +35,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/cases` | 사건 목록 |
 | GET | `/cases/{id}` | 사건 보기 (OA 목록 포함). 묶기 결과가 저장된 뒤에는 이력 `events`(순서 `seq`), 청구항 판 `claim_versions`, OA마다 심사 대상 판 `examined_claim_version`도 준다 (저장 전에는 빈 목록·null). 이력·청구항 판은 원문이 있는 OA 중 가장 늦은 OA 시점까지 자르고 공개·등록공보 판은 뺀다 |
 | GET | `/oas/{oa_id}` | OA 보기 (통지 정보, 원문 문서 ID, 가장 최근 실행 `latest_run`: run_id·state·current_step). 화면은 사건을 다시 열 때 이것으로 실행을 찾는다 |
-| GET | `/cases/{id}/materials` | 사건 자료·보류 목록 (결과 스키마 ⑥) |
+| GET | `/cases/{id}/materials` | 사건 자료·보류 목록 (결과 스키마 ⑥). 실행이 끝나면 만든다. 아직 없으면 404 `result_not_ready`, 출원번호를 모르면(실행 전·못 읽음·같은 출원번호 사건이 이미 있음) 메시지에 그 이유 |
 | POST | `/cases/{id}/documents` | 조회하지 못한 자료를 올린다 ("올려 주세요"에 답함). 폼으로 `file`(PDF)과 `what`(답하는 빠진 자료, `missing[].what` 글자 그대로)을 받고 `{case_id, document_id, result: CaseMaterials}`를 돌려준다. 그 빠진 자료와 그 자료를 기다리던 보류 작업이 빠진다. 오류: 404 `case_not_found`·`result_not_ready`(묶기 결과 전), 422 `missing_not_found`·`upload_not_asked`(직접 확인할 자료)·`empty_file`·`not_pdf`, 409 `document_already_exists`(같은 사건에 같은 파일, `case_id`) |
 | GET | `/documents/{id}` | 원문과 쪽 |
 

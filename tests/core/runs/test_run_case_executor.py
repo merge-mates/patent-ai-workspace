@@ -208,6 +208,22 @@ def test_run_case_사람을_기다리면_waiting_for_human이고_그때까지_�
     assert st.state == RunState.WAITING_FOR_HUMAN and st.waiting_for == "application_number"
     assert [run for _, run, _ in env.oa_results.saved] == [RID]
     assert env.step_results.step_result(RID, "f3") is None  # F3 전에 멈춤
+    # 사람 기다림에서도 사건 채우기를 부른다 (못 읽은 출원번호는 채우기 쪽이 넣지 않음, #261)
+    assert [(c[0], c[1]) for c in env.case_fill.calls] == [(OID, RID)]
+
+
+def test_run_case_발송번호를_기다릴_때도_사건_채우기를_부른다(tmp_path, monkeypatch):
+    # 출원번호는 읽었으니 사건 이름·사건 자료는 채운다 (발송번호는 채우기 쪽이 넣지 않음, #261)
+    oa = wire(monkeypatch)
+    unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    oa = oa.model_copy(
+        update={"dispatch_number": oa.dispatch_number.model_copy(update={"status": unknown})}
+    )
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", lambda *a, **k: oa)
+    env = Env(tmp_path)
+    st = env.run()
+    assert st.state == RunState.WAITING_FOR_HUMAN and st.waiting_for == "dispatch_number"
+    assert [(c[0], c[1]) for c in env.case_fill.calls] == [(OID, RID)]
 
 
 def test_run_case_도는_중에_취소하면_다음_단계_전에_cancelled이고_결과를_안_남긴다(env):

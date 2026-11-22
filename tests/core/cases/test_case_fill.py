@@ -57,6 +57,21 @@ def test_못_읽은_번호는_넣지_않는다():
     assert fill.dispatch_number is None and fill.case_number == APP
 
 
+def test_충돌인_번호는_값이_있어도_넣지_않는다():
+    # 꼭 지킬 선: confirmed가 아닌 번호(conflict)는 값이 남아 있어도 사건에 쓰지 않는다
+    oa = _oa()
+    conflict = Status(value=StatusValue.CONFLICT)
+    oa = oa.model_copy(
+        update={
+            "application_number": oa.application_number.model_copy(update={"status": conflict}),
+            "dispatch_number": oa.dispatch_number.model_copy(update={"status": conflict}),
+        }
+    )
+    assert oa.application_number.value == APP  # 값은 있다
+    fill = plan_number_fill("c_1", None, None, oa, None)
+    assert (fill.application_number, fill.dispatch_number, fill.case_number) == (None, None, None)
+
+
 def test_같은_출원번호_사건이_따로_있으면_넣지_않고_경고를_남긴다(caplog):
     with caplog.at_level(logging.WARNING):
         fill = plan_number_fill("c_tmp", None, None, _oa(), owner_of_number="c_old")

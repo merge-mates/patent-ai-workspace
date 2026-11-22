@@ -51,6 +51,18 @@ class CaseFillSink(Protocol):
 
 # --- 계산 (DB 없이 테스트한다) ----------------------------------------------------
 
+# 사건 자료가 아직 없을 때 404 result_not_ready 메시지 (이유 없는 404가 되지 않게)
+NOT_READY_NO_NUMBER = (
+    "출원번호 확인 전이라 사건 자료를 만들지 않았습니다 "
+    "(실행 전이거나, 출원번호를 못 읽었거나, 같은 출원번호 사건이 이미 있음)"
+)
+NOT_READY = "사건 자료가 아직 없습니다 (실행이 끝나기 전)"
+
+
+def materials_not_ready_message(application_number_known: bool) -> str:
+    """사건 자료가 없는 이유. 출원번호를 모르면 묶기를 못 해 만들지 않는다."""
+    return NOT_READY if application_number_known else NOT_READY_NO_NUMBER
+
 
 @dataclass(frozen=True)
 class NumberFill:

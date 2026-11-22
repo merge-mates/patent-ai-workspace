@@ -23,8 +23,10 @@ from patent_ai.api.deps import (
 from patent_ai.api.errors import AppError
 from patent_ai.api.runs import launch_run
 from patent_ai.core.cases import upload
+from patent_ai.core.cases.case_fill import materials_not_ready_message
 from patent_ai.core.cases.materials import CaseMaterialsStore
 from patent_ai.core.cases.store import (
+    NO_APPLICATION_NUMBER_NAME,
     DuplicateDocumentError,
     NewDocument,
     new_case_id,
@@ -221,9 +223,12 @@ def get_case_materials(
     unit: Annotated[CaseUnit, Depends(get_case_unit)],
     materials: Annotated[CaseMaterialsStore, Depends(get_case_materials_store)],
 ) -> CaseMaterialsOut:
-    if unit.store.get_case(case_id) is None:
+    row = unit.store.get_case(case_id)
+    if row is None:
         raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다")
     saved = materials.latest_case_materials(case_id)
     if saved is None:
-        raise AppError(404, "result_not_ready", "사건 자료가 아직 없습니다")
+        # 이유 없는 404가 되지 않게: 출원번호를 모르면 그 이유를 메시지에 (#261)
+        known = row.case_name != NO_APPLICATION_NUMBER_NAME
+        raise AppError(404, "result_not_ready", materials_not_ready_message(known))
     return CaseMaterialsOut(case_id=case_id, run_id=saved.run_id, result=saved.result)
