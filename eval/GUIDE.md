@@ -19,6 +19,7 @@ data/goldsets/
 │   ├── retrieval/           F2·F3 검색: cite_gold.jsonl, law_gold.jsonl, cite_doc_ids.yaml, cite_pool.yaml·cite_noise_b.jsonl(#178 둘째 점수 범위)
 │   ├── case_full/           받은 사건 묶음 전체 (정답 쪽, AI 입력 아님, #148)
 │   ├── search_v0/           검색 정답을 만든 검수본 (retrieval/ 파일의 재료, 드라이브 이름 `tune_search_v0/`)
+│   ├── f2/                  F2 근거 검토: evidence_cases.jsonl (#35)
 │   └── f4/                  F4 대응 방향 (아직 없음, 6절)
 └── report/                  보고용. M3 끝(11/26)에 채점기만 읽는다 (개발하는 세션은 열지 않음. 만드는 법은 아래 report 정답 절)
 ```
@@ -27,6 +28,7 @@ data/goldsets/
 ## 2. 버전 (`data/goldsets/VERSION`)
 - 정수 하나. 실험 설정의 `goldset_version`과 정답 파일 안 `gold_version`이 이 값과 다르면 채점기가 멈춘다 (`eval/common/goldset.py`).
 - 지금 판은 2 (11/19 검색 정답 "같은 이유" 고침으로 올림). 정답을 고치면 판을 올리고, 바꾼 이유를 커밋 본문에 쓴다 (`.claude/rules/eval.md`). 예외는 F1 정답(`f1/`) 하나다: #20 F1 첫 점수 전까지는 `f1/`의 칸 추가·원문 글자 고침을 같은 판으로 둔다 (아직 F1 점수가 없어서 섞일 점수가 없음). 검색 정답(`retrieval/`)은 이미 판 2로 점수가 나와 있어 예외가 없다. 판이 다른 점수끼리는 비교하지 않는다.
+- 새 정답 파일을 더할 때(예: `f2/evidence_cases.jsonl`, #35)는 판을 올리지 않는다. 비교할 옛 점수가 없어 섞일 점수가 없기 때문이다. 그 파일로 점수가 한 번 나온 뒤에 고치면 판을 올린다 (11/22 은진).
 
 ## 3. 평가 세트 목록 (어떤 OA를 쓰나)
 - 한 줄 = OA 한 통 (출원번호 + 발송번호). tune / report / 대기열 / 실패 사례 칸과 그룹(진보성만 / 명확성만 / 섞임(신규성 포함) / 섞임(신규성 없음) / 지원 안 하는 이유 섞임)을 적는다 (product.md 6.1절).
@@ -40,8 +42,12 @@ data/goldsets/
 | F1 통지서 읽기 | `<세트>/f1/<출원번호>_<발송번호>.json` | OA 한 통 | [f1-oa-gold.md](../docs/evaluation/f1-oa-gold.md) 4절 | `eval/f1/gold.py` |
 | F3 인용문헌 문단 검색 | `<세트>/retrieval/cite_gold.jsonl` | 거절이유 × 청구항 × 인용문헌 | [retrieval design](../docs/features/retrieval/design.md) 7-1 | `eval/retrieval/gold.py` |
 | F2 법령 검색 | `<세트>/retrieval/law_gold.jsonl` | OA 거절이유 하나 | [retrieval design](../docs/features/retrieval/design.md) 7-1 | `eval/retrieval/gold.py` |
+| F2 근거 검토 | `<세트>/f2/evidence_cases.jsonl` | 사례 하나 (실제 질문 또는 오류 주입) | [f2-evidence-gold.md](../docs/evaluation/f2-evidence-gold.md) 3절 (초안) | `eval/f2/gold.py` |
 | F4 대응 방향 | `<세트>/f4/<출원번호>_<발송번호>.json` | OA 한 통 (안에 청구항 줄) | [f4-direction-gold.md](../docs/evaluation/f4-direction-gold.md) 4절 (초안) | `eval/f4/gold.py` (①②층 채점은 `eval/f4/score.py`) |
 
+- 대비(F3) 판정 단위는 `cite_gold` 줄(거절이유 × 청구항 × 인용문헌)이고, F3 대비 정답은 이것을 쓴다 (#35).
+- F2 파일의 `gold_version`은 그때 VERSION과 같아야 한다. VERSION이 오르면 `eval/f2/make_cases.py`로 다시 만든다 (같은 입력이면 같은 바이트).
+- 심사기준·판례 검색 정답은 M3에 만들지 않는다 (11/22, [f2-evidence-gold.md](../docs/evaluation/f2-evidence-gold.md) 7절).
 - F4 채점의 예측 폴더(git 밖)는 정답과 같은 이름 `<출원번호>_<발송번호>.json`(`run_f4` 결과 또는 `DirectionCandidates` 목록)을 둔다. 판단 단위는 결과 안의 `units` 칸을 쓰고, 없을 때만(옛 결과·목록만 둔 파일) `<출원번호>_<발송번호>.units.json`을 읽는다 (둘 다 없으면 채점 실패). 이름이 `<숫자>_<숫자>` 꼴이 아닌 `.json`(실행 요약 `summary.json` 등)은 건너뛰고 경고한다. 정답 폴더가 없으면 채점기는 점수를 쓰지 않고 "정답 없음"(종료 코드 3)으로 끝난다. `direction_top1`은 모델 1번 후보(후보 목록 첫째)로 보류 묶음도 세고(후보 0개 묶음은 틀림), 순위 1 후보로 보류 줄을 뺀 값은 `direction_top1_ranked_only`로 따로 낸다. 확신도별 `direction_top1_conf_*`와 `needs_human_judgment_rate`를 같이 본다. ①층 다룸 지표(`handled_accuracy`)는 정답 문서에서 정의를 정한 뒤 다시 넣는다 (지금은 출력에 없음).
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
@@ -53,7 +59,7 @@ data/goldsets/
   - `docs.<doc_id>`: `app_no` = 그 공보의 출원번호(숫자만, 같은 특허 가리기. 비특허는 `null`), `date` = 공개공보는 공개일, 등록공보는 등록공고일 (`YYYY-MM-DD`). 풀 = 여기 적은 문헌 전체.
   - `oas.<발송번호>`: `app_no` = 그 OA를 받은 출원의 출원번호, `priority_date` = 우선일 (우선권 주장이 없으면 출원일).
   - 정답 줄의 발송번호·정답 문헌이 표에 없거나, 특허 문헌에 `app_no`가 없으면 멈춘다.
-- 11/21 표(tune v2, 색인 `cite-idx-v1` 문헌 16건, OA 8통)를 만든 법: 공보 PDF 첫 쪽의 (21) 출원번호와 (43) 공개일자·(45) 등록공고일, OA마다 행정이력의 특허출원서 접수일. 8통 모두 출원서에 우선권 주장이 없어 출원일을 우선일로 썼다. 비특허 1건은 날짜를 손으로 넣었다 (비특허는 노이즈로 안 써서 점수 영향 없음). 만드는 스크립트는 #178 T2에서 더한다.
+- 11/21 표(tune v2, 색인 `cite-idx-v1` 문헌 16건, OA 8통)를 만든 법: 공보 PDF 첫 쪽의 (21) 출원번호와 (43) 공개일자·(45) 등록공고일, OA마다 행정이력의 특허출원서 접수일. 8통 모두 출원서에 우선권 주장이 없어 출원일을 우선일로 썼다. 비특허 1건은 날짜를 손으로 넣었다 (비특허는 노이즈로 안 써서 점수 영향 없음). tune 30건 표부터는 같은 법을 `uv run python -m eval.retrieval.cite_pool --priority-csv <사건 목록 CSV>`가 한다 (출력 `cite_pool_t30.yaml`, 이미 있으면 덮지 않음. 11/21 손 표 16건·8통과 값이 같은 것을 확인). C안 문헌은 `eval.retrieval.noise_c`가 `only_oas`를 달아 `cite_pool_bc.yaml`에 더한다 (기본 `--pool`은 `cite_pool_t30.yaml`. 두 명령 모두 이미 있는 출력 표는 덮지 않는다). 등록공보 첫 쪽에 (43)·(45)가 같이 있으면 (45) 등록공고일을 쓴다.
 - 공유: 드라이브 `05_평가정답/tune_search_noise_b_1121/`에 `cite_pool.yaml`·`cite_noise_b.jsonl` (출원번호가 있어 git에 넣지 않음). 받은 사람은 `data/goldsets/tune/retrieval/`에 둔다.
 
 ### report 정답 만드는 법

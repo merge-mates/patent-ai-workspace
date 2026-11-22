@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 import eval.run_eval as run_eval
 from eval.common.errors import EvalError
@@ -636,6 +637,40 @@ def test_정답_읽기는_문서_4절_예시를_그대로_받는다(tmp_path):
     assert len(F4Gold.model_validate(example).claim_rows) == 2
     with pytest.raises(EvalError):
         load_f4_gold(tmp_path / "nope", expected_version=2)
+
+
+# ---- merged_into: ③ 삭제 줄에서 지운 구성을 옮겨 받은 청구항 (4절, 채점에는 안 씀) ----
+def deleted_row(**extra) -> dict:
+    """4절 예시의 2항 줄: 2항을 지우고 그 구성을 1항으로 옮겼다."""
+    return {**row(2, 1, "amend_only", kinds=("delete",)), **extra}
+
+
+def test_merged_into가_있는_삭제_줄을_받는다():
+    g = F4Gold.model_validate(gold([deleted_row(merged_into=[1])]))
+    assert g.claim_rows[0].merged_into == [1]
+
+
+def test_merged_into가_없는_줄도_받고_기본값은_빈_목록이다():
+    g = F4Gold.model_validate(gold([deleted_row()]))
+    assert g.claim_rows[0].merged_into == []
+
+
+def test_merged_into가_문자열_목록이면_거부한다():
+    with pytest.raises(ValidationError):
+        F4Gold.model_validate(gold([deleted_row(merged_into=["claim:1"])]))
+
+
+@pytest.mark.parametrize("value", [["1"], [0]])
+def test_merged_into는_1_이상_정수만_받는다(value):
+    # 문자열 "1"이 조용히 1로 바뀌지 않게 strict로 받는다
+    with pytest.raises(ValidationError):
+        F4Gold.model_validate(gold([deleted_row(merged_into=value)]))
+
+
+def test_merged_into는_삭제_줄에만_둔다():
+    with pytest.raises(ValidationError):
+        added = row(1, 1, "amend_and_argue", kinds=("add",)) | {"merged_into": [2]}
+        F4Gold.model_validate(gold([added]))
 
 
 # ---- 채점 명령 하나로 불림 ----

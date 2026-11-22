@@ -1,0 +1,72 @@
+{
+  "experiment": "m2-i3-cite-search-bm25-noise-c",
+  "commit": "4ac47988d1c04a47d72c63d9e499a38aacc8c89b",
+  "goldset": "tune",
+  "goldset_version": 2,
+  "gold_sha256": "90637221adc8a1be2c1e961c3d3e76a849d19fc7c1f60d0fdc0706bc1d0a8f43",
+  "corpus": "cite",
+  "index_version": "cite-idx-v4",
+  "index_fingerprint": {
+    "chunks": 16642,
+    "chunk_ids_sha256": "1b12bd90add04780fc43152467f14746ee49305fcab3ec2b7cf79807f9a25124"
+  },
+  "mode": "bm25",
+  "impl": "bm25",
+  "metric_name": "심사관 지정 위치 회수율",
+  "n": 68,
+  "metrics": {
+    "hit@1": 0.029411764705882353,
+    "recall@1": 0.014705882352941176,
+    "random_hit@1": 0.002211309419764935,
+    "random_recall@1": 0.0009250824847858663,
+    "recall_ratio@1": 15.896833628133413,
+    "doc_hit@1": 0.4852941176470588,
+    "random_doc_hit@1": 0.028628874627772104,
+    "hit@3": 0.1323529411764706,
+    "recall@3": 0.07720588235294118,
+    "random_hit@3": 0.006525890058756888,
+    "random_recall@3": 0.002756842954043337,
+    "recall_ratio@3": 28.00517970735576,
+    "doc_hit@3": 0.4852941176470588,
+    "random_doc_hit@3": 0.08274819153708479,
+    "hit@5": 0.19117647058823528,
+    "recall@5": 0.1213235294117647,
+    "random_hit@5": 0.010703453626827402,
+    "random_recall@5": 0.004564690457299996,
+    "recall_ratio@5": 26.578698062152345,
+    "doc_hit@5": 0.5735294117647058,
+    "random_doc_hit@5": 0.13298536350863716,
+    "hit@10": 0.2647058823529412,
+    "recall@10": 0.18178104575163398,
+    "random_hit@10": 0.02059876737613689,
+    "random_recall@10": 0.008984376728553047,
+    "recall_ratio@10": 20.233016851788918,
+    "doc_hit@10": 0.5882352941176471,
+    "random_doc_hit@10": 0.2436855826367299
+  },
+  "failures": {
+    "excluded_no_location": 3,
+    "excluded_clarity": 0,
+    "excluded_same_as_other": 33,
+    "excluded_body_missing": 0,
+    "excluded_edition_unverified": 0,
+    "excluded_no_edition_in_scope": 0,
+    "excluded_gold_not_in_scope": 1,
+    "excluded_gold_items_not_in_scope": 10,
+    "cq_candidates": 50,
+    "recall_ratio_undefined": 0
+  },
+  "cost": {
+    "usd": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "external_calls": 0,
+    "seconds": 206.973
+  },
+  "scope": {
+    "kind": "noise",
+    "file": "retrieval/cite_noise_c.jsonl",
+    "sha256": "07bcfa24e1033eb1ce64772b5725868a86e99ff5e2fb4122518a231dab1c2401",
+    "docs_per_row_mean": 46.63235294117647
+  }
+}
