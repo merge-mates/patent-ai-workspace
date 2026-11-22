@@ -109,19 +109,22 @@ DELETE = {"claim": 2, "kind": "delete"}
 CLARIFY = {"claim": 2, "kind": "clarify"}
 
 
-def prediction(*, inventive_claims=(1, 2, 3), clarity_low=False, argue_first=False):
+def prediction(
+    *, inventive_claims=(1, 2, 3), clarity_low=False, rank1_wrong=False, list_argue_first=False
+):
     """진보성 묶음: 1등이 청구항 1 부가 + 청구항 2 삭제 + 반박. 명확성 묶음: 1등이 명확화만.
 
-    argue_first면 진보성 묶음의 1번 후보(목록 첫째)를 보정 없이 반박으로 바꾼다.
+    rank1_wrong이면 순위 1은 보정 없이 반박(틀린 방향), 목록 첫째는 보정+반박(rank 2, 맞는 방향).
+    list_argue_first면 순위 1은 보정+반박 그대로 두고 반박만 후보(rank 2)를 목록 첫째에 둔다.
     """
     u1 = unit(1, "29-2", list(inventive_claims))
     u2 = unit(2, "42-4-2", [2], order=2)
-    amend, argue = (2, 1) if argue_first else (1, 2)
+    amend, argue = (2, 1) if rank1_wrong else (1, 2)
     cands = [
         cand(u1, 1, amend, "amend_and_argue", [ADD, DELETE]),
         cand(u1, 2, argue, "argue_only", []),
     ]
-    if argue_first:
+    if list_argue_first:
         cands.reverse()  # 모델이 낸 순서: 반박만 후보가 목록 첫째 (1번 후보)
     g1 = group(u1, cands)
     if clarity_low:
@@ -213,14 +216,55 @@ def test_1등_후보에서_청구항별_방향을_계산해_정답과_맞춘다(
     assert s["n"] == 1
 
 
-def test_1등_방향이_정답과_다르면_틀림으로_센다(env):
+def test_순위_1이_목록_둘째면_기본_선택은_순위_1로_옛_값은_목록_첫째로_센다(env):
     env.put_gold(gold())
-    env.put_pred(*prediction(argue_first=True))  # 진보성 묶음 1등이 보정 없이 반박
+    env.put_pred(*prediction(list_argue_first=True))  # 목록 첫째는 반박만(rank 2), 둘째가 rank 1
     assert main(env.args) == 0
     m = env.scores()["metrics"]
-    # 진보성 줄(청구항 1·2)은 반박만으로 계산돼 틀리고, 명확성 줄만 맞음
+    # AI 기본 선택(순위 1 = 보정+반박)은 정답과 같아 3/3
+    assert m["direction_top1"] == 1.0
+    assert m["direction_top1_with_inherited"] == 1.0
+    # 목록 첫째(반박만)로 세면 진보성 줄(청구항 1·2)이 틀리고 명확성 줄만 맞음
+    assert m["direction_top1_list_first"] == pytest.approx(1 / 3)
+
+
+def test_목록_첫째가_맞고_순위_1이_틀리면_기본_선택은_틀림_목록_첫째는_맞음(env):
+    env.put_gold(gold())
+    # 목록 첫째 = 보정+반박(rank 2), 둘째 = 반박만(rank 1)
+    env.put_pred(*prediction(rank1_wrong=True))
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    # 기본 선택(순위 1, 반박만)은 진보성 줄 청구항 1·2가 틀리고 명확성 줄만 맞음 -> 1/3
     assert m["direction_top1"] == pytest.approx(1 / 3)
-    assert m["direction_top1_with_inherited"] == pytest.approx(1 / 4)
+    assert m["direction_top1_list_first"] == 1.0  # 목록 첫째는 3/3
+    assert m["direction_top1_conf_high"] == pytest.approx(1 / 3)  # 기본 선택(high) 기준
+    assert m["direction_top1_list_first_conf_high"] == 1.0  # 목록 첫째(high) 기준
+
+
+def test_순위_후보가_없는_보류_묶음은_두_지표_모두_목록_첫째로_센다(env):
+    env.put_gold(gold())
+    units, directions = prediction(clarity_low=True)
+    u2 = units[1]
+    directions[1] = group(
+        u2,
+        [
+            cand(u2, 1, None, "argue_only", []),  # 첫째: 확신 낮음, 틀린 방향
+            cand(u2, 2, None, "amend_only", [CLARIFY]),  # 둘째: 확신 낮음, 맞는 방향
+        ],
+    )
+    env.put_pred(units, directions)
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    assert m["direction_top1"] == pytest.approx(2 / 3)  # 명확성 줄은 candidates[0]이 틀림
+    assert m["direction_top1_list_first"] == pytest.approx(2 / 3)
+
+
+def test_기본_선택과_목록_첫째가_같은_예측이면_두_지표가_같다(env):
+    env.put_gold(gold())
+    env.put_pred(*prediction())
+    assert main(env.args) == 0
+    m = env.scores()["metrics"]
+    assert m["direction_top1"] == m["direction_top1_list_first"] == 1.0
 
 
 def test_scores_json은_공통_스키마를_통과하고_번호를_담지_않는다(env):
@@ -238,9 +282,11 @@ def test_scores_json은_공통_스키마를_통과하고_번호를_담지_않는
 
 def test_예측이_DirectionCandidates_목록이어도_읽는다(env):
     env.put_gold(gold())
-    env.put_pred(*prediction(argue_first=True), as_list=True)
+    env.put_pred(*prediction(list_argue_first=True), as_list=True)
     assert main(env.args) == 0
-    assert env.scores()["metrics"]["direction_top1"] == pytest.approx(1 / 3)
+    m = env.scores()["metrics"]
+    assert m["direction_top1"] == 1.0
+    assert m["direction_top1_list_first"] == pytest.approx(1 / 3)
 
 
 def test_안_다룸_줄은_방향_채점에서_빼고_건수를_남긴다(env):
@@ -276,7 +322,7 @@ def test_어느_묶음에도_없는_거절이유_청구항_쌍을_누락으로_�
     assert "누락" in caplog.text
 
 
-# ---- 확신 낮음 (직접 판단 필요): 주 지표는 모델 1번 후보(목록 첫째)로 모든 묶음을 센다 ----
+# ---- 확신 낮음 (직접 판단 필요): 주 지표는 AI 기본 선택(순위 1, 없으면 목록 첫째)으로 센다 ----
 def low_clarity(units, directions, *, wrong=False):
     """명확성 묶음의 후보를 확신 낮음(rank 없음)으로 두고, wrong이면 방향이 정답과 달라지게 한다."""
     if wrong:
@@ -332,7 +378,7 @@ def test_후보가_0개인_묶음은_틀림으로_세고_건수를_남긴다(env
     assert s["failures"]["uncovered_pairs"] == 0  # 묶음에는 있다
 
 
-def test_목록_첫째가_확신_낮음이고_순위_있는_후보가_둘째면_첫째로_센다(env):
+def test_목록_첫째가_확신_낮음이고_순위_있는_후보가_둘째면_기본_선택은_둘째로_센다(env):
     env.put_gold(gold())
     units, directions = prediction()
     u1 = units[0]
@@ -346,13 +392,17 @@ def test_목록_첫째가_확신_낮음이고_순위_있는_후보가_둘째면_
     env.put_pred(units, directions)
     assert main(env.args) == 0
     m = env.scores()["metrics"]
-    assert m["direction_top1"] == pytest.approx(1 / 3)  # 첫째(반박만) 기준: 진보성 두 줄 틀림
+    assert m["direction_top1"] == 1.0  # AI 기본 선택 = rank 1 후보: 전부 맞음
+    assert m["direction_top1_list_first"] == pytest.approx(1 / 3)  # 첫째(반박만): 진보성 두 줄 틀림
     assert m["direction_top1_ranked_only"] == 1.0  # rank 1 후보 기준: 전부 맞음
-    assert m["direction_top1_with_inherited"] == pytest.approx(1 / 4)
+    assert m["direction_top1_with_inherited"] == 1.0
     assert m["needs_human_judgment_rate"] == 0.0  # rank 1 후보가 있으니 보류 아님
+    assert m["direction_top1_conf_high"] == 1.0  # 기본 선택(rank 1, high) 기준 진보성 2줄 맞음
+    assert m["direction_top1_list_first_conf_low"] == 0.0  # 목록 첫째(low) 기준 2줄 틀림
+    assert "direction_top1_conf_low" not in m  # 기본 선택은 low가 아니라 그 칸은 비어 뺌
 
 
-def test_확신도별_일치율은_1번_후보의_확신도로_줄을_나눈다(env, caplog):
+def test_확신도별_일치율은_기본_선택의_확신도로_줄을_나눈다(env, caplog):
     env.put_gold(gold())
     # 진보성 묶음 1번 후보(rank 1) 확신 높음 -> 청구항 1·2 맞음. 명확성 1번 후보는 낮음+틀림
     units, directions = low_clarity(*prediction(clarity_low=True), wrong=True)
@@ -420,7 +470,7 @@ def with_twin(units, directions, cands):
     return [*units, twin], [*directions, group(twin, cands)]
 
 
-def test_가지의_1번_후보_방향이_엇갈리면_주_지표에서_빼고_센다(env):
+def test_가지의_기본_선택_방향이_엇갈리면_주_지표에서_빼고_센다(env):
     env.put_gold(gold())
     units, directions = prediction()
     twin_u = make_twin()
@@ -428,6 +478,7 @@ def test_가지의_1번_후보_방향이_엇갈리면_주_지표에서_빼고_�
     env.put_pred(*with_twin(units, directions, cands))
     assert main(env.args) == 0
     s = env.scores()
+    assert s["failures"]["excluded_list_first_conflict"] == 3  # 목록 첫째도 엇갈림
     assert s["failures"]["excluded_branch_conflict"] == 3  # 진보성 청구항 1·2·3
     assert s["failures"]["excluded_ranked_only_conflict"] == 3
     assert s["metrics"]["direction_top1"] == 1.0  # 남은 명확성 줄만
@@ -449,7 +500,7 @@ def test_가지의_방향은_같고_확신도만_다르면_셈하고_낮은_확�
     assert s["metrics"]["direction_top1_conf_high"] == 1.0  # 명확성 줄만 남음
 
 
-def test_순위_1_후보만_엇갈리면_ranked_only에서만_빼고_센다(env):
+def test_순위_1_후보만_엇갈리면_목록_첫째로는_세고_기본_선택·ranked_only에서는_뺀다(env):
     env.put_gold(gold())
     units, directions = prediction()
     twin_u = make_twin()
@@ -460,10 +511,16 @@ def test_순위_1_후보만_엇갈리면_ranked_only에서만_빼고_센다(env)
     env.put_pred(*with_twin(units, directions, cands))
     assert main(env.args) == 0
     s = env.scores()
-    assert s["failures"]["excluded_branch_conflict"] == 0  # 1번 후보 방향은 같다
+    assert s["failures"]["excluded_list_first_conflict"] == 0  # 목록 첫째 방향은 같다
     assert s["failures"]["excluded_ranked_only_conflict"] == 3
+    # 기본 선택(rank 1)은 쌍둥이끼리 엇갈려 진보성 줄을 빼고, 목록 첫째는 같아 센다
+    assert s["failures"]["excluded_branch_conflict"] == 3
+    assert s["metrics"]["direction_top1_list_first"] == 1.0
+    # 기본 선택은 진보성 줄을 빼고 명확성 줄(1)만 남는다
     assert s["metrics"]["direction_top1"] == 1.0
-    assert s["metrics"]["direction_top1_conf_low"] == 1.0  # 쌍둥이 첫째가 낮음 -> 낮음 칸
+    # 쌍둥이 첫째가 낮음 -> 낮음 칸
+    assert s["metrics"]["direction_top1_list_first_conf_low"] == 1.0
+    assert "direction_top1_conf_low" not in s["metrics"]
 
 
 # ---- 예측 없음 ----
