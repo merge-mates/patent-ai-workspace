@@ -1,0 +1,27 @@
+# 인용문헌 미국 공보 검색 (이슈 #308 task 4): 색인 cite-idx-us1(미국 공보 50건 청킹 포함)에서
+# 한국어 OA 청구항 질의 → 영어 조각 (번역 없음). 미국 줄만 Hit@10은 --rows-out + eval/retrieval/compare.py의
+# "미국 공보" 묶음으로 본다. BM25·벡터는 mode·impl 두 줄만 바꿔 같은 명령 (card.md).
+# 판 3(미국 7줄)이 tune 정답에 들어가기 전에는 돌리지 않는다: goldset_version 3이라 판 2에서는 채점기가 멈춘다.
+experiment: m3-i1-cite-search-us
+feature: retrieval
+baseline: m3-i1-cite-search-us   # 세 방식(bm25·vector·hybrid)을 한 표로 비교하는 기준선 (미국 줄 첫 점수)
+goldset: tune
+goldset_version: 3
+corpus: cite
+index_version: cite-idx-us1
+mode: hybrid
+impl: hybrid
+k: [1, 3, 5, 10]
+gold: retrieval/cite_gold.jsonl
+settings:
+  tokenizer: kiwi        # kiwipiepy 0.24.1. 영어 조각도 같은 토크나이저 (SL 품사로 영어 낱말이 남는다)
+  pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
+  bm25: {method: lucene, k1: 1.5, b: 0.75}   # bm25s 0.3.16
+  # 판 3 정답의 질의로 새로 만든다 (eval.retrieval.embed_queries, 유료 몇 센트 아래, card.md)
+  query_vectors: work/retrieval/m3-i1-cite-search-us/query_vectors.json
+  hybrid:
+    rrf_k: 60                           # Cormack 외 SIGIR 2009
+    weights: {bm25: 0.5, vector: 0.5}   # 11/20 재아, F3 기본 (#248)
+budget:
+  max_usd: 0
+  max_external_calls: 0

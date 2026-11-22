@@ -31,6 +31,7 @@
 | m2-i3-cite-search-vector-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → vector (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-vector-noise-c/card.md) |
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
 | m3-i1-cite-search-two-stage | cite-search (이슈 #212) | `impl`: hybrid(RRF) → two_stage (BM25 후보 N=100 → 그 후보만 벡터로 다시 순위) | hit@10 0.691 | -0.015 | $0.00 | [card](m3-i1-cite-search-two-stage/card.md) |
+| m3-i1-cite-search-us | cite-search (이슈 #308) | 기준선 (미국 공보를 색인에 넣은 cite-idx-us1에서 미국 줄 첫 점수, BM25·벡터·하이브리드 RRF 세 방식) | 점수 없음 | - | - | [card](m3-i1-cite-search-us/card.md) |
 | m3-i1-cite-search-weighted-sum | cite-search (이슈 #212, lane_extra C3) | `impl`: hybrid(RRF, 순위로 섞음) → weighted_sum (점수를 min-max로 맞춘 뒤 BM25 0.5 / 벡터 0.5 가중합) | hit@10 0.706 | +0.000 | $0.00 | [card](m3-i1-cite-search-weighted-sum/card.md) |
 | m3-i1-cite-search-whole-doc | cite-search (이슈 #248) | `impl`: hybrid(RRF) → whole_doc_llm (그 OA 인용문헌 조각 전부를 번호 붙여 Haiku에 넣고 관련 조각 번호를 순위로 10개) | hit@10 0.750 | +0.044 | $0.21 | [card](m3-i1-cite-search-whole-doc/card.md) |
 | m3-i1-f3-independent-first | F3 | 코드 (이슈 #30 남은 일 ②, feat/30-f3-independent-first): 진보성은 대표 청구항(독립항) 먼저 대비하고 차이점이 있으면 종속항은 **검색은 하고 LLM 대비만 생략**(11/22 재아 결정 1 (나), 18603a9) + 명세서 효과 반박 후보. 채점기는 건너뛴 줄을 selected_* 분모에서 빼고 따로 셈(f65f910). #211(f499f2c) 위 | search_recall 0.637 | - | $0.00 | [card](m3-i1-f3-independent-first/card.md) |
