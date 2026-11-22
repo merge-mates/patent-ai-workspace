@@ -119,3 +119,85 @@ def test_잘못된_후보_수는_멈춘다(bad):
 def test_다른_mode로_부르면_거절():
     with pytest.raises(ModeNotSupportedError):
         _searcher().search("방열 시트", "cite", "bm25", 3)
+
+
+# ---- 자료 유형·선고일 미리 거르기 (#24 24a) ----
+def _law_repo():
+    def law(cid, kind, source_kind, decided_on=None):
+        return Chunk(
+            chunk_id=f"law-idx-v3:{cid}",
+            index_version="law-idx-v3",
+            doc_id=cid,
+            chunk_kind=kind,
+            location=Location(kind="article", label=cid),
+            edition=Edition(status="not_applicable")
+            if kind == "judgment"
+            else Edition(status="confirmed", effective_from="2020-01-01"),
+            text="방열 시트",
+            embedding=[1.0, 0.0],
+            source_kind=source_kind,
+            decided_on=decided_on,
+            speaker="court" if decided_on else None,
+        )
+
+    return InMemoryChunkRepository(
+        {
+            "law": [
+                law("art", "article", "statute"),
+                law("gl", "guideline", "guideline"),
+                law("p-early", "judgment", "precedent", "2020-05-01"),
+                law("p-late", "judgment", "precedent", "2022-05-01"),
+                law("p-null", "judgment", "precedent", None),
+            ]
+        }
+    )
+
+
+def _law_searcher(impl, settings):
+    return get_searcher(
+        impl,
+        _law_repo(),
+        {"index_version": "law-idx-v3", "tokenizer": "whitespace", **settings},
+        lambda q: [1.0, 0.0],
+    )
+
+
+def test_chunk_kinds로_거르면_조문은_안_나온다_two_stage():
+    res = _law_searcher("two_stage", {"two_stage": {"candidates": 5}}).search(
+        "방열 시트", "law", "hybrid", 10, chunk_kinds=["guideline"]
+    )
+    assert [h.chunk_id for h in res.hits] == ["law-idx-v3:gl"]
+    assert res.scope.chunk_kinds == ["guideline"]
+
+
+def test_유형_조각이_0개면_body_missing_two_stage():
+    repo = InMemoryChunkRepository(
+        {"law": [c for c in _law_repo()._tables["law"] if c.doc_id == "art"]}
+    )
+    s = get_searcher(
+        "two_stage",
+        repo,
+        {
+            "index_version": "law-idx-v3",
+            "tokenizer": "whitespace",
+            **{"two_stage": {"candidates": 5}},
+        },
+        lambda q: [1.0, 0.0],
+    )
+    res = s.search("방열 시트", "law", "hybrid", 10, chunk_kinds=["guideline"])
+    assert (res.status, res.status_reason) == ("unverified", "body_missing")
+
+
+def test_선고일_거르기와_날짜_모름_셈_two_stage():
+    from datetime import date
+
+    res = _law_searcher("two_stage", {"two_stage": {"candidates": 5}}).search(
+        "방열 시트",
+        "law",
+        "hybrid",
+        10,
+        source_kinds=["precedent"],
+        decided_on_or_before=date(2021, 1, 1),
+    )
+    assert [h.chunk_id for h in res.hits] == ["law-idx-v3:p-early"]
+    assert res.skipped_unknown_date == 1

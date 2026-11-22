@@ -10,7 +10,15 @@ from datetime import date
 from patent_ai.retrieval.contract import Embed, get_searcher, register_impl
 from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
-from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
+from patent_ai.retrieval.schemas import (
+    ChunkKind,
+    Corpus,
+    Mode,
+    SearchHit,
+    SearchResult,
+    SearchScope,
+    SourceKind,
+)
 
 
 def _read_two_stage_settings(settings: dict) -> int:
@@ -42,6 +50,10 @@ class TwoStageSearcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
         # Mode는 bm25/vector/hybrid뿐이라 2단계도 hybrid 이름으로 부른다
         if mode != "hybrid":
@@ -50,15 +62,31 @@ class TwoStageSearcher:
             "corpus": corpus,
             "index_version": self._index_version,
             "mode": mode,
-            "scope": SearchScope(doc_ids=doc_ids, as_of=as_of, k=k),
+            "scope": SearchScope(
+                doc_ids=doc_ids,
+                as_of=as_of,
+                k=k,
+                chunk_kinds=chunk_kinds,
+                source_kinds=source_kinds,
+                decided_on_or_before=decided_on_or_before,
+            ),
         }
-        n = self._repo.count_chunks(corpus, self._index_version, doc_ids)
+        # 안쪽 검색기에 같은 거르기를 넘긴다
+        flt = {
+            "chunk_kinds": chunk_kinds,
+            "source_kinds": source_kinds,
+            "decided_on_or_before": decided_on_or_before,
+        }
+        # 문헌·자료 유형으로 거른 조각이 0개면 본문이 없는 것 (선고일 거르기는 안 봄)
+        n = self._repo.count_chunks(
+            corpus, self._index_version, doc_ids, chunk_kinds=chunk_kinds, source_kinds=source_kinds
+        )
         if n == 0:
             return SearchResult(**base, status="unverified", status_reason="body_missing")
 
         # 1단계: BM25 위 N개가 후보
         first = self._bm25.search(
-            query, corpus, "bm25", self._candidates, doc_ids=doc_ids, as_of=as_of
+            query, corpus, "bm25", self._candidates, doc_ids=doc_ids, as_of=as_of, **flt
         )
         candidate_ids = {h.chunk_id for h in first.hits}
         if not candidate_ids:
@@ -68,20 +96,24 @@ class TwoStageSearcher:
                 **base,
                 status="not_found_in_scope",
                 skipped_unverified_edition=first.skipped_unverified_edition,
+                skipped_unknown_date=first.skipped_unknown_date,
             )
 
         # 2단계: 범위 안 전체 벡터 순위(k=n)에서 후보만 남긴다 (벡터 순서 유지)
-        second = self._vector.search(query, corpus, "vector", n, doc_ids=doc_ids, as_of=as_of)
+        second = self._vector.search(
+            query, corpus, "vector", n, doc_ids=doc_ids, as_of=as_of, **flt
+        )
         kept = [h for h in second.hits if h.chunk_id in candidate_ids]
         # 점수 내림차순, 같으면 chunk_id 오름차순 (계약)
         kept.sort(key=lambda h: (-h.score, h.chunk_id))
+        # 건수는 두 쪽 중 큰 값 (같은 범위를 세므로 보통 같다)
         skipped = max(first.skipped_unverified_edition, second.skipped_unverified_edition)
+        unknown_date = max(first.skipped_unknown_date, second.skipped_unknown_date)
+        extra = {"skipped_unverified_edition": skipped, "skipped_unknown_date": unknown_date}
         hits = [
             SearchHit(**h.model_dump(exclude={"rank"}), rank=i)
             for i, h in enumerate(kept[:k], start=1)
         ]
         if not hits:
-            return SearchResult(
-                **base, status="not_found_in_scope", skipped_unverified_edition=skipped
-            )
-        return SearchResult(**base, skipped_unverified_edition=skipped, hits=hits)
+            return SearchResult(**base, status="not_found_in_scope", **extra)
+        return SearchResult(**base, **extra, hits=hits)
