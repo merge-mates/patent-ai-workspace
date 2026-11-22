@@ -52,9 +52,9 @@ class _Recorder:
         self.inner = inner
         self.calls: list[dict] = []
 
-    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
+    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None, **kw):
         self.calls.append({"query": query, "mode": mode, "k": k, "doc_ids": doc_ids})
-        return self.inner.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of)
+        return self.inner.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of, **kw)
 
 
 def _embed(query: str) -> list[float]:

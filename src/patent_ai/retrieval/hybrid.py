@@ -11,7 +11,15 @@ from datetime import date
 from patent_ai.retrieval.contract import Embed, get_searcher, register_impl
 from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
-from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
+from patent_ai.retrieval.schemas import (
+    ChunkKind,
+    Corpus,
+    Mode,
+    SearchHit,
+    SearchResult,
+    SearchScope,
+    SourceKind,
+)
 
 _METHODS = {"bm25", "vector"}
 
@@ -68,6 +76,10 @@ class HybridSearcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
         if mode != "hybrid":
             raise ModeNotSupportedError(f"hybrid 구현은 hybrid 방식만 한다 (받은 값 {mode!r})")
@@ -75,22 +87,44 @@ class HybridSearcher:
             "corpus": corpus,
             "index_version": self._index_version,
             "mode": mode,
-            "scope": SearchScope(doc_ids=doc_ids, as_of=as_of, k=k),
+            "scope": SearchScope(
+                doc_ids=doc_ids,
+                as_of=as_of,
+                k=k,
+                chunk_kinds=chunk_kinds,
+                source_kinds=source_kinds,
+                decided_on_or_before=decided_on_or_before,
+            ),
         }
-        # 범위 안 조각이 하나도 없으면 본문이 없는 것. 안쪽을 부르지 않는다
-        n = self._repo.count_chunks(corpus, self._index_version, doc_ids)
+        # 안쪽 검색기에 같은 거르기를 넘긴다
+        flt = {
+            "chunk_kinds": chunk_kinds,
+            "source_kinds": source_kinds,
+            "decided_on_or_before": decided_on_or_before,
+        }
+        # 문헌·자료 유형으로 거른 조각이 하나도 없으면 본문이 없는 것. 안쪽을 부르지 않는다
+        n = self._repo.count_chunks(
+            corpus, self._index_version, doc_ids, chunk_kinds=chunk_kinds, source_kinds=source_kinds
+        )
         if n == 0:
             return SearchResult(**base, status="unverified", status_reason="body_missing")
 
         # 두 쪽 모두 범위 안 전체 순위(k=n)를 받아 섞는다. BM25는 0점 조각을 안 돌려준다
         parts = {
-            "bm25": self._bm25.search(query, corpus, "bm25", n, doc_ids=doc_ids, as_of=as_of),
-            "vector": self._vector.search(query, corpus, "vector", n, doc_ids=doc_ids, as_of=as_of),
+            "bm25": self._bm25.search(
+                query, corpus, "bm25", n, doc_ids=doc_ids, as_of=as_of, **flt
+            ),
+            "vector": self._vector.search(
+                query, corpus, "vector", n, doc_ids=doc_ids, as_of=as_of, **flt
+            ),
         }
         ranked = {m: [h.chunk_id for h in r.hits] for m, r in parts.items()}
         by_id = {h.chunk_id: h for r in parts.values() for h in r.hits}
         scores = rrf(ranked, self._weights, self._rrf_k)
+        # 건수는 두 쪽 중 큰 값 (같은 범위를 세므로 보통 같다)
         skipped = max(r.skipped_unverified_edition for r in parts.values())
+        unknown_date = max(r.skipped_unknown_date for r in parts.values())
+        extra = {"skipped_unverified_edition": skipped, "skipped_unknown_date": unknown_date}
 
         # 점수 내림차순, 같으면 chunk_id 오름차순 (계약)
         order = sorted(scores, key=lambda cid: (-scores[cid], cid))[:k]
@@ -99,7 +133,5 @@ class HybridSearcher:
             for i, cid in enumerate(order, start=1)
         ]
         if not hits:
-            return SearchResult(
-                **base, status="not_found_in_scope", skipped_unverified_edition=skipped
-            )
-        return SearchResult(**base, skipped_unverified_edition=skipped, hits=hits)
+            return SearchResult(**base, status="not_found_in_scope", **extra)
+        return SearchResult(**base, **extra, hits=hits)

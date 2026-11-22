@@ -15,7 +15,15 @@ from patent_ai.retrieval.contract import Embed, register_impl
 from patent_ai.retrieval.embedding import cosine, recorded_embed
 from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
-from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
+from patent_ai.retrieval.schemas import (
+    ChunkKind,
+    Corpus,
+    Mode,
+    SearchHit,
+    SearchResult,
+    SearchScope,
+    SourceKind,
+)
 
 
 @register_impl("vector")
@@ -35,6 +43,10 @@ class VectorSearcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
         if mode != "vector":
             raise ModeNotSupportedError(f"vector 구현은 vector 방식만 한다 (받은 값 {mode!r})")
@@ -44,20 +56,49 @@ class VectorSearcher:
             "corpus": corpus,
             "index_version": self._index_version,
             "mode": mode,
-            "scope": SearchScope(doc_ids=doc_ids, as_of=as_of, k=k),
+            "scope": SearchScope(
+                doc_ids=doc_ids,
+                as_of=as_of,
+                k=k,
+                chunk_kinds=chunk_kinds,
+                source_kinds=source_kinds,
+                decided_on_or_before=decided_on_or_before,
+            ),
         }
-        # 고른 문서에 조각이 하나도 없으면 본문이 없는 것
-        if self._repo.count_chunks(corpus, self._index_version, doc_ids) == 0:
+        # 거르기 인자 묶음: 저장소 조회·세기에 같은 범위를 쓴다
+        flt = {"chunk_kinds": chunk_kinds, "source_kinds": source_kinds}
+        # 고른 문서·자료 유형에 조각이 하나도 없으면 본문이 없는 것
+        if self._repo.count_chunks(corpus, self._index_version, doc_ids, **flt) == 0:
             return SearchResult(**base, status="unverified", status_reason="body_missing")
         skipped = (
-            self._repo.count_unverified_edition(corpus, self._index_version, doc_ids)
+            self._repo.count_unverified_edition(
+                corpus,
+                self._index_version,
+                doc_ids,
+                decided_on_or_before=decided_on_or_before,
+                **flt,
+            )
             if as_of is not None
             else 0
         )
+        # 선고일 거르기를 걸었을 때 선고일 모름으로 빠진 판례·심결 수
+        unknown_date = (
+            self._repo.count_unknown_date(corpus, self._index_version, doc_ids, **flt)
+            if decided_on_or_before is not None
+            else 0
+        )
+        extra = {"skipped_unverified_edition": skipped, "skipped_unknown_date": unknown_date}
 
         qvec = self._embed(query)
         scored = []
-        for chunk in self._repo.chunks(corpus, self._index_version, doc_ids, as_of):
+        for chunk in self._repo.chunks(
+            corpus,
+            self._index_version,
+            doc_ids,
+            as_of,
+            decided_on_or_before=decided_on_or_before,
+            **flt,
+        ):
             if chunk.embedding is None:
                 raise ValueError(f"조각에 embedding이 없다: {chunk.chunk_id}")
             scored.append((cosine(qvec, chunk.embedding), chunk))
@@ -69,7 +110,5 @@ class VectorSearcher:
             for i, (s, c) in enumerate(scored[:k], start=1)
         ]
         if not hits:
-            return SearchResult(
-                **base, status="not_found_in_scope", skipped_unverified_edition=skipped
-            )
-        return SearchResult(**base, skipped_unverified_edition=skipped, hits=hits)
+            return SearchResult(**base, status="not_found_in_scope", **extra)
+        return SearchResult(**base, **extra, hits=hits)

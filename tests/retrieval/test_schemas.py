@@ -12,10 +12,18 @@ EXAMPLE = {
     "corpus": "cite",
     "index_version": "cite-idx-v1",
     "mode": "bm25",
-    "scope": {"doc_ids": ["KR1020190012345A"], "as_of": None, "k": 5},
+    "scope": {
+        "doc_ids": ["KR1020190012345A"],
+        "as_of": None,
+        "k": 5,
+        "chunk_kinds": None,
+        "source_kinds": None,
+        "decided_on_or_before": None,
+    },
     "status": None,
     "status_reason": None,
     "skipped_unverified_edition": 0,
+    "skipped_unknown_date": 0,
     "hits": [
         {
             "chunk_id": "cite-idx-v1:KR1020190012345A:p0023",

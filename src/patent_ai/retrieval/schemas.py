@@ -91,6 +91,10 @@ class SearchScope(_Strict):
     doc_ids: list[str] | None = None  # None = 전체
     as_of: date | None = None
     k: int
+    # 점수 매기기 전에 건 거르기 (None = 안 걺). design 3-2절
+    chunk_kinds: list[ChunkKind] | None = None
+    source_kinds: list[SourceKind] | None = None
+    decided_on_or_before: date | None = None  # 판례·심결은 선고일이 이 날 이하(그날 포함)만
 
 
 class SearchResult(_Strict):
@@ -101,6 +105,8 @@ class SearchResult(_Strict):
     status: SearchStatus | None = None
     status_reason: StatusReason | None = None
     skipped_unverified_edition: int = Field(default=0, ge=0)
+    # decided_on_or_before를 걸었을 때 선고일을 몰라 빠진 판례·심결 조각 수 (안 걸면 0)
+    skipped_unknown_date: int = Field(default=0, ge=0)
     hits: list[SearchHit] = Field(default_factory=list)
 
     @model_validator(mode="after")

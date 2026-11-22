@@ -76,10 +76,11 @@ flowchart LR
   "corpus": "cite",
   "index_version": "cite-idx-v1",
   "mode": "bm25",
-  "scope": {"doc_ids": ["KR20190012345A"], "as_of": null, "k": 5},
+  "scope": {"doc_ids": ["KR20190012345A"], "as_of": null, "k": 5, "chunk_kinds": null, "source_kinds": null, "decided_on_or_before": null},
   "status": null,
   "status_reason": null,
   "skipped_unverified_edition": 0,
+  "skipped_unknown_date": 0,
   "hits": [
     {
       "chunk_id": "cite-idx-v1:KR20190012345A:p0023",
@@ -167,13 +168,20 @@ flowchart LR
 ```python
 class Searcher(Protocol):
     def search(self, query: str, corpus: Corpus, mode: Mode, k: int,
-               doc_ids: list[str] | None = None, as_of: date | None = None) -> SearchResult: ...
+               doc_ids: list[str] | None = None, as_of: date | None = None, *,
+               chunk_kinds: list[ChunkKind] | None = None,
+               source_kinds: list[SourceKind] | None = None,
+               decided_on_or_before: date | None = None) -> SearchResult: ...
 
 def get_searcher(impl: str, repo: ChunkRepository, settings: dict, embed: Callable[[str], list[float]] | None = None) -> Searcher  # 없는 이름 → UnknownImplError(이름 규칙 + 쓸 수 있는 이름 목록)
 ```
 - `get_searcher`는 등록된 구현을 공통 검사 래퍼 `CheckedSearcher`로 감싸 돌려준다. 어느 구현이든 아래 검사를 래퍼가 하므로 #66·#67은 구현에서 다시 하지 않아도 된다.
   - 부르기 전: `k ≥ 1`(아니면 `ValueError`), `corpus`·`mode` 값(아니면 `ValueError`), `settings["index_version"]`이 그 말뭉치에 없으면 `UnknownIndexVersionError`.
   - 받은 뒤: `result.corpus`·`result.mode`·`result.scope.k`가 요청과 같음(아니면 `SearchContractViolationError`), 결과 조각 수 ≤ k, 모든 `hit.index_version == settings["index_version"]`(아니면 `IndexVersionMismatchError`), 점수 내림차순·같은 점수는 `chunk_id` 오름차순.
+- 거르기 인자 셋(키워드 전용, 기본 None = 안 걺)은 점수 매기기 전에 범위를 줄인다. 저장소의 `chunks`·`count_chunks`·`count_unverified_edition`이 같은 셋을 받고, `count_unknown_date(corpus, index_version, doc_ids, chunk_kinds, source_kinds)`가 있다. `body_missing` 판단과 `skipped_*` 건수는 거른 범위로 센다 (`chunk_kinds=["guideline"]`이면 조문의 판본 모름 조각은 안 센다).
+  - `chunk_kinds`·`source_kinds`: 그 값인 조각만. 빈 목록 `[]`·모르는 값은 `ValueError`, `corpus="cite"`에 `source_kinds`·`decided_on_or_before`를 주면 `ValueError` (래퍼가 검사).
+  - `decided_on_or_before`: 판례·심결(`source_kind` `precedent`·`trial`)은 `decided_on ≤ 날짜`(그날 포함)만 남긴다. `decided_on`이 null인 판례·심결은 빼고 `skipped_unknown_date`에 센다. 조문·심사기준은 그냥 통과한다. 안 걸면 `skipped_unknown_date`는 0이다.
+  - 상태는 그대로다 (`StatusReason`은 안 늘림): 자료 유형·문헌으로 거른 조각이 0개면 `unverified(body_missing)`, 그 뒤 점수 대상이 0개면 `not_found_in_scope` + `skipped_unverified_edition`·`skipped_unknown_date`. 0개 + 건수 > 0을 `edition_unknown`으로 바꾸는 것은 F2 도구 몫이다. hybrid는 두 쪽 건수 중 큰 값을 쓴다.
 - 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.

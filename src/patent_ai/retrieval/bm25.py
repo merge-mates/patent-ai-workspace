@@ -14,7 +14,15 @@ import bm25s
 from patent_ai.retrieval.contract import Embed, register_impl
 from patent_ai.retrieval.errors import ModeNotSupportedError
 from patent_ai.retrieval.repository import ChunkRepository
-from patent_ai.retrieval.schemas import Corpus, Mode, SearchHit, SearchResult, SearchScope
+from patent_ai.retrieval.schemas import (
+    ChunkKind,
+    Corpus,
+    Mode,
+    SearchHit,
+    SearchResult,
+    SearchScope,
+    SourceKind,
+)
 from patent_ai.retrieval.tokenizer import make_tokenizer
 
 # unique_query_terms: 질의에 같은 낱말이 여러 번 나와도 한 번만 센다 (Okapi 교과서 식).
@@ -62,6 +70,10 @@ class Bm25Searcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
         if mode != "bm25":
             raise ModeNotSupportedError(f"bm25 구현은 mode={mode!r}를 지원하지 않는다")
@@ -69,18 +81,47 @@ class Bm25Searcher:
             "corpus": corpus,
             "index_version": self._index_version,
             "mode": mode,
-            "scope": SearchScope(doc_ids=doc_ids, as_of=as_of, k=k),
+            "scope": SearchScope(
+                doc_ids=doc_ids,
+                as_of=as_of,
+                k=k,
+                chunk_kinds=chunk_kinds,
+                source_kinds=source_kinds,
+                decided_on_or_before=decided_on_or_before,
+            ),
         }
-        # 문헌 조각이 0개면 본문이 없는 것
-        if self._repo.count_chunks(corpus, self._index_version, doc_ids) == 0:
+        # 거르기 인자 묶음: 저장소 조회·세기에 같은 범위를 쓴다
+        flt = {"chunk_kinds": chunk_kinds, "source_kinds": source_kinds}
+        # 문헌·자료 유형으로 거른 조각이 0개면 본문이 없는 것
+        if self._repo.count_chunks(corpus, self._index_version, doc_ids, **flt) == 0:
             return SearchResult(**base, status="unverified", status_reason="body_missing")
 
-        chunks = self._repo.chunks(corpus, self._index_version, doc_ids, as_of)
+        chunks = self._repo.chunks(
+            corpus,
+            self._index_version,
+            doc_ids,
+            as_of,
+            decided_on_or_before=decided_on_or_before,
+            **flt,
+        )
         skipped = (
-            self._repo.count_unverified_edition(corpus, self._index_version, doc_ids)
+            self._repo.count_unverified_edition(
+                corpus,
+                self._index_version,
+                doc_ids,
+                decided_on_or_before=decided_on_or_before,
+                **flt,
+            )
             if as_of is not None
             else 0
         )
+        # 선고일 거르기를 걸었을 때 선고일 모름으로 빠진 판례·심결 수
+        unknown_date = (
+            self._repo.count_unknown_date(corpus, self._index_version, doc_ids, **flt)
+            if decided_on_or_before is not None
+            else 0
+        )
+        extra = {"skipped_unverified_edition": skipped, "skipped_unknown_date": unknown_date}
         q_tokens = self._tokenizer.tokenize(query)
         if self._bm25["unique_query_terms"]:
             # 긴 질의(법령 거절이유 본문)에서 흔한 낱말이 반복돼 점수를 끌고 가지 않게
@@ -107,7 +148,5 @@ class Bm25Searcher:
             for i, (s, c) in enumerate(ranked[:k], start=1)
         ]
         if not hits:
-            return SearchResult(
-                **base, status="not_found_in_scope", skipped_unverified_edition=skipped
-            )
-        return SearchResult(**base, skipped_unverified_edition=skipped, hits=hits)
+            return SearchResult(**base, status="not_found_in_scope", **extra)
+        return SearchResult(**base, **extra, hits=hits)
