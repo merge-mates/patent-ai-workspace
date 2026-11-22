@@ -153,7 +153,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 - 질문: 남은 세 규칙을 M3에 다 할지 일부 먼저 할지, 결과 칸(검사 규칙 / 걸린 묶음·청구항 / 내용 / 사람이 정할 것), API `GET /oas/{oa_id}/case-check` 응답 스키마.
 
 **도구 출력 `F4Output` (저장하지 않음, `f4/result.py:15-36`)**
-- `oa_id`, `units`(이 실행의 판단 단위, 채점용), `directions`, `drafts`, `held_units`(초안을 보류한 묶음), `unsupported_rejections`, `uncovered`, `coverage_unchecked`, `amendment_overlaps`(커밋 a9421df), `amendment_limit_applied`, `rank_notice`("순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"), `legality_notice`, `status`, `flags`.
+- `oa_id`, `units`(이 실행의 판단 단위, 채점용), `directions`, `drafts`, `held_units`(초안을 보류한 묶음), `unsupported_rejections`, `uncovered`, `coverage_unchecked`, `amendment_overlaps`(커밋 a9421df), `amendment_limit_applied`, `rank_notice`("순위는 검토 순서 제안이고 등록 가능성을 보증하지 않는다"), `legality_notice`, `status`, `flags`, `checked_on`(이 결과를 만든 확인 기준일, redo가 이어 씀, 이 칸 전 결과는 null, #293).
 - `status`는 방향 후보·초안 status 중 가장 나쁜 값이다. **보류·누락이 있어도 status를 내리지 않는다** (확신 낮음 보류 이야기. 호출 실패·상한 보류는 확인되지 않음) (status = 원문 확인 여부, 사람이 볼 것은 flags·`held_units`·`uncovered`). 대신 `checked` 글에 "보류 N묶음, 누락 쌍 M", AI가 다루지 않은 거절이유 수, 싣지 않은 겹친 초안 수를 적는다 (`run.py:110-118`, 11/21 재아 확인, 커밋 f9ea396·a9421df). F3는 보류가 있으면 결과 status를 내린다 — 두 기능의 보류 뜻이 달라서다.
 - 질문: 알림 문구 두 개와 F4Output 칸(보류 묶음·누락 쌍 등)을 결과 스키마로 올릴지, 화면 상수와 한 곳으로 모을지 (이슈 #57·화면).
 

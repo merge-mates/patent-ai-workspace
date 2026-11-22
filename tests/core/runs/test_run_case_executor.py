@@ -497,8 +497,12 @@ def test_redo_날을_넘겨_골라도_앞_실행의_확인_기준일을_쓴다(e
     assert _redo_on_later_day(env).checked_on == CHECKED_ON
 
 
-def test_redo_옛_F4에_기준일이_없으면_앞_F2_묶음의_기준일을_쓴다(env):
-    assert _redo_on_later_day(env, {"checked_on": None}).checked_on == CHECKED_ON
+def test_redo_옛_F4에_기준일이_없으면_앞_F2_묶음의_기준일을_쓴다(env, caplog):
+    with caplog.at_level(logging.WARNING):
+        out = _redo_on_later_day(env, {"checked_on": None})
+    assert out.checked_on == CHECKED_ON
+    # 앞 F2 기준일로 이어 쓸 수 있으면 오늘로 대신하지 않으니 경고도 없다
+    assert "확인 기준일" not in caplog.text
 
 
 def test_redo_앞_기준일을_모르면_오늘을_쓰고_경고한다(env, caplog):
