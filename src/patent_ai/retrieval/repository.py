@@ -164,7 +164,11 @@ def _in_force(chunk: Chunk, as_of: date) -> bool:
 
 class InMemoryChunkRepository:
     def __init__(self, tables: dict[Corpus, list[Chunk]]):
-        self._tables = tables
+        # law 조각의 source_kind 빈 칸은 statute로 채운다 (Postgres 행은 NOT NULL statute와 같게)
+        self._tables = {
+            corpus: [fill_law_defaults(c) for c in rows] if corpus == "law" else rows
+            for corpus, rows in tables.items()
+        }
 
     @classmethod
     def from_jsonl(cls, corpus: Corpus, *paths: str | Path) -> InMemoryChunkRepository:

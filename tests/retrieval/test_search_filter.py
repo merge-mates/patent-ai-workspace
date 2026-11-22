@@ -207,7 +207,7 @@ def test_날짜_거르기_없으면_skipped_unknown_date는_0(impl, mode):
 def test_거르기_없이_부르면_전과_같다(impl, mode):
     res = _searcher(impl).search("신규성", "law", mode, 20, as_of=date(2022, 6, 1))
     # 판본 모름 둘(g-unk·a-unk)은 빠지고 센다. 새 인자는 결과 머리에 None
-    assert "g-unk" not in _ids(res) and "a-unk" not in _ids(res)
+    assert _ids(res) == ["a-ok", "g-old", "p-early", "p-late", "p-null", "t-early"]
     assert res.skipped_unverified_edition == 2
     assert res.skipped_unknown_date == 0
     assert res.scope.chunk_kinds is None
@@ -266,3 +266,21 @@ def test_cite에_판례_인자를_주면_오류():
             s.search("신규성", "cite", "bm25", 3, **kw)
     # chunk_kinds는 cite에도 쓸 수 있다
     assert s.search("신규성", "cite", "bm25", 3, chunk_kinds=["body"]).hits
+
+
+def test_메모리_저장소는_source_kind_빈_law_조각을_statute로_채운다():
+    # v1·v2 JSONL을 거치지 않고 직접 만든 조각도 Postgres(NOT NULL statute)와 같아야 한다
+    old = Chunk(
+        chunk_id=f"{IV}:특허법:old",
+        index_version=IV,
+        doc_id="특허법",
+        chunk_kind="article",
+        location={"kind": "article", "label": "제29조"},
+        edition=_ed("2020-01-01"),
+        text="신규성",
+    )
+    assert old.source_kind is None
+    repo = InMemoryChunkRepository({"law": [old]})
+    got = repo.chunks("law", IV, source_kinds=["statute"])
+    assert [c.chunk_id for c in got] == [old.chunk_id]
+    assert got[0].source_kind == "statute"

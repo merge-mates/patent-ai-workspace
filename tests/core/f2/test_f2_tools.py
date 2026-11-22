@@ -127,3 +127,21 @@ def test_출처_확인은_있는_조각과_그대로_옮긴_글만_통과시킨�
     assert not check_source(pool, None, "통상의 기술자", as_of)
     # 기준일에 시행 중이 아닌 판은 근거가 될 수 없다
     assert not check_source(pool, f"{IV}:{OLD_DOC}:290002", "구판", as_of)
+
+
+def test_search_article은_질의와_더_잘_맞는_심사기준_판례가_있어도_조문만_돌려준다():
+    # 심사기준·판례 조각이 질의 낱말을 더 많이 담아도 조문 검색에는 안 섞인다
+    query = "통상의 기술자 진보성"
+    text = "통상의 기술자 진보성 통상의 기술자 진보성"
+    guideline = law_chunk("심사기준", 1, "제3장", text, NEW, kind="guideline").model_copy(
+        update={"source_kind": "guideline"}
+    )
+    precedent = law_chunk("판례1", 1, "판시", text, NEW, kind="judgment").model_copy(
+        update={"source_kind": "precedent", "decided_on": date(2019, 1, 1)}
+    )
+    repo = fakes.repo([guideline, precedent])
+    searcher = get_searcher("bm25", repo, {"index_version": IV, "tokenizer": "char_bigram"})
+    out = search_article(searcher, query, date(2020, 5, 4), 10)
+    assert out.hits
+    assert {h.chunk_kind for h in out.hits} == {"article"}
+    assert out.scope.chunk_kinds == ["article"]
