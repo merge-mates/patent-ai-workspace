@@ -35,10 +35,12 @@ export interface TodoInput {
   units?: JudgmentUnit[] | null
 }
 
-// target은 `oa_result[0].rejections[3]` 꼴과 `oa_result[<oa_id>].rejections[3]` 꼴이 섞여 있다. 둘 다 받는다
-const rejectionIndex = (target: string): number | null => {
-  const m = /^oa_result\[[^\]]*\]\.rejections\[(\d+)\]/.exec(target)
-  return m ? Number(m[1]) : null
+// target은 `oa_result[0].rejections[3]` 꼴과 `oa_result[<oa_id>].rejections[3]` 꼴이 섞여 있다. 둘 다 받는다.
+// ⑥은 사건 단위라 다른 OA의 줄도 들어온다: 괄호 안이 oa_id이고 지금 OA(r.oa_id)와 다르면 null (번호만 맞춰 지금 OA 카드로 잇지 않는다)
+const sameOA = (inBracket: string, r: OAResult | null) => /^\d+$/.test(inBracket) || inBracket === r?.oa_id
+const rejectionIndex = (target: string, r: OAResult | null): number | null => {
+  const m = /^oa_result\[([^\]]*)\]\.rejections\[(\d+)\]/.exec(target)
+  return m && sameOA(m[1], r) ? Number(m[2]) : null
 }
 const isCitationTarget = (target: string) => /\.citations\[\d+\]/.test(target)
 const missingIndex = (target: string): number | null => {
@@ -56,11 +58,11 @@ function unitText(unitId: string): string {
 // 거절이유·청구항 줄은 정리 단계의 그 거절이유 줄(펼쳐짐), 빠진 자료는 사건 자료 카드.
 // 머리 칸(출원번호·제출기일 등)은 접힌 "사건 정보"라 갈 자리가 없어 null (패널 줄에 쪽 링크는 달지 않는다)
 export function reviewTargetGo(target: string, r: OAResult | null): TodoGo | null {
-  const ri = rejectionIndex(target)
+  const ri = rejectionIndex(target, r)
   const rej = ri === null ? undefined : r?.rejections[ri]
   if (rej) return { kind: 'anchor', id: `rejection-${rej.no}`, label: `거절이유 ${rej.no} 보기` }
-  const ci = /^oa_result\[[^\]]*\]\.claim_rows\[(\d+)\]/.exec(target)?.[1]
-  const row = ci === undefined ? undefined : r?.claim_rows[Number(ci)]
+  const cm = /^oa_result\[([^\]]*)\]\.claim_rows\[(\d+)\]/.exec(target)
+  const row = cm && sameOA(cm[1], r) ? r?.claim_rows[Number(cm[2])] : undefined
   if (row?.rejection != null) return { kind: 'anchor', id: `rejection-${row.rejection}`, label: `거절이유 ${row.rejection} 보기` }
   if (target.startsWith('materials.')) return { kind: 'anchor', id: 'materials', label: '자료 보기' }
   return null
@@ -121,7 +123,7 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
         go: { kind: 'upload', what: row.what, label: '올리기' },
       })
     } else if (item.kind === 'needs_human_review') {
-      const idx = rejectionIndex(item.target)
+      const idx = rejectionIndex(item.target, r)
       const rej = idx === null ? undefined : r?.rejections[idx]
       if (rej && !isCitationTarget(item.target)) {
         todos.push({
@@ -129,14 +131,18 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
           title: `거절이유 ${rej.no} 직접 검토`,
           desc: `AI가 다루지 않는 거절이유예요 (특허법 ${articleLabel(rej.article.value)})`,
           // 직접 대응하려면 통지서 원문을 봐야 한다: 그 거절이유가 적힌 쪽으로 (글자는 F5 design 6절 그대로, 버튼만)
-          go: sourceGo(rej.article.page ?? rej.evidence[0]?.page ?? null, rej.article.raw_text ?? rej.evidence[0]?.raw_text ?? null),
+          // 쪽과 강조 글자는 같은 출처에서 (조문 칸에 쪽이 없으면 거절이유 근거 첫 줄)
+          go: rej.article.page !== null
+            ? sourceGo(rej.article.page, rej.article.raw_text)
+            : sourceGo(rej.evidence[0]?.page ?? null, rej.evidence[0]?.raw_text ?? null),
         })
       } else {
         todos.push({
           key: `r-${i}`,
           title: `직접 검토: ${item.label}`,
           desc: item.reason,
-          go: { kind: 'anchor', id: rej ? `rejection-${rej.no}` : 'rejections', label: '거절이유 보기' },
+          // 지금 OA의 거절이유가 아니면(다른 OA 줄 등) 지금 OA 카드로 잇지 않고 검토할 사항 목록으로
+          go: rej ? { kind: 'anchor', id: `rejection-${rej.no}`, label: '거절이유 보기' } : { kind: 'anchor', id: 'review-items', label: '검토할 사항 보기' },
         })
       }
     }
