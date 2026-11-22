@@ -213,7 +213,7 @@ class RunCaseExecutor:
             # 성공·사람 기다림인데 OA 정리가 없으면 화면이 열 결과가 없다: 성공으로 두지 않는다
             raise ValueError("read_oa 결과 없음")
         self._oa_results.save_oa_result(oa_id, run_id, oa)
-        for name in ("run_f3", "run_f4"):
+        for name in ("run_f3", "run_f2", "run_f4"):
             if name in outcome.results:
                 self._step_results.save_step_result(oa_id, run_id, outcome.results[name])
 

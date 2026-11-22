@@ -2733,6 +2733,10 @@ components:
           minimum: 0.0
           title: Skipped Unknown Date
           default: 0
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/Status'
+          - type: 'null'
       additionalProperties: false
       type: object
       required:

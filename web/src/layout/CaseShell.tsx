@@ -1,6 +1,7 @@
 import { Button, Steps } from 'antd'
 import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
+import { ApplicationNumberForm } from '../components/ApplicationNumberForm'
 import { CaseInfo } from '../components/CaseInfo'
 import { currentRunText, isPreviousResult } from '../previousResult'
 import { HumanCheckTag } from '../components/Marks'
@@ -9,7 +10,7 @@ import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
 import { RunNotice } from '../components/RunNotice'
 import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
-import { noticeKindLabel, runStateLabel } from '../labels'
+import { noticeKindLabel, runStateLabel, waitingForLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
 import { refreshRun, isRunEnded } from '../runPoll'
 import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../todos'
@@ -30,7 +31,14 @@ type StepItem = { title: string; description?: React.ReactNode; status?: 'wait' 
 // 실행 중: 결과 있는 단계 "끝남", 결과 없는 첫 단계 "찾는 중", 그 뒤 "대기". 실행이 끝났으면 지금까지처럼 (정리에 직접 할 일 N)
 // 실행 줄이 아직 없으면(run null) 끝난 실행처럼 결과 유무만 보인다
 // previous: 보이는 결과가 이전 실행 것이면 "끝남" 대신 "이전 결과" (서버는 실행이 끝나야 그 실행 결과를 연다)
-function stepItems(run: LatestRun | null, ready: (boolean | null)[], todoText: string, previous: boolean): StepItem[] {
+// waitingFor: 사람 기다림의 이유 (GET /runs/{id}의 waiting_for). 출원번호·발송번호를 기다리면 정리 단계, 방향 고르기면 방향 단계에 둔다
+function stepItems(
+  run: LatestRun | null,
+  ready: (boolean | null)[],
+  todoText: string,
+  previous: boolean,
+  waitingFor: string | null,
+): StepItem[] {
   const doneText = previous ? '이전 결과' : '끝남'
   const ended = run === null || isRunEnded(run.state)
   const firstMissing = ready.indexOf(false) // 결과 없는 첫 단계 (모두 있으면 -1). null(모름)은 건너뛴다
@@ -44,9 +52,10 @@ function stepItems(run: LatestRun | null, ready: (boolean | null)[], todoText: s
     // 끝난 실행이 아니고 결과도 없는 단계는 눌러 가 봐야 빈 화면이라 막는다
     if (run === null || (ended && run.state !== 'failed' && run.state !== 'cancelled')) {
       if (run?.state === 'waiting_for_human') {
-        // 사람 기다림: 정리 결과가 없으면 정리 단계, 있으면 방향 단계가 기다리는 자리
-        const waitAt = ready[0] ? 2 : 0
-        if (i === waitAt) return { ...base, description: '고르기 기다림', status: 'process' }
+        // 사람 기다림: 출원번호·발송번호 확인이면 정리 단계, 그 밖에는 정리 결과가 없으면 정리 단계·있으면 방향 단계가 기다리는 자리
+        const numberWait = waitingFor === 'application_number' || waitingFor === 'dispatch_number'
+        const waitAt = numberWait || !ready[0] ? 0 : 2
+        if (i === waitAt) return { ...base, description: waitingForLabel(waitingFor), status: 'process' }
       }
       return { ...base, description: i === 0 && ready[0] ? `직접 할 일 ${todoText}` : undefined }
     }
@@ -169,6 +178,10 @@ export function CaseShell() {
             )}
           </div>
           {r && infoOpen && <CaseInfo r={r} />}
+          {/* 출원번호 입력을 기다리면 사건 머리에 입력 칸 (F5 design 6절) */}
+          {run?.state === 'waiting_for_human' && snap?.waitingFor === 'application_number' && (
+            <ApplicationNumberForm caseId={data.oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
+          )}
         </div>
 
         <div
@@ -186,7 +199,7 @@ export function CaseShell() {
               size="small"
               current={stepIdx}
               onChange={(i) => navigate(base + STEPS[i].path)}
-              items={stepItems(run, ready, todoText, previous)}
+              items={stepItems(run, ready, todoText, previous, snap?.waitingFor ?? null)}
             />
             {/* 실행이 도는 동안: 상태를 못 받았으면 알리고, 직접 새로 받는 버튼 */}
             {/* 실패·취소는 단계 결과가 다 있어도 보여야 한다 */}
