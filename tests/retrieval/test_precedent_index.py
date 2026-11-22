@@ -287,6 +287,9 @@ def test_심결_이유_번호_문단마다_조각_쪽을_넘는_문단은_이어
     assert "1/2" not in by["r2-0"].text
     # 번호가 이어지지 않는 "1. 문장 속 목록"은 앞 조각 글이다
     assert "2. 문장 속 목록 둘" in by["r3-1"].text
+    # 본문 속 날짜 조각 "2013 12" 줄은 직인 번호가 아니라 글이다 (거기서 이유가 끊기지 않는다)
+    assert "2013 12" in by["r3-2"].text
+    assert "r4-0" in by
     # 마침표 없이 끝난 마지막 줄에 직인 번호·심판관 서명·[별지]가 이어 붙지 않는다
     assert by["r4-0"].text == "4. 결론\n지어낸 결론 글이다 마침표 없이 끝나는 줄"
     assert all(not re.search(r"별지|심판장|심판관|【청구항|^\d{8}$", c.text) for c in chunks)
@@ -425,3 +428,24 @@ def test_대법원장_서명_줄도_뺌():
     )
     chunks = chunk_precedent(data, V)
     assert all("대법원장" not in c.text for c in chunks)
+
+
+def test_심결_이유_중간에서_끊기면_경고(caplog):
+    # 8자리 숫자 줄은 직인 번호로 보고 거기서 끊는다 → 뒤에 결론 제목이 버려지므로 경고
+    pages = [p.replace("2013 12", "20130012") for p in _trial_pages()]
+    with caplog.at_level(logging.WARNING):
+        chunk_trial(pages, TRIAL_FILE, V)
+    assert "중간에서 끊겼을 수 있다" in caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        chunk_trial(_trial_pages(), TRIAL_FILE, V)
+    assert "중간에서" not in caplog.text
+
+
+def test_번호_앞_머리말은_20자_넘으면_남고_짧으면_버림():
+    long_pre = "이 머리말은 스무 글자를 넘기는 지어낸 머리말 문장이다."
+    parts = split_numbered([long_pre, "1. 상고이유 제1점에 대하여", "법리 글이다."])
+    assert [p.key for p in parts] == ["r0-0", "r1-0"]
+    assert parts[0].lines == [long_pre]
+    parts2 = split_numbered(["상고이유를 본다.", "1. 상고이유 제1점에 대하여", "법리 글이다."])
+    assert [p.key for p in parts2] == ["r1-0"]

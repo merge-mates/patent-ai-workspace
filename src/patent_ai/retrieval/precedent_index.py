@@ -75,7 +75,10 @@ _TRIAL_REASON_HEAD = re.compile(r"^이\s*유$")
 _TRIAL_ORDER = re.compile(r"주\s*문\s+(.*?)\s*청\s*구\s*취\s*지", re.S)
 # 줄 맨 앞의 [별지 1]·별지 1]·별지 1:·[별지] 제목. "[별지]의 1 기재와 같다" 같은 문장 속 줄은 아니다
 _APPENDIX = re.compile(r"^\[?\s*별\s*지\s*\d*\s*(\](\s|$)|:)")
-_SEAL_NUMBERS = re.compile(r"^[\d\s]{5,}$")  # 서명 옆 직인 번호 줄 "19990065 20050153"
+# 서명 옆 직인 번호 줄 "19990065 20050153": 8자리 묶음만 (본문 날짜 조각 "2013 12"와 가른다)
+_SEAL_NUMBERS = re.compile(r"^\d{8}(\s+\d{8})*$")
+# 이유 끝에 남은 깨진 직인 번호 조각 "19989" (서명을 이미 만났을 때만 지운다)
+_SEAL_TAIL = re.compile(r"^[\d\s]{5,}$")
 _TRIAL_SIGN = re.compile(r"심판장|심판관")
 _SIGN_MAX = 120  # 서명 블록은 짧다 (본문에 "심판관"이 나오는 긴 문단과 가른다)
 _PARA_END = (".", ")", "」", "』", ":", ";", "?", "!")
@@ -236,7 +239,7 @@ def split_numbered(lines: list[str]) -> list[_Part]:
             continue
         nxt = parts[i + 1] if i + 1 < len(parts) else None
         # 제목 한 줄뿐인 조각은 바로 아래 조각이 그 제목을 이어받으므로 뺀다
-        if nxt and len(part.lines) == 1 and len(part.heads) == len(nxt.heads) - 1:
+        if part.heads and nxt and len(part.lines) == 1 and len(part.heads) == len(nxt.heads) - 1:
             if nxt.heads[: len(part.heads)] == part.heads:
                 continue
         result.append(part)
@@ -497,12 +500,21 @@ def chunk_trial(
     rest = paras[start + 1 :]
     cut = next((i for i, p in enumerate(rest) if _is_break(p)), len(rest))
     body, dropped = rest[:cut], rest[cut:]
-    while body and (body[-1] == "[" or _SEAL_NUMBERS.match(body[-1])):
+    while dropped and body and (body[-1] == "[" or _SEAL_TAIL.match(body[-1])):
         body.pop()  # 서명 위 직인 번호, 갈라진 "[별지" 앞 대괄호
     if dropped and not any(_APPENDIX.match(p) for p in dropped):
         if any("【청구항" in p for p in dropped):
             logger.warning("%s: [별지] 제목을 못 찾았는데 이유 뒤에 【청구항이 있다", doc_id)
-    logger.info("%s: 이유 뒤 서명·별지 %d자를 버렸다", doc_id, sum(len(p) for p in dropped))
+    kept_n, dropped_n = sum(len(p) for p in body), sum(len(p) for p in dropped)
+    logger.info("%s: 이유 %d자 남기고 뒤 서명·별지 %d자를 버렸다", doc_id, kept_n, dropped_n)
+    # 이유 한가운데서 잘렸는지 의심: 버린 글이 더 크거나 버린 글에 번호 제목(결론·판단)이 있다.
+    # 단 남긴 글이 "주문과 같이 심결한다."로 끝나면 정상 끝이라 큰 [별지]는 경고하지 않는다
+    ended = bool(body) and re.search(r"심결한다\.?$", body[-1]) is not None
+    heading_dropped = any(re.match(r"^\d+\.\s*(결\s?론|판\s?단)", p) for p in dropped)
+    if heading_dropped or (dropped_n > kept_n and not ended):
+        logger.warning(
+            "%s: 이유가 중간에서 끊겼을 수 있다 (남김 %d자, 버림 %d자)", doc_id, kept_n, dropped_n
+        )
 
     fixed: dict[str, Any] = {
         "index_version": index_version,
