@@ -5,7 +5,7 @@
 - `CaseAppStore`: 사건·OA·문서. 실행 줄은 `RunStore`를 불러서 만든다.
 - 올릴 때는 출원번호·발송번호를 모른다: 임시 사건(application_number 비움)
   + OA 이력(doc_number 비움).
-  F1이 읽은 뒤 채우는 것은 지휘 연결 이슈의 일이다.
+  F1이 읽은 뒤 채우는 것은 case_fill.py (#261).
 - #16 `case_repository`와는 `DEFAULT_USER_ID`, `DuplicateDocumentError`만 같이 쓴다.
 - 부르는 방향은 core → db. 이 파일은 DB 연결·표를 쓰지 않고 ID 만들기(`db.ids`)만 가져온다.
   Postgres 구현은 `store_pg.py`.
@@ -331,6 +331,7 @@ class _OA:
     case_id: str
     document_id: str
     created_at: datetime
+    dispatch_number: str | None = None  # 올릴 때는 모른다. F1 뒤 채운다 (#261)
 
 
 @dataclass
@@ -424,9 +425,29 @@ class InMemoryCaseAppStore:
             case_id=case.id,
             case_name=case_name_of(case.application_number),
             document_id=oa.document_id,
-            dispatch_number=None,  # 올릴 때는 모른다
+            dispatch_number=oa.dispatch_number,
             latest_run=self._runs.latest_for_oa(oa.id),
         )
+
+    # --- F1 뒤 번호 채우기 (#261 case_fill.InMemoryCaseFill이 부른다) ---
+
+    def application_number_of(self, case_id: str) -> str | None:
+        return self._cases[case_id].application_number
+
+    def case_with_number(self, application_number: str) -> str | None:
+        return next(
+            (c.id for c in self._cases.values() if c.application_number == application_number),
+            None,
+        )
+
+    def fill_numbers(
+        self, oa_id: str, application_number: str | None, dispatch_number: str | None
+    ) -> None:
+        oa = self._oas[oa_id]
+        if application_number is not None:
+            self._cases[oa.case_id].application_number = application_number
+        if dispatch_number is not None:
+            oa.dispatch_number = dispatch_number
 
     def find_document_by_sha256(
         self, sha256: str, case_id: str | None = None
