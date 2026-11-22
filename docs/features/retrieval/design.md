@@ -165,7 +165,7 @@ def get_searcher(impl: str, repo: ChunkRepository, settings: dict, embed: Callab
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.
 - `get_searcher`는 설정 `impl` 이름으로 구현 모듈 `patent_ai.retrieval.<impl>`을 그때 import한다 (등록표에 이미 있으면 import하지 않음). 그래서 구현 파일 이름 = `impl` 이름이고(예 `impl: fake` → `retrieval/fake.py`), 그 모듈이 `@register_impl("<impl>")`로 자기를 등록한다. 모듈이 없거나 import 뒤에도 이름이 없으면 `UnknownImplError` (11/19 결정).
-- `embed`(글 → 벡터)는 부르는 쪽(채점기, F2·F3)이 `core/llm`의 `embed()`를 넘기고, 구현은 `(repo, settings, embed)`로 만들어진다. `retrieval`은 `core`를 import하지 않으므로 모델 호출을 직접 하지 않는다 (11/19 리뷰). fake는 녹화 파일을 읽는 `recorded_embed(path)`를 받는다 (`settings["query_vectors"]`만 있어도 같은 녹화를 읽는다).
+- `embed`(글 → 벡터)는 부르는 쪽(채점기, F2·F3)이 `core/llm`의 `embed()`를 넘기고, 구현은 `(repo, settings, embed)`로 만들어진다. `retrieval`은 `core`를 import하지 않으므로 모델 호출을 직접 하지 않는다 (11/19 리뷰). fake는 기록된 모델 응답(질의 벡터) 파일을 읽는 `recorded_embed(path)`를 받는다 (`settings["query_vectors"]`만 있어도 같은 기록을 읽는다).
 - `hybrid`는 인터페이스를 그대로 두고 래퍼의 막는 줄만 풀었다 (11/20, #67 m2-i2). 구현은 `retrieval/hybrid.py`(RRF, [인용문헌 design 7-4](../cite-search/design.md)). `hybrid` impl이 아닌 구현은 `mode="hybrid"`를 받으면 스스로 `ModeNotSupportedError`.
 - 같은 점수의 순서는 `chunk_id` 오름차순이다 (다시 돌려도 같은 순서).
 
@@ -247,7 +247,7 @@ noise_scope: retrieval/cite_noise_b.jsonl  # 인용문헌만. 둘째 점수(#178
 ### 7-2. 각자 칸
 - 재아: `fake` 구현 하나 (`src/patent_ai/retrieval/fake.py`). 진짜 검색이 아니라 계약을 테스트하려는 것이다.
   - `bm25` 모드: 공백으로 자른 낱말이 질의와 겹치는 수를 점수로 쓴다.
-  - `vector` 모드: fixture의 조각 벡터와, 질의 문자열 → 벡터 녹화 파일(`query_vectors.json`)의 코사인 유사도를 쓴다. 녹화에 없는 질의면 `RecordedEmbeddingMissing` 오류를 낸다 (네트워크로 가지 않음).
+  - `vector` 모드: fixture의 조각 벡터와, 질의 문자열 → 기록된 모델 응답(질의 벡터) 파일(`query_vectors.json`)의 코사인 유사도를 쓴다. 기록에 없는 질의면 `RecordedEmbeddingMissing` 오류를 낸다 (네트워크로 가지 않음).
 - 모델 호출: 없음.
 - 프롬프트 파일: 없음.
 - 실험 설정(config): 위 7-1 키.
@@ -334,10 +334,10 @@ noise_scope: retrieval/cite_noise_b.jsonl  # 인용문헌만. 둘째 점수(#178
 
 ## 9. 테스트 방법
 - 어디서 테스트하나: 가장 바깥 경계 두 곳이다. `get_searcher(...).search(...)`(검색 계약)와 `score(config) -> 결과 객체`(채점기 CLI가 부르는 함수).
-- 가짜 응답 / 녹화 응답 (`tests/fixtures/retrieval/`, 지어낸 자료만):
+- 가짜 응답 / 기록된 모델 응답 (`tests/fixtures/retrieval/`, 지어낸 자료만):
   - `chunks_cite.jsonl`: 공보 두 개 (`KR…A` 문단 10개 + 도면 설명 + 요약 + 청구항, `US…B2` 칼럼:줄 조각 몇 개)
   - `chunks_law.jsonl`: 같은 조문의 두 법령 판본 + `unverified` 조각 하나
-  - `query_vectors.json`: 질의 → 벡터 녹화
+  - `query_vectors.json`: 질의 → 기록된 모델 응답(질의 벡터)
   - `chunks_check.jsonl`: 7-3 점검 예용 공보 하나 (조각 정확히 10개)
   - 정답 파일은 목적마다 나눈다: `gold_ok.jsonl`(점검 예 줄만, 점수 기대값 테스트용), `gold_excluded.jsonl`(빼는 줄 이유마다 하나 + 종속항·"온도 300℃" 등 통과 질의), `gold_leak.jsonl`(누출 줄), `gold_empty.jsonl`(0줄), `gold_all_excluded.jsonl`(모두 빠지는 줄)
   - `config_*.yaml`: 맞는 색인 판, 없는 색인 판, 없는 `impl`
