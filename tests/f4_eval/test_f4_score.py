@@ -696,6 +696,22 @@ def test_정답_읽기는_문서_4절_예시를_그대로_받는다(tmp_path):
         load_f4_gold(tmp_path / "nope", expected_version=2)
 
 
+# ---- source.opinion: 의견서 없이 보정서만 낸 사건은 null (3절 16번) ----
+def test_의견서_없이_보정서만_낸_정답은_opinion이_null이어도_받는다():
+    data = gold()
+    data["source"]["opinion"] = None
+    g = F4Gold.model_validate(data)
+    assert g.source.opinion is None
+
+
+def test_opinion_칸이_아예_없으면_거부한다():
+    # 빈 칸 허용이 아니라 null만 허용: 칸을 빠뜨리면 정답 만들기 실수로 본다
+    data = gold()
+    del data["source"]["opinion"]
+    with pytest.raises(ValidationError):
+        F4Gold.model_validate(data)
+
+
 # ---- merged_into: ③ 삭제 줄에서 지운 구성을 옮겨 받은 청구항 (4절, 채점에는 안 씀) ----
 def deleted_row(**extra) -> dict:
     """4절 예시의 2항 줄: 2항을 지우고 그 구성을 1항으로 옮겼다."""
