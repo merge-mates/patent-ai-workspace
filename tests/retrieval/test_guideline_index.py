@@ -193,6 +193,47 @@ def test_쪽_번호가_1씩_늘지_않으면_오류():
         chunk_guideline(pages, "심사기준_1_20180101", EDITION, "law-idx-v3", CH)
 
 
+def test_절_제목을_놓치면_다음_형제는_새_조각으로_잡히고_놓친_줄은_경고(caplog):
+    long_title = "2.2 " + "아주 긴 제목 " * 12  # 60자를 넘어 제목으로 못 읽는 줄
+    pages = [
+        _page(
+            1,
+            [
+                "1. 가짜 첫째 절",
+                "첫째 본문.",
+                "2. 가짜 둘째 절",
+                "2.1 가짜 하위 절",
+                "하위 본문 하나.",
+                long_title,
+                "놓친 절의 본문.",
+                "2.3 가짜 셋째 하위 절",
+                "셋째 하위 본문.",
+            ],
+            "3301",
+            header="제3장 진보성",
+        )
+    ]
+    with caplog.at_level(logging.WARNING):
+        chunks = chunk_guideline(pages, "심사기준_1_20180101", EDITION, "law-idx-v3", CH)
+    # 2.2를 놓쳐도 2.3은 같은 부모의 형제 번호 건너뜀이라 새 조각이 된다
+    assert [c.attrs["section"] for c in chunks] == ["1", "2.1", "2.3"]
+    assert chunks[2].text == "2.3 가짜 셋째 하위 절\n셋째 하위 본문."
+    # 놓친 줄은 경고 한 줄에 건수와 위치가 남는다 (조용히 앞 절에 붙지 않는다)
+    warns = [r.getMessage() for r in caplog.records if "절 제목 후보" in r.getMessage()]
+    assert len(warns) == 1
+    assert "1건" in warns[0] and "심사기준_1_20180101" in warns[0] and "3301쪽" in warns[0]
+
+
+def test_글은_없고_쪽_번호만_있는_쪽도_번호_순서에_들어간다():
+    pages = [
+        _page(1, ["본문 하나."], "3301", header="제3장 진보성"),
+        _page(2, [], "3302"),
+        _page(3, ["본문 셋."], "3303"),
+    ]
+    chunks = chunk_guideline(pages, "심사기준_1_20180101", EDITION, "law-idx-v3", CH)
+    assert [c.location.start for c in chunks] == [3301, 3303]
+
+
 def test_글이_있는_쪽의_번호를_못_읽으면_오류():
     pages = [
         _page(1, ["본문 하나."], "3301", header="제3장 진보성"),

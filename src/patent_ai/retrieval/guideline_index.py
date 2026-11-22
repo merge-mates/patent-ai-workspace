@@ -38,8 +38,10 @@ _HEADER = re.compile(r"^제\s*(\d)\s*([부장])\s*(\S.*)$")
 # 쪽 맨 아래: 인쇄 쪽 번호 네 자리. 앞뒤에 `(2018년 1월 추록)`이 붙기도 한다
 _FOOTER = re.compile(r"^(?:\([^)]*추록\)\s*)?(\d{4})(?:\s*\([^)]*추록\))?$")
 # 절 제목: 맨 앞 칸에서 시작하는 `1.`, `3.1`, `6.4.3.` 뒤에 짧은 제목
-_SECTION = re.compile(r"^(\d{1,2}(?:\.\d{1,2})*)\.?\s+(\S.{0,58})$")
+_SECTION = re.compile(r"^(\d{1,2}(?:\.\d{1,2})*)\.?\s+(\S.*)$")
 _MAX_HEADING_CHARS = 60
+_MAX_SIBLING_SKIP = 3  # 놓친 절 제목을 건너뛰고 받는 형제 번호 간격
+_MAX_REPORTED = 3  # 경고에 위치를 적는 줄 수
 
 
 class GuidelineIndexError(RetrievalError):
@@ -134,8 +136,11 @@ def chapter_pages(pages: list[PageText], chapter: Chapter) -> range:
 
 
 def _section_of(line: str) -> tuple[tuple[int, ...], str] | None:
-    """맨 앞 칸에서 시작하는 절 제목 줄이면 (번호 튜플, 제목), 아니면 None."""
-    if line[:1].isspace() or len(line) > _MAX_HEADING_CHARS:
+    """맨 앞 칸에서 시작하고 절 번호로 시작하는 줄이면 (번호 튜플, 제목 줄), 아니면 None.
+
+    길이는 안 본다 (너무 긴 줄은 부르는 쪽이 제목으로 안 받고 경고로 센다).
+    """
+    if line[:1].isspace():
         return None
     m = _SECTION.match(line.rstrip())
     if not m or "추록" in line:
@@ -158,7 +163,8 @@ def _follows(prev: tuple[int, ...] | None, cur: tuple[int, ...]) -> bool:
         return False  # 부모가 다르다
     if len(prev) == depth - 1:
         return cur[-1] == 1  # 부모 바로 아래 첫 자식
-    return cur[-1] == prev[depth - 1] + 1  # 바로 다음 형제
+    # 같은 부모의 다음 형제. 제목을 놓쳐 번호가 건너뛰어도(2.1 → 2.3) 받는다 (너무 멀면 본문 숫자)
+    return prev[depth - 1] < cur[-1] <= prev[depth - 1] + _MAX_SIBLING_SKIP
 
 
 def _paragraphs(lines: list[str]) -> str:
@@ -203,35 +209,51 @@ def chunk_guideline(
     section: tuple[int, ...] | None = None
     section_title: str | None = None
     prev_no: int | None = None
+    rejected: list[str] = []
     for page in pages:
         f = _frame(page)
-        if not any(ln.strip() for ln in f.body):
+        has_text = any(ln.strip() for ln in f.body)
+        if f.number is None and has_text:
+            raise GuidelineIndexError(f"{doc_id}: 쪽 번호를 못 읽음 (PDF {page.page}쪽)")
+        if f.number is not None:
+            # 글이 없는 쪽도 번호를 읽었으면 순서에 넣는다 (아니면 다음 쪽에서 건너뛴 것으로 멈춘다)
+            if prev_no is not None and f.number != prev_no + 1:
+                raise GuidelineIndexError(
+                    f"{doc_id}: 쪽 번호가 1씩 늘지 않는다 ({prev_no}→{f.number}, PDF {page.page})"
+                )
+            prev_no = f.number
+        if not has_text:
             logger.warning("%s: 글자가 없는 쪽을 건너뜀 (PDF %d쪽)", doc_id, page.page)
             continue
-        if f.number is None:
-            raise GuidelineIndexError(f"{doc_id}: 쪽 번호를 못 읽음 (PDF {page.page}쪽)")
-        if prev_no is not None and f.number != prev_no + 1:
-            raise GuidelineIndexError(
-                f"{doc_id}: 쪽 번호가 1씩 늘지 않는다 ({prev_no} 다음 {f.number}, PDF {page.page})"
-            )
-        prev_no = f.number
         # 쪽 본문을 절 제목 줄에서 끊는다. 끊은 조각마다 (절, 제목, 줄들, 제목으로 시작했나)
         segments: list[list] = [[section, section_title, [], False]]
         for ln in f.body:
             if _is_chapter_header(ln.strip(), chapter):
                 continue  # 옛 판은 장 첫 쪽 본문 맨 앞에 장 제목이 한 번 더 있다
             sec = _section_of(ln)
-            if sec is not None and _follows(section, sec[0]):
-                section, section_title = sec[0], sec[1]
-                # 절 제목은 따로 한 문단으로 둔다 (아래 본문과 한 줄로 이어 붙지 않게)
-                segments.append([section, section_title, [ln, ""], True])
-                continue
+            if sec is not None:
+                if len(ln) <= _MAX_HEADING_CHARS and _follows(section, sec[0]):
+                    section, section_title = sec[0], sec[1]
+                    # 절 제목은 따로 한 문단으로 둔다 (아래 본문과 한 줄로 이어 붙지 않게)
+                    segments.append([section, section_title, [ln, ""], True])
+                    continue
+                # 절 번호 꼴인데 제목으로 못 받은 줄: 놓친 절 제목일 수 있어 세어 경고한다
+                rejected.append(f"{f.number}쪽 {ln.strip()[:20]}")
             segments[-1][2].append(ln)
         for sec_nums, sec_title, seg_lines, starts_heading in segments:
             text = _paragraphs(seg_lines)
             if text:
                 heading_only = starts_heading and text == seg_lines[0].strip()
                 raw.append((f.number, sec_nums, sec_title, text, heading_only))
+
+    if rejected:
+        logger.warning(
+            "%s %s: 절 제목 후보인데 안 받은 줄 %d건 (놓친 절 제목이면 앞 절에 붙음): %s",
+            doc_id,
+            chapter.title,
+            len(rejected),
+            "; ".join(rejected[:_MAX_REPORTED]),
+        )
 
     # 2단계: 제목뿐인 조각은 다음 조각 앞에 붙인다
     merged: list[tuple[int, tuple[int, ...] | None, str | None, str]] = []
