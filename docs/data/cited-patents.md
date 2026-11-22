@@ -34,6 +34,10 @@
   - 안 쓰는 2개: 대기열에서 빠진 사건(의견서 뷰어가 빈 화면) 폴더의 한국 공보 2개. 색인기가 `cited_v2/` 아래 `_meta` 밖 PDF를 다 읽으므로(`cite_index/__main__.py` `_list_pdfs`) `cited_v2/_meta/unused_t168/`로 옮겼다. 드라이브 `02_인용문헌/tune_1118/cited_v2/`에는 처음부터 안 올렸다 (16폴더 41개).
   - 색인: 11/22 `cite-idx-v4`(#178)에 한국 공보 47개와 논문 1건(학회판)이 들어갔다. 미국 공보 7개는 청킹이 아직 없어 빠진다 (#25 댓글: 2개는 스캔본이라 OCR 필요, 5개는 문단 번호가 글자층에서 거의 안 잡힘).
 - 11/22 [#178](https://github.com/merge-mates/patent-ai-workspace/issues/178) C안 노이즈 공보 115개 (인용문헌이 아니다): `data/raw/cited_v2/noise_c/<doc_id>.pdf`, 115MB (공개 A 82, 등록 B1 33). OA 24통마다 같은 IPC·청구항 낱말로 KIPRIS Plus 공보 검색(`scripts/fetch_noise_c_candidates.py`)을 해서 우선일 전 공개만 5건까지 고르고(`eval/retrieval/noise_c.py`), KIPRIS Plus 공개·공고 전문(`scripts/fetch_noise_c_pdfs.py`, Open API 무료 옵션)으로 받았다. 115개 모두 `%PDF`·글자층 있음. 검색·전문 응답은 `work/kipris_c/`·`work/kipris_c_fulltext/`(git 밖, 모두 resultCode 00). 어느 OA의 노이즈인지는 풀 표 `cite_pool_bc.yaml`의 `only_oas` (git 밖). 드라이브에는 아직 안 올렸다.
+- 11/22 [#229](https://github.com/merge-mates/patent-ai-workspace/issues/229) tune 102건 늘리기: 더한 72건 중 인용문헌이 있는 71건(1건은 공보에 심사관 인용(Y) 표시가 없다)의 공보 177개(한국 160, 미국 17. 같은 문헌을 여러 사건이 인용해 고유 문헌은 173)를 받았다, 255MB. 번호는 공보 TXT의 심사관 인용(Y) 목록에서 뽑고, 모두 Google Patents 공보 PDF로 받았다 (#168과 같은 방법, 1초 간격, `%PDF` 확인, 은진 맥. 스크립트는 git 밖 `work/t229/fetch_cited_t229.py`).
+  - 못 받음 (남은 일): 비특허 문헌 7건. 제목으로 찾아 같은 사건 폴더에 넣는다 (은진, [#268](https://github.com/merge-mates/patent-ai-workspace/issues/268)).
+  - 색인: 아직 안 넣었다. `cite-idx-v4`에 더하지 않고 새 판 `cite-idx-v5`로 따로 만든다 (v4 점수 비교를 남기려고, 11/22 은진). 넣는 사람과 때는 확인 중이다 (정답 판 3·#178 재측정 뒤, #268).
+  - 드라이브 `02_인용문헌/tune_1118/cited_v2/` 사본은 아직 없다 (출원번호가 든 폴더라 은진이 올린다).
 - 쪽 수: 한국 공보 9~37쪽, 논문 학회판 9쪽, 다른 판 12쪽.
 - 검색 정답(`data/goldsets/tune/search_v0/`)은 tune 10건을 다루지만, 2건은 거절이유가 42조뿐이라 인용문헌이 없어 폴더도 없다.
 
