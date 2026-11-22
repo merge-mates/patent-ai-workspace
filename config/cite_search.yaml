@@ -80,5 +80,6 @@ embed:
   model: text-embedding-3-small
   batch_size: 100                 # 묶음 하나 = 호출 1번
   price_per_mtok_input: 0.02      # 달러 / 입력 토큰 100만 [가정]
-  max_model_calls: 200            # v4(#178) 조각 묶음 167번 + 질의 묶음에 넉넉히 (v2는 약 20번)
+  max_model_calls: 400            # us1(#308) 고유 글 30643개 = 묶음 307번 + 질의 묶음에 넉넉히 (v4 167번, v2 약 20번)
+  max_input_tokens: 50000000      # $1 = 5천만 토큰에서 멈춤 (#308 밤 작업 비용 상한). us1 추정 약 600만 토큰
   max_retries: 3

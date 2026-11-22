@@ -29,7 +29,7 @@ from sqlalchemy import Delete, create_engine, delete, func, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
-from patent_ai.index_version import is_index_version
+from patent_ai.index_version import is_db_index_version, is_index_version
 from patent_ai.retrieval.errors import RetrievalError
 from patent_ai.retrieval.repository import (
     InMemoryChunkRepository,
@@ -67,6 +67,11 @@ def _check(chunks: Sequence[Chunk], corpus: Corpus, index_version: str) -> None:
     _check_corpus(corpus)
     if not is_index_version(corpus, index_version):
         raise IndexDbError(f"{corpus} 색인 판 이름이 아니다: {index_version!r}")
+    if not is_db_index_version(corpus, index_version):
+        # us 줄 판은 DB CHECK가 아직 안 받는다. 세션을 열기 전에 멈춘다
+        raise IndexDbError(
+            f"us 줄 판은 DB CHECK가 아직 안 받는다 (jsonl·--chunks로만): {index_version!r}"
+        )
     if not chunks:
         raise IndexDbError("넣을 조각이 0개다")
     other = sum(c.index_version != index_version for c in chunks)

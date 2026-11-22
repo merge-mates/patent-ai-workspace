@@ -1,0 +1,18 @@
+# 인용문헌 색인 cite-idx-us1 설정 (이슈 #308). 'us' 줄은 미국 공보 청킹을 넣은 판이다
+# (src/patent_ai/index_version.py). 다른 사람의 cite-idx-v4/v5 줄과 이름이 겹치지 않게 따로 센다.
+# 주의: DB 표 CHECK가 아직 v 줄만 받아서 이 판은 Postgres에 못 넣는다 (넣으면 CHECK에서 실패).
+#   jsonl과 메모리 저장소(eval/retrieval/score.py --chunks)로만 쓴다.
+# 청킹: config/cite_search.yaml (v1 규칙 + us_chunking / us_columns / us_granted).
+# 문헌: cited_v2 PDF 전부, 미국 공보 50건 포함.
+# 조각 만들기: 워크트리에서는 data/가 심볼릭 링크라 --jsonl이 저장소 밖 경로라며 거절한다.
+#   그래서 워크트리 안 work/에 만든 뒤 data/processed로 복사한다.
+#   uv run python -m patent_ai.retrieval.cite_index --config config/cite_search.yaml \
+#     --no-db --jsonl work/cite_search/cite-idx-us1-base.jsonl
+#   cp work/cite_search/cite-idx-us1-base.jsonl data/processed/cite_search/cite-idx-us1-base.jsonl
+#   (안의 index_version은 config/cite_search.yaml의 판 이름이고, 아래 embed 단계가 us1로 바꿔 out에 쓴다)
+# 벡터 채우기 (유료 임베딩 호출, 캐시·호출 상한을 거친다):
+#   uv run python -m patent_ai.core.index_embed chunks --config config/index/cite-idx-us1.yaml
+index_version: cite-idx-us1
+from: data/processed/cite_search/cite-idx-us1-base.jsonl
+embed_step: cite_search.embed
+out: data/processed/cite_search/cite-idx-us1.jsonl

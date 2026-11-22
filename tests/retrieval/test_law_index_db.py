@@ -229,3 +229,9 @@ def test_명령은_말뭉치와_안_맞는_파일이면_1로_끝난다(tmp_path)
     f.write_text(_cite(1).model_dump_json() + "\n", encoding="utf-8")
     # cite 조각 파일을 law로 읽으면 판 앞말이 안 맞아 막힌다
     assert main(["--jsonl", str(f), "--index-version", "law-idx-v1"]) == 1
+
+
+def test_us_줄_판은_DB를_건드리기_전에_멈춘다():
+    # DB CHECK가 v 줄만 받아서, 세션을 열기 전에 분명한 오류로 멈춰야 한다
+    with pytest.raises(IndexDbError, match="us 줄"):
+        replace_index(_Untouchable(), [_chunk(1, "cite-idx-us1")], "cite", "cite-idx-us1")
