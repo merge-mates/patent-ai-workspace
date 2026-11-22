@@ -236,12 +236,11 @@ def test_같은_문단_번호가_두_번이면_앞의_것만_남긴다():
     assert check["out_of_order"] == 1
 
 
-def test_등록공보는_아직_지원_안_함():
+def test_등록공보에_칼럼_배치_없는_쪽만_오면_쪽_조각과_경고():
+    # 상세 칼럼·줄 테스트는 test_cite_granted.py
     chunks, warns = chunk_document("US7654321B2", _a1_pages(), IV)
-    assert chunks == []
-    assert any("지원 안 함" in w for w in warns)
-    chunks, check_warns, check = chunk_document_checked("US7654321B2", _a1_pages(), IV)
-    assert check is None
+    assert chunks and all(c.location.kind == "page" for c in chunks)
+    assert any("칼럼·줄 못 셈" in w for w in warns)
 
 
 def _run(lines):

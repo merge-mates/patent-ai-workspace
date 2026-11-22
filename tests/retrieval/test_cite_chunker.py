@@ -161,7 +161,7 @@ def test_전부_없으면_조각_0개와_경고():
 
 
 def test_지원_안_하는_나라():
-    chunks, warns = chunk_document("US1234567B2", _pages(), IV)
+    chunks, warns = chunk_document("JP1234567B2", _pages(), IV)
     assert chunks == []
     assert any("지원 안 함" in w for w in warns)
 

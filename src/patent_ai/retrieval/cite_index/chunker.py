@@ -11,6 +11,12 @@ from pathlib import Path
 
 import yaml
 
+from patent_ai.retrieval.cite_index.columns import (
+    GrantedConfig,
+    GrantedPage,
+    is_drawing_sheet,
+    load_granted_config,
+)
 from patent_ai.retrieval.cite_index.pages import PageText
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 
@@ -628,6 +634,96 @@ class _UsChunker:
 
 
 _US_APPLICATION = re.compile(r"^US\d+A[129]$")
+# 등록공보: B1·B2·B, 또는 옛 번호 A (숫자 8자리 이하, 공개공보 A1은 아님)
+_US_GRANTED = re.compile(r"^US(?:\d+B[12]?|\d{1,8}A)$")
+
+
+def is_granted_doc(doc_id: str) -> bool:
+    return bool(_US_GRANTED.match(doc_id))
+
+
+def chunk_granted(
+    doc_id: str,
+    pages: list[GrantedPage],
+    iv: str,
+    us_cfg: UsChunkingConfig,
+    cfg: GrantedConfig,
+) -> tuple[list[Chunk], list[str], dict | None]:
+    """미국 등록공보: 본문 쪽을 칼럼·줄 창으로 자른다. 줄을 센 쪽이 하나도 없으면 쪽 조각."""
+    # 칼럼 배치가 없는 쪽(PageText 등)은 줄을 못 센 쪽으로 본다
+    text_pages = [p for p in pages if getattr(p, "columns", None) is not None]
+    if not text_pages:
+        chunks, warns = _chunk_paper(doc_id, pages, iv)
+        warns.append(f"칼럼·줄 못 셈: {doc_id} page 조각으로")
+        return chunks, warns, None
+
+    u = _UsChunker(doc_id, iv, us_cfg)
+    # 요약은 1쪽(표지) 줄에서 찾는다
+    u._abstract([(p.page, ln.strip()) for p in pages if p.page == 1 for ln in p.lines])
+
+    # 칼럼 번호: 인쇄된 번호를 쓴다 (왼쪽, 없으면 오른쪽 - 1). 둘 다 못 읽으면 앞 본문 쪽 왼쪽 + 2
+    # (그 사이 못 센 본문 쪽이 있으면 그만큼 더 건너뛴다). 첫 본문 쪽은 못 읽으면 1.
+    # 기대 번호와 인쇄 번호가 다르면 개수만 세서 경고한다.
+    mismatch = uncounted = reused = 0
+    prev_left: int | None = None
+    gap = 0  # 앞 본문 쪽 뒤로 못 센 본문 쪽 수
+    seen_text = False
+    for p in pages:
+        lay = getattr(p, "columns", None)
+        if lay is None:
+            # 첫 본문 쪽 뒤의 글자 있는 쪽 중 도면 쪽(Sheet N of M)이 아닌 것 = 못 센 본문 쪽
+            has_text = any(ln.strip() for ln in p.lines)
+            if seen_text and has_text and not is_drawing_sheet(p.lines[0] if p.lines else ""):
+                uncounted += 1
+                gap += 1
+                loc = Location(kind="page", start=p.page, end=p.page, label=f"{p.page}쪽")
+                u._add(f"pg{p.page}", "body", loc, p.lines)
+                u.warnings.append(f"본문 쪽 줄 못 셈: {doc_id} {p.page}쪽 page 조각으로")
+            continue
+        seen_text = True
+        reused += 1 if lay.reused else 0
+        expected = prev_left + 2 * (gap + 1) if prev_left is not None else None
+        pl, pr = lay.printed
+        if pl is not None:
+            left_no = pl
+        elif pr is not None:
+            left_no = pr - 1
+        else:
+            left_no = expected if expected is not None else 1
+        if expected is not None:
+            for printed, want in ((pl, expected), (pr, expected + 1)):
+                if printed is not None and printed != want:
+                    mismatch += 1
+        prev_left, gap = left_no, 0
+        for col, rows in ((left_no, lay.left), (left_no + 1, lay.right)):
+            # 줄 번호 창으로 묶는다 (1~15, 16~30, ...)
+            windows: dict[int, list[tuple[int, str]]] = {}
+            for n, text in rows:
+                windows.setdefault((n - 1) // cfg.lines_per_chunk, []).append((n, text))
+            for w in sorted(windows):
+                items = windows[w]
+                lo, hi = items[0][0], items[-1][0]
+                label = f"{col}:{lo}-{hi}"
+                body = [t for _, t in items]
+                loc = Location(
+                    kind="column_line",
+                    start=col * 10000 + lo,  # 정렬 키: 칼럼 x 10000 + 줄 (design 5-1)
+                    end=col * 10000 + hi,
+                    label=label,
+                    figures=parse_us_figures(" ".join(body)),
+                )
+                u._add(label, "body", loc, body)
+    if mismatch:
+        u.warnings.append(f"칼럼 번호 불일치: {doc_id} {mismatch}개 (인쇄 번호와 앞 쪽 + 2가 다름)")
+    check = {
+        "text_pages": len(text_pages),
+        "reused_fit_pages": reused,  # 여백 숫자가 모자라 앞 쪽 맞춤을 다시 쓴 쪽
+        "uncounted_text_pages": uncounted,  # 끝내 못 세서 page 조각이 된 본문 쪽
+        "skipped_pages": len(pages) - len(text_pages) - uncounted,
+        "column_number_mismatch": mismatch,
+        "max_residual": max(p.columns.max_residual for p in text_pages),
+    }
+    return u.chunks, u.warnings, check
 
 
 def chunk_document_checked(
@@ -636,10 +732,19 @@ def chunk_document_checked(
     index_version: str,
     config: ChunkingConfig | None = None,
     us_config: UsChunkingConfig | None = None,
+    granted_config: GrantedConfig | None = None,
 ) -> tuple[list[Chunk], list[str], dict | None]:
-    """chunk_document + 문단 번호 검사 결과(미국 공개공보만, 나머지는 None)."""
+    """chunk_document + 검사 결과 (공개공보는 문단 번호, 등록공보는 칼럼·줄. 나머지는 None)."""
     check: dict | None = None
-    if doc_id.startswith("NPL-"):
+    if is_granted_doc(doc_id):
+        chunks, warns, check = chunk_granted(
+            doc_id,
+            pages,
+            index_version,
+            us_config or load_us_chunking_config(),
+            granted_config or load_granted_config(),
+        )
+    elif doc_id.startswith("NPL-"):
         chunks, warns = _chunk_paper(doc_id, pages, index_version)
     elif doc_id.startswith("KR"):
         k = _KrChunker(doc_id, index_version, config or load_chunking_config())
@@ -650,7 +755,7 @@ def chunk_document_checked(
         u.run(pages)
         chunks, warns, check = u.chunks, u.warnings, u.check
     elif doc_id.startswith("US"):
-        return [], [f"지원 안 함: {doc_id} (미국 등록공보는 #308 task 2)"], None
+        return [], [f"지원 안 함: {doc_id} (미국 번호 꼴을 모름)"], None
     else:
         return [], [f"지원 안 함: {doc_id} (KR·US·NPL- 만 지원)"], None
     if not chunks:
