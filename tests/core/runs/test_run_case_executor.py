@@ -77,7 +77,7 @@ class _CaseFill:
 
 
 class Env:
-    def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None):
+    def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None, step_log=None):
         self.store = store or MemoryStatusStore()
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.store)
@@ -101,6 +101,7 @@ class Env:
             selections=self.selections,
             human=self.human,
             lock=self.lock,
+            step_log=step_log,
         )
 
     def run(self, run_id=RID, oa_id=OID):

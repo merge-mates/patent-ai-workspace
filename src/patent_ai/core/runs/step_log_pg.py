@@ -6,9 +6,11 @@ PostgresRunStatusStore와 같이 호출마다 새 세션을 열고 바로 커밋
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -16,6 +18,8 @@ from patent_ai.core.agents.steps import StepRecord
 from patent_ai.core.llm.limits import CallRecord
 from patent_ai.core.runs.store import RunLogWriteFailed
 from patent_ai.db.models import AgentStep
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresStepRecorder:
@@ -41,6 +45,35 @@ class PostgresStepRecorder:
         except SQLAlchemyError as e:
             # DB 예외를 실행기가 아는 예외로 바꾼다 (조용히 삼키지 않는다)
             raise RunLogWriteFailed(step.tool_name) from e
+
+    def link_result(self, run_id: str, tool_name: str, result_id: str) -> None:
+        """그 실행·도구의 마지막 ok 단계 줄에 step_results ID를 쓴다 (#267).
+
+        단계 줄은 단계가 끝날 때(폴링하는 화면이 보게) 먼저 쓰이고, 결과는 실행 끝에 저장되므로
+        나중에 붙인다. 모델 호출 줄(model_call)과 skipped·failed 줄은 건드리지 않는다.
+        """
+        q = (
+            select(AgentStep)
+            .where(
+                AgentStep.run_id == run_id,
+                AgentStep.tool_name == tool_name,
+                AgentStep.step_kind != "model_call",
+                AgentStep.outcome == "ok",
+            )
+            .order_by(AgentStep.id.desc())
+            .limit(1)
+        )
+        try:
+            with self._factory() as s:
+                row = s.scalars(q).first()
+                if row is None:
+                    # 조용히 지나가지 않게 남긴다 (결과는 저장됐는데 가리킬 단계 줄이 없다)
+                    logger.warning("실행 %s: 결과 ID를 붙일 %s ok 기록이 없다", run_id, tool_name)
+                    return
+                row.result_id = result_id
+                s.commit()
+        except SQLAlchemyError as e:
+            raise RunLogWriteFailed(tool_name) from e
 
 
 class PostgresCallRecorder:

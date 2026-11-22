@@ -143,14 +143,11 @@ class _Saved:
         pass
 
     def save_step_result(self, oa_id, run_id, result):
-        pass
+        return "sres_가짜"
 
 
-def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출을_같이_남긴다(
-    factory,  # noqa: F811
-    tmp_path,
-    monkeypatch,
-):
+def _execute(factory, tmp_path, monkeypatch, tag, step_results=None):  # noqa: F811
+    """서버(deps.py)와 같이 실제 DB 기록기로 실행 한 바퀴. (store, run_id)를 돌려준다."""
     import threading
 
     from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
@@ -159,21 +156,20 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
     from patent_ai.core.llm.transport import FakeTransport
     from patent_ai.core.runs.cancel import CancelRegistry
     from patent_ai.core.runs.run_case_executor import RunCaseExecutor
-    from patent_ai.core.runs.state import RunState
     from patent_ai.core.runs.step_log_pg import PostgresCallRecorder
     from tests.core.agents.test_fixed_order_f3_f4 import _responses
     from tests.core.run_case_fakes import CHECKED_ON, real_config, wire
     from tests.core.runs.test_run_case_executor import _CaseFill, _Cases, _Inputs
 
     wire(monkeypatch)
-    oa_id, rid = _new_run(factory, "db_steplog_" + "c" * 20)
+    oa_id, rid = _new_run(factory, "db_steplog_" + tag * 20)
     store = PostgresRunStatusStore(factory)
-    # 서버(deps.py)와 같이: 단계는 PostgresStepRecorder, 모델 호출은 PostgresCallRecorder
+    # 단계는 PostgresStepRecorder, 모델 호출은 PostgresCallRecorder
     RunCaseExecutor(
         store=store,
         registry=CancelRegistry(),
         oa_results=_Saved(),
-        step_results=_Saved(),
+        step_results=step_results or _Saved(),
         case_fill=_CaseFill(),
         inputs=_Inputs(tmp_path),
         cases=_Cases(),
@@ -190,6 +186,17 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
         lock=threading.Lock(),
         step_log=PostgresStepRecorder(factory),
     ).execute(rid, oa_id)
+    return store, rid
+
+
+def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출을_같이_남긴다(
+    factory,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+):
+    from patent_ai.core.runs.state import RunState
+
+    store, rid = _execute(factory, tmp_path, monkeypatch, "c")
     assert store.get_status(rid).state == RunState.SUCCEEDED
 
     # 실행이 끝난 뒤 새 세션에서: 어느 단계가 돌았고 몇 번 불렀는지 보인다
@@ -211,3 +218,55 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
     assert all(c is not None for c in counted)
     assert sum(counted) == sum(1 for c in calls if c.outcome in sent)
     assert store.skipped_steps(rid) == []
+
+
+# --- #267: 결과를 저장한 단계에 step_results ID 붙이기 -----------------------------------
+
+
+def test_link_result는_그_도구의_ok_줄에만_ID를_쓰고_skipped_failed는_NULL(factory):  # noqa: F811
+    _, rid = _new_run(factory, "db_steplog_" + "d" * 20)
+    rec = PostgresStepRecorder(factory)
+    rec.record(_step(rid, "run_f3", "failed"))
+    rec.record(_step(rid, "run_f3", "ok"))
+    rec.record(_step(rid, "run_f2", "skipped"))
+    rec.link_result(rid, "run_f3", "sres_1")
+    rec.link_result(rid, "run_f2", "sres_2")  # 넘긴 단계는 붙일 줄이 없다
+    with factory() as other:
+        rows = list(
+            other.scalars(select(AgentStep).where(AgentStep.run_id == rid).order_by(AgentStep.id))
+        )
+    assert [(r.tool_name, r.outcome, r.result_id) for r in rows] == [
+        ("run_f3", "failed", None),
+        ("run_f3", "ok", "sres_1"),
+        ("run_f2", "skipped", None),
+    ]
+
+
+def test_실행_뒤_결과를_저장한_단계의_result_id가_그_step_results_줄을_가리킨다(
+    factory,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+):
+    from patent_ai.core.cases.step_results_pg import PostgresStepResultStore
+    from patent_ai.core.runs.state import RunState
+    from patent_ai.db.models import StepResultRow
+
+    store, rid = _execute(
+        factory, tmp_path, monkeypatch, "e", step_results=PostgresStepResultStore(factory)
+    )
+    assert store.get_status(rid).state == RunState.SUCCEEDED
+    with factory() as other:
+        steps = list(
+            other.scalars(
+                select(AgentStep).where(
+                    AgentStep.run_id == rid, AgentStep.step_kind != "model_call"
+                )
+            )
+        )
+        saved = {
+            r.kind: r.id
+            for r in other.scalars(select(StepResultRow).where(StepResultRow.run_id == rid))
+        }
+    assert set(saved) == {"f2", "f3", "f4"}
+    linked = {r.tool_name: r.result_id for r in steps if r.result_id is not None}
+    assert linked == {"run_f2": saved["f2"], "run_f3": saved["f3"], "run_f4": saved["f4"]}
