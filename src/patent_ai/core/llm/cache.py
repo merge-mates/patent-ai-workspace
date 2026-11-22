@@ -39,6 +39,37 @@ def make_cache_key(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def make_turn_cache_key(
+    *,
+    step: str,
+    model: str,
+    prompt_template: str,
+    system_variables: dict,
+    messages: list[dict],
+    tools: list[dict],
+    effort: str,
+    max_tokens: int,
+) -> str:
+    """tool use 한 차례의 캐시 키 (sha256). make_cache_key와 같은 꼴에 messages·tools를 더했다.
+
+    "kind": "turn"을 넣어 한 번 부르는 호출(make_cache_key)의 키와 섞이지 않게 한다.
+    하나라도 바뀌면 다른 키가 된다 (messages 글자 하나, tools 한 칸도).
+    """
+    parts = {
+        "kind": "turn",
+        "step": step,
+        "model": model,
+        "prompt_sha256": hashlib.sha256(prompt_template.encode("utf-8")).hexdigest(),
+        "system_variables": system_variables,
+        "messages": messages,
+        "tools": tools,
+        "effort": effort,
+        "max_tokens": max_tokens,
+    }
+    raw = json.dumps(parts, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class Cache(Protocol):
     def get(self, key: str) -> dict | None: ...
 
