@@ -41,12 +41,14 @@ def why(error: Exception) -> str:
 
 
 def raise_if_all_failed(step: str, tried: int, errors: list[Exception]) -> None:
-    """시도한 모든 묶음이 호출 실패(상한 제외)면 마지막 원래 예외를 그대로 올린다.
+    """모델을 부른 모든 묶음이 호출 실패(상한 제외)면 마지막 원래 예외를 그대로 올린다.
+
+    tried는 모델 호출까지 간 묶음 수다 (부르기 전에 보류로 끝난 묶음은 세지 않는다).
 
     errors에는 상한이 아닌 호출 실패만 담는다 (상한은 실패가 아니라 보류로 끝낸다).
     """
     if tried and len(errors) == tried:
-        logger.warning("%s: 시도한 묶음 %d개가 모두 실패해 단계 실패로 올림", step, tried)
+        logger.warning("%s: 모델을 부른 묶음 %d개가 모두 실패해 단계 실패로 올림", step, tried)
         raise errors[-1]
 
 

@@ -94,3 +94,44 @@ def test_대비가_실패해도_같은_단위에서_이미_나온_본문_미확�
     tasks = {h.task for h in out.held_tasks}
     assert "f3_compare:oa_1:D3" in tasks
     assert f"{COMPARE_TASK}:call_failed" in tasks
+
+
+def _d3_only_and_d1_units():
+    # 거절이유 1(신규성)은 D3만 인용(색인에 본문 없음 -> 모델을 부르기 전에 보류),
+    # 거절이유 2(진보성)는 D1을 인용해 모델을 부른다. 명확성 단위는 없다
+    d3 = [citation("D3", "KR20990000009A")]
+    d1 = [citation("D1", scenario.D1)]
+    return oa([rejection(1, "29-1-1", [1], d3), rejection(2, "29-2", [1, 2], d1)])
+
+
+def test_모델을_부르기_전에_보류된_묶음은_분모에서_빼_모델을_부른_묶음이_모두_실패하면_올린다():
+    # 리뷰(#251): 본문 없는 묶음 하나 + 모델 실패 묶음 하나면 실패가 묻히지 않고 실행 failed
+    answers = scenario.responses()
+    answers["f3.compare"] = [BAD_ANSWER, BAD_ANSWER]
+    with pytest.raises(ModelOutputInvalid):
+        run_scenario(oa=_d3_only_and_d1_units(), answers=answers)
+
+
+def test_모델을_부르기_전에_보류된_묶음만_있으면_예외_없이_보류로_끝난다():
+    # 모델을 부른 묶음이 0개면 "모두 실패"가 아니다: 본문 없음 보류 + 확인되지 않음으로 끝낸다
+    d3 = [citation("D3", "KR20990000009A")]
+    result = oa([rejection(1, "29-2", [1, 2], d3)])
+    out, _ = run_scenario(oa=result)
+    assert out.comparisons == []
+    assert out.status.value == StatusValue.UNVERIFIED
+    assert any(h.task == "f3_compare:oa_1:D3" for h in out.held_tasks)
+
+
+def test_명확성_문구를_청구항에서_못_찾아_모델을_안_부른_묶음은_분모에서_뺀다():
+    # 명확성 묶음은 짚은 문구가 청구항에 없어 모델을 부르지 않는다. 대비가 모두 실패하면 올린다
+    result = oa(
+        [
+            rejection(1, "29-2", [1, 2], [citation("D1", scenario.D1)]),
+            rejection(2, "42-4-2", [2]),
+        ],
+        [claim_row(2, 2, clarity_terms=["청구항에 없는 문구"])],
+    )
+    answers = scenario.responses()
+    answers["f3.compare"] = [BAD_ANSWER, BAD_ANSWER]
+    with pytest.raises(ModelOutputInvalid):
+        run_scenario(oa=result, answers=answers)
