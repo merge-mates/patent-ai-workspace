@@ -1,0 +1,23 @@
+# 심사기준 조각 설정 (이슈 #24 24b). 명령: uv run python -m patent_ai.retrieval.guideline_index --config config/index/guidelines.yaml
+# 판은 law-idx-v3 (24d에서 조문·판례와 한 판으로 모음). 원문 PDF는 git 밖 data/raw/.
+index_version: law-idx-v3
+raw_dir: data/raw
+out: data/processed/law/guideline-v3.jsonl
+
+# 색인에 넣는 장 (design 5-1). 판마다 장 제목으로 쪽 범위를 찾고, 못 찾으면 그 판에서 멈춘다.
+chapters:
+  - {part: 3, chapter: 2, title: 신규성}
+  - {part: 3, chapter: 3, title: 진보성}
+  - {part: 2, chapter: 4, title: 청구범위}  # 명확성(특허법 제42조 제4항) 기재요건
+
+# 판 표: 어느 파일이 어느 판인지는 표지와 개정 연혁 마지막 줄의 예규번호로 확인했다 (데이터 카드 2·3절).
+# effective_from = 시행일, converted = HWP를 한컴 뷰어로 PDF로 바꾼 판 (쪽 번호가 원본과 다를 수 있음).
+editions:
+  - {file: exam_guideline_32912807.pdf, rule_no: 101, effective_from: 2018-01-01, converted: false}
+  - {file: exam_guideline_versions/2100000143152_20180801.pdf, rule_no: 104, effective_from: 2018-08-01, converted: false}
+  - {file: exam_guideline_versions/2100000176778_20190318.pdf, rule_no: 108, effective_from: 2019-03-18, converted: true}
+  - {file: exam_guideline_versions/2100000186000_20200101.pdf, rule_no: 113, effective_from: 2020-01-01, converted: false}
+  - {file: exam_guideline_versions/2100000191985_20200810.pdf, rule_no: 116, effective_from: 2020-08-10, converted: true}
+  - {file: exam_guideline_versions/2100000195891_20201214.pdf, rule_no: 117, effective_from: 2020-12-14, converted: false}
+  - {file: exam_guideline_111271055.pdf, rule_no: 124, effective_from: 2021-12-30, converted: false}
+  - {file: exam_guideline_162683587.pdf, rule_no: 7, effective_from: 2026-03-13, converted: false, label: "지식재산처 예규 제7호"}
