@@ -231,6 +231,31 @@ def test_응답의_명칭과_요약을_글로_남긴다():
     assert parse_search_xml(body)[0].text == "혈류 영상 MR 신호"
 
 
+# --- T3: C안 공보 PDF 주소 읽기 (KIPRIS Plus 공개·공고 전문 응답) ---
+
+from eval.retrieval.noise_c import fulltext_kind, parse_fulltext_path  # noqa: E402
+
+
+def test_전문_응답에서_PDF_주소를_읽는다():
+    body = xml(
+        "<item><docName>9920990000001.pdf</docName>"
+        "<path>http://plus.kipris.or.kr/kiprisplusws/fileToss.jsp?arg=abc</path></item>"
+    )
+    assert parse_fulltext_path(body) == "http://plus.kipris.or.kr/kiprisplusws/fileToss.jsp?arg=abc"
+
+
+def test_전문_응답에_주소가_없으면_멈춘다():
+    with pytest.raises(RetrievalEvalError, match="주소"):
+        parse_fulltext_path(xml())
+
+
+def test_공개공보는_공개전문_등록공보는_공고전문을_부른다():
+    assert fulltext_kind("KR20990000001A") == "pub"
+    assert fulltext_kind("KR991234567B1") == "ann"
+    with pytest.raises(RetrievalEvalError):
+        fulltext_kind("US20990000003A1")
+
+
 def test_명령은_이미_있는_C안_풀_표를_덮지_않는다(setroot):
     root, resp = setroot
     argv = ["--goldsets-root", str(root), "--responses", str(resp), "--pool", POOL]
@@ -296,3 +321,22 @@ def test_받기는_HTTP_200이어도_오류_코드면_저장하지_않고_실패
     out = tmp_path / "out"
     assert mod.main(["--queries", str(qp), "--out", str(out)]) == 1
     assert not (out / "OA1.xml").exists()  # 다음 실행이 다시 부른다
+
+
+def test_받기는_정상_코드면_저장하고_키를_가린다(tmp_path, monkeypatch):
+    # #217 리뷰 참고: 성공 경우. 응답에 키가 섞여 와도 저장 파일에는 ***로 남는다
+    mod = _load_fetch_script()
+    qp = tmp_path / "q.yaml"
+    qp.write_text(
+        yaml.safe_dump({"OA1": {"ipc": "G06T 7/11", "words": ["영상"]}}), encoding="utf-8"
+    )
+    monkeypatch.setenv("KIPRIS_PLUS_API_KEY", "fake-key")
+    monkeypatch.setattr(mod, "load_dotenv", lambda: None)
+    body = xml(item("P4", "9920990000004", "20110101")).replace(
+        "</response>", "fake-key</response>"
+    )
+    monkeypatch.setattr(mod.requests, "get", lambda *a, **k: _Resp(body))
+    out = tmp_path / "out"
+    assert mod.main(["--queries", str(qp), "--out", str(out)]) == 0
+    saved = (out / "OA1.xml").read_text(encoding="utf-8")
+    assert "fake-key" not in saved and "***" in saved

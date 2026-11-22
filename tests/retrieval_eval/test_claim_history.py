@@ -11,10 +11,11 @@ from eval.retrieval.claim_history import (
     expand_claims,
 )
 
-CASE = Path(__file__).parent.parent / "fixtures" / "cite_search" / "cases" / "10-2099-0000001"
+OA = "9-5-2099-0000002"
+# 입력 폴더 꼴 <출원번호>/<발송번호>/ (#159). 이 픽스처 이력은 일부러 OA 뒤 줄까지 둔다
+CASE = Path(__file__).parent.parent / "fixtures" / "cite_search" / "cases" / "10-2099-0000001" / OA
 HIST = CASE / "10-2099-0000001_청구항이력.txt"
 ADMIN = CASE / "10-2099-0000001_행정이력.txt"
-OA = "9-5-2099-0000002"
 
 
 def test_expand_claims_범위와_낱개를_펼친다():

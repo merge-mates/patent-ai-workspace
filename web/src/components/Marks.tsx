@@ -3,9 +3,10 @@ import { Tag, Tooltip } from 'antd'
 import type { ReactNode } from 'react'
 
 // "직접 판단 필요" / "직접 검토 필요" / "직접 확인": 사람이 해야 할 일은 늘 노란 꼬리표
+// 색은 디자인 B 고친 판(Tag warning, 테두리 없음). 색만으로 나누지 않게 느낌표 아이콘은 남긴다
 export function HumanCheckTag({ children = '직접 확인' }: { children?: ReactNode }) {
   return (
-    <Tag color="gold" icon={<ExclamationCircleOutlined />}>
+    <Tag color="warning" bordered={false} icon={<ExclamationCircleOutlined />}>
       {children}
     </Tag>
   )

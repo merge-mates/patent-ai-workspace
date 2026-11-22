@@ -156,7 +156,7 @@ def test_사건_폴더의_등록공보와_결정본문은_질의에_영향이_�
     env.run()
     before = env.out.read_bytes()
     for name in ("등록공보.pdf", "결정본문.txt"):
-        (env.cases / "10-2099-0000001" / name).unlink()
+        (env.cases / "10-2099-0000001" / OA / name).unlink()
     env.out.unlink()
     assert env.run() == 0
     assert env.out.read_bytes() == before
@@ -204,7 +204,7 @@ def test_변환_보고가_work에_남는다(env):
 
 
 def test_모르는_변경구분명은_보고에_세고_경고(env, caplog):
-    hist = env.cases / "10-2099-0000001" / "10-2099-0000001_청구항이력.txt"
+    hist = env.cases / "10-2099-0000001" / OA / "10-2099-0000001_청구항이력.txt"
     first = hist.read_text(encoding="utf-8").splitlines()[1].split("¶")
     first[5] = "지어낸종류"  # 출원서 접수(OA 앞)의 변경 하나를 모르는 종류로
     with hist.open("a", encoding="utf-8") as f:
@@ -272,7 +272,7 @@ def test_결과가_0줄이면_종료_1이고_파일을_안_쓴다(env):
 
 
 def _bump_claim_text(env, text):
-    p = env.cases / "10-2099-0000001" / "10-2099-0000001_청구항이력.txt"
+    p = env.cases / "10-2099-0000001" / OA / "10-2099-0000001_청구항이력.txt"
     s = p.read_text(encoding="utf-8")
     p.write_text(
         s.replace("시료를 가열하는 단계와", f"{text} 시료를 가열하는 단계와"), encoding="utf-8"
@@ -323,3 +323,31 @@ def test_row_id가_중복되면_종료_1(env):
     env.write_src(data)
     assert env.run() == 1
     assert not env.out.exists()
+
+
+def test_질의는_그_OA의_입력_폴더에서만_읽는다(env):
+    # 입력은 <출원번호>/<발송번호>/ (OA 시점으로 자른 것, #159).
+    # 같은 출원의 다른 OA 폴더를 쓰지 않는다
+    shutil.rmtree(env.cases / "10-2099-0000001" / OA)
+    assert env.run() == 1  # 남은 사건이 모두 질의를 못 만들어 0줄
+    assert not env.out.exists()
+
+
+def test_자른_입력과_자르지_않은_이력의_정답이_바이트까지_같다(env, tmp_path):
+    # 입력 자르기(scripts/split_cases_at_oa.py)를 거쳐도 질의가 그대로인지 (PR #226 리뷰 참고)
+    from scripts.split_cases_at_oa import plan_case, write_plan
+
+    app = "10-2099-0000001"
+    bundle = tmp_path / "bundle" / app
+    bundle.mkdir(parents=True)
+    for f in (env.cases / app / OA).glob("*이력.txt"):
+        shutil.copy(f, bundle / f.name)
+    cut = tmp_path / "cut"
+    for plan in plan_case(bundle):
+        write_plan(plan, cut)
+    assert env.run() == 0
+    uncut_bytes = env.out.read_bytes()
+    env.out.unlink()
+    env.cases = cut
+    assert env.run() == 0
+    assert env.out.read_bytes() == uncut_bytes

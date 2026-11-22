@@ -89,6 +89,30 @@ def parse_search_xml(body: str) -> list[Hit]:
     return hits
 
 
+def fulltext_kind(doc_id: str) -> str:
+    """C안 공보 PDF를 받을 KIPRIS 전문 종류: 공개공보(A)는 공개전문, 등록공보(B1)는 공고전문."""
+    if re.fullmatch(r"KR\d+A", doc_id):
+        return "pub"
+    if re.fullmatch(r"KR\d+B1", doc_id):
+        return "ann"
+    raise RetrievalEvalError(f"한국 공보 doc_id 꼴이 아니다: {doc_id}")
+
+
+def parse_fulltext_path(body: str) -> str:
+    """KIPRIS Plus 공개·공고 전문 응답 → PDF 주소 (첫 item의 path)."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        raise RetrievalEvalError("KIPRIS 전문 응답을 XML로 읽을 수 없다") from None
+    code = root.findtext(".//header/resultCode", default="").strip()
+    if code and code != "00":
+        raise RetrievalEvalError(f"KIPRIS 응답 코드가 정상이 아니다: {code}")
+    path = (root.findtext(".//item/path") or "").strip()
+    if not path.startswith("http"):
+        raise RetrievalEvalError("KIPRIS 전문 응답에 PDF 주소(path)가 없다")
+    return path
+
+
 def pick_candidates(
     hits: list[Hit],
     oa: PoolOa,

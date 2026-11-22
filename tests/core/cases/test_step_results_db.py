@@ -49,5 +49,9 @@ def test_step_results_DB에_저장하고_다시_읽으면_같은_객체(factory,
     store.save_step_result(created.oa_id, created.run_id, f4)
     assert store.step_result(created.run_id, "f3") == f3
     assert store.step_result(created.run_id, "f4") == f4
+    # F2 법률 근거 묶음도 같은 표 (kind f2, #28 마이그레이션)
+    f2 = outcome.results["run_f2"]
+    store.save_step_result(created.oa_id, created.run_id, f2)
+    assert store.step_result(created.run_id, "f2") == f2
     with pytest.raises(DuplicateStepResult):
         store.save_step_result(created.oa_id, created.run_id, f3)

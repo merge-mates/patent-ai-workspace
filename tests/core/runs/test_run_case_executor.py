@@ -97,16 +97,17 @@ def env(tmp_path, monkeypatch):
     return Env(tmp_path)
 
 
-def test_run_case_한_바퀴가_끝나면_succeeded이고_F1_F3_F4_결과가_저장된다(env):
+def test_run_case_한_바퀴가_끝나면_succeeded이고_F1_F2_F3_F4_결과가_저장된다(env):
     st = env.run()
     assert st.state == RunState.SUCCEEDED and st.error is None
     assert [(oa, run) for oa, run, _ in env.oa_results.saved] == [(OID, RID)]
     f3, f4 = env.step_results.step_result(RID, "f3"), env.step_results.step_result(RID, "f4")
     assert f3 is not None and f3.units and f3.comparisons
     assert f4 is not None and f4.directions
-    # F2는 넘긴 단계로 실행 상태에 남는다 (outcome skipped 줄이 그대로 옮겨짐)
-    skipped = env.store.skipped_steps(RID)
-    assert [s.step for s in skipped] == ["run_f2"] and "tool_missing" in skipped[0].reason
+    # F2도 돌아 넘긴 단계가 없고, F2 결과(판단 단위마다 법률 근거 묶음)도 저장된다
+    assert env.store.skipped_steps(RID) == []
+    f2 = env.step_results.step_result(RID, "f2")
+    assert f2 is not None and [b.unit_id for b in f2.bundles] == [u.unit_id for u in f3.units]
 
 
 def test_run_case_지금_하는_일이_단계마다_바뀐다(env):

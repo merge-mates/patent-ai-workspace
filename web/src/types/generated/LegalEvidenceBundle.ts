@@ -183,4 +183,5 @@ export interface SearchLogEntry {
   hits: Hits
   skipped_unverified_edition: SkippedUnverifiedEdition
   skipped_unknown_date: SkippedUnknownDate
+  status: Status | null
 }

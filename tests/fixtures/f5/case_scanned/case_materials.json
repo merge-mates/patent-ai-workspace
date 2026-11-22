@@ -1,0 +1,39 @@
+{
+  "case_id": "c_scanned",
+  "documents": [
+    {
+      "document_id": "doc_oa_1",
+      "kind": "oa",
+      "source": "uploaded",
+      "status": {
+        "value": "unverified",
+        "reason": "not_extracted",
+        "checked": null,
+        "searched_scope": null
+      },
+      "text_status": {
+        "value": "unverified",
+        "reason": "body_missing",
+        "checked": null,
+        "searched_scope": null
+      }
+    }
+  ],
+  "missing": [],
+  "held_tasks": [],
+  "review_items_count": 2,
+  "review_items": [
+    {
+      "kind": "unverified",
+      "target": "materials.documents[0]",
+      "label": "oa doc_oa_1",
+      "reason": "body_missing"
+    },
+    {
+      "kind": "unverified",
+      "target": "oa_result[oa_1]",
+      "label": "oa_1",
+      "reason": "앞 입력이 확인되지 않음: 칸 8개"
+    }
+  ]
+}

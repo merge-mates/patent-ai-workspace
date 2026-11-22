@@ -24,4 +24,7 @@
 | m2-i2-law-bm25-v2 | 검색 (법령, 이슈 #66) | `index_version`: law-idx-v1 → law-idx-v2 (조각 같음, embedding만 더함) | hit@5 1.000 | +0.000 | $0.00 | [card](m2-i2-law-bm25-v2/card.md) |
 | m2-i2-law-vector-baseline | 검색 (법령, 이슈 #66) | `mode`·`impl`: bm25·law_bm25 → vector·vector (`law-idx-v2` = v1 조각 + text-embedding-3-small 벡터) | hit@5 0.316 | -0.684 | $0.00 | [card](m2-i2-law-vector-baseline/card.md) |
 | m2-i3-cite-search-bm25-noise-b | cite-search (이슈 #178 둘째 점수) | `noise_scope`: 없음(그 인용문헌 안) → `retrieval/cite_noise_b.jsonl` (B안: tune 인용문헌 전체 풀). 검색 설정·색인은 그대로 | hit@10 0.353 | -0.265 | $0.00 | [card](m2-i3-cite-search-bm25-noise-b/card.md) |
+| m2-i3-cite-search-bm25-noise-c | cite-search (이슈 #178 둘째 점수, C안) | 색인 `cite-idx-v1` → `cite-idx-v4`(C안 공보 115·tune 30건 인용 공보 더함), `noise_scope`: B(옛 tune 인용 16건 풀) → B(tune 30건 인용 풀) + C(OA마다 같은 IPC·비슷한 낱말 한국 공보, 그 OA 줄에만) | hit@10 0.265 | -0.088 | $0.00 | [card](m2-i3-cite-search-bm25-noise-c/card.md) |
+| m2-i3-cite-search-hybrid-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → hybrid (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-hybrid-noise-c/card.md) |
+| m2-i3-cite-search-vector-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → vector (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-vector-noise-c/card.md) |
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
