@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from patent_ai.api.deps import (
     get_case_materials_store,
+    get_case_repository_unit,
     get_case_unit,
     get_run_executor,
     get_run_launcher,
@@ -20,6 +21,7 @@ from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
 from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.oa_result import OAResult
+from tests.api.repo_fake import FakeRepoUnit
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "case_missing_citation"
 
@@ -114,6 +116,8 @@ def filled(tmp_path):
     unit = FakeUnit(cases)
     app = create_app(startup_store=runs)
     app.dependency_overrides[get_case_unit] = lambda: unit
+    # GET /cases/{id}가 이력·판을 읽는 저장소도 메모리로 (안 바꾸면 Postgres에 붙는다)
+    app.dependency_overrides[get_case_repository_unit] = FakeRepoUnit
     app.dependency_overrides[get_upload_dir] = lambda: tmp_path
     app.dependency_overrides[get_run_status_store] = lambda: runs
     app.dependency_overrides[get_case_materials_store] = lambda: materials
