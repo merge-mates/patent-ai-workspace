@@ -1,6 +1,6 @@
 """#180 한 바퀴(F1 → F3 → F2 넘김 → F4)를 서버 쪽 테스트에서 다시 쓰는 도움 함수.
 
-모델 답은 기록된 응답(FakeTransport), F1 두 단계와 F3 검색 자원은 지어낸 것으로 바꾼다.
+모델 답은 가짜 응답(FakeTransport), F1 두 단계와 F3 검색 자원은 지어낸 것으로 바꾼다.
 네트워크·키·DB 없음. 앱 코드에서 import하지 않는다.
 """
 
@@ -38,7 +38,7 @@ __all__ = [
 
 texts = _texts
 real_config = _real_config
-responses = _responses  # F3·F4 기록된 응답 (도구 이름 -> 응답 목록)
+responses = _responses  # F3·F4 가짜 응답 (도구 이름 -> 응답 목록)
 
 
 def wire(monkeypatch) -> OAResult:
@@ -67,7 +67,7 @@ def wire_broken_pdf(monkeypatch, secret: str) -> None:
 
 
 def fake_ctx(run_id: str) -> RunContext:
-    """기록된 응답만 쓰는 실행 맥락 (실행마다 새로)."""
+    """가짜 응답만 쓰는 실행 맥락 (실행마다 새로)."""
     return RunContext(
         run_id=run_id,
         budget=CallBudget(),

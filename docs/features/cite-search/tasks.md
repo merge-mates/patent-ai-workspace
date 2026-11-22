@@ -129,7 +129,7 @@ graph LR
 **끝나면 보여 줄 것** (데모 한 줄): `make db` → v2 색인 넣기 → 질의 벡터 → `uv run python -m eval.retrieval.score --config experiments/m2-i2-cite-search-hybrid-rrf/config.yaml --rows-out work/retrieval/m2-i2-cite-search-hybrid-rrf/rows.jsonl` (셋 다) → `uv run python -m eval.retrieval.compare --rows bm25=<p> vector=<p> hybrid=<p> --k 10` → 세 방식 Hit@1·3·5·10 표 (전체·한국 공보·논문), CQ 수, 한 방식만 찾은 줄 수.
 **어림 크기**: 코드 약 330줄 + 테스트 약 330줄 = 약 660줄 (실험 config·card 빼고). 400줄을 넘지만 task-4 점수가 task-1~3을 다 지나야 나오고 #67을 닫는 PR이라 하나로 둔다. PR 본문에 커밋별 리뷰 순서(task 순서)를 적는다. task-1·2·3은 서로 다른 파일이라 따로 봐도 된다.
 **새 의존성**: 없음 (OpenAI 임베딩은 #131 `embed()` 그대로).
-**외부 모델 호출과 비용**: task-4에서만. 조각 임베딩 한 번(묶음 약 20번) + 질의 임베딩 한 번(묶음 1번). OpenAI **유료**, 몇 센트 [가정: 조각당 약 300토큰]. 상한은 `config/cite_search.yaml` `embed.max_model_calls`. 테스트·확인 명령은 모두 녹화·가짜 벡터라 네트워크·키 없이 돈다.
+**외부 모델 호출과 비용**: task-4에서만. 조각 임베딩 한 번(묶음 약 20번) + 질의 임베딩 한 번(묶음 1번). OpenAI **유료**, 몇 센트 [가정: 조각당 약 300토큰]. 상한은 `config/cite_search.yaml` `embed.max_model_calls`. 테스트·확인 명령은 모두 기록된 모델 응답(질의 벡터)·가짜 벡터라 네트워크·키 없이 돈다.
 **공유 자원 (은진 님 리뷰)**: 계약 래퍼(`retrieval/contract.py`)·계약 design, 색인 스크립트(`law_index_db`, `core/index_embed.py`)와 색인 설정(`config/cite_search.yaml` `embed:` 칸, 새 `config/index/cite-idx-v2.yaml`), 채점기 `score.py`.
 
 ```mermaid
@@ -147,10 +147,10 @@ graph LR
   - `@register_impl("hybrid") class HybridSearcher(repo, settings, embed=None)`: 만들 때 `settings["hybrid"]`를 읽어 `rrf_k: int`, `weights: {"bm25": float, "vector": float}`를 검사 (칸 없음·키 다름·음수·둘 다 0·`rrf_k` ≤ 0 → `ValueError`). 안쪽은 `get_searcher("bm25", repo, settings)`, `get_searcher("vector", repo, settings, embed)`.
   - `search(query, corpus, mode, k, doc_ids, as_of)`: `mode != "hybrid"` → `ModeNotSupportedError`. `n = repo.count_chunks(corpus, index_version, doc_ids)`, 0이면 `unverified/body_missing`. 아니면 두 안쪽을 `k=n`으로 부르고 `rrf(lists, weights, rrf_k)`로 섞어 `(-점수, chunk_id)` 순 위 `k`개, `score` = RRF 점수, `scope.k` = 바깥 k. 섞은 hit 0개 → `not_found_in_scope`. `skipped_unverified_edition` = 두 쪽 중 큰 값.
   - `rrf(ranked: dict[str, list[str]], weights: dict[str, float], rrf_k: int) -> dict[str, float]` (순수 함수, chunk_id → 점수).
-- 테스트할 경우 (메모리 저장소 + 지어낸 벡터 + 녹화 질의 벡터):
+- 테스트할 경우 (메모리 저장소 + 지어낸 벡터 + 기록된 모델 응답(질의 벡터)):
   - 평소: `rrf({"bm25": ["a","b"], "vector": ["b","c"]}, 0.5/0.5, 60)`에서 `b`가 1위. 두 목록에 다 있는 조각이 한쪽에만 있는 조각보다 위. 같은 점수는 `chunk_id` 순. 바깥 k=1과 k=3의 1위가 같음. `get_searcher("hybrid", …)`로 불러 래퍼 검사(결과 머리·점수 순서)를 통과
   - 빈 입력: BM25 쪽만 `not_found_in_scope`(겹치는 낱말 없음) → 벡터 순위만으로 hit. 문헌 조각 없음 → `unverified/body_missing`
-  - 실패: `settings.hybrid` 없음 → `ValueError`, `weights`에 `bm25`만 → `ValueError`, 가중치 음수·둘 다 0·`rrf_k` ≤ 0 → `ValueError`, 녹화 질의 벡터에 없는 질의 → `RecordedEmbeddingMissing`이 그대로 올라옴, `mode="bm25"`로 부름 → `ModeNotSupportedError`, 조각에 벡터 없음 → 벡터 쪽 `ValueError`가 그대로 올라옴 (조용히 BM25만으로 섞지 않음)
+  - 실패: `settings.hybrid` 없음 → `ValueError`, `weights`에 `bm25`만 → `ValueError`, 가중치 음수·둘 다 0·`rrf_k` ≤ 0 → `ValueError`, 기록된 모델 응답(질의 벡터)에 없는 질의 → `RecordedEmbeddingMissing`이 그대로 올라옴, `mode="bm25"`로 부름 → `ModeNotSupportedError`, 조각에 벡터 없음 → 벡터 쪽 `ValueError`가 그대로 올라옴 (조용히 BM25만으로 섞지 않음)
 - 확인 방법: `uv run pytest tests/retrieval/test_hybrid.py tests/retrieval/test_contract.py` → 통과
 - 크기: 반나절 끝선. 넘치면 커밋을 `rrf()` 순수 함수 / impl·래퍼 둘로 나눈다.
 - 먼저: 없음
@@ -198,7 +198,7 @@ graph LR
   4. `uv run python -m patent_ai.retrieval.law_index_db --corpus cite --jsonl data/processed/cite_search/cite-idx-v2.jsonl --index-version cite-idx-v2` (task-2에서 이름이 바뀌면 그 이름)
   5. 실험 셋 `eval.retrieval.score --rows-out …` → `eval.retrieval.compare` → `/experiment` 카드 → `uv run python eval/make_index.py`
 - 테스트할 경우: 없음 (실험 task). 대신 확인: v2 BM25 점수가 v1 기준선(Hit@10 0.618, n=68)과 같음, 세 실험 `gold_sha256`·`index_fingerprint`·`n`이 같음. **다르면 벡터·하이브리드 채점 전에 멈추고** 원인(조각 수·지문 차이)을 카드와 `막힌 것`에 적는다.
-- 확인 방법 (네트워크·키 없이, git 밖 v2 JSONL과 녹화 질의 벡터가 있는 맥에서): `uv run python -m eval.retrieval.score --config experiments/m2-i2-cite-search-hybrid-rrf/config.yaml --chunks data/processed/cite_search/cite-idx-v2.jsonl` → `work/retrieval/m2-i2-cite-search-hybrid-rrf/scores.json`의 hit@k가 `experiments/…/scores.json`·카드 값과 같음
+- 확인 방법 (네트워크·키 없이, git 밖 v2 JSONL과 기록된 모델 응답(질의 벡터)가 있는 맥에서): `uv run python -m eval.retrieval.score --config experiments/m2-i2-cite-search-hybrid-rrf/config.yaml --chunks data/processed/cite_search/cite-idx-v2.jsonl` → `work/retrieval/m2-i2-cite-search-hybrid-rrf/scores.json`의 hit@k가 `experiments/…/scores.json`·카드 값과 같음
 - 카드에 남길 것: 임베딩 모델·차원(1536), RRF `rrf_k`·가중치, v1·v2 BM25 같은지, 다음 칸에 "다른 섞는 법(점수 맞춘 가중합, 가중치, 상위 N개만) 조사 — 11/20 재아"
 - 먼저: task-1, task-2, task-3
 
@@ -217,3 +217,6 @@ graph LR
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
+
+## 이슈 #212 (2단계·가중합 impl 실험, 작은 이슈: 이슈 본문 체크리스트가 계획)
+- [이슈 #212](https://github.com/merge-mates/patent-ai-workspace/issues/212) (설계는 design.md 7-6절)

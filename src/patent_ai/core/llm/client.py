@@ -214,7 +214,7 @@ def call_model(
                     max_tokens=cfg.max_tokens,
                 )
             except RecordingMissing, ModelConfigError:
-                raise  # 녹화 없음·설정 잘못은 감싸지 않고 그대로 멈춘다
+                raise  # 기록된 응답 없음·설정 잘못은 감싸지 않고 그대로 멈춘다
             except Exception as e:
                 # TransportError 말고 모르는 예외도 기록하고 세고 ModelCallFailed로 감싼다
                 # 스트림이 중간에 끊겨도 입력·부분 출력은 청구됐을 수 있다 (#194)
