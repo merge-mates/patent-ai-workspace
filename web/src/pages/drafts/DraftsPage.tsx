@@ -22,7 +22,8 @@ type Editing = DraftPatch | null
 // 초안이 바탕으로 삼은 선택과 지금 선택을 견준 결과
 // - changed: 다른 후보를 골랐음 → 이 초안은 이전 방향으로 만든 것
 // - picked: 보류였던 묶음에서 이제 방향을 골랐음 → 다시 돌려야 초안이 생김
-type BasisNote = 'changed' | 'picked' | null
+// - written: 지금 선택이 직접 쓴 방향 → 서버는 그 묶음의 초안을 보류한다 (AI가 만들지 않음)
+type BasisNote = 'changed' | 'picked' | 'written' | null
 
 const humanTag = <HumanTag>직접 고침</HumanTag>
 
@@ -131,7 +132,9 @@ export function DraftsPage() {
 
   // 묶음마다 지금 선택과 초안의 바탕 선택을 견준다
   const noteOf = (unitId: string): BasisNote => {
-    const now = directions.find((d) => d.unit_id === unitId)?.selection?.candidate_id ?? null
+    const sel = directions.find((d) => d.unit_id === unitId)?.selection
+    if (sel?.origin === 'human_written') return 'written'
+    const now = sel?.candidate_id ?? null
     const basis = drafts.based_on.find((b) => b.unit_id === unitId)?.candidate_id ?? null
     if (basis === null) return now === null ? null : 'picked'
     return now !== basis ? 'changed' : null
@@ -139,7 +142,10 @@ export function DraftsPage() {
   // 묶음 선택 출처: 고른 묶음 중 사람이 고른 것이 있나
   const picked = directions.flatMap((d) => (d.selection ? [d.selection] : []))
   const humanPicked = picked.filter((s) => s.origin === 'human_selected' || s.origin === 'human_edited' || s.origin === 'human_written').length
-  const pickSource = humanPicked === 0 ? 'AI 기본값' : humanPicked === picked.length ? '직접 고름' : '일부 직접 고름'
+  // 직접 쓴 묶음이 있으면 "고름·씀"으로 구분한다
+  const hasWritten = picked.some((s) => s.origin === 'human_written')
+  const humanWord = hasWritten ? '직접 고름·씀' : '직접 고름'
+  const pickSource = humanPicked === 0 ? 'AI 기본값' : humanPicked === picked.length ? humanWord : `일부 ${humanWord}`
 
   // 근거 링크는 의견서·보정 청구항 근거 목록에서 같은 위치를 찾아 원문 판으로
   const allEvidence = [...drafts.evidence, ...drafts.claims.flatMap((c) => c.spec_basis)]
@@ -167,7 +173,14 @@ export function DraftsPage() {
       return (
         <div key={c.claim} style={box}>
           {head(LOW_CONFIDENCE_TEXT)}
-          {note === 'picked' ? (
+          {note === 'written' ? (
+            <Alert
+              type="info"
+              showIcon
+              message="직접 쓴 방향이라 AI가 초안을 만들지 않아요 · 직접 대응해 주세요"
+              description={rebuilding ? '실행이 끝나면 이 묶음이 보류로 바뀌어요' : undefined}
+            />
+          ) : note === 'picked' ? (
             <Alert
               type="info"
               showIcon
@@ -190,7 +203,9 @@ export function DraftsPage() {
               </Link>
             </Space>
           )}
-          {c.held_reason && <span className="label2 t3">{c.held_reason}</span>}
+          {/* 서버는 지금 직접 쓴 묶음에도 일반 보류 글("방향을 고르면 초안을 만듭니다")을 줌 (서버 고침은 따로).
+              두 글이 어긋나 보이지 않게 직접 쓴 묶음은 서버 글을 보이지 않는다 */}
+          {c.held_reason && note !== 'written' && <span className="label2 t3">{c.held_reason}</span>}
         </div>
       )
     }
@@ -213,6 +228,9 @@ export function DraftsPage() {
               </Button>
             )}
           </>,
+        )}
+        {note === 'written' && (
+          <Alert type="warning" showIcon message="직접 쓴 방향으로 바뀜 · 이 초안은 이전 방향으로 만든 것이에요. AI는 이 묶음 초안을 다시 만들지 않으니 직접 대응해 주세요" />
         )}
         {note === 'changed' && (
           <Alert type="warning" showIcon message="선택이 바뀜 · 다시 만들어야 함. 이 초안은 이전 방향으로 만든 것이라 다시 확인이 필요해요" />

@@ -1,4 +1,4 @@
-import { App, Alert, Button, Radio } from 'antd'
+import { App, Alert, Button, Input, Radio } from 'antd'
 import { EmptyReason } from '../../components/EmptyReason'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useNavigate, useRevalidator, useRouteLoaderData } from 'react-router'
@@ -22,6 +22,8 @@ import {
 } from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
 import { seedRun } from '../../runPoll'
+import { selectionErrorText } from '../../selectionError'
+import type { SelectionBody } from '../../types/provisional/case'
 import { useRunSnapshot } from '../../useRunSnapshot'
 import type { Evidence1 } from '../../types/generated/ComparisonTable'
 import type { DirectionCandidate, DirectionCandidates, DirectionSelection } from '../../types/generated/DirectionCandidates'
@@ -190,11 +192,16 @@ export function DirectionsPage() {
   for (const t of comparisons)
     for (const r of t.rows) for (const e of r.evidence) if (!citeNames.has(e.document_id)) citeNames.set(e.document_id, r.citation)
 
-  // 사람이 고르면 서버에 저장한다 (저장한 선택은 1등과 같아도 "직접 고름")
-  const choose = async (d: DirectionCandidates, candidateId: string) => {
+  // 직접 쓰기: 글 칸을 펼친 묶음과 쓰는 중인 글 (묶음마다 따로)
+  const [writing, setWriting] = useState<Record<string, string>>({})
+  const closeWriting = (unitId: string) =>
+    setWriting((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== unitId)))
+
+  // 사람이 고르거나 직접 쓰면 서버에 저장한다 (후보 하나 또는 직접 쓴 글 하나, 저장한 선택은 1등과 같아도 "직접 고름")
+  const save = async (d: DirectionCandidates, body: SelectionBody): Promise<boolean> => {
     setSaving((prev) => ({ ...prev, [d.unit_id]: true }))
     try {
-      const saved = await api.selectDirection(d.unit_id, { candidate_id: candidateId })
+      const saved = await api.selectDirection(d.unit_id, body)
       // 응답이 늦게 와도 다른 묶음의 값을 덮지 않게 그때의 최신 값에 더한다 (응답 값만, 지어내지 않음)
       setJustChosen((prev) => ({ ...prev, [d.unit_id]: saved.selection }))
       // 응답의 run_id는 초안만 다시 만드는 새 작은 실행: 폴링에 넣고 화면 데이터를 다시 받는다.
@@ -202,11 +209,23 @@ export function DirectionsPage() {
       // (사건 틀의 "직접 할 일" 개수는 실행이 끝나 loader가 새 선택을 받아야 줄어든다)
       seedRun({ run_id: saved.run_id, state: 'queued', current_step: null })
       revalidator.revalidate()
+      return true
     } catch (e) {
-      message.error(`저장하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
+      message.error(`저장하지 못했습니다: ${selectionErrorText(e)}`)
+      return false
     } finally {
       setSaving((prev) => ({ ...prev, [d.unit_id]: false }))
     }
+  }
+  const choose = (d: DirectionCandidates, candidateId: string) => void save(d, { candidate_id: candidateId })
+  // 직접 쓴 글 저장: 빈 글은 보내지 않고 글로 알린다
+  const saveWritten = async (d: DirectionCandidates) => {
+    const text = (writing[d.unit_id] ?? '').trim()
+    if (text === '') {
+      message.warning('직접 쓸 방향 글을 입력해 주세요 (빈 글은 저장하지 않아요)')
+      return
+    }
+    if (await save(d, { written_direction: text })) closeWriting(d.unit_id)
   }
 
   // AI가 다루지 않은 거절이유: 사건 전체 검사와 정리 결과 양쪽에서 모은다 (번호가 정리 결과에 없어도 번호는 보인다)
@@ -248,7 +267,11 @@ export function DirectionsPage() {
                   d.unit_id,
                 )}
               </span>
-              {just && <HumanCheckTag>방금 고름 · 반영 중{justName ? `: ${justName}` : ''}</HumanCheckTag>}
+              {just && (
+                <HumanCheckTag>
+                  {just.written_direction !== null ? '방금 씀 · 반영 중' : `방금 고름 · 반영 중${justName ? `: ${justName}` : ''}`}
+                </HumanCheckTag>
+              )}
               {sel ? (
                 <OriginTag origin={sel.origin} />
               ) : d.candidates.length === 0 ? (
@@ -264,7 +287,14 @@ export function DirectionsPage() {
               {d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
             </div>
 
-            {picked ? (
+            {sel?.written_direction ? (
+              // 직접 쓴 방향: AI 후보와 섞지 않고 쓴 글만 보인다 (어느 후보도 고르지 않은 상태)
+              <>
+                <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>직접 쓴 방향</h2>
+                <p className="body1" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{sel.written_direction}</p>
+                <span className="label2 t3">직접 쓴 방향이라 AI가 이 묶음의 초안을 만들지 않아요. 직접 대응해 주세요.</span>
+              </>
+            ) : picked ? (
               <>
                 <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
                   {picked.rank === null ? picked.name : `${rankText(picked)} · ${picked.name}`}
@@ -302,7 +332,7 @@ export function DirectionsPage() {
                 {picked ? '다른 후보로 바꾸기' : '후보 고르기'} · 순위는 검토 순서 제안이고 등록을 보증하지 않아요
               </span>
               <Radio.Group
-                value={just?.candidate_id ?? sel?.candidate_id ?? null}
+                value={just ? just.candidate_id : (sel?.candidate_id ?? null)}
                 disabled={saving[d.unit_id] === true || rebuilding}
                 onChange={(e) => choose(d, e.target.value as string)}
                 options={d.candidates.map((c) => ({
@@ -318,6 +348,36 @@ export function DirectionsPage() {
                 style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
               />
             </div>
+            )}
+
+            {/* 직접 쓰기: 모든 묶음에 둔다. 아직 안 골랐고 확신이 낮은 묶음은 눈에 띄게(primary) */}
+            {writing[d.unit_id] === undefined ? (
+              <div>
+                <Button
+                  type={!sel && !just && d.flags.includes('needs_human_judgment') ? 'primary' : 'default'}
+                  disabled={saving[d.unit_id] === true || rebuilding}
+                  onClick={() => setWriting((prev) => ({ ...prev, [d.unit_id]: sel?.written_direction ?? '' }))}
+                >
+                  직접 쓰기
+                </Button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span className="label1 t2">후보 밖 방향을 직접 써요. 저장하면 AI는 이 묶음의 초안을 만들지 않아요</span>
+                <Input.TextArea
+                  autoSize={{ minRows: 3, maxRows: 10 }}
+                  value={writing[d.unit_id]}
+                  onChange={(e) => setWriting((prev) => ({ ...prev, [d.unit_id]: e.target.value }))}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button type="primary" size="small" loading={saving[d.unit_id] === true} disabled={rebuilding} onClick={() => void saveWritten(d)}>
+                    저장
+                  </Button>
+                  <Button size="small" onClick={() => closeWriting(d.unit_id)}>
+                    취소
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         )
