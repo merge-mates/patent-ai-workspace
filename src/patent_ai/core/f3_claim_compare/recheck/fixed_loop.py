@@ -72,11 +72,13 @@ def fixed_loop_candidates(
     ctx: RunContext,
     searcher: Searcher,
     search_log: list[SearchLogRow],
+    queries_out: list[str] | None = None,
 ) -> dict:
     """구성요소 하나 × 인용문헌 하나의 다시 찾기 후보 {chunk_id: _Candidate}.
 
     shown = 1차에 모델에 보여 준 조각 ID (후보에서 뺀다). item_n = 모델에 보여 주는 구성요소 번호.
-    질의마다 검색 기록(round=2)을 search_log에 더한다.
+    질의마다 검색 기록(round=2)을 search_log에 더한다. queries_out을 주면 다시 쓴 질의를 거기 담는다
+    (부르는 쪽이 근거 줄·다시 찾기 기록에 질의를 적는다. 중간에 실패해도 쓴 질의까지는 남는다).
     """
     # compare.py가 이 모듈을 부르게 되면 맞물려 import되므로 함수 안에서 가져온다
     from patent_ai.core.f3_claim_compare.compare import (
@@ -87,6 +89,8 @@ def fixed_loop_candidates(
 
     assert cite.doc_id is not None  # 본문 없는 인용문헌은 부르는 쪽이 이미 보류한다
     queries = rewrite_queries(element.text, claim_text, ctx, n=recheck.search.rewrite_n)
+    if queries_out is not None:
+        queries_out.extend(queries)
     mode = _mode(settings.search.impl)
     scope = _scope(cite, settings, recheck, len(queries))
     candidates: dict[str, _Candidate] = {}

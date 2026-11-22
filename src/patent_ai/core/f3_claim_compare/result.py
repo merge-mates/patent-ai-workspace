@@ -26,10 +26,38 @@ class SearchLogRow(BaseModel):
     element_hash: str  # 구성요소 글자의 sha256 앞 12자 (원문 아님)
     citation: str  # 라벨 D1…
     doc_id: str
-    round: Literal[1, 2] = 1  # 2 = 한 번 더 찾기 (second_search)
+    round: Literal[1, 2] = 1  # 2 = 한 번 더 찾기 (second_search 또는 근거 다시 찾기 recheck)
     status: Status
     searched_scope: str  # 예: "D1 조각 120개 중 hybrid 상위 10 (cite-idx-v2)"
     hit_chunk_ids: list[str] = Field(default_factory=list)  # 순위 순서
+
+
+class RecheckLogRow(BaseModel):
+    """근거 다시 찾기(recheck) 한 건의 기록: 구성요소 × 인용문헌 하나. 실험 지표·단계 기록용.
+
+    원문 문단 글·quote·why는 싣지 않는다 (질의·ID·개수만).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_id: str
+    claim: int  # 대비 대상 청구항
+    element_claim: int  # 구성요소가 실제로 있는 청구항
+    element_no: int  # element_claim 안의 순번
+    citation: str  # 라벨 D1…
+    doc_id: str
+    mode: Literal["fixed_loop", "agent"]
+    judge: Literal["compare", "agent"]  # 다시 찾은 조각을 판정한 쪽 (fixed_loop는 늘 compare)
+    # 끝 상태: 에이전트 루프의 끝말 그대로. fixed_loop는 새 후보를 compare에 넘겼으면 submitted,
+    # 새 후보가 0개면 gave_up(reason no_new_candidates)
+    outcome: Literal["submitted", "gave_up", "limit_reached", "model_call_failed", "tool_failed"]
+    tool_calls: int  # agent: 도구 호출 수 / fixed_loop: 검색 수
+    turns: int  # agent: 모델 차례 수 / fixed_loop: 다시 쓰기 호출 1번
+    queries: list[str] = Field(default_factory=list)  # 찾아본 질의 (순서 유지, 중복 없음)
+    submitted_ids: list[str] = Field(default_factory=list)  # 낸 조각 ID (fixed_loop는 새 후보 전부)
+    reason: str | None = None  # give_up 이유 · no_new_candidates · 실패한 예외 이름
+    # 도구 호출 줄 {turn, tool_name, tool_input, result_ids, is_error} (지휘가 단계 기록으로 옮긴다)
+    steps: list[dict] = Field(default_factory=list)
 
 
 class ExaminerLocationRow(BaseModel):
@@ -57,4 +85,5 @@ class F3Result(BaseModel):
     held_tasks: list[HeldTask] = Field(default_factory=list)
     search_log: list[SearchLogRow] = Field(default_factory=list)
     examiner_locations: list[ExaminerLocationRow] = Field(default_factory=list)
+    recheck_log: list[RecheckLogRow] = Field(default_factory=list)  # 다시 찾기 기록 (none이면 [])
     status: Status  # 안쪽 status 중 가장 나쁜 값

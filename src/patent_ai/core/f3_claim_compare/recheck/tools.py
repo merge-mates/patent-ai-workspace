@@ -20,6 +20,7 @@ from patent_ai.core.agents.tool_loop import (
     ToolSpec,
 )
 from patent_ai.core.llm.config import REPO_ROOT
+from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.schemas.comparison import Judgment
 from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.repository import ChunkRepository
@@ -137,6 +138,10 @@ class CiteToolbox:
     def _get(self, chunk_id: str) -> Chunk | None:
         return self._own().get(chunk_id) or self._found.get(chunk_id)
 
+    def get_chunk(self, chunk_id: str) -> Chunk | None:
+        """낸 조각 ID의 조각 (그 인용문헌 조각 또는 이 대화의 검색 결과). 없으면 None."""
+        return self._get(chunk_id)
+
     def _neighbors(self, chunk: Chunk) -> tuple[str | None, str | None]:
         # 같은 종류 조각을 위치 순으로 늘어놓고 앞뒤 하나씩
         same = sorted(
@@ -158,6 +163,8 @@ class CiteToolbox:
             return _error(f"k는 1~{self.k_max} 정수다. 범위 안으로 고쳐 다시 부른다", **logged)
         try:
             result = self.searcher.search(m.query, "cite", mode, m.k, doc_ids=[self.doc_id])
+        except ModelCallLimitExceeded:
+            raise  # 질의 임베딩 호출 상한은 환경 실패가 아니다: 루프가 limit_reached로 끝낸다
         except Exception as e:  # 검색기·DB·임베딩 어떤 예외든 환경 실패로 본다
             raise RecheckToolFailed(f"{mode} 검색 실패: {type(e).__name__}: {e}") from e
         if not result.hits:

@@ -211,6 +211,10 @@ def run_tool_loop(
                 queries.append(query)
             try:
                 outcome = spec.run(parsed)
+            except ModelCallLimitExceeded:
+                # 도구 안(질의 임베딩)에서 실행 합계 상한에 닿음: 실패가 아니라 상한 끝
+                steps.append(LoopStep(turns, spec.name, {}, [], True))
+                return finish("limit_reached")
             except RecheckToolFailed as e:
                 logger.warning("%s 도구 %s 실행 실패: %s", step, spec.name, e)
                 steps.append(LoopStep(turns, spec.name, {}, [], True))

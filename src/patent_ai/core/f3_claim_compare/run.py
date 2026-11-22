@@ -209,6 +209,7 @@ def run_f3(
         held_tasks=held,
         search_log=compared.search_log,
         examiner_locations=compared.examiner_locations,
+        recheck_log=compared.recheck_log,
         status=worst_status(statuses, _ALL_CHECKED),
     )
 

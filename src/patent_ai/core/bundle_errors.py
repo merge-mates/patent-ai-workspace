@@ -21,6 +21,9 @@ BUNDLE_ERRORS = (ModelOutputInvalid, ModelCallFailed, ModelCallLimitExceeded)
 # F3 보류 작업 이름 끝에 붙이는 말: 이 끝말로 확인되지 않음의 이유를 정한다
 CALL_FAILED = "call_failed"
 LIMIT_REACHED = "limit_reached"
+# 근거 다시 찾기의 도구(검색)가 환경 때문에 실패함. 확인되지 않음 + not_extracted로 센다
+# (held_error_status가 None을 돌려줘도 F3 보류 기본값이 같은 status다)
+TOOL_FAILED = "tool_failed"
 
 
 # 진보성에서 독립항(대표 청구항)에 차이점이 있어 종속항을 대비하지 않은 보류의 끝말.
