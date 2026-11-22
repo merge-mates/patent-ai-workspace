@@ -143,7 +143,7 @@ flowchart LR
 | `POST /cases/{id}/oas` | `{oa_id, run_id}` | 같은 파일(해시)이면 409 `{code: "oa_already_exists", case_id, oa_id}` | 서버 담당 리뷰 |
 | `PATCH /cases/{id}` | 없음 | 출원번호 넣기 → 기다리던 같은 실행이 이어 감 (방식은 #70: 저장한 OA 정리에 사람 번호를 덮어 check_oa부터, API 명세 `docs/api/README.md`) | 서버 담당 리뷰 |
 | `GET /cases/{id}` | 사건 + OA 목록 | + `events[{kind, doc_number, seq}]`(seq = 행정 이력 순서, 자료로만 온 줄은 null), `claim_versions[{version, source_kind, source_doc_number, document_id}]`(0 = 출원 때 판), 각 OA에 `examined_claim_version` = `ExtractedValue[str]`(값 `"as_filed"` 또는 만든 보정서 접수번호, 묶기 결과 저장 전이면 null). events·claim_versions는 원문이 있는 OA 중 가장 늦은 OA 시점까지 (그 뒤 이력·보정서 판, 공개·등록공보 판은 뺌). 청구항 본문은 넣지 않음 (#16 T7) | 서버 담당 리뷰 |
-| 실행 `waiting_for_human` | 확신 낮은 묶음의 방향 고르기를 기다림 | 출원번호·발송번호 입력 기다림만 (`waiting_for: application_number`·`dispatch_number`, 방향 고르기는 멈추지 않음, #70) | 서버 담당 리뷰 |
+| 실행 `waiting_for_human` | (#70 전 명세) 방향 고르기 대기. #70에서 바뀜 ([api/README.md](../../api/README.md) 실행 상태) | 출원번호·발송번호 입력 기다림만 (`waiting_for: application_number`·`dispatch_number`, 방향 고르기는 멈추지 않음, #70) | 서버 담당 리뷰 |
 | 실행 결과 `case_id` | 없음 | 기존 사건에 붙거나 중복이면 실행에 최종 `case_id`를 남김 (11/18 확인, requirements 실패할 때) | 서버 담당 리뷰 |
 | `GET /documents/{id}` | 원문과 쪽 | 메타 + `PageText` 그대로 (`pages[{page, text, status, tables}]` + 문서 status). 화면이 쪽마다 "글자 없음"을 보임. `tables`는 #18에서 더함(공유 스키마 변경) | 서버 담당 리뷰 |
 | `GET /documents/{id}/file` | 없음 | 원본 PDF | 서버 담당 리뷰 |

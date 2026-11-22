@@ -116,6 +116,13 @@ def test_결과_status는_안쪽에서_가장_나쁜_값():
     assert out.drafts.status.value == StatusValue.UNVERIFIED
 
 
+def test_결과에_확인_기준일이_남는다():
+    # 작은 실행(redo)이 앞 실행의 기준일을 이어 쓰려고 결과에 남긴다 (#293)
+    data = _case_data()
+    out, _ = _run(data)
+    assert out.checked_on.isoformat() == data["checked_on"]
+
+
 def test_결과는_JSON으로_왕복해도_같다():
     out, _ = _run()
     assert F4Output.model_validate(json.loads(out.model_dump_json())) == out

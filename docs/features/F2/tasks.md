@@ -156,7 +156,7 @@ graph LR
 
 #### task-a4: 채점기 검색 범위에 `chunk_kinds` (design 5-1 바뀜 6. 판례 줄 날짜는 #35 정답이 생긴 뒤)
 - 합격 기준: v3에서 조문 정답 줄 점수가 v2와 비교된다 (조문 줄 범위에 심사기준·판례가 섞이지 않음)
-- 고칠 파일: `eval/retrieval/gold.py`(정답 줄 `chunk_kinds`, 없으면 law 말뭉치는 `[article]`), `eval/retrieval/score.py`(`search`·`repo.chunks`·`count_chunks`에 넘김), `eval/GUIDE.md`(칸 하나), `tests/retrieval_eval/` 채점기 테스트
+- 고칠 파일: `eval/retrieval/gold.py`(정답 줄 `chunk_kinds`, 없으면 law corpus는 `[article]`), `eval/retrieval/score.py`(`search`·`repo.chunks`·`count_chunks`에 넘김), `eval/GUIDE.md`(칸 하나), `tests/retrieval_eval/` 채점기 테스트
 - 테스트할 경우: law 줄 칸 없음 → `[article]`로 찾음 (판례 조각이 더 잘 맞아도 안 걸림) / 무작위 기준선 범위 크기 = 조문 조각 수 / cite 줄은 그대로
 - 확인 방법: `uv run pytest tests/retrieval_eval` + `uv run python eval/run_eval.py --config experiments/m2-i2-law-bm25-v2/config.yaml --chunks data/processed/law/law-idx-v2.jsonl` → `scores.json`의 metrics·failures가 전과 같음 (commit·seconds 칸이 바뀌므로 비교 뒤 파일은 `git checkout`으로 되돌린다)
 - 먼저: task-a2
@@ -207,10 +207,10 @@ graph LR
 
 ### 진행
 - [x] 24a: task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · task-a2 (4a25c69·950e8ad) · task-a3 (dd7b1d4) · task-a4 (7cd0587). v2 실제 점수 비교는 24d task-d2로 (로컬 jsonl 없음, 공유 DB가 새 마이그레이션 전)
-- [x] 24b: task-b1 (ab4345c·5764db2, 8판 1,076조각. 빠진 판 제102·131·140호 → 101·124호에 끝 날짜)
-- [ ] 24c: task-c1 · task-c2
+- [x] 24b: task-b1 (ab4345c·5764db2·4625199, 8판 1,076조각. 빠진 판 제102·131·140호 → 101·124호에 끝 날짜) — PR #277 머지
+- [x] 24c: task-c1 (2cc940a) · task-c2 (7fd601c) · 리뷰 반영 a0379c5·5faf52c. 판례 74건·심결 12건 1,116조각 (max_chars 3000) — PR #291
 - [ ] 24d: task-d1 · task-d2
-- 다음: 24b PR, 24c task-c1
+- 다음: #291 리뷰·머지, 24d
 - 막힌 것: 없음
 
 ## m3-i2-29a  (11/23)  상태: 승인 (11/23 은진 "승인할게 가자")  (이슈 #29, 계획 둘 = PR 둘. 29a는 Refs, 29b가 Closes #29)

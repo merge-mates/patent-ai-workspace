@@ -234,10 +234,50 @@ def test_claim_texts_보정서마다_추가하면_앞_보정의_최대_번호를
 
 
 def test_claim_texts_한_보정서에서_청구범위_통째_정정_뒤_추가는_새_묶음_다음_번호부터():
-    # 리뷰 #270: 통째 정정이면 번호를 새로 센다 (앞 판 최대 3, 새 묶음 최대 4 → 5 추가)
-    whole = "【보정대상항목】 청구범위\n【보정방법】 정정\n【보정내용】\n【청구범위】\n" + "".join(
-        f"【청구항 {n}】\n화분 {n}.\n" for n in range(1, 5)
-    )
-    got = claims_at_version([APPLICATION, whole + _add(5)])
+    # 리뷰 #270: 새 묶음이 앞 판보다 크면 새 묶음 최대 번호 다음부터 (앞 최대 3, 새 묶음 4 → 5 추가)
+    got = claims_at_version([APPLICATION, _whole(1, 2, 3, 4) + _add(5)])
     assert got.status.value == StatusValue.CONFIRMED
     assert sorted(got.claims) == [1, 2, 3, 4, 5]
+
+
+# 이슈 #284: 통째 정정·따로 올린 묶음으로 번호가 줄어도 앞 최대 번호는 줄지 않는다
+def _whole(*numbers: int) -> str:
+    """보정서의 청구범위 통째 정정 항목."""
+    return "【보정대상항목】 청구범위\n【보정방법】 정정\n【보정내용】\n【청구범위】\n" + "".join(
+        f"【청구항 {n}】\n화분 {n}.\n" for n in numbers
+    )
+
+
+def _separate(*numbers: int) -> str:
+    """보정대상항목 없이 따로 올린 보정 청구항 묶음."""
+    return "【청구범위】\n" + "".join(f"【청구항 {n}】\n화분 {n}.\n" for n in numbers)
+
+
+def test_claim_texts_통째_정정으로_줄어든_번호를_다음_보정서에서_추가하면_unverified():
+    # 앞 판 {1,2,3} → 통째 정정 {1,2}: 청구항 3 번호는 이미 쓰였다
+    got = claims_at_version([APPLICATION, _whole(1, 2), _add(3)])
+    assert got.status.value == StatusValue.UNVERIFIED
+
+
+def test_claim_texts_통째_정정으로_줄어도_앞_최대_번호_다음은_confirmed():
+    got = claims_at_version([APPLICATION, _whole(1, 2), _add(4)])
+    assert got.status.value == StatusValue.CONFIRMED
+    assert sorted(got.claims) == [1, 2, 4]
+
+
+def test_claim_texts_한_보정서에서_통째_정정으로_줄인_뒤_추가도_앞_최대_번호_다음부터():
+    assert claims_at_version([APPLICATION, _whole(1, 2) + _add(3)]).status.value == (
+        StatusValue.UNVERIFIED
+    )
+    assert claims_at_version([APPLICATION, _whole(1, 2) + _add(4)]).status.value == (
+        StatusValue.CONFIRMED
+    )
+
+
+def test_claim_texts_따로_올린_묶음으로_줄어도_앞_최대_번호_다음부터():
+    assert claims_at_version([APPLICATION, _separate(1, 2), _add(3)]).status.value == (
+        StatusValue.UNVERIFIED
+    )
+    got = claims_at_version([APPLICATION, _separate(1, 2), _add(4)])
+    assert got.status.value == StatusValue.CONFIRMED
+    assert sorted(got.claims) == [1, 2, 4]
