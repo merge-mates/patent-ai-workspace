@@ -122,10 +122,75 @@ def test_legal_chats_api_색인을_못_읽으면_body_missing_묶음(caplog):
     assert any("색인" in r.message for r in caplog.records)
 
 
-def test_legal_chats_api_색인_조각이_0개면_못_읽은_것으로_본다(monkeypatch, caplog):
+def test_legal_chats_api_색인_판이_없으면_못_읽은_것으로_본다(monkeypatch, caplog):
+    deps._load_legal_pool.cache_clear()
     deps._load_legal_index.cache_clear()
     monkeypatch.setattr(deps, "make_law_repo", lambda: InMemoryChunkRepository({"law": []}))
     with caplog.at_level("WARNING"):
         assert get_legal_index() is None
     assert any("색인" in r.message for r in caplog.records)
     deps._load_legal_index.cache_clear()
+
+
+def test_legal_chats_api_색인_조각이_0개면_못_읽은_것으로_본다(monkeypatch, caplog):
+    """색인 판은 있으나 조각이 비면(그 판의 조각 0개) 캐시하지 않고 못 읽은 것으로 본다."""
+
+    class EmptyPool(InMemoryChunkRepository):
+        def has_index_version(self, corpus, index_version):
+            return True
+
+    deps._load_legal_pool.cache_clear()
+    deps._load_legal_index.cache_clear()
+    monkeypatch.setattr(deps, "make_law_repo", lambda: EmptyPool({"law": []}))
+    with caplog.at_level("WARNING"):
+        assert get_legal_index() is None
+    assert any("0개" in str(r.exc_info[1]) for r in caplog.records if r.exc_info)
+    deps._load_legal_index.cache_clear()
+
+
+def test_legal_chats_api_색인_캐시는_메모리_조각만_두고_세션을_닫는다(monkeypatch):
+    calls = {"made": 0, "closed": 0}
+    base = fakes.repo()
+
+    class Tracked:
+        def has_index_version(self, corpus, index_version):
+            return base.has_index_version(corpus, index_version)
+
+        def chunks(self, corpus, index_version, **kw):
+            return base.chunks(corpus, index_version, **kw)
+
+        def close(self):
+            calls["closed"] += 1
+
+    def make():
+        calls["made"] += 1
+        return Tracked()
+
+    deps._load_legal_pool.cache_clear()
+    deps._load_legal_index.cache_clear()
+    monkeypatch.setattr(deps, "make_law_repo", make)
+    monkeypatch.setattr(deps, "get_f2_settings", lambda: type("S", (), {"index_version": IV})())
+    first = get_legal_index()
+    assert first is not None
+    assert calls == {"made": 1, "closed": 1}  # 읽은 뒤 닫았다
+    first.searcher.search("특허법 제29조", "law", "bm25", 3)  # 원 repo(DB)를 다시 부르지 않는다
+    assert get_legal_index() is first
+    assert calls == {"made": 1, "closed": 1}
+    deps._load_legal_pool.cache_clear()
+    deps._load_legal_index.cache_clear()
+
+
+def test_legal_chats_api_본문이_객체가_아니면_invalid_question(client):
+    chat_id = _new_chat(client)
+    res = client.post(f"/legal-chats/{chat_id}/messages", json=[1])
+    assert res.status_code == 422
+    assert res.json()["code"] == "invalid_question"
+
+
+def test_legal_chats_api_요청_스키마가_openapi에_실린다(client):
+    spec = client.get("/openapi.json").json()
+    schema = spec["paths"]["/legal-chats/{chat_id}/messages"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    assert schema["title"] == "ChatAsk" and "text" in schema["properties"]
+    assert "$ref" not in str(schema)  # 풀지 않은 참조가 남지 않는다

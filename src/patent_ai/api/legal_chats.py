@@ -34,6 +34,24 @@ from patent_ai.core.schemas.legal_evidence import LegalEvidenceBundle, LegalQues
 router = APIRouter()
 
 
+def _inline_schema(model: type[BaseModel]) -> dict[str, Any]:
+    """모델 스키마의 `$defs` 참조를 그 자리에 풀어 넣는다 (OpenAPI에 `#/$defs/..`가 깨지지 않게)."""
+    schema = model.model_json_schema()
+    defs = schema.pop("$defs", {})
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                return walk(defs[ref.removeprefix("#/$defs/")])
+            return {k: walk(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [walk(v) for v in node]
+        return node
+
+    return walk(schema)
+
+
 class CreateChatIn(BaseModel):
     case_id: str | None = None
 
@@ -95,7 +113,17 @@ def create_chat(body: CreateChatIn, unit: Unit) -> CreatedChatOut:
     return CreatedChatOut(chat_id=chat.chat_id)
 
 
-@router.post("/legal-chats/{chat_id}/messages", response_model=AnswerOut)
+@router.post(
+    "/legal-chats/{chat_id}/messages",
+    response_model=AnswerOut,
+    # 검사는 아래에서 직접 하므로 요청 스키마는 OpenAPI에 따로 싣는다
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": _inline_schema(ChatAsk)}},
+        }
+    },
+)
 def ask(
     chat_id: str,
     unit: Unit,
@@ -103,8 +131,10 @@ def ask(
     settings: Settings,
     today: Today,
     # 빈 글·잘못된 값은 validation_error 대신 invalid_question으로 알린다
-    body: Annotated[dict[str, Any], Body()],
+    body: Annotated[Any, Body()],
 ) -> AnswerOut:
+    if not isinstance(body, dict):
+        raise AppError(422, "invalid_question", "본문은 JSON 객체여야 합니다")
     try:
         ask_in = ChatAsk.model_validate(body)
     except ValidationError as e:

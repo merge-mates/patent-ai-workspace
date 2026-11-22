@@ -45,6 +45,7 @@ from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.retrieval.contract import Searcher, get_searcher
+from patent_ai.retrieval.repository import InMemoryChunkRepository
 from patent_ai.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -264,16 +265,34 @@ def get_f2_settings() -> F2Settings:
 
 
 @lru_cache
-def _load_legal_index() -> LegalIndex:
-    """색인을 읽는다. 실패나 조각 0개는 예외라 캐시되지 않는다 (색인이 들어온 뒤 다시 시도)."""
+def _load_legal_pool() -> LawPool:
+    """색인 조각을 한 번 읽어 메모리에 둔다. 읽은 뒤 DB 세션은 닫는다.
+
+    실패나 조각 0개는 예외라 캐시되지 않는다 (색인이 들어온 뒤 다시 시도).
+    """
     iv = get_f2_settings().index_version
     repo = make_law_repo()
-    if not repo.has_index_version("law", iv):
-        raise RuntimeError(f"법령 색인 {iv}이 저장소에 없음")
-    pool = LawPool.load(repo, iv)
+    try:
+        if not repo.has_index_version("law", iv):
+            raise RuntimeError(f"법령 색인 {iv}이 저장소에 없음")
+        pool = LawPool.load(repo, iv)
+    finally:
+        close = getattr(repo, "close", None)
+        if close is not None:
+            close()
     if not pool.chunks:
         raise RuntimeError(f"법령 색인 {iv}의 조각이 0개")
-    searcher = get_searcher("bm25", repo, {"index_version": iv, "tokenizer": LAW_BM25_TOKENIZER})
+    return pool
+
+
+@lru_cache
+def _load_legal_index() -> LegalIndex:
+    """캐시에는 메모리 조각만 둔다. BM25도 메모리 repo 위에 만들어 DB를 다시 보지 않는다."""
+    pool = _load_legal_pool()
+    mem_repo = InMemoryChunkRepository({"law": list(pool.chunks)})
+    searcher = get_searcher(
+        "bm25", mem_repo, {"index_version": pool.index_version, "tokenizer": LAW_BM25_TOKENIZER}
+    )
     return LegalIndex(pool, searcher)
 
 

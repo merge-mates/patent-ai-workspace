@@ -74,7 +74,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
 | POST | `/legal-chats` | 대화 만들기. 본문 `{case_id?}`(없어도 됨). 201 `{chat_id}`. |
-| POST | `/legal-chats/{id}/messages` | 질문 보내기. 본문 `{text, as_of?, source_kinds?}`. `as_of`·`source_kinds`는 빠지면 앞 질문 것을 물려받고(첫 질문은 현행·전부), `as_of: null`은 현행으로 덮고, `source_kinds: []`는 전부다. 200 `{chat_id, no, scope_changed, result}`이고 `result`는 법률 근거 묶음(`LegalEvidenceBundle`)이다. `scope_changed`는 앞 질문과 시점 또는 자료 유형이 달라졌는지다. 글에 조문 번호가 있으면 그 조문을, 없으면 BM25로 찾은 조문을 근거로 준다(심사기준·판례·심결은 아직 검색 전이라 `body_missing`으로 기록만). 법령 색인을 못 읽으면 200 + 주장 없는 묶음 + `unverified(body_missing)`다. 오류: 404 `chat_not_found`, 422 `invalid_question`(빈 글·잘못된 값) |
+| POST | `/legal-chats/{id}/messages` | 질문 보내기. 본문 `{text, as_of?, source_kinds?}`. `as_of`·`source_kinds`는 빠지면 앞 질문 것을 물려받고(첫 질문은 현행·전부), `as_of: null`은 현행으로 덮고, `source_kinds: []`는 전부다. 200 `{chat_id, no, scope_changed, result}`이고 `result`는 법률 근거 묶음(`LegalEvidenceBundle`)이다. `scope_changed`는 앞 질문과 시점 또는 자료 유형이 달라졌는지다. 글에 조문 번호가 있으면 그 조문을, 없으면 BM25로 찾은 조문을 근거로 준다(심사기준·판례·심결은 아직 검색 전이라 `body_missing`으로 기록만). 법령 색인을 못 읽으면 200 + 주장 없는 묶음 + `unverified(body_missing)`다. 오류: 404 `chat_not_found`, 422 `invalid_question`(빈 글·잘못된 값·JSON 객체 아님), 500 `chat_corrupt`(저장된 대화를 못 읽음) |
 | GET | `/legal-chats/{id}` | 대화 보기. `{chat_id, case_id, created_at, turns: [{no, question, scope_changed, created_at, result}], prior_evidence}`. 오류: 404 `chat_not_found`, 500 `chat_corrupt`(저장된 턴을 스키마대로 못 읽음, 빈 대화로 돌려주지 않음) |
 
 ### 그 밖
