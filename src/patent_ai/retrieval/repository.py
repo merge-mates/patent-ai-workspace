@@ -57,7 +57,7 @@ def fill_law_defaults(chunk: Chunk) -> Chunk:
     return chunk
 
 
-def _chunk_problem(corpus: Corpus, chunk: Chunk) -> str | None:
+def chunk_problem(corpus: Corpus, chunk: Chunk) -> str | None:
     """표에 맞지 않는 조각이면 이유 한 줄 (db의 검사 함수를 부른다. 넣기·덤프도 같은 함수)."""
     if corpus == "law":
         return check_law_chunk(
@@ -130,7 +130,7 @@ class InMemoryChunkRepository:
                     )
                 if corpus == "law":
                     chunk = fill_law_defaults(chunk)
-                reason = _chunk_problem(corpus, chunk)
+                reason = chunk_problem(corpus, chunk)
                 if reason:
                     raise ValueError(f"{path}:{no} {reason}")
                 if chunk.chunk_id in seen:
@@ -199,6 +199,7 @@ def chunk_to_row(corpus: Corpus, chunk: Chunk) -> LawChunk | CiteChunk:
     # 새 칸 넷은 법령 표에만 있다 (인용문헌 표에는 칸이 없다)
     extra: dict[str, Any] = {}
     if corpus == "law":
+        chunk = fill_law_defaults(chunk)  # source_kind 빈 조각은 statute (NOT NULL)
         extra = {
             "source_kind": chunk.source_kind,
             "decided_on": chunk.decided_on,

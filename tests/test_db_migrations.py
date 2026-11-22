@@ -46,7 +46,9 @@ def test_law_chunks_새_칸_upgrade는_옛_행을_statute로_채우고_downgrade
     from patent_ai.settings import get_settings
 
     prev, rev = "b3f8d2e6a914", "c7e2a5d9f103"
-    _alembic("upgrade", prev)
+    # CI는 테스트 전에 head까지 올려 두므로 앞 revision으로 내려가서 시작한다
+    _alembic("upgrade", "head")
+    _alembic("downgrade", prev)
     engine = create_engine(get_settings().database_url)
     try:
         with engine.begin() as conn:

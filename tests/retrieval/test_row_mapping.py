@@ -171,3 +171,20 @@ def test_인용문헌_조각에_새_칸을_넣으면_세_곳_모두_거부한다
         _check([Chunk.model_validate(line)], "cite", "cite-idx-v1")
     with pytest.raises(IndexDumpError):
         fixture_rows("cite", path.read_text(encoding="utf-8"))
+
+
+def test_attrs_키_순서만_달라도_내용_해시가_같다():
+    # JSONB는 키를 다시 정렬해 돌려주므로 해시가 키 순서를 타면 다시 넣기가 멈춘다
+    from patent_ai.retrieval.law_index_db import content_sha256
+    from patent_ai.retrieval.schemas import Chunk
+
+    a = Chunk.model_validate(_precedent_chunk(attrs={"court": "대법원", "case": "2020후1"}))
+    b = Chunk.model_validate(_precedent_chunk(attrs={"case": "2020후1", "court": "대법원"}))
+    assert content_sha256([a]) == content_sha256([b])
+
+
+def test_chunk_to_row는_source_kind가_빈_law_조각을_statute로_채운다():
+    from patent_ai.retrieval.schemas import Chunk
+
+    c = Chunk.model_validate(_precedent_chunk(source_kind=None, decided_on=None, speaker=None))
+    assert chunk_to_row("law", c).source_kind == "statute"
