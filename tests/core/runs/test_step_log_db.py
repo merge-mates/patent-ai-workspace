@@ -195,7 +195,8 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
     steps = [r for r in rows if r.step_kind != "model_call"]
     calls = [r for r in rows if r.step_kind == "model_call"]
     assert ("read_oa", "ok") in {(r.tool_name, r.outcome) for r in steps}
-    assert ("run_f2", "skipped") in {(r.tool_name, r.outcome) for r in steps}
+    # F2도 돈다(#28, 모델 호출 0번). 넘김 줄이 DB로 가는 것은 위 skipped 테스트가 본다
+    assert ("run_f2", "ok") in {(r.tool_name, r.outcome) for r in steps}
     assert calls, "모델 호출 줄이 없다"
     # 단계 기록의 호출 수(model_call_count)가 셈할 수 있게 채워지고, 합이 전송 줄 수와 같다
     sent = {"ok", "invalid_output", "output_truncated", "transport_error"}
@@ -204,6 +205,4 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
     ]
     assert all(c is not None for c in counted)
     assert sum(counted) == sum(1 for c in calls if c.outcome in sent)
-    assert store.skipped_steps(rid) == [
-        SkippedStep("run_f2", next(r.reason for r in steps if r.outcome == "skipped"))
-    ]
+    assert store.skipped_steps(rid) == []
