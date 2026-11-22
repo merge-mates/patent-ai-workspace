@@ -5,6 +5,8 @@ from patent_ai.db.models.chunks import ChunkColumns, CiteChunk, LawChunk
 from patent_ai.db.models.results import (
     CaseMaterialsRow,
     CitedReference,
+    DirectionSelectionRow,
+    HumanInputRow,
     OAResultRow,
     Rejection,
     RejectionCitation,
@@ -26,7 +28,9 @@ __all__ = [
     "CitedReference",
     "Claim",
     "ClaimVersion",
+    "DirectionSelectionRow",
     "Document",
+    "HumanInputRow",
     "LawChunk",
     "OAResultRow",
     "Rejection",

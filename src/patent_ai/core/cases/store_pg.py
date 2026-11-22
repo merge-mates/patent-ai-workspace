@@ -33,13 +33,14 @@ from patent_ai.core.cases.store import (
 )
 from patent_ai.core.f1_oa_reader.case_repository import DEFAULT_USER_ID
 from patent_ai.core.runs.state import RESULT_VISIBLE_STATES
+from patent_ai.core.runs.store import check_run_kind
 from patent_ai.db.models import OA, Case, CaseEvent, Document, OAResultRow, Run
 
 logger = logging.getLogger(__name__)
 
 
 def _run_row(r: Run) -> RunRow:
-    return RunRow(r.id, r.oa_id, r.state, r.current_step, r.created_at)
+    return RunRow(r.id, r.oa_id, r.state, r.current_step, r.created_at, r.kind)
 
 
 class PostgresRunStore:
@@ -47,9 +48,10 @@ class PostgresRunStore:
         self._s = session
         self._clock = clock
 
-    def create_queued(self, oa_id: str) -> RunRow:
+    def create_queued(self, oa_id: str, kind: str = "full") -> RunRow:
+        check_run_kind(kind)
         # 시각은 코드에서 정한다 (한 트랜잭션 안에서 둘을 만들어도 시각이 겹치지 않게)
-        run = Run(oa_id=oa_id, state="queued", created_at=self._clock())
+        run = Run(oa_id=oa_id, state="queued", kind=kind, created_at=self._clock())
         self._s.add(run)
         self._s.flush()
         return _run_row(run)
@@ -116,8 +118,8 @@ class PostgresCaseAppStore:
         run = self._runs.create_queued(oa.id)
         return OACreated(oa.id, doc.id, run.id)
 
-    def create_run(self, oa_id: str) -> RunRow:
-        return self._runs.create_queued(oa_id)
+    def create_run(self, oa_id: str, kind: str = "full") -> RunRow:
+        return self._runs.create_queued(oa_id, kind)
 
     def create_case(self, file: NewDocument, case_id: str | None = None) -> CaseCreated:
         # 임시 사건: 출원번호를 모른다 (partial unique라 비어 있는 사건은 여럿이어도 된다)
@@ -230,3 +232,12 @@ class PostgresCaseAppStore:
             return None
         doc, oa_id = found
         return ExistingDocument(doc.case_id, oa_id, doc.id)
+
+    def get_document_path(self, document_id: str) -> str | None:
+        # 기본 사용자 사건의 문서만 (다른 사용자 문서 ID로 원문을 읽지 못하게)
+        q = (
+            select(Document.path)
+            .join(Case, Document.case_id == Case.id)
+            .where(Document.id == document_id, Case.user_id == DEFAULT_USER_ID)
+        )
+        return self._s.execute(q).scalar_one_or_none()

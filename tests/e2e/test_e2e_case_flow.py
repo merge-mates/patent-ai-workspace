@@ -5,9 +5,9 @@
   합치기)로 읽고, 그 결과가 그대로 F3·F4 입력으로 이어진다. #180의 한 바퀴 테스트는 read_oa 자리에
   F4 fixture의 OA를 끼웠는데, 여기서는 끼우지 않는다. 바꿔 끼우는 것은 두 곳뿐이다:
   extract_pages(한글 PDF를 테스트에서 못 만들어 쪽 글자 fixture로)와 F3 검색 자원·F2 법령 조각
-  (DB·임베딩 대신 메모리 저장소). 모델 답은 기록된 응답(FakeTransport).
+  (DB·임베딩 대신 메모리 저장소). 모델 답은 가짜 응답(FakeTransport).
 - 통지서는 F4 fixture 사건(fixtures/f4/case_basic.json)과 같은 사건으로 지었다: 청구항 1~3,
-  진보성(청구항 1·2, D1) + 명확성(청구항 2 '적당한 간격'). 그래서 F3·F4 기록된 응답을 같이 쓴다.
+  진보성(청구항 1·2, D1) + 명확성(청구항 2 '적당한 간격'). 그래서 F3·F4 가짜 응답을 같이 쓴다.
 - 서버 단계(올리기 → 실행 → 폴링 → 다시 열기)는 아래 test_e2e_server_*: 진짜 앱·실행기 위에서
   같은 사건을 돌린다. 저장소는 메모리, 실행은 그 자리에서 바로.
 """
@@ -33,7 +33,7 @@ from patent_ai.core.schemas.oa_result import OAResult
 from tests.core.f2 import fakes as f2_fakes
 from tests.core.f3 import scenario
 
-# F3·F4 기록된 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것 (같은 사건이라 한 곳에)
+# F3·F4 가짜 응답과 실행 입력 글자는 #180 한 바퀴 테스트와 같은 것 (같은 사건이라 한 곳에)
 from tests.core.run_case_app import NewCase, RunCaseApp
 from tests.core.run_case_fakes import CHECKED_ON, real_config, responses, texts
 
@@ -125,7 +125,7 @@ def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, o
     ]
 
 
-def test_e2e_기록된_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
+def test_e2e_가짜_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
     out, _, recorder = _run(tmp_path, _all_responses())
     assert out.state == "succeeded"
     # 모든 호출이 이 실행 이름으로 기록되고, 실패·상한 초과가 없다
@@ -152,7 +152,7 @@ def test_e2e_F1_모델_답이_두_번_검사에_떨어지면_failed로_끝나고
 # ---- 서버 단계: 올리기 → 실행 → 폴링 → 다시 열기 (요청·응답 모양은 docs/api/README.md) ----
 # 앱은 진짜 라우터·진짜 실행기(RunCaseExecutor)·진짜 run_case다. 바꿔 끼우는 것은
 # 저장소(Postgres 대신 메모리), 실행 방법(백그라운드 스레드 대신 그 자리에서 바로),
-# 모델 전송층(기록된 응답), 실행 입력 글자(texts: #205가 저장된 청구항 판에서 만든다.
+# 모델 전송층(가짜 응답), 실행 입력 글자(texts: #205가 저장된 청구항 판에서 만든다.
 # 여기서는 위 core 단계와 같은 글자를 준다)뿐이다.
 
 
@@ -252,7 +252,18 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
     oa = client.get(f"/oas/{oa_id}").json()
     assert oa["latest_run"]["run_id"] == run_id and oa["latest_run"]["state"] == "succeeded"
     assert results() == first
-    # 모델 호출은 모두 이 실행 이름으로, 기록된 응답만 썼다
+    # #261: F1이 읽은 출원번호가 사건 이름이 되고, 발송번호가 OA에 남고, 사건 자료가 열린다
+    assert case["case_name"] == "1020990000001"
+    assert client.get("/cases").json()[0]["application_number"] == "1020990000001"
+    assert oa["dispatch_number"] == "952099000000001"
+    materials = client.get(f"/cases/{case_id}/materials")
+    assert materials.status_code == 200, materials.text
+    body = materials.json()
+    assert body["run_id"] == run_id
+    assert [d["document_id"] for d in body["result"]["documents"]] == [oa["document_id"]]
+    # 자동 조회(#54) 전이라 인용문헌 본문은 "올려 주세요"로 남는다 (지어내지 않음)
+    assert body["result"]["missing"] and all(m["ask_upload"] for m in body["result"]["missing"])
+    # 모델 호출은 모두 이 실행 이름으로, 가짜 응답만 썼다
     assert server.recorder.records and {r.run_id for r in server.recorder.records} == {run_id}
 
 

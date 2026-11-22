@@ -12,24 +12,32 @@ from fastapi import Depends
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from patent_ai.core.cases.case_fill import PostgresCaseFill
+from patent_ai.core.cases.human_inputs import HumanInputStore
+from patent_ai.core.cases.human_inputs_pg import PostgresHumanInputStore
 from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
 from patent_ai.core.cases.run_inputs import PostgresCaseLookup, PostgresRunInputSource
+from patent_ai.core.cases.selections import SelectionStore
+from patent_ai.core.cases.selections_pg import PostgresSelectionStore
 from patent_ai.core.cases.step_results import StepResultStore
 from patent_ai.core.cases.step_results_pg import PostgresStepResultStore
 from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
+from patent_ai.core.cases.texts_source import PostgresTextsSource
 from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.llm.config import REPO_ROOT
-from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
+from patent_ai.core.llm.limits import CallBudget, RunContext
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import RunExecutor
 from patent_ai.core.runs.launcher import RunLauncher, ThreadLauncher
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
+from patent_ai.core.runs.step_log_pg import PostgresCallRecorder, PostgresStepRecorder
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.runs.store_pg import PostgresRunStatusStore
+from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.settings import get_settings
 
 
@@ -119,6 +127,18 @@ def get_step_result_store() -> StepResultStore:
 
 
 @lru_cache
+def get_selection_store() -> SelectionStore:
+    """사람 방향 선택 기록 (#70). PUT selection이 쓰고 초안 다시 만들기 실행이 읽는다."""
+    return PostgresSelectionStore(sessionmaker(_engine()))
+
+
+@lru_cache
+def get_human_input_store() -> HumanInputStore:
+    """사람이 넣은 번호·"맞아요" 기록 (#70). 번호 PATCH가 쓰고 이어 도는 실행이 읽는다."""
+    return PostgresHumanInputStore(sessionmaker(_engine()))
+
+
+@lru_cache
 def get_case_materials_store() -> CaseMaterialsStore:
     return PostgresCaseMaterialsStore(sessionmaker(_engine()))
 
@@ -135,7 +155,18 @@ ORCHESTRATOR_CONFIG = REPO_ROOT / "config" / "orchestrator.yaml"
 
 def _new_run_context(run_id: str) -> RunContext:
     """실행마다 새 모델 호출 맥락. 상한은 실행 안에서만 센다 (transport None = 진짜 전송층)."""
-    return RunContext(run_id=run_id, budget=CallBudget(), recorder=MemoryRecorder())
+    # 모델 호출을 agent_steps에 남긴다. 기록기는 실행마다 새로 (records가 안 섞이게),
+    # 엔진은 앱 하나를 같이 쓴다
+    return RunContext(
+        run_id=run_id,
+        budget=CallBudget(),
+        recorder=PostgresCallRecorder(sessionmaker(_engine())),
+    )
+
+
+def _latest_oa_result(oa_id: str) -> OAResult | None:
+    saved = get_oa_result_store().latest_visible_oa_result(oa_id)
+    return saved.result if saved else None
 
 
 @lru_cache
@@ -150,12 +181,18 @@ def _run_case_executor() -> RunCaseExecutor:
         registry=get_cancel_registry(),
         oa_results=get_oa_result_store(),
         step_results=get_step_result_store(),
-        # 청구항 판 글자(texts)는 #16 T6 머지 뒤에 넣는다. 그 전에는 F3·F4가 넘긴 이유와 함께 빈다
-        inputs=PostgresRunInputSource(factory),
+        # F1 뒤 사건 출원번호·발송번호와 사건 자료(⑥) (#261)
+        case_fill=PostgresCaseFill(factory, _latest_oa_result),
+        # F3·F4 글자: OA 당시 청구항 판 + 최초 명세서 (#205)
+        # 못 찾으면 F3·F4는 넘긴 이유와 함께 빈다
+        inputs=PostgresRunInputSource(factory, texts=PostgresTextsSource(factory)),
         cases=PostgresCaseLookup(factory),
         config_path=ORCHESTRATOR_CONFIG,
         make_ctx=_new_run_context,
         today=date.today,
+        selections=get_selection_store(),
+        human=get_human_input_store(),
+        step_log=PostgresStepRecorder(factory),  # 지휘 단계 전부를 agent_steps에
     )
 
 

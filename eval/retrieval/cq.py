@@ -38,6 +38,10 @@ def write_cq(report, path: str | Path) -> int:
                 "why": "",
             }
         )
+        if r.status_reason is not None:
+            # 모델 출력을 못 읽은 줄이면 "not_extracted" (못 찾음과 나눠 세려는 표시, 빼지 않음).
+            # 다른 줄에는 키가 없다
+            lines[-1]["status_reason"] = r.status_reason
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lines), encoding="utf-8")

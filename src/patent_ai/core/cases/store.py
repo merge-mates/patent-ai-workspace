@@ -5,7 +5,7 @@
 - `CaseAppStore`: 사건·OA·문서. 실행 줄은 `RunStore`를 불러서 만든다.
 - 올릴 때는 출원번호·발송번호를 모른다: 임시 사건(application_number 비움)
   + OA 이력(doc_number 비움).
-  F1이 읽은 뒤 채우는 것은 지휘 연결 이슈의 일이다.
+  F1이 읽은 뒤 채우는 것은 case_fill.py (#261).
 - #16 `case_repository`와는 `DEFAULT_USER_ID`, `DuplicateDocumentError`만 같이 쓴다.
 - 부르는 방향은 core → db. 이 파일은 DB 연결·표를 쓰지 않고 ID 만들기(`db.ids`)만 가져온다.
   Postgres 구현은 `store_pg.py`.
@@ -24,7 +24,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     DuplicateDocumentError,
 )
 from patent_ai.core.runs.state import UNFINISHED_STATES, RunError, RunState, check_transition
-from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep
+from patent_ai.core.runs.store import RunNotFound, RunStatus, SkippedStep, check_run_kind
 from patent_ai.db.ids import new_id
 
 __all__ = [
@@ -78,6 +78,7 @@ class RunRow:
     state: str
     current_step: str | None
     created_at: datetime
+    kind: str = "full"  # RunKind: full / redo_drafts (#70)
 
 
 @dataclass(frozen=True)
@@ -164,8 +165,8 @@ def case_name_of(application_number: str | None) -> str:
 
 
 class RunStore(Protocol):
-    def create_queued(self, oa_id: str) -> RunRow:
-        """queued 실행 한 줄을 만든다."""
+    def create_queued(self, oa_id: str, kind: str = "full") -> RunRow:
+        """queued 실행 한 줄을 만든다. kind는 RunKind (모르는 값은 ValueError)."""
         ...
 
     def latest_for_oa(self, oa_id: str) -> RunRow | None:
@@ -194,8 +195,10 @@ class CaseAppStore(Protocol):
 
     def get_oa(self, oa_id: str) -> OADetailRow | None: ...
 
-    def create_run(self, oa_id: str) -> RunRow:
-        """있는 OA에 queued 실행을 하나 더 만든다 (POST /oas/{id}/runs). OA 확인은 부르는 쪽."""
+    def create_run(self, oa_id: str, kind: str = "full") -> RunRow:
+        """있는 OA에 queued 실행을 하나 더 만든다 (POST /oas/{id}/runs). OA 확인은 부르는 쪽.
+
+        kind = redo_drafts는 사람 방향 선택 뒤 초안만 다시 만드는 작은 실행 (#70)."""
         ...
 
     def find_document_by_sha256(
@@ -203,6 +206,10 @@ class CaseAppStore(Protocol):
     ) -> ExistingDocument | None:
         """기본 사용자의 모든 사건에서 같은 파일을 찾는다 (DB 제약은 같은 사건 안만 걸려서).
         case_id를 주면 그 사건 안에서만 찾는다."""
+        ...
+
+    def get_document_path(self, document_id: str) -> str | None:
+        """기본 사용자 사건의 문서 원본 경로 (GET /documents/{id}, #262). 없으면 None."""
         ...
 
 
@@ -229,11 +236,14 @@ class InMemoryRunStore:
         self._skipped: dict[str, list[SkippedStep]] = {}  # 실행별 넘긴 단계 (기록 순서)
         self._lock = threading.Lock()
 
-    def create_queued(self, oa_id: str) -> RunRow:
-        row = RunRow(self._id_maker(), oa_id, "queued", None, self._clock())
+    def create_queued(self, oa_id: str, kind: str = "full") -> RunRow:
+        check_run_kind(kind)
+        row = RunRow(self._id_maker(), oa_id, "queued", None, self._clock(), kind)
         with self._lock:
             self._rows.append(row)
-            self._status[row.id] = RunStatus(run_id=row.id, oa_id=oa_id, state=RunState.QUEUED)
+            self._status[row.id] = RunStatus(
+                run_id=row.id, oa_id=oa_id, state=RunState.QUEUED, kind=kind
+            )
         return row
 
     def latest_for_oa(self, oa_id: str) -> RunRow | None:
@@ -325,6 +335,7 @@ class _OA:
     case_id: str
     document_id: str
     created_at: datetime
+    dispatch_number: str | None = None  # 올릴 때는 모른다. F1 뒤 채운다 (#261)
 
 
 @dataclass
@@ -332,6 +343,7 @@ class _Doc:
     id: str
     case_id: str
     sha256: str
+    path: str
 
 
 class InMemoryCaseAppStore:
@@ -356,7 +368,7 @@ class InMemoryCaseAppStore:
         # 같은 사건 안 같은 파일은 거부 (DB의 uq_documents_case_sha256과 같은 규칙)
         if any(d.case_id == case.id and d.sha256 == file.sha256 for d in self._docs):
             raise DuplicateDocumentError("같은 사건에 같은 파일이 이미 있음")
-        doc = _Doc(new_id("doc"), case.id, file.sha256)
+        doc = _Doc(new_id("doc"), case.id, file.sha256, file.path)
         oa = _OA(new_id("oa"), case.id, doc.id, self._clock())
         self._docs.append(doc)
         self._oas[oa.id] = oa
@@ -376,8 +388,8 @@ class InMemoryCaseAppStore:
             raise CaseNotFoundError(case_id)
         return self._add_oa(case, file)
 
-    def create_run(self, oa_id: str) -> RunRow:
-        return self._runs.create_queued(oa_id)
+    def create_run(self, oa_id: str, kind: str = "full") -> RunRow:
+        return self._runs.create_queued(oa_id, kind)
 
     def _refs(self, case: _Case) -> list[OARef]:
         return [OARef(oa_id) for oa_id in case.oa_ids]
@@ -418,9 +430,29 @@ class InMemoryCaseAppStore:
             case_id=case.id,
             case_name=case_name_of(case.application_number),
             document_id=oa.document_id,
-            dispatch_number=None,  # 올릴 때는 모른다
+            dispatch_number=oa.dispatch_number,
             latest_run=self._runs.latest_for_oa(oa.id),
         )
+
+    # --- F1 뒤 번호 채우기 (#261 case_fill.InMemoryCaseFill이 부른다) ---
+
+    def application_number_of(self, case_id: str) -> str | None:
+        return self._cases[case_id].application_number
+
+    def case_with_number(self, application_number: str) -> str | None:
+        return next(
+            (c.id for c in self._cases.values() if c.application_number == application_number),
+            None,
+        )
+
+    def fill_numbers(
+        self, oa_id: str, application_number: str | None, dispatch_number: str | None
+    ) -> None:
+        oa = self._oas[oa_id]
+        if application_number is not None:
+            self._cases[oa.case_id].application_number = application_number
+        if dispatch_number is not None:
+            oa.dispatch_number = dispatch_number
 
     def find_document_by_sha256(
         self, sha256: str, case_id: str | None = None
@@ -430,3 +462,6 @@ class InMemoryCaseAppStore:
                 oa = next((o for o in self._oas.values() if o.document_id == d.id), None)
                 return ExistingDocument(d.case_id, oa.id if oa else None, d.id)
         return None
+
+    def get_document_path(self, document_id: str) -> str | None:
+        return next((d.path for d in self._docs if d.id == document_id), None)

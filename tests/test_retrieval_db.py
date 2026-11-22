@@ -196,3 +196,120 @@ def test_from_url은_설정의_DB로_저장소를_만든다():
 
     repo = PostgresChunkRepository.from_url()
     assert repo.has_index_version("cite", "cite-idx-v999") is False
+
+
+def _extra_law_rows(base):
+    """판례·심결 조각 셋 (선고일 있음 둘, 모름 하나)을 fixture 조각에서 만든다."""
+    na = base.edition.model_copy(update={"status": "not_applicable"})
+    common = {"chunk_kind": "judgment", "edition": na, "index_version": base.index_version}
+    return [
+        base.model_copy(
+            update={
+                **common,
+                "chunk_id": f"{base.index_version}:판례:{name}",
+                "doc_id": f"판례-{name}",
+                "source_kind": kind,
+                "decided_on": decided,
+                "speaker": "court" if decided else None,
+            }
+        )
+        for name, kind, decided in (
+            ("early", "precedent", date(2019, 1, 1)),
+            ("late", "trial", date(2023, 1, 1)),
+            ("null", "precedent", None),
+        )
+    ]
+
+
+def test_자료유형_선고일_거르기와_세기가_메모리와_같다(both, session):
+    mem, _ = both
+    base = mem._tables["law"][0]
+    extra = _extra_law_rows(base)
+    mem._tables["law"].extend(extra)
+    session.add_all([chunk_to_row("law", c) for c in extra])
+    session.flush()
+    pg = PostgresChunkRepository(session)
+    v = base.index_version
+    for kw in (
+        {},
+        {"chunk_kinds": ["article"]},
+        {"chunk_kinds": ["judgment"]},
+        {"source_kinds": ["trial"]},
+        {"source_kinds": ["precedent", "trial"], "decided_on_or_before": date(2020, 1, 1)},
+        {"chunk_kinds": ["article", "judgment"], "decided_on_or_before": date(2023, 1, 1)},
+        {"decided_on_or_before": date(1990, 1, 1)},
+    ):
+        for as_of in (None, date(2024, 1, 1)):
+            assert _ids(pg.chunks("law", v, as_of=as_of, **kw)) == _ids(
+                mem.chunks("law", v, as_of=as_of, **kw)
+            )
+        assert pg.count_chunks("law", v, **kw) == mem.count_chunks("law", v, **kw)
+        assert pg.count_unverified_edition("law", v, **kw) == mem.count_unverified_edition(
+            "law", v, **kw
+        )
+    for kw in ({}, {"chunk_kinds": ["judgment"]}, {"source_kinds": ["trial"]}):
+        assert pg.count_unknown_date("law", v, **kw) == mem.count_unknown_date("law", v, **kw)
+    assert pg.count_unknown_date("law", v) == 1
+    # 인용문헌 표는 선고일·자료 유형 칸이 없다
+    cite_v = mem._tables["cite"][0].index_version
+    assert pg.count_unknown_date("cite", cite_v) == 0
+    day = date(2020, 1, 1)
+    assert pg.count_chunks("cite", cite_v, decided_on_or_before=day) == (
+        mem.count_chunks("cite", cite_v, decided_on_or_before=day)
+    )
+
+
+def test_자료유형_빈_목록은_오류(both):
+    _, pg = both
+    for call in (pg.chunks, pg.count_chunks, pg.count_unverified_edition, pg.count_unknown_date):
+        with pytest.raises(ValueError):
+            call("law", "law-idx-v1", chunk_kinds=[])
+        with pytest.raises(ValueError):
+            call("law", "law-idx-v1", source_kinds=[])
+
+
+def test_가장_이른_시행일이_메모리와_같다(both, session):
+    mem, pg = both
+    base = mem._tables["law"][0]
+    v = base.index_version
+    extra = _extra_law_rows(base)  # 판례·심결: not_applicable
+    mem._tables["law"].extend(extra)
+    session.add_all([chunk_to_row("law", c) for c in extra])
+    session.flush()
+    for kinds, src in (
+        (["article"], None),
+        (["judgment"], None),
+        (["article", "judgment"], ["trial"]),
+        (["guideline"], None),
+    ):
+        assert pg.earliest_effective_from("law", v, kinds, src) == mem.earliest_effective_from(
+            "law", v, kinds, src
+        )
+    assert pg.earliest_effective_from("law", v, ["judgment"]) is None
+    assert pg.earliest_effective_from("cite", "cite-idx-v1", ["body"]) is None
+    with pytest.raises(ValueError):
+        pg.earliest_effective_from("law", v, [])
+
+
+def test_같은_조문_두_판이_replace_index로_넣어도_둘_다_남는다(session):
+    # #24 합격 기준 3: 같은 위치의 두 판(시행 기간 다름)이 DB에도 둘 다 남는다
+    from patent_ai.retrieval.law_index_db import replace_index
+    from patent_ai.retrieval.schemas import Chunk
+
+    def one(frm, to):
+        return Chunk(
+            chunk_id=f"law-idx-v3:특허법:제29조제2항:{frm}",
+            index_version="law-idx-v3",
+            doc_id="특허법",
+            chunk_kind="article",
+            location={"kind": "article", "label": "제29조제2항"},
+            edition={"status": "confirmed", "effective_from": frm, "effective_to": to},
+            text="가짜",
+        )
+
+    rows = [one("2015-01-01", "2019-12-31"), one("2020-01-01", None)]
+    assert replace_index(session, rows, "law", "law-idx-v3") == 2
+    pg = PostgresChunkRepository(session)
+    assert len(pg.chunks("law", "law-idx-v3")) == 2
+    assert len(pg.chunks("law", "law-idx-v3", as_of=date(2016, 1, 1))) == 1
+    assert len(pg.chunks("law", "law-idx-v3", as_of=date(2021, 1, 1))) == 1

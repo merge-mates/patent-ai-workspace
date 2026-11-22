@@ -28,6 +28,15 @@ Resources = Callable[[], tuple[Searcher, ChunkRepository]]
 
 
 class CompareStrategy(Protocol):
+    """대비 방식이 지킬 약속 (run_f3가 믿고 쓴다).
+
+    묶음(판단 단위)마다 모델 호출 예외(`BUNDLE_ERRORS`)를 잡아 그 묶음만 보류하고,
+    `CompareOutput.units_tried`(모델 호출까지 간 묶음 수, 부르기 전에 보류된 묶음은 뺌)와
+    `call_errors`(호출 실패의 원래 예외, 호출 상한은 제외)를 채운다.
+    그래야 run_f3가 "모든 묶음 실패"를 가르고 원래 예외를 올린다.
+    `compare_units`를 쓰면 이 약속이 지켜진다.
+    """
+
     def __call__(
         self,
         units: list[JudgmentUnit],

@@ -17,7 +17,6 @@ const skipCodeLabel: Record<string, string> = {
 
 // 보류 이유 괄호 안 waiting_for 값 (core/agents/orchestrator.py, F5 design 6절 표)
 const waitingForCodeLabel: Record<string, string> = {
-  direction_selection: '대응 방향 고르기',
   application_number: '출원번호 입력',
   dispatch_number: '발송번호 확인',
 }

@@ -12,10 +12,18 @@ EXAMPLE = {
     "corpus": "cite",
     "index_version": "cite-idx-v1",
     "mode": "bm25",
-    "scope": {"doc_ids": ["KR1020190012345A"], "as_of": None, "k": 5},
+    "scope": {
+        "doc_ids": ["KR1020190012345A"],
+        "as_of": None,
+        "k": 5,
+        "chunk_kinds": None,
+        "source_kinds": None,
+        "decided_on_or_before": None,
+    },
     "status": None,
     "status_reason": None,
     "skipped_unverified_edition": 0,
+    "skipped_unknown_date": 0,
     "hits": [
         {
             "chunk_id": "cite-idx-v1:KR1020190012345A:p0023",
@@ -37,6 +45,10 @@ EXAMPLE = {
                 "label": None,
             },
             "text": "…",
+            "source_kind": None,
+            "decided_on": None,
+            "speaker": None,
+            "attrs": None,
             "score": 3.2,
             "rank": 1,
         }
@@ -134,3 +146,43 @@ def test_Chunk에서_SearchHit으로_변환이_읽힌다():
     assert chunk.embedding is None
     hit = SearchHit(**chunk.model_dump(), score=3.2, rank=1)
     assert hit.chunk_id == chunk.chunk_id and hit.rank == 1
+
+
+# ---- 새 칸 (이슈 #24 24a) ----
+def _chunk_json(**over):
+    d = {
+        "chunk_id": "law-idx-v3:판례_1:요지",
+        "index_version": "law-idx-v3",
+        "doc_id": "판례_1",
+        "chunk_kind": "judgment_summary",
+        "location": {"kind": "paragraph", "label": "요지"},
+        "edition": {"status": "not_applicable"},
+        "text": "가짜 요지",
+    }
+    d.update(over)
+    return d
+
+
+def test_judgment_summary와_새_칸_넷을_읽는다():
+    c = Chunk.model_validate(
+        _chunk_json(
+            source_kind="precedent",
+            decided_on="2021-05-13",
+            speaker="court",
+            attrs={"court": "대법원"},
+        )
+    )
+    assert c.chunk_kind == "judgment_summary"
+    assert (c.source_kind, c.speaker, c.attrs) == ("precedent", "court", {"court": "대법원"})
+    assert c.decided_on.isoformat() == "2021-05-13"
+
+
+def test_새_칸은_모두_선택이라_옛_JSON도_읽힌다():
+    c = Chunk.model_validate(_chunk_json(chunk_kind="article", edition={"status": "confirmed"}))
+    assert (c.source_kind, c.decided_on, c.speaker, c.attrs) == (None, None, None, None)
+
+
+@pytest.mark.parametrize("field,bad", [("source_kind", "statut"), ("speaker", "judge")])
+def test_새_칸이_정해진_값_밖이면_오류(field, bad):
+    with pytest.raises(ValidationError):
+        Chunk.model_validate(_chunk_json(**{field: bad}))

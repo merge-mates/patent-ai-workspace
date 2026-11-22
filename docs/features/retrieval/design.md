@@ -43,7 +43,7 @@ flowchart LR
    - 하나라도 걸리면 `RetrievalEvalError`로 끝나고 종료 코드는 1이다.
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다. 정답 변환(`law_gold.py`)은 사람이 고른 판의 시행 시작일이 발송일 뒤면 그 항목을 `unverified`로 두고 경고한다 (#129). 그래서 이 경우는 `excluded_edition_unverified`로 빠지고 경고에 이유가 남는다.
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
-   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_body_missing`에 센다.
+   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_body_missing`에 센다. whole_doc_llm(#248)은 모델 출력을 두 번 다 못 읽으면 `unverified(not_extracted)`를 돌려주는데, 이 줄은 빼지 않고 못 맞힌 줄로 n에 남긴다 (본문 미확보와 다르다).
    - 기준일 범위 내 판본 없음: 문헌 조각은 있는데 `as_of`로 거르고 나면 검색 범위 조각이 0개인 줄(N = 0)은 무작위 기준선을 정할 수 없으므로 채점 전체를 멈추지 않고 그 줄만 빼고 `excluded_no_edition_in_scope`에 센다 (11/19 결정). 법령 판본 모름 조각만 있거나, OA 발송일이 색인의 가장 이른 법령 판본보다 앞서는 경우다.
    - 범위 안에 정답 조각 없음 (#129): 범위 조각은 있는데 맞는 조각이 0개(Mᵢ = 0)인 정답 항목은 검색기가 어떻게 해도 못 맞힌다. 법령은 정답 판이 그날 범위에 없는 경우(받은 판 사이 빠진 개정, 판 하나가 통째로 없음), 인용문헌은 공보 조각은 있는데 정답 문단·도면이 어느 조각에도 없는 경우(청킹·정답 문제)다. 데이터 문제가 "검색이 못 찾은 질문"처럼 Hit·Recall을 내리고 CQ 후보에 섞이지 않게 한다.
      - 항목이 모두 Mᵢ = 0이면 줄째 빼고 `excluded_gold_not_in_scope`에 센다.
@@ -56,7 +56,7 @@ flowchart LR
 8. 결과 저장: `<scores 폴더>/scores.json`(모은 숫자, 기본 `experiments/<실험>/`), `<cq 폴더>/cq_candidates.jsonl`(CQ 후보, 기본 `work/retrieval/<실험>/`).
 - 실패하면: 실행 전 검사가 막는다. 줄 하나의 검색이 예외를 내면 그 줄에서 멈추고 실패로 끝난다 (조용히 건너뛰지 않음).
 - 메시지 규칙 (requirements "실패할 때"): 터미널 실패·경고 메시지에는 `row_id`와 건수를 쓸 수 있다. 질의·청구항·정답 원문 글자는 쓰지 않는다. git에 들어가는 `scores.json`에는 `row_id`도 쓰지 않는다.
-- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다 (정답 조각이 범위에 있을 때만. 없으면 위 4번 범위 밖 정답 규칙). 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
+- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다 (정답 조각이 범위에 있을 때만. 없으면 위 4번 범위 밖 정답 규칙). 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다. whole_doc_llm(#248)의 `not_extracted` 줄도 Hit 0으로 세고 CQ 후보에 남기며, CQ 후보와 줄별 결과(`--rows-out`)에 `status_reason: "not_extracted"`를 붙여 못 찾음과 나눠 센다.
 - 느리면: 가짜 구현만 있는 이 이슈에는 해당 없음. 진짜 구현의 상한은 #66·#67 설정에 둔다.
 
 ### 2-1. 흐름 방식
@@ -76,10 +76,11 @@ flowchart LR
   "corpus": "cite",
   "index_version": "cite-idx-v1",
   "mode": "bm25",
-  "scope": {"doc_ids": ["KR20190012345A"], "as_of": null, "k": 5},
+  "scope": {"doc_ids": ["KR20190012345A"], "as_of": null, "k": 5, "chunk_kinds": null, "source_kinds": null, "decided_on_or_before": null},
   "status": null,
   "status_reason": null,
   "skipped_unverified_edition": 0,
+  "skipped_unknown_date": 0,
   "hits": [
     {
       "chunk_id": "cite-idx-v1:KR20190012345A:p0023",
@@ -89,6 +90,10 @@ flowchart LR
       "location": {"kind": "paragraph", "start": 23, "end": 23, "label": "[0023]", "figures": [], "claims": []},
       "edition": {"status": "not_applicable", "effective_from": null, "effective_to": null, "label": null},
       "text": "…",
+      "source_kind": null,
+      "decided_on": null,
+      "speaker": null,
+      "attrs": null,
       "score": 3.2,
       "rank": 1
     }
@@ -96,8 +101,8 @@ flowchart LR
 }
 ```
 - `SearchHit` = 조각 `Chunk`의 칸(5-1 표에서 `embedding`·`created_at` 뺀 것) + `score` + `rank`다. `Chunk`도 `retrieval/schemas.py`에 둔다. 저장소는 `Chunk`를 돌려주고 `Matcher`는 `Chunk`를 받으므로(7-1), 검색 결과와 무작위 기준선 계산이 같은 판정을 쓴다.
-- `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "body_missing"`, 거른 문헌 조각이 0개). 이름은 결과 공통 칸 `core/schemas/common.py`(#103)의 `body_missing`과 같다.
-- 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `edition.status: not_applicable`(인용문헌) 하나다 (`status_reason: body_missing`은 #103 공통 칸 이름을 그대로 씀).
+- `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "body_missing"`, 거른 문헌 조각이 0개. `"not_extracted"`, 문헌 통째 LLM의 출력 검사 2회 실패 등, #248). 이름은 결과 공통 칸 `core/schemas/common.py`(#103)의 `body_missing`과 같다.
+- 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `edition.status: not_applicable`(인용문헌·판례·심결: 판본이 아니라 선고일로 다루는 자료) 하나다 (`status_reason: body_missing`은 #103 공통 칸 이름을 그대로 씀).
 - 다시 확인 필요: 해당 없음 (검색은 저장하지 않는 도구 결과).
 - 인터페이스 변경: 있음 (새로 생김). F2·F3 설계가 이 모양을 받는다. 스키마는 `src/patent_ai/retrieval/schemas.py`에 둔다. `core/schemas/`에 두지 않는 이유는 부르는 방향이 `core → retrieval`이라 `retrieval`이 `core`를 import하면 안 되기 때문이다 ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더). data-model 4절 표에 "도구 결과" 줄로 이름을 더하는 것은 스키마 코드를 만드는 구현 task에서 한다.
 
@@ -121,22 +126,31 @@ flowchart LR
 | `chunk_id` | text PK | 내용으로 정함 `<index_version>:<doc_id>:<위치 키>`. 같은 설정으로 다시 만들면 같은 ID (#66·#67 "두 번 만들면 같다") |
 | `index_version` | text not null | `<말뭉치>-idx-v<n>`. 정규식 `^(law|cite)-idx-v[0-9]+$`, 말뭉치와 표가 맞아야 함 (CHECK) |
 | `doc_id` | text not null | 법령: 법령 이름·심사기준·판례 사건번호 등 (#66이 값 규칙), 인용문헌: 공보 번호 |
-| `chunk_kind` | text not null | `body` 본문 문단 / `claim` 청구항 / `abstract` 요약 / `figure_desc` 도면의 간단한 설명 / `article` 조문 / `guideline` 심사기준 문단 / `judgment` 판결 이유. 값을 더하면 이 문서를 고치는 PR |
+| `chunk_kind` | text not null | `body` 본문 문단 / `claim` 청구항 / `abstract` 요약 / `figure_desc` 도면의 간단한 설명 / `article` 조문 / `guideline` 심사기준 문단 / `judgment` 판결 이유 / `judgment_summary` 판례 요지(판시사항·판결요지). 값을 더하면 이 문서를 고치는 PR |
 | `loc_kind` | text not null | `paragraph` / `column_line` / `article` / `page` / `figure` / `claim` / `abstract` |
 | `loc_start`, `loc_end` | integer null | 정렬 키. 문단 = 번호, 칼럼:줄 = 칼럼 × 10000 + 줄, 쪽 = 쪽 번호, 조문 = #66이 정함 (그 전엔 null) |
 | `loc_figures`, `loc_claims` | integer[] not null default `{}` | 그 조각이 담은 도면 번호·청구항 번호 |
 | `loc_label` | text not null | 원문 표기 그대로 (`[0023]`, `3:10-25`, `제29조 제2항`, `4206쪽`) |
-| `edition_status` | text not null | `confirmed` / `unverified` / `not_applicable`(인용문헌). 법령 판본을 모르면 `unverified`, 빈칸 안 됨 |
+| `edition_status` | text not null | `confirmed` / `unverified` / `not_applicable`(인용문헌·판례·심결). 법령 판본을 모르면 `unverified`, 빈칸 안 됨. 법령 표의 `not_applicable`은 `chunk_kind`가 `judgment`·`judgment_summary`일 때만 |
 | `edition_effective_from`, `edition_effective_to` | date null | 법령 판본 시행 기간 |
 | `edition_label` | text null | 예 `특허청 예규 제113호` |
 | `text` | text not null | 본문 |
 | `embedding` | `vector` (길이 안 정함) null | 색인 판마다 모델이 달라도 담음. 인덱스 없음 ([가정] 5번) |
 | `created_at` | timestamptz not null | |
 
+법령 표(`law_chunks`)에만 있는 칸 넷 (인용문헌 표는 그대로, `Chunk`에는 선택 칸이고 인용문헌 조각은 모두 비운다. #24):
+
+| 칸 | 타입 | 뜻 |
+|---|---|---|
+| `source_kind` | text not null | `statute` 조문 / `guideline` 심사기준 / `precedent` 판례 / `trial` 심결 (CHECK). 옛 판(v1·v2) 행은 마이그레이션이 `statute`로 채움 |
+| `decided_on` | date null | 판례·심결 선고(결정)일. `source_kind`가 `precedent`·`trial`일 때만 값이 있을 수 있다 |
+| `speaker` | text null | `court` 법원 / `party` 당사자 / `unknown` (CHECK). 판례·심결일 때만 |
+| `attrs` | jsonb null | 법원·사건명·심결 결과 같은 보이기용 칸. 거르기에는 안 씀 |
+
 - 인덱스: `(index_version, doc_id)`, 법령 표는 `(index_version, edition_effective_from)`.
 - 마이그레이션은 `CREATE EXTENSION IF NOT EXISTS vector`를 먼저 한다. 그래서 DB 첫 생성 때 확장을 만들던 `scripts/db/init.sql`은 지운다 (#79 때 정한 대로).
 - 폴더: ORM 모델은 `src/patent_ai/db/models/chunks.py`, 인터페이스 `ChunkRepository`·`InMemoryChunkRepository`·`PostgresChunkRepository`는 `src/patent_ai/retrieval/repository.py`. 부르는 방향에 `retrieval → db`를 더한다. db는 retrieval을 import하지 않는다. ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더 절에 같은 문장)
-- 저장소 인터페이스 `ChunkRepository`(조각 읽기·셈)를 두고, 테스트는 `InMemoryChunkRepository`(fixture JSONL을 읽음), 실제는 `PostgresChunkRepository`(기준 7, 있으면 좋음)다. 둘 다 같은 거르기(색인 판·문헌·기준일)를 한다.
+- 저장소 인터페이스 `ChunkRepository`(조각 읽기·셈)를 두고, 테스트는 `InMemoryChunkRepository`(fixture JSONL을 읽음), 실제는 `PostgresChunkRepository`(기준 7, 있으면 좋음)다. 둘 다 같은 거르기(색인 판·문헌·기준일·자료 유형·선고일)를 한다.
 
 ### 5-2. 덤프 ([db/CLAUDE.md](../../../src/patent_ai/db/CLAUDE.md) 검색 색인 절)
 - `make index-dump CORPUS=law` → `pg_dump -Fc -t law_chunks` → `data/index/law-idx-<그 표의 가장 높은 색인 판>.dump`. 그 표의 모든 색인 판이 들어간다.
@@ -154,13 +168,23 @@ flowchart LR
 ```python
 class Searcher(Protocol):
     def search(self, query: str, corpus: Corpus, mode: Mode, k: int,
-               doc_ids: list[str] | None = None, as_of: date | None = None) -> SearchResult: ...
+               doc_ids: list[str] | None = None, as_of: date | None = None, *,
+               chunk_kinds: list[ChunkKind] | None = None,
+               source_kinds: list[SourceKind] | None = None,
+               decided_on_or_before: date | None = None) -> SearchResult: ...
 
 def get_searcher(impl: str, repo: ChunkRepository, settings: dict, embed: Callable[[str], list[float]] | None = None) -> Searcher  # 없는 이름 → UnknownImplError(이름 규칙 + 쓸 수 있는 이름 목록)
 ```
 - `get_searcher`는 등록된 구현을 공통 검사 래퍼 `CheckedSearcher`로 감싸 돌려준다. 어느 구현이든 아래 검사를 래퍼가 하므로 #66·#67은 구현에서 다시 하지 않아도 된다.
   - 부르기 전: `k ≥ 1`(아니면 `ValueError`), `corpus`·`mode` 값(아니면 `ValueError`), `settings["index_version"]`이 그 말뭉치에 없으면 `UnknownIndexVersionError`.
   - 받은 뒤: `result.corpus`·`result.mode`·`result.scope.k`가 요청과 같음(아니면 `SearchContractViolationError`), 결과 조각 수 ≤ k, 모든 `hit.index_version == settings["index_version"]`(아니면 `IndexVersionMismatchError`), 점수 내림차순·같은 점수는 `chunk_id` 오름차순.
+- 거르기 인자 셋(키워드 전용, 기본 None = 안 걺)은 점수 매기기 전에 범위를 줄인다. 저장소의 `chunks`·`count_chunks`·`count_unverified_edition`이 같은 셋을 받고, `count_unknown_date(corpus, index_version, doc_ids, chunk_kinds, source_kinds)`가 있다. `body_missing` 판단과 `skipped_*` 건수는 거른 범위로 센다 (`chunk_kinds=["guideline"]`이면 조문의 판본 모름 조각은 안 센다).
+  - `chunk_kinds`·`source_kinds`: 그 값인 조각만. 빈 목록 `[]`·모르는 값은 `ValueError`, `corpus="cite"`에 `source_kinds`·`decided_on_or_before`를 주면 `ValueError` (래퍼가 검사).
+  - `decided_on_or_before`: 판례·심결(`source_kind` `precedent`·`trial`)은 `decided_on ≤ 날짜`(그날 포함)만 남긴다. `decided_on`이 null인 판례·심결은 빼고 `skipped_unknown_date`에 센다. 조문·심사기준은 그냥 통과한다. 안 걸면 `skipped_unknown_date`는 0이다.
+  - 상태는 그대로다 (거르기로는 `StatusReason`을 안 늘림. `not_extracted`는 #248 문헌 통째 LLM의 출력 검사 실패용): 자료 유형·문헌으로 거른 조각이 0개면 `unverified(body_missing)`, 그 뒤 점수 대상이 0개면 `not_found_in_scope` + `skipped_unverified_edition`·`skipped_unknown_date`. 0개 + 건수 > 0을 `edition_unknown`으로 바꾸는 것은 F2 도구 몫이다. hybrid는 두 쪽 건수 중 큰 값을 쓴다.
+- 저장소(`ChunkRepository`)가 거르기 인자와 함께 주는 메서드:
+  - `count_unknown_date(corpus, index_version, doc_ids=None, chunk_kinds=None, source_kinds=None) -> int`: 선고일이 null인 판례·심결 조각 수 (날짜 거르기에서 빠질 조각).
+  - `earliest_effective_from(corpus, index_version, chunk_kinds, source_kinds=None) -> date | None`: 그 유형 조각 중 가장 이른 시행 시작일. 판본이 `confirmed`이고 시작일이 있는 조각만 보고, 없으면(유형 조각 0개, 판본 모름만, 판례·심결) `None`. 기준일이 이보다 앞서면 F2 도구가 `edition_unknown`을 낼 재료다.
 - 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.
@@ -225,10 +249,10 @@ noise_scope: retrieval/cite_noise_b.jsonl  # 인용문헌만. 둘째 점수(#178
 - `noise_scope` (#178 둘째 점수): 줄마다 검색 범위 doc_id 목록 파일 `{"row_id", "scope_doc_ids"}` (git 밖, `gold`와 같은 기준). 있으면 `search`의 `doc_ids`와 N을 그 범위로 바꾸고, 맞음 판정은 그대로 정답 줄 `doc_ids` 안만 본다 (노이즈 조각은 늘 틀림). 범위에 줄이 없거나 정답 문헌이 빠지면 멈춘다. 정답 문헌 조각이 0개면 노이즈가 있어도 `excluded_body_missing`. `metrics`에 `doc_hit@k`(상위 k'에 정답 문헌 조각이 있나)와 `random_doc_hit@k`(정답 문헌 조각 수로 위 무작위 Hit 식)를 더하고, `scores.json`에 `scope: {kind: "noise", file, sha256, docs_per_row_mean}`을 남긴다. 범위 파일은 `eval/retrieval/noise_scope.py`가 풀 표 `cite_pool.yaml`에서 만든다. 풀 표 문헌에 `only_oas: [발송번호…]`가 있으면(C안) 그 OA의 줄에만 후보로 넣는다. C안 문헌은 `scripts/fetch_noise_c_candidates.py`(KIPRIS Plus 공보 검색, 응답은 `work/kipris_c/`)로 받고 `eval/retrieval/noise_c.py`가 걸러 새 풀 표 `cite_pool_bc.yaml`에 더한다 (원래 풀 표는 덮지 않음) (규칙은 [search-gold.md](../../evaluation/search-gold.md) 5절).
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
-  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `excluded_gold_items_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
+  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `excluded_gold_items_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`. whole_doc_llm(#248)은 여기에 `llm_output_invalid`(출력 검사에 떨어진 시도 수)와 `not_extracted`(출력을 못 읽은 줄 수)를 더한다.
   - 위 표에 더하는 칸: `corpus`, `index_version`, `index_fingerprint`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
   - `index_fingerprint`: 그 색인 판 조각 전체의 `{"chunks": 조각 수, "chunk_ids_sha256": …}`. `make index-dump`의 `.fingerprint.json`과 같은 계산이다 (5-2). **지문이 다른 실험끼리는 점수를 비교하지 않는다** (색인 판 이름이 같아도 내용이 다르다).
-  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
+  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0. whole_doc_llm(#248)은 호출 기록의 합으로 `external_calls`(캐시 적중 제외 실제 호출)·`input_tokens`·`output_tokens`·`usd`와 `model_calls`·`cache_hits`를 채우고, 모르는 값이 있으면 0이 아니라 null로 둔다.
   - 줄 ID·질의·정답 위치는 넣지 않는다.
 - **E (정답 파일 버전 기록)**: `scores.json`의 `goldset_version`(`data/goldsets/VERSION` 정수)과 `gold_sha256`(정답 파일 해시)으로 남긴다. CQ 후보 줄마다 같은 두 값을 넣는다. 버전이 같아도 해시가 다르면 다른 정답으로 보고, CQ 모으기는 멈춘다.
 

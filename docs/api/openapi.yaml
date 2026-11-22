@@ -79,6 +79,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Patch Case
+      operationId: patch_case_cases__case_id__patch
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationNumberIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberEnteredOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /cases/{case_id}/materials:
     get:
       summary: Get Case Materials
@@ -157,6 +186,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Patch Oa
+      operationId: patch_oa_oas__oa_id__patch
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispatchNumberIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberEnteredOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /oas/{oa_id}/oa-result:
     get:
       summary: Get Oa Result
@@ -175,6 +233,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAResultOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /documents/{document_id}:
+    get:
+      summary: Get Document
+      operationId: get_document_documents__document_id__get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageText'
         '422':
           description: Validation Error
           content:
@@ -427,6 +509,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /directions/{unit_id}/selection:
+    put:
+      summary: Put Selection
+      operationId: put_selection_directions__unit_id__selection_put
+      parameters:
+      - name: unit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectionOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/oa-result/confirmation:
+    put:
+      summary: Put Confirmation
+      operationId: put_confirmation_oas__oa_id__oa_result_confirmation_put
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: Get Confirmation
+      operationId: get_confirmation_oas__oa_id__oa_result_confirmation_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AddedSource:
@@ -514,6 +673,15 @@ components:
       - initial
       - final
       title: AmendmentLimit
+    ApplicationNumberIn:
+      properties:
+        application_number:
+          type: string
+          title: Application Number
+      type: object
+      required:
+      - application_number
+      title: ApplicationNumberIn
     AsOfSource:
       type: string
       enum:
@@ -1309,6 +1477,26 @@ components:
       - medium
       - low
       title: Confidence
+    ConfirmationOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - confirmed_at
+      title: ConfirmationOut
     CreatedCase:
       properties:
         case_id:
@@ -1469,17 +1657,26 @@ components:
     DirectionSelection:
       properties:
         candidate_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Candidate Id
+        written_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Written Direction
         origin:
           $ref: '#/components/schemas/Origin'
       additionalProperties: false
       type: object
       required:
-      - candidate_id
       - origin
       title: DirectionSelection
-      description: 묶음에서 고른 후보. AI 기본값과 사람 선택을 origin으로 구분한다.
+      description: '묶음에서 고른 방향. 후보 id 또는 사람이 쓴 글 중 정확히 하나.
+
+
+        AI 기본값·사람 선택·사람이 직접 쓴 글을 origin으로 구분한다.'
     DirectionsOut:
       properties:
         oa_id:
@@ -1511,6 +1708,15 @@ components:
       - result
       - rank_notice
       title: DirectionsOut
+    DispatchNumberIn:
+      properties:
+        dispatch_number:
+          type: string
+          title: Dispatch Number
+      type: object
+      required:
+      - dispatch_number
+      title: DispatchNumberIn
     Drafts:
       properties:
         status:
@@ -2305,6 +2511,23 @@ components:
       - substantially_same_candidate
       - different
       title: NoveltyVerdict
+    NumberEnteredOut:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - case_id
+      - oa_id
+      - run_id
+      title: NumberEnteredOut
     OADetail:
       properties:
         oa_id:
@@ -2486,7 +2709,56 @@ components:
       - ai_default
       - human_selected
       - human_edited
+      - human_written
       title: Origin
+    Page:
+      properties:
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+        text:
+          type: string
+          title: Text
+        status:
+          $ref: '#/components/schemas/Status'
+        tables:
+          items:
+            items:
+              items:
+                type: string
+              type: array
+            type: array
+          type: array
+          title: Tables
+      additionalProperties: false
+      type: object
+      required:
+      - page
+      - text
+      - status
+      title: Page
+      description: 쪽 하나의 글자와 표. 쪽 번호는 1부터. status는 그 쪽에 글자가 있는지.
+    PageText:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        pages:
+          items:
+            $ref: '#/components/schemas/Page'
+          type: array
+          title: Pages
+        status:
+          $ref: '#/components/schemas/Status'
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - pages
+      - status
+      title: PageText
+      description: 문서 한 건의 쪽별 글자와 문서 전체 status.
     ParagraphSource:
       type: string
       enum:
@@ -2786,6 +3058,37 @@ components:
       - hits
       title: SearchLogEntry
       description: 자료 종류 하나를 어떻게 찾았나 (못 찾음 ≠ 없음을 가르는 기록).
+    SelectionIn:
+      properties:
+        candidate_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Candidate Id
+        written_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Written Direction
+      type: object
+      title: SelectionIn
+      description: '둘 중 정확히 하나: 후보 id 또는 사람이 직접 쓴 방향 글.'
+    SelectionOut:
+      properties:
+        unit_id:
+          type: string
+          title: Unit Id
+        run_id:
+          type: string
+          title: Run Id
+        selection:
+          $ref: '#/components/schemas/DirectionSelection'
+      type: object
+      required:
+      - unit_id
+      - run_id
+      - selection
+      title: SelectionOut
     SkippedStepOut:
       properties:
         step:

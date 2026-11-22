@@ -79,7 +79,7 @@ export function WorkbenchPage() {
   }
   const r = oaResult.result
   const todos = directTodos(data)
-  const reviewCount = reviewItems?.length ?? materials?.review_items_count ?? null
+  const reviewCount = reviewItems?.length ?? null
 
   return (
     <>
@@ -145,7 +145,7 @@ export function WorkbenchPage() {
             {showReview ? '접기' : '자세히'}
           </Button>
         </div>
-        {showReview && <ReviewPanel items={reviewItems} count={reviewCount} />}
+        {showReview && <ReviewPanel items={reviewItems} r={r} materials={materials} caseId={oa.case_id} />}
       </div>
 
       {/* 다음 단계: 대비 결과가 없으면 열지 못한다 (실행 중이면 끝나면 열린다고 알림) */}

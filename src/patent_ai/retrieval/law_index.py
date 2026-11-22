@@ -118,6 +118,7 @@ def chunk_law(data: dict, doc_id: str, edition: Edition, index_version: str) -> 
                 location=Location(kind="article", start=loc, end=loc, label=_label(jo, gaji, hang)),
                 edition=edition,
                 text=text,
+                source_kind="statute",
             )
         )
 

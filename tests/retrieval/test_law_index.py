@@ -256,3 +256,13 @@ def test_조각이_0개면_경고하고_멈춘다(tmp_path, caplog):
     with pytest.raises(LawIndexError):
         build_index(_raw_dir(tmp_path), ["없는법"], V)
     assert "0개" in caplog.text
+
+
+def test_조문_조각은_source_kind가_statute다():
+    from patent_ai.retrieval.law_index import chunk_law
+    from patent_ai.retrieval.schemas import Edition
+
+    unit = {"조문여부": "조문", "조문번호": "1", "조문내용": "제1조(목적) 가짜"}
+    data = {"법령": {"조문": {"조문단위": [unit]}}}
+    chunks = chunk_law(data, "가상법", Edition(status="unverified"), "law-idx-v3")
+    assert chunks and {c.source_kind for c in chunks} == {"statute"}

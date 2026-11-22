@@ -74,9 +74,10 @@ const httpApi: typeof mockApi = {
   getCase: (caseId) => getJson<CaseDetail>(`/cases/${caseId}`),
   getOA: (oaId) => getJson<OADetail>(`/oas/${oaId}`),
   getOAResult: (oaId) => getJson<OAResultResponse>(`/oas/${oaId}/oa-result`),
-  getMaterials: (caseId) => getJson<CaseMaterials>(`/cases/${caseId}/materials`),
-  // API v0에는 검토할 사항 목록 엔드포인트가 없다 (개수만 materials.review_items_count).
-  // 목록을 지어내지 않고 알린다. 화면은 개수만 보인다.
+  // 서버 응답은 {case_id, run_id, result} 봉투다 (src/patent_ai/api/cases.py CaseMaterialsOut). 결과 스키마 ⑥은 result에 있다
+  getMaterials: async (caseId) =>
+    (await getJson<{ case_id: string; run_id: string | null; result: CaseMaterials }>(`/cases/${caseId}/materials`)).result,
+  // 검토할 사항 목록만 따로 주는 엔드포인트는 없다 (목록은 사건 자료 ⑥의 review_items에 있다). 목록을 지어내지 않고 알린다
   getReviewItems: async (): Promise<ReviewItem[]> => {
     throw new ApiError('not_in_api_v0', '검토할 사항 목록은 API v0에 아직 없음', 0)
   },
@@ -125,9 +126,11 @@ const httpApi: typeof mockApi = {
   // POST /oas/{oa_id}/runs: 다시 돌리기. 명세에는 "다시 확인 필요가 붙은 판단 단위만" 고르는 말이 있으나
   // 요청 필드가 없어 빈 본문으로 보낸다(전체 실행). 필드가 정해지면 인자를 더한다
   rerunOA: (oaId) => postJson<CreatedRun>(`/oas/${encodeURIComponent(oaId)}/runs`, {}),
-  // 출원번호 입력 (F5 design 6절 "PATCH /cases/{id}"): API v0·서버에 아직 없어 지어내지 않고 알린다
-  setApplicationNumber: async () => {
-    throw new ApiError('not_in_api_v0', '출원번호 저장(PATCH /cases/{id})은 API v0에 아직 없음', 0)
+  // 출원번호 입력 (PATCH /cases/{id}, #70): 기다리던 같은 실행이 이어 돈다 (화면은 그 run_id를 다시 받음)
+  setApplicationNumber: async (caseId, applicationNumber) => {
+    await sendJson<unknown>('PATCH', `/cases/${encodeURIComponent(caseId)}`, {
+      application_number: applicationNumber,
+    })
   },
   // GET /legal-chats/{id}: 대화 보기 (응답 모양 미정)
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),

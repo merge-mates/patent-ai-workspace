@@ -33,7 +33,7 @@ data/goldsets/
 ## 3. 평가 세트 목록 (어떤 OA를 쓰나)
 - 한 줄 = OA 한 통 (출원번호 + 발송번호). tune / report / 대기열 / 실패 사례 칸과 그룹(진보성만 / 명확성만 / 섞임(신규성 포함) / 섞임(신규성 없음) / 지원 안 하는 이유 섞임)을 적는다 (product.md 6.1절).
 - 목록은 출원번호가 있어서 git에 올리지 않는다. 팀 드라이브 한 곳에 두고, 판을 바꾸면 파일 이름에 판을 붙인다 (예: `v2e_selected_1118.csv`).
-- 위치: 드라이브 `04_KIPRIS_대량원본/oa_learning_scan_1116/v2f_selected_1121.csv` (지금 쓰는 v2f 목록, 149 = report 119 + tune 30. 그 전 판 v2e 129는 같은 폴더). 서류는 `01_OA_사건자료_v2/`(report는 `_report/`, 봉인). 11/17 회의의 `05_평가정답/` 제안 대신 이미 있는 곳으로 정했다 (11/19 은진).
+- 위치: 드라이브 `04_KIPRIS_대량원본/oa_learning_scan_1116/v2g_selected_1122.csv` (지금 쓰는 v2g 목록, 221 = report 119 + tune 102. 그 전 판 v2f 149(tune 30)·v2e 129(tune 10)는 같은 폴더). 서류는 `01_OA_사건자료_v2/`(report는 `_report/`, 봉인). 11/17 회의의 `05_평가정답/` 제안 대신 이미 있는 곳으로 정했다 (11/19 은진).
 - 세트에 넣는 OA (product.md 6.1·7절과 같음): 지원 거절이유(진보성·명확성·신규성)가 있다 / 특허 인용은 한국·미국만 (다른 나라 특허가 인용되면 뺌, 비특허 문헌은 허용) / 대응 바로 다음 서류가 등록결정이다 / 출원 이력을 확인했다.
 
 ## 4. 기능별 정답 파일
@@ -48,10 +48,11 @@ data/goldsets/
 - 대비(F3) 판정 단위는 `cite_gold` 줄(거절이유 × 청구항 × 인용문헌)이고, F3 대비 정답은 이것을 쓴다 (#35).
 - F2 파일의 `gold_version`은 그때 VERSION과 같아야 한다. VERSION이 오르면 `eval/f2/make_cases.py`로 다시 만든다 (같은 입력이면 같은 바이트).
 - 심사기준·판례 검색 정답은 M3에 만들지 않는다 (11/22, [f2-evidence-gold.md](../docs/evaluation/f2-evidence-gold.md) 7절).
-- F4 채점의 예측 폴더(git 밖)는 정답과 같은 이름 `<출원번호>_<발송번호>.json`(`run_f4` 결과 또는 `DirectionCandidates` 목록)을 둔다. 판단 단위는 결과 안의 `units` 칸을 쓰고, 없을 때만(옛 결과·목록만 둔 파일) `<출원번호>_<발송번호>.units.json`을 읽는다 (둘 다 없으면 채점 실패). 이름이 `<숫자>_<숫자>` 꼴이 아닌 `.json`(실행 요약 `summary.json` 등)은 건너뛰고 경고한다. 정답 폴더가 없으면 채점기는 점수를 쓰지 않고 "정답 없음"(종료 코드 3)으로 끝난다. `direction_top1`은 모델 1번 후보(후보 목록 첫째)로 보류 묶음도 세고(후보 0개 묶음은 틀림), 순위 1 후보로 보류 줄을 뺀 값은 `direction_top1_ranked_only`로 따로 낸다. 확신도별 `direction_top1_conf_*`와 `needs_human_judgment_rate`를 같이 본다. ①층 다룸 지표(`handled_accuracy`)는 정답 문서에서 정의를 정한 뒤 다시 넣는다 (지금은 출력에 없음).
+- F4 채점의 예측 폴더(git 밖)는 정답과 같은 이름 `<출원번호>_<발송번호>.json`(`run_f4` 결과 또는 `DirectionCandidates` 목록)을 둔다. 판단 단위는 결과 안의 `units` 칸을 쓰고, 없을 때만(옛 결과·목록만 둔 파일) `<출원번호>_<발송번호>.units.json`을 읽는다 (둘 다 없으면 채점 실패). 이름이 `<숫자>_<숫자>` 꼴이 아닌 `.json`(실행 요약 `summary.json` 등)은 건너뛰고 경고한다. 정답 폴더가 없으면 채점기는 점수를 쓰지 않고 "정답 없음"(종료 코드 3)으로 끝난다. `direction_top1`은 AI 기본 선택(순위 1 후보, 없으면 후보 목록 첫째)으로 보류 묶음도 세고(후보 0개 묶음은 틀림), 옛 값(목록 첫째 후보)은 `direction_top1_list_first`, 순위 1 후보로 보류 줄을 뺀 값은 `direction_top1_ranked_only`로 따로 낸다. 확신도별 `direction_top1_conf_*`는 기본 선택 후보 기준(목록 첫째 기준은 `direction_top1_list_first_conf_*`),  `needs_human_judgment_rate`를 같이 본다. ①층 다룸 지표(`handled_accuracy`)는 정답 문서에서 정의를 정한 뒤 다시 넣는다 (지금은 출력에 없음).
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
 - 검색 정답에서 채점 범위 밖 줄을 빼는 규칙(`exclude`)은 retrieval design 7-1을 따른다. 정답 항목에 맞는 조각이 검색 범위에 하나도 없으면 그 항목을 빼고(모두 없으면 줄째, `excluded_gold_not_in_scope`·`excluded_gold_items_not_in_scope`, #138) 건수를 `failures`에 남긴다. 정답 파일은 고치지 않는다 (채점기가 셈).
+- 검색 정답 줄의 선택 칸 `chunk_kinds`(예 `["article"]`): 그 줄을 찾을 조각 종류(검색 범위). 없으면 law 줄은 `["article"]`(조문 줄에 심사기준·판례가 섞이지 않음), cite 줄은 거르지 않는다. 빈 목록은 오류.
 
 ### 인용문헌 둘째 점수 풀 표 (`<세트>/retrieval/cite_pool.yaml`, #178)
 - 노이즈 범위(`cite_noise_b.jsonl`)의 재료다. `uv run python -m eval.retrieval.noise_scope`가 이 표와 `cite_gold.jsonl`로 범위를 만든다 (넣는 조건은 [search-gold.md](../docs/evaluation/search-gold.md) 5절). 정답이 아니라서 VERSION과 따로 간다.

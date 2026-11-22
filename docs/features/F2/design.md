@@ -1,5 +1,5 @@
 ---
-상태: 초안   # 초안 → 승인
+상태: 승인   # 초안 → 승인 (11/20 재아 승인 PR #147, 11/22 은진 표시)
 기능: F2
 마일스톤: M2
 담당: 은진
@@ -141,7 +141,7 @@ flowchart LR
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
 - 외부 API는 둘이고 쓰는 때가 다르다.
   - 법령 API(법제처): **실행 중에** `law_api`(캐시·호출 상한)로 부른다. 색인에 없는 판(4절 ②)과 받은 74건 밖 판례(`get_precedent`)를 조회한다. 먼저 `api_cache`에 저장하고 쓴다.
-  - KIPRIS Plus 심판사항 Open API: 실행 중에는 부르지 않고, 심결을 **미리 받을 때만** 쓴다 (지금 색인할 것은 웹에서 받은 12건, requirements 열린 질문 3·9). 요금: 무료 옵션은 월 1,000건, 유료는 Open API 무제한 옵션과 BULK(기간제) 두 가지다 (확인: KIPRIS Plus 데이터 신청 화면 11/20, #54 댓글).
+  - KIPRIS Plus 심판사항 Open API: 실행 중에는 부르지 않고, 심결을 **미리 받을 때만** 쓴다 (지금 색인할 것은 웹에서 받은 12건, requirements 열린 질문 3·9). 요금: 무료 옵션은 월 1,000건, 유료는 Open API 무제한 옵션과 BULK(기간제) 두 가지다 (확인: KIPRIS Plus 데이터 신청 화면 11/20, #54 댓글). 심결문은 본문 글자가 아니라 PDF 다운로드 경로로 온다 (`getJudDocumentInfoSearch`, 심판번호 → `path`·`fileName`·`kind`·`openYN`, 11/22 상품 설명서). 그래서 받은 심결도 12건과 같은 PDF 조각 나누기를 거치는 것으로 둔다 (실제 PDF 내려받기는 아직 안 해 봄).
 - 외부 모델로 보내는 자료: 법령·심사기준·판례·심결 원문, OA 거절이유 글 ([architecture.md](../../architecture.md) 7절 "보냄"). 평가 정답은 앱 실행 중 보내지 않는다.
 
 ### 5-1. 색인 `law-idx-v3` (#24가 만듦, 여기서는 모양만)
@@ -155,11 +155,12 @@ flowchart LR
 | 판례 전문 | `판례_<사건번호>` | 판례내용 "이유" 아래 번호 문단 | `judgment` | `paragraph`, `이유 2. 가.` | `not_applicable` |
 | 심결 (12건, PDF) | `심결_<심판번호>` | "이유" 아래 번호 문단 (요지 칸이 없어 전문만) | `judgment` | `paragraph`, `이유 3. 나.` | `not_applicable` |
 
+- 심사기준 조각 (24b): 제108·116·124호는 절 제목이 PDF에서 그림이라 글자로 안 뽑힌다. 이 3판은 쪽 하나 = 조각 하나이고 `loc_label`에 절 번호가 없다. 같은 절끼리 두 판을 견주는 것은 글자 절이 있는 5판(제101·104·113·117호, 지식재산처 제7호)끼리다. 판 표에 없는 판은 제102호(2018.4.24), 제131호(2023.3.22), 제140호(2025.2.25)다. 그래서 제101호는 2018.4.23까지, 제124호는 2023.3.21까지만 `confirmed`로 두고, 2018.4.24~7.31과 2023.3.22~2026.3.12 기준일에는 심사기준 조각이 없다 (검색은 0개, `edition_unknown`으로 바꾸는 것은 F2 도구 몫).
 - #24에서 바뀌는 것 (공유 자원: 검색 계약·마이그레이션·채점기라 PR로, 상대 리뷰). 큰 것은 아래 여섯이고, 칸이 늘면 따라 고칠 곳(`chunk_to_row`·`row_to_chunk` 변환, `index_dump` fixture 줄, 채점기가 쓰는 `ChunkRepository.chunks()` 거르기)도 같이 바뀐다.
   1. 조각 종류 값: `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
   2. 판본 값: 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).
-  3. 조각 메타데이터 칸: `Chunk`(`retrieval/schemas.py`, 지금 `extra="forbid"`)와 `law_chunks` 열에 `source_kind`(`statute` / `guideline` / `precedent` / `trial`), `decided_on`(판례·심결 필수, 못 뽑으면 null + 건수), 판례 문단 역할(`court` / `party` / `unknown`), `rejection_ground`(거절이유 근거 조문 표시, 7-3), 후보 칸(법원, 거절이유 유형, 심결 결과, IPC 분야). **Alembic 마이그레이션**이 필요하다 (5절 #29 표와 따로).
-  4. `search()` 매개변수: `chunk_kinds` 거르기, 메타데이터 거르기(`source_kind`, `decided_on ≤ 날짜`, `rejection_ground`). 모두 점수 매기기 전에 거른다 (pre-filter). 결과에 `skipped_unknown_date` 건수를 더한다. `CheckedSearcher`·`fake`·`bm25`·`vector` 구현이 같이 바뀐다.
+  3. 조각 메타데이터 칸: `Chunk`(`retrieval/schemas.py`, 지금 `extra="forbid"`)와 `law_chunks` 열에 `source_kind`(`statute` / `guideline` / `precedent` / `trial`), `decided_on`(판례·심결 필수, 못 뽑으면 null + 건수), 판례 문단 역할(`court` / `party` / `unknown`), `attrs`(후보 칸: 법원, 거절이유 유형, 심결 결과, IPC 분야). `rejection_ground`(거절이유 근거 조문 표시)는 7-3 1b로 미룬다 (v3에서는 칸을 만들지 않음). **Alembic 마이그레이션**이 필요하다 (5절 #29 표와 따로).
+  4. `search()` 매개변수: `chunk_kinds` 거르기, 메타데이터 거르기(`source_kind`, `decided_on ≤ 날짜`. `rejection_ground`는 7-3 1b로 미룸). 모두 점수 매기기 전에 거른다 (pre-filter). 결과에 `skipped_unknown_date` 건수를 더한다. `CheckedSearcher`·`fake`·`bm25`·`vector` 구현이 같이 바뀐다.
   5. 저장소 Protocol(`retrieval/repository.py` `ChunkRepository`) 메서드 둘: 그 유형 조각 수 세기, 그 유형의 가장 이른 판 시행일 세기. 메모리·Postgres 저장소 둘 다.
   6. 채점기(`eval/retrieval/score.py`): 정답 줄의 검색 범위에 `chunk_kinds`(와 판례 줄의 날짜)를 넣는다. 지금 법령 정답 줄은 `doc_ids: null`이라, `law-idx-v3`에 심사기준·판례가 같은 표로 들어오면 조문 줄 검색 범위에 섞인다(판례는 `not_applicable`이라 `as_of`도 통과). 그러면 Recall·무작위 기준선이 v2와 비교가 안 되므로, 조문 줄은 `chunk_kinds = [article]`로 고정한다. 정답 파일 칸이 바뀌면 `eval/GUIDE.md`도 같이.
 - 자료 유형 거르기 (재아 님 11/20 리뷰): `doc_ids` 문헌 목록이 아니라 위 3·4의 조각 메타데이터로 거른다. 조문 `article` / 심사기준 `guideline` / 판례·심결 `judgment`·`judgment_summary`, 판례와 심결은 `source_kind`로 가른다. 목록을 만들지 않으므로 빈 `doc_ids` 오류(`retrieval/contract.py`)도 생기지 않는다. IPC 분야는 심결·판례를 분야 없이 받되 비전 사건을 먼저 보이기용이다 (requirements 열린 질문 9).

@@ -37,12 +37,16 @@ class Run(Base):
             "'cancelled')",
             name="ck_runs_state",
         ),
+        # core/runs/store.py RunKind와 같은 값 (테스트가 비교한다, #70)
+        CheckConstraint("kind IN ('full', 'redo_drafts')", name="ck_runs_kind"),
         Index("ix_runs_oa_id_created_at", "oa_id", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("r"))
     oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"))
     state: Mapped[str] = mapped_column(Text, server_default="queued")
+    # full = 끝까지 도는 실행, redo_drafts = 사람 방향 선택 뒤 초안만 다시 만드는 작은 실행
+    kind: Mapped[str] = mapped_column(Text, server_default="full")
     current_step: Mapped[str | None] = mapped_column(Text)  # "지금 하는 주요 작업" 한 줄
     waiting_for: Mapped[str | None] = mapped_column(Text)  # waiting_for_human일 때 이유
     error: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # {code, message}
@@ -93,6 +97,8 @@ class AgentStep(Base):
     transport_try: Mapped[int | None] = mapped_column(Integer)
     # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 모르면 NULL (#172)
     stop_reason: Mapped[str | None] = mapped_column(Text)
+    # 출력 검사에 떨어진 오류 종류 짧은 코드 (not_json 등, 원문 글자 없음). 아니면 NULL (#228)
+    invalid_kind: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -35,6 +35,10 @@ class OAResultStore(OAResultSink, Protocol):
         """
         ...
 
+    def oa_result_of_run(self, run_id: str) -> OAResult | None:
+        """그 실행이 가장 최근에 저장한 OA 정리 (상태와 상관없이). 없으면 None (#70 이어 가기)."""
+        ...
+
 
 class InMemoryOAResultStore:
     """테스트용. 실행 상태는 같은 InMemoryRunStore를 보고 보여 줄 상태만 고른다."""
@@ -54,6 +58,11 @@ class InMemoryOAResultStore:
         """저장된 (oa_id, run_id, 결과) 전부. 상태와 상관없이 저장 호출 기록을 본다 (테스트용)."""
         with self._lock:
             return [(oa, run, res) for _, oa, run, res in self._saved]
+
+    def oa_result_of_run(self, run_id: str) -> OAResult | None:
+        with self._lock:
+            mine = [res for _, _, run, res in self._saved if run == run_id]
+        return mine[-1] if mine else None
 
     def latest_visible_oa_result(self, oa_id: str) -> SavedOAResult | None:
         best = None
