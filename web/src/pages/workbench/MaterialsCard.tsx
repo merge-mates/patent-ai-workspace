@@ -2,6 +2,7 @@ import { Button } from 'antd'
 import { useState } from 'react'
 import { useLocation } from 'react-router'
 import { MaterialRows } from '../../components/MaterialRows'
+import { heldTaskLabel } from '../../labels'
 import type { CaseMaterials } from '../../types/generated/CaseMaterials'
 import type { OAResult } from '../../types/generated/OAResult'
 
@@ -34,7 +35,7 @@ export function MaterialsCard({ m, r, caseId }: { m: CaseMaterials; r: OAResult;
               <span className="label2 t3">원문 확인 필요한 작업 {m.held_tasks.length}건 · 나머지 작업은 진행해요</span>
               {m.held_tasks.map((h) => (
                 <span key={`${h.task}-${h.waiting_for}`} className="body2 t2">
-                  {h.task} — 기다리는 자료: {h.waiting_for}
+                  {heldTaskLabel(h.task)} — 기다리는 것: {h.waiting_for}
                 </span>
               ))}
             </div>
