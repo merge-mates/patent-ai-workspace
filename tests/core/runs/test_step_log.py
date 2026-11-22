@@ -15,7 +15,7 @@ from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunLogWriteFailed
 from tests.core.run_case_fakes import CHECKED_ON, fake_ctx, real_config, wire
 from tests.core.runs.fake_executor import MemoryStatusStore
-from tests.core.runs.test_run_case_executor import OID, RID, _Cases, _Inputs
+from tests.core.runs.test_run_case_executor import OID, RID, _CaseFill, _Cases, _Inputs
 
 
 def _run(tmp_path, step_log=None, with_texts=True):
@@ -27,6 +27,7 @@ def _run(tmp_path, step_log=None, with_texts=True):
         registry=CancelRegistry(),
         oa_results=InMemoryOAResultStore(store),
         step_results=InMemoryStepResultStore(),
+        case_fill=_CaseFill(),
         inputs=_Inputs(tmp_path, with_texts=with_texts),
         cases=_Cases(),
         config_path=real_config(tmp_path),
@@ -114,6 +115,7 @@ def test_call_recorder_쓰기가_실패하면_record_failed로_끝나고_원문�
         registry=CancelRegistry(),
         oa_results=InMemoryOAResultStore(store),
         step_results=InMemoryStepResultStore(),
+        case_fill=_CaseFill(),
         inputs=_Inputs(tmp_path),
         cases=_Cases(),
         config_path=real_config(tmp_path),

@@ -1,7 +1,8 @@
 """지휘 에이전트(run_case)를 부르는 실행기 (이슈 #191 T1). 앱 기본 실행기다.
 
 실행 하나 = run_case 한 번. RunOutcome을 실행 상태로 옮긴다:
-- succeeded / waiting_for_human: 결과(F1 OA 정리, F3, F4)를 먼저 저장하고 상태를 바꾼다
+- succeeded / waiting_for_human: 결과(F1 OA 정리, F3, F4)를 먼저 저장하고 상태를 바꾼다.
+  F1 뒤에는 읽은 번호를 사건에 넣고 사건 자료(⑥)를 만든다 (case_fill, #261)
   (상태부터 바꾸면 화면이 "끝남"을 보고 결과를 읽을 때 404가 난다).
 - failed: 결과를 저장하지 않고 이유를 남긴다. 예외 원문은 로그에만 (safe_message).
 - 단계 기록: 지휘가 단계 기록을 남길 때마다 바로 step_log 한 곳에 넘긴다 (서버는 agent_steps에
@@ -26,6 +27,7 @@ from pathlib import Path
 from patent_ai.core.agents.orchestrator import CaseStore, RunOutcome, run_case
 from patent_ai.core.agents.step_inputs import InputMissing, f4_input
 from patent_ai.core.agents.steps import StepRecord, StepRecorder
+from patent_ai.core.cases.case_fill import CaseFillSink
 from patent_ai.core.cases.human_answers import apply_human_numbers
 from patent_ai.core.cases.human_inputs import HumanInputStore
 from patent_ai.core.cases.results import OAResultStore
@@ -40,6 +42,7 @@ from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import safe_message
 from patent_ai.core.runs.state import InvalidRunTransition, RunError, RunState
 from patent_ai.core.runs.store import RunLogWriteFailed, RunStatusStore
+from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
@@ -123,6 +126,7 @@ class RunCaseExecutor:
         registry: CancelRegistry,
         oa_results: OAResultStore,
         step_results: StepResultStore,
+        case_fill: CaseFillSink,
         inputs: RunInputSource,
         cases: CaseStore,
         config_path: Path,
@@ -138,6 +142,7 @@ class RunCaseExecutor:
         self._registry = registry  # 취소 API와 같은 것이어야 취소가 닿는다
         self._oa_results = oa_results
         self._step_results = step_results
+        self._case_fill = case_fill  # F1 뒤 사건 번호·사건 자료 (#261)
         self._inputs = inputs
         self._cases = cases
         self._config_path = config_path
@@ -311,6 +316,10 @@ class RunCaseExecutor:
             # 성공·사람 기다림인데 OA 정리가 없으면 화면이 열 결과가 없다: 성공으로 두지 않는다
             raise ValueError("read_oa 결과 없음")
         self._oa_results.save_oa_result(oa_id, run_id, oa)
+        # 읽은 출원번호·발송번호를 사건에 넣고 사건 자료(⑥)를 만든다 (#261)
+        pages = outcome.results.get("extract_pages")
+        text_status = pages.status if isinstance(pages, PageText) else None
+        self._case_fill.fill_after_f1(oa_id, run_id, oa, text_status)
         for name in ("run_f3", "run_f2", "run_f4"):
             if name in outcome.results:
                 self._step_results.save_step_result(oa_id, run_id, outcome.results[name])

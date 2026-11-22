@@ -1,7 +1,7 @@
 """사건 자료·보류 목록(⑥ CaseMaterials) 읽기 (이슈 #57 T6).
 
-사건마다 최신 한 줄(`case_materials`)을 읽는다. 쓰는 쪽(지휘 에이전트·자료 더하기)은
-이번 이슈 밖이라 메모리 fake에만 테스트용 `put`이 있다.
+사건마다 최신 한 줄(`case_materials`)을 읽는다. 쓰는 쪽은 실행 뒤 `case_fill.py`(#261)와
+자료 더하기(#16 `case_repository`). 메모리 fake의 `put`은 InMemoryCaseFill과 테스트가 쓴다.
 Postgres 구현은 실행 스레드에서도 쓸 수 있게 호출마다 새 세션을 연다 (results_pg.py와 같은 방식).
 """
 

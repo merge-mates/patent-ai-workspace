@@ -15,6 +15,7 @@ export function useTodoGo(): (go: TodoGo) => void {
     if (go.kind === 'source') openPage(go.page, go.text)
     // 자리로 가기: 주소 끝 #id → 사건 틀의 ScrollRestoration이 그 자리로 내린다
     else if (go.kind === 'anchor') navigate({ pathname: base, hash: `#${go.id}` })
-    else navigate(base + go.path)
+    else if (go.kind === 'route') navigate(base + go.path)
+    // upload는 TodoRows가 올리기 버튼(UploadMaterialButton)을 따로 그린다
   }
 }

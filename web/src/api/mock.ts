@@ -261,7 +261,7 @@ export const mockApi = {
   async getRun(runId: string): Promise<RunStatus> {
     const b = await byRun(runId)
     if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
-    return { ...runOf(b), oa_id: b.oa_id, error: null }
+    return { ...runOf(b), oa_id: b.oa_id, error: null, skipped_steps: [] }
   },
   async cancelRun(runId: string): Promise<RunStatus> {
     const b = await byRun(runId)

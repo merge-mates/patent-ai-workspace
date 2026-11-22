@@ -32,6 +32,7 @@
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
 | m3-i1-cite-search-two-stage | cite-search (이슈 #212) | `impl`: hybrid(RRF) → two_stage (BM25 후보 N=100 → 그 후보만 벡터로 다시 순위) | hit@10 0.691 | -0.015 | $0.00 | [card](m3-i1-cite-search-two-stage/card.md) |
 | m3-i1-cite-search-weighted-sum | cite-search (이슈 #212, lane_extra C3) | `impl`: hybrid(RRF, 순위로 섞음) → weighted_sum (점수를 min-max로 맞춘 뒤 BM25 0.5 / 벡터 0.5 가중합) | hit@10 0.706 | +0.000 | $0.00 | [card](m3-i1-cite-search-weighted-sum/card.md) |
+| m3-i1-cite-search-whole-doc | cite-search (이슈 #248) | `impl`: hybrid(RRF) → whole_doc_llm (그 OA 인용문헌 조각 전부를 번호 붙여 Haiku에 넣고 관련 조각 번호를 순위로 10개) | hit@10 0.750 | +0.044 | $0.21 | [card](m3-i1-cite-search-whole-doc/card.md) |
 | m3-i1-f3-independent-first | F3 | 코드 (이슈 #30 남은 일 ②, feat/30-f3-independent-first): 진보성은 대표 청구항(독립항) 먼저 대비하고 차이점이 있으면 종속항은 **검색은 하고 LLM 대비만 생략**(11/22 재아 결정 1 (나), 18603a9) + 명세서 효과 반박 후보. 채점기는 건너뛴 줄을 selected_* 분모에서 빼고 따로 셈(f65f910). #211(f499f2c) 위 | search_recall 0.637 | - | $0.00 | [card](m3-i1-f3-independent-first/card.md) |
 | m3-i1-f3-recall-prompt | F3 | `compare_variant`: standard → recall (대비 프롬프트 prompts/f3/compare.md → prompts/f3/compare_recall.md) | selected_recall 0.225 | +0.008 | $0.00 | [card](m3-i1-f3-recall-prompt/card.md) |
 | m3-i1-f3-rescore | F3 | 코드 판 (m2-f3-skeleton 849d18f 뼈대 → main 9eb8237: 부모 구성요소 넣기·second_search 기본 켬 등 그 사이 머지된 F3). 설정은 그 판의 config/f3.yaml 그대로 | search_recall 0.585 | +0.001 | $0.00 | [card](m3-i1-f3-rescore/card.md) |
