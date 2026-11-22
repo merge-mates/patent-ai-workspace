@@ -23,6 +23,17 @@ CALL_FAILED = "call_failed"
 LIMIT_REACHED = "limit_reached"
 
 
+# 진보성에서 독립항(대표 청구항)에 차이점이 있어 종속항을 대비하지 않은 보류의 끝말.
+# 기다리는 자료가 없는 정해진 건너뜀이라 F3 결과·F4 후보 status를 낮추지 않는다
+# (확인 사항 글만 싣는다)
+DEPENDENT_SKIPPED = "dependent"
+
+
+def is_dependent_skip(task: str) -> bool:
+    """종속항 건너뜀 보류인가 (F3 run_f3와 F4 f3_gaps가 같이 쓰는 판별 한 곳)."""
+    return task.endswith(f":{DEPENDENT_SKIPPED}")
+
+
 def is_limit(error: Exception) -> bool:
     return isinstance(error, ModelCallLimitExceeded)
 

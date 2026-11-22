@@ -101,6 +101,8 @@ def _responses() -> dict:
             ),
             _text({"claim": 2, "rows": [_row(1, "difference_candidate")]}),
         ],
+        # 진보성 차이점의 효과 문장을 명세서에서 못 찾았다고 답한다 (이슈 #30 C2)
+        "f3.effect": [_text({"effects": []})],
         "f3.clarity": [
             _text(
                 {
