@@ -5,7 +5,9 @@
 import threading
 
 from patent_ai.core.agents.steps import MemoryStepRecorder, StepRecord
+from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
+from patent_ai.core.cases.selections import InMemorySelectionStore
 from patent_ai.core.cases.step_results import InMemoryStepResultStore
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
@@ -30,6 +32,8 @@ def _run(tmp_path, step_log=None, with_texts=True):
         config_path=real_config(tmp_path),
         make_ctx=fake_ctx,
         today=lambda: CHECKED_ON,
+        selections=InMemorySelectionStore(),
+        human=InMemoryHumanInputStore(),
         lock=threading.Lock(),
         **kwargs,
     ).execute(RID, OID)
@@ -115,6 +119,8 @@ def test_call_recorder_쓰기가_실패하면_record_failed로_끝나고_원문�
         config_path=real_config(tmp_path),
         make_ctx=ctx,
         today=lambda: CHECKED_ON,
+        selections=InMemorySelectionStore(),
+        human=InMemoryHumanInputStore(),
         lock=threading.Lock(),
     ).execute(RID, OID)
     st = store.get_status(RID)

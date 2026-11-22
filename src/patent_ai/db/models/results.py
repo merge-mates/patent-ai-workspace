@@ -149,6 +149,69 @@ class StepResultRow(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class DirectionSelectionRow(Base):
+    """사람이 고른(또는 직접 쓴) 대응 방향 한 줄 (#70). 지우지 않고 쌓는다.
+
+    run_id = 이 선택을 적용할 작은 실행(redo_drafts). 그 실행만 이 줄을 쓴다.
+    FK는 두지 않는다: 선택 줄과 실행 줄을 다른 세션에서 커밋해서다.
+    실행 줄이 커밋되지 못하면 이 줄은 아무 실행에도 안 쓰인다.
+    AI 기본값(ai_default)은 여기 넣지 않고
+    F4 결과 안 selection에만 있다: 이 표는 사람 판단만 담아 AI 결과와 데이터에서 구분한다.
+    """
+
+    __tablename__ = "direction_selections"
+    __table_args__ = (
+        # core/schemas/common.py Origin 중 사람 선택 둘 (테스트가 비교한다)
+        CheckConstraint(
+            "origin IN ('human_selected', 'human_written')", name="ck_direction_selections_origin"
+        ),
+        # 후보를 고르거나 직접 쓰거나, 둘 중 정확히 하나
+        CheckConstraint(
+            "(candidate_id IS NULL) <> (written_direction IS NULL)",
+            name="ck_direction_selections_one_of",
+        ),
+        Index("ix_direction_selections_run_id", "run_id"),
+        Index("ix_direction_selections_oa_unit_created", "oa_id", "unit_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("sel"))
+    oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"))
+    run_id: Mapped[str] = mapped_column(Text)  # 이 선택을 적용할 작은 실행
+    unit_id: Mapped[str] = mapped_column(Text)
+    candidate_id: Mapped[str | None] = mapped_column(Text)
+    written_direction: Mapped[str | None] = mapped_column(Text)  # 사람이 쓴 방향 글
+    origin: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class HumanInputRow(Base):
+    """사람이 넣은 값 한 줄 (#70 계획 ②). 지우지 않고 쌓는다.
+
+    번호(application_number·dispatch_number)는 run_id = 그 번호로 이어 돌 실행,
+    확인(oa_result_confirmed, "맞아요")은 run_id = 확인한 OA 정리를 낸 실행. 값은 번호만 있다.
+    """
+
+    __tablename__ = "human_inputs"
+    __table_args__ = (
+        # core/cases/human_inputs.py HumanInputKind와 같은 값 (테스트가 비교한다)
+        CheckConstraint(
+            "kind IN ('application_number', 'dispatch_number', 'oa_result_confirmed')",
+            name="ck_human_inputs_kind",
+        ),
+        CheckConstraint(
+            "(kind = 'oa_result_confirmed') = (value IS NULL)", name="ck_human_inputs_value"
+        ),
+        Index("ix_human_inputs_run_id", "run_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("hin"))
+    oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"))
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class CaseMaterialsRow(Base):
     """⑥ CaseMaterials. 사건마다 최신 한 줄 (실행이 끝날 때·자료가 더해질 때 다시 쓴다)."""
 

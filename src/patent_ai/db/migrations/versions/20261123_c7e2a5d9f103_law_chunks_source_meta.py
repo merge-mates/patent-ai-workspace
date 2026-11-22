@@ -1,7 +1,7 @@
 """law_chunks에 자료 유형·선고일·발언 주체·속성 칸 더하기 (law-idx-v3, 이슈 #24)
 
 Revision ID: c7e2a5d9f103
-Revises: d9e4b1c7a352
+Revises: e2b7d5c9a184
 Create Date: 2026-11-23 09:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "c7e2a5d9f103"
-down_revision: str | Sequence[str] | None = "d9e4b1c7a352"
+down_revision: str | Sequence[str] | None = "e2b7d5c9a184"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -46,3 +46,14 @@ class PostgresOAResultStore:
             if row is None:
                 return None
             return SavedOAResult(row.run_id, OAResult.model_validate(row.body))
+
+    def oa_result_of_run(self, run_id: str) -> OAResult | None:
+        q = (
+            select(OAResultRow)
+            .where(OAResultRow.run_id == run_id)
+            .order_by(OAResultRow.created_at.desc(), OAResultRow.id.desc())
+            .limit(1)
+        )
+        with self._factory() as s:
+            row = s.scalars(q).first()
+            return OAResult.model_validate(row.body) if row else None

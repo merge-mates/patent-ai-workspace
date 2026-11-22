@@ -140,7 +140,7 @@ def test_결과_저장과_최근_succeeded만_읽음(factory):
         s.commit()
     results.save_oa_result(oa_id, third, load_oa_result())
     store.transition(third, RunState.RUNNING)
-    store.transition(third, RunState.WAITING_FOR_HUMAN, waiting_for="direction_selection")
+    store.transition(third, RunState.WAITING_FOR_HUMAN, waiting_for="application_number")
     assert results.latest_visible_oa_result(oa_id).run_id == third
 
 

@@ -9,13 +9,16 @@ import threading
 import pytest
 
 from patent_ai.core.agents.orchestrator import CaseInput
+from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputNotFound
+from patent_ai.core.cases.selections import InMemorySelectionStore
 from patent_ai.core.cases.step_results import InMemoryStepResultStore
 from patent_ai.core.runs.cancel import CancelRegistry, request_cancel
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
 from patent_ai.core.runs.state import RunState
-from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.common import Origin, Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.direction import DirectionSelection
 from tests.core.run_case_fakes import (
     CHECKED_ON,
     fake_ctx,
@@ -70,6 +73,8 @@ class Env:
         self.oa_results = InMemoryOAResultStore(self.store)
         self.step_results = InMemoryStepResultStore()
         self.inputs = _Inputs(tmp_path, with_texts)
+        self.selections = InMemorySelectionStore()
+        self.human = InMemoryHumanInputStore()
         self.lock = threading.Lock()
         self.executor = RunCaseExecutor(
             store=self.store,
@@ -81,6 +86,8 @@ class Env:
             config_path=real_config(tmp_path),
             make_ctx=fake_ctx,
             today=lambda: CHECKED_ON,
+            selections=self.selections,
+            human=self.human,
             lock=self.lock,
         )
 
@@ -244,3 +251,161 @@ def test_run_case_서버에서는_한_번에_하나만_돈다(env):
     second.join(10)
     assert env.store.get_status("r_a").state == RunState.SUCCEEDED
     assert env.store.get_status("r_b").state == RunState.SUCCEEDED
+
+
+# ---- 초안만 다시 만드는 작은 실행 (kind = redo_drafts, #70) ----
+# 실패를 succeeded로 돌려주지 않는다: 실패·취소면 이유를 남기고 이 실행에 결과를 저장하지 않는다.
+REDO = "r_redo"
+UNIT = "oa_1:29-2:c1"
+
+
+def _redo(env, *, pick=True):
+    """끝까지 돈 실행 하나 뒤에, 그 OA의 작은 실행 하나를 돌린다."""
+    assert env.run().state == RunState.SUCCEEDED
+    env.store.add(REDO, OID, kind="redo_drafts")
+    if pick:
+        sel = DirectionSelection(candidate_id=f"{UNIT}:d1", origin=Origin.HUMAN_SELECTED)
+        env.selections.save_selection(OID, UNIT, sel, run_id=REDO)
+    env.executor.execute(REDO, OID)
+    return env.store.get_status(REDO)
+
+
+def _nothing_saved(env):
+    return all(run != REDO for _, run, _ in env.oa_results.saved) and all(
+        env.step_results.step_result(REDO, k) is None for k in ("f2", "f3", "f4")
+    )
+
+
+def test_redo_고른_묶음만_바꿔_초안을_다시_만들고_앞_결과를_옮긴다(env):
+    st = _redo(env)
+    assert st.state == RunState.SUCCEEDED, st.error
+    f4 = env.step_results.step_result(REDO, "f4")
+    by_unit = {d.unit_id: d for d in f4.directions}
+    assert by_unit[UNIT].selection.origin == Origin.HUMAN_SELECTED
+    assert env.step_results.step_result(REDO, "f3") == env.step_results.step_result(RID, "f3")
+    assert [run for _, run, _ in env.oa_results.saved] == [RID, REDO]
+
+
+def test_redo_앞_F4가_없으면_failed_no_previous_drafts(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    env = Env(tmp_path, with_texts=False)  # 글자가 없어 F3·F4를 넘긴 앞 실행
+    st = _redo(env)
+    assert st.state == RunState.FAILED and st.error["code"] == "no_previous_drafts"
+    assert _nothing_saved(env)
+
+
+def test_redo_이_실행에_묶인_선택이_없으면_failed_no_selection(env):
+    st = _redo(env, pick=False)
+    assert st.state == RunState.FAILED and st.error["code"] == "no_selection"
+    assert _nothing_saved(env)
+
+
+def test_redo_입력을_못_만들면_failed(env):
+    assert env.run().state == RunState.SUCCEEDED
+    env.inputs.with_texts = False  # 이번에는 글자가 없다
+    env.store.add(REDO, OID, kind="redo_drafts")
+    env.selections.save_selection(
+        OID,
+        UNIT,
+        DirectionSelection(candidate_id=f"{UNIT}:d1", origin=Origin.HUMAN_SELECTED),
+        run_id=REDO,
+    )
+    env.executor.execute(REDO, OID)
+    st = env.store.get_status(REDO)
+    assert st.state == RunState.FAILED and st.error["code"] == "step_failed"
+    assert "input_unverified" in st.error["message"]
+    assert _nothing_saved(env)
+
+
+def test_redo_초안_만들기가_예외면_failed이고_원문은_이유에_없다(env, monkeypatch):
+    import patent_ai.core.runs.run_case_executor as mod
+
+    def boom(*a, **k):
+        raise RuntimeError("비밀 원문 글자")
+
+    monkeypatch.setattr(mod, "redo_drafts", boom)
+    st = _redo(env)
+    assert st.state == RunState.FAILED and st.error["code"] == "step_failed"
+    assert "비밀 원문 글자" not in st.error["message"]
+    assert _nothing_saved(env)
+
+
+def test_redo_끝난_뒤_취소_표시가_있으면_cancelled이고_결과를_안_남긴다(env, monkeypatch):
+    import patent_ai.core.runs.run_case_executor as mod
+
+    real = mod.redo_drafts
+
+    def cancel_after(*a, **k):
+        out = real(*a, **k)
+        request_cancel(REDO, env.store, env.registry)  # running이라 표시만
+        return out
+
+    monkeypatch.setattr(mod, "redo_drafts", cancel_after)
+    st = _redo(env)
+    assert st.state == RunState.CANCELLED
+    assert _nothing_saved(env)
+
+
+def test_redo_결과_저장이_실패하면_failed_result_save_failed(env, monkeypatch):
+    assert env.run().state == RunState.SUCCEEDED
+    real = env.step_results.save_step_result
+
+    def fail_for_redo(oa_id, run_id, body):
+        if run_id == REDO:
+            raise RuntimeError("저장 실패")
+        real(oa_id, run_id, body)
+
+    monkeypatch.setattr(env.step_results, "save_step_result", fail_for_redo)
+    env.store.add(REDO, OID, kind="redo_drafts")
+    env.selections.save_selection(
+        OID,
+        UNIT,
+        DirectionSelection(candidate_id=f"{UNIT}:d1", origin=Origin.HUMAN_SELECTED),
+        run_id=REDO,
+    )
+    env.executor.execute(REDO, OID)
+    st = env.store.get_status(REDO)
+    assert st.state == RunState.FAILED and st.error["code"] == "result_save_failed"
+
+
+# ---- 사람 기다림에서 이어 돌기 (#70 계획 ②) ----
+def _waiting(tmp_path, monkeypatch):
+    oa = wire(monkeypatch)
+    unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    oa = oa.model_copy(
+        update={"application_number": oa.application_number.model_copy(update={"status": unknown})}
+    )
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", lambda *a, **k: oa)
+    env = Env(tmp_path)
+    assert env.run().state == RunState.WAITING_FOR_HUMAN
+    return env
+
+
+def test_resume_아직_기다리는_실행은_돌리지_않는다(tmp_path, monkeypatch):
+    # 사람 입력 API가 queued로 바꾼 뒤에만 이어 돈다: 기다리는 실행을 몰래 처음부터 돌리지 않는다
+    env = _waiting(tmp_path, monkeypatch)
+    saved_before = list(env.oa_results.saved)
+    env.executor.execute(RID, OID)
+    st = env.store.get_status(RID)
+    assert st.state == RunState.WAITING_FOR_HUMAN
+    assert env.oa_results.saved == saved_before
+
+
+def test_resume_저장한_정리가_없으면_failed_no_saved_oa_result(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    env = Env(tmp_path)
+    env.store.add(RID, OID)  # 번호를 넣어 queued가 된 실행처럼
+    env.human.add(OID, RID, "application_number", "1020990000001")
+    env.executor.execute(RID, OID)
+    st = env.store.get_status(RID)
+    assert st.state == RunState.FAILED and st.error["code"] == "no_saved_oa_result"
+
+
+def test_resume_번호를_넣으면_같은_실행이_끝까지_돌고_결과가_저장된다(tmp_path, monkeypatch):
+    env = _waiting(tmp_path, monkeypatch)
+    env.store.transition(RID, RunState.QUEUED, expected=RunState.WAITING_FOR_HUMAN)
+    env.human.add(OID, RID, "application_number", "1020990000001")
+    env.executor.execute(RID, OID)
+    st = env.store.get_status(RID)
+    assert st.state == RunState.SUCCEEDED and st.waiting_for is None
+    assert env.step_results.step_result(RID, "f4") is not None

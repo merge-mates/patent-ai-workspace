@@ -23,7 +23,7 @@ from patent_ai.core.f4_response_draft.directions import (
     build_directions,
 )
 from patent_ai.core.f4_response_draft.inputs import F4Input
-from patent_ai.core.llm.errors import ModelCallLimitExceeded, ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, Origin, StatusValue, UnverifiedReason
@@ -112,15 +112,19 @@ def test_판단_단위가_없으면_모델을_안_부르고_경고(caplog):
     assert "판단 단위" in caplog.text
 
 
-def test_판단_단위가_상한보다_많으면_모델을_부르기_전에_멈춘다():
+def test_판단_단위가_상한보다_많으면_앞_묶음만_부르고_넘는_묶음은_limit_reached로_보류(caplog):
     options = F4Options(final_rejection_limit=False, max_units=1, max_candidates=3)
-    transport = FakeTransport({STEP: []})
-    ctx = RunContext(
-        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
-    )
-    with pytest.raises(ModelCallLimitExceeded):
-        build_directions(_case(), ctx, options=options)
-    assert transport.calls == []
+    with caplog.at_level(logging.WARNING):
+        results, transport = _run([_text(_answer("direction_inventive"))], options=options)
+    assert len(transport.calls) == 1  # 앞 묶음 하나만 모델을 부른다 (예외 없음)
+    first, rest = results
+    assert first.unit_id == UNIT_INVENTIVE and first.candidates
+    assert rest.unit_id == UNIT_CLARITY and rest.candidates == []
+    assert rest.status.value == StatusValue.UNVERIFIED
+    assert rest.status.reason == UnverifiedReason.LIMIT_REACHED
+    assert Flag.NEEDS_HUMAN_JUDGMENT in rest.flags
+    assert "max_units" in (rest.recheck_reason or "") and "1" in rest.recheck_reason
+    assert "max_units" in caplog.text  # 넘는 묶음이 있으면 경고
 
 
 # ---- AI 기본값 / 사람 선택 구분 ----
@@ -214,26 +218,26 @@ def test_다시_불러도_틀리면_실패가_그대로_드러난다():
 
 def test_답이_JSON이_아니어도_한_번만_다시_부른다():
     garbage = TransportResponse("방향 후보는 다음과 같습니다", 100, 50)
-    transport = FakeTransport({STEP: [garbage, garbage]})
+    transport = FakeTransport({STEP: [garbage] * 4})  # 묶음 둘이 모두 실패
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     with pytest.raises(ModelOutputInvalid):
         build_directions(_case(), ctx)
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 4  # 묶음마다 첫 호출 + 다시 한 번
 
 
 # ---- 그 밖의 출력 검사 (스키마 규칙·설정 상한) ----
 def test_후보가_설정_상한보다_많으면_출력_검사_실패():
     options = F4Options(final_rejection_limit=False, max_units=20, max_candidates=1)
     two = _text(_answer("direction_inventive"))  # 후보 2개
-    transport = FakeTransport({STEP: [two, two]})
+    transport = FakeTransport({STEP: [two] * 4})
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
     with pytest.raises(ModelOutputInvalid):
         build_directions(_case(), ctx, options=options)
-    assert len(transport.calls) == 2  # 첫 호출 + 다시 한 번
+    assert len(transport.calls) == 4  # 묶음마다 첫 호출 + 다시 한 번
 
 
 def test_거절이유_종류에_안_맞는_반박_유형은_출력_검사_실패_뒤_다시_부른다():
@@ -249,12 +253,14 @@ def test_거절이유_종류에_안_맞는_반박_유형은_출력_검사_실패
 def test_OA에_없는_거절이유_번호는_틀린_번호만_오류에_찍힌다():
     bad = copy.deepcopy(_answer("direction_inventive"))
     bad["candidates"][0]["per_rejection"].append({"rejection": 9, "response": "없는 번호"})
-    transport = FakeTransport({STEP: [_text(bad), _text(bad)]})
+    transport = FakeTransport({STEP: [_text(bad)] * 2})
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
+    data = _case_data()
+    data["units"] = data["units"][:1]  # 진보성 묶음 하나만 (묶음 하나가 전부 실패 = 단계 실패)
     with pytest.raises(ModelOutputInvalid, match=r"OA에 없는 거절이유 번호: \[9\]"):
-        build_directions(_case(), ctx)
+        build_directions(_case(data), ctx)
 
 
 def test_묶음_밖_청구항을_보정하겠다는_후보는_출력_검사_실패():
@@ -266,8 +272,10 @@ def test_묶음_밖_청구항을_보정하겠다는_후보는_출력_검사_실�
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
-    with pytest.raises(ModelOutputInvalid):
-        build_directions(_case(), ctx)
+    # 두 번 다 틀린 후보는 받지 않는다: 그 묶음만 후보 없이 보류하고 앞 묶음 결과는 남는다
+    first, second = build_directions(_case(), ctx)
+    assert len(first.candidates) == 2
+    assert second.candidates == [] and Flag.NEEDS_HUMAN_JUDGMENT in second.flags
 
 
 # ---- 순위는 보증이 아니라는 문구 (결과에 싣는 것은 run_f4, test_f4_run.py) ----
@@ -472,6 +480,52 @@ def test_단위_안_F3_보류는_그_묶음_후보에_보인다(task):
         assert Flag.NEEDS_HUMAN_REVIEW in c.flags
         assert "F3 보류: 청구항 2 구성요소 나누기" in c.checks
     assert clarity.candidates[0].status.value == StatusValue.CONFIRMED
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        f"f3_clarity:{UNIT_CLARITY}",  # OA가 짚은 문구가 없어 명확성 검토를 못 만듦
+        f"f3_clarity:{UNIT_CLARITY}:call_failed",  # 명확성 검토 모델 호출이 실패해 보류 (#211)
+    ],
+)
+def test_명확성_F3_보류도_그_묶음_후보에_보인다(task):
+    # _held_for는 f3_compare와 f3_clarity 두 갈래를 다 본다
+    data = _case_data()
+    data["held_tasks"] = [{"task": task, "waiting_for": "OA가 짚은 문구 확인"}]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive, clarity = results
+    for c in clarity.candidates:
+        assert c.status.value == StatusValue.UNVERIFIED
+        assert Flag.NEEDS_HUMAN_REVIEW in c.flags
+        assert "F3 보류: OA가 짚은 문구 확인" in c.checks
+    assert inventive.candidates[0].status.value == StatusValue.CONFIRMED
+
+
+def test_독립항_때문에_종속항을_대비하지_않은_보류는_확인_사항에만_싣고_status는_낮추지_않는다():
+    data = _case_data()
+    waiting = "청구항 2: 대표 청구항 1에 차이 후보·불명 구성요소가 있어 종속항을 대비하지 않음"
+    data["held_tasks"] = [
+        {"task": f"f3_compare:{UNIT_INVENTIVE}:claim2:dependent", "waiting_for": waiting}
+    ]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive = results[0]
+    for c in inventive.candidates:
+        assert c.status.value == StatusValue.CONFIRMED
+        assert Flag.NEEDS_HUMAN_REVIEW not in c.flags
+        assert f"F3 보류: {waiting}" in c.checks  # 건너뛴 사실은 확인 사항으로 보인다
+
+
+def test_최초_명세서가_없어_효과_후보를_못_뽑은_보류는_그_묶음_확인_사항에_보인다():
+    data = _case_data()
+    waiting = "최초 명세서 본문 (올려 주면 효과 후보 뽑기)"
+    data["held_tasks"] = [{"task": f"f3_compare:{UNIT_INVENTIVE}:spec", "waiting_for": waiting}]
+    results, _ = _run_basic(_confirmed_legal(_case(data)))
+    inventive, clarity = results
+    for c in inventive.candidates:
+        assert f"F3 보류: {waiting}" in c.checks
+        assert Flag.NEEDS_HUMAN_REVIEW in c.flags
+    assert not any(k.startswith("F3 보류") for k in clarity.candidates[0].checks)
 
 
 def test_다른_단위의_보류는_옮기지_않는다():
