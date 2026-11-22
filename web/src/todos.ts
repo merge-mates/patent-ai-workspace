@@ -1,8 +1,9 @@
 // "직접 할 일" 만들기 (순수 함수). 새 결과를 만들지 않고 이미 있는 것만 모은다:
 // 검토할 사항(ReviewItem) 중 사람이 할 일 + 고정 한 줄 "제출기일 직접 확인". (결정 D1)
-import { articleLabel, lookupResultLabel } from './labels'
+import { articleLabel, heldTaskLabel, lookupResultLabel } from './labels'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { DirectionCandidates } from './types/generated/DirectionCandidates'
+import type { JudgmentUnit } from './types/generated/JudgmentUnit'
 import type { OAResult } from './types/generated/OAResult'
 import type { ReviewItem } from './types/generated/ReviewItem'
 import type { CaseListExtra } from './types/provisional/caseListExtra'
@@ -13,6 +14,8 @@ export type TodoGo =
   | { kind: 'source'; page: number | null; text: string | null; label: string }
   | { kind: 'anchor'; id: string; label: string }
   | { kind: 'route'; path: string; label: string }
+  // 빠진 자료를 이 자리에서 올린다 (what = ⑥ missing[].what 글자 그대로, 버튼은 UploadMaterialButton)
+  | { kind: 'upload'; what: string; label: string }
 
 export interface DirectTodo {
   key: string
@@ -28,6 +31,8 @@ export interface TodoInput {
   oaResult: { result: OAResult } | null
   // 대응 방향 결과가 아직 없으면 null → 방향 고르기 줄만 셀 수 없다 (나머지는 센다)
   directions: DirectionCandidates[] | null
+  // 판단 단위 (방향 고르기 줄의 "묶음 N" 번호). 모르면 null/생략 → 단위 ID에서 조문·청구항 글자로
+  units?: JudgmentUnit[] | null
 }
 
 // target은 `oa_result[0].rejections[3]` 꼴과 `oa_result[<oa_id>].rejections[3]` 꼴이 섞여 있다. 둘 다 받는다
@@ -61,6 +66,14 @@ export function reviewTargetGo(target: string, r: OAResult | null): TodoGo | nul
   return null
 }
 
+// 통지서 원문 판을 그 쪽으로 여는 버튼 (쪽을 모르면 판만 편다)
+const sourceGo = (page: number | null, text: string | null): TodoGo => ({
+  kind: 'source',
+  page,
+  text,
+  label: page ? `통지서 ${page}쪽` : '통지서 보기',
+})
+
 export interface DirectTodoList {
   todos: DirectTodo[]
   // false면 방향 고르기 줄을 세지 못한 것이라 todos 길이는 "이 이상"이다
@@ -74,7 +87,7 @@ export const todoCountText = (list: DirectTodoList | null): string =>
 export const DIRECTIONS_UNKNOWN_NOTE = '대응 방향 결과가 아직 없어 방향 고르기는 아직 셀 수 없어요'
 
 export function directTodos(input: TodoInput): DirectTodoList | null {
-  const { reviewItems, materials, oaResult, directions } = input
+  const { reviewItems, materials, oaResult, directions, units } = input
   // 검토할 사항 목록을 모르면 전체를 모른다
   if (reviewItems === null) return null
   const r = oaResult?.result ?? null
@@ -86,12 +99,7 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
     key: 'due',
     title: due?.raw_text ? `제출기일 ${due.raw_text} 직접 확인` : '제출기일 직접 확인',
     desc: '법적 기한이라 자동으로 확정하지 않아요. 기간연장은 반영하지 않아요',
-    go: {
-      kind: 'source',
-      page: due?.page ?? null,
-      text: due?.raw_text ?? null,
-      label: due?.page ? `통지서 ${due.page}쪽` : '통지서 보기',
-    },
+    go: sourceGo(due?.page ?? null, due?.raw_text ?? null),
   })
 
   reviewItems.forEach((item, i) => {
@@ -100,11 +108,17 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
       const idx = missingIndex(item.target)
       const row = idx === null ? undefined : materials?.missing[idx]
       if (!row?.ask_upload) return
+      // 이 자료를 기다리며 멈춘 작업 (⑥ held_tasks의 waiting_for가 이 줄 이름). 없으면 missing의 depends_on_tasks
+      const held = materials?.held_tasks.filter((h) => h.waiting_for === row.what).map((h) => h.task) ?? []
+      const tasks = (held.length > 0 ? held : row.depends_on_tasks).map(heldTaskLabel)
       todos.push({
         key: `m-${i}`,
         title: `${row.what} 올리기`,
-        desc: `${lookupResultLabel[row.lookup_result]}라 대비 일부는 원문 확인 필요예요`,
-        go: { kind: 'anchor', id: 'materials', label: '자료 보기' },
+        desc:
+          tasks.length > 0
+            ? `${lookupResultLabel[row.lookup_result]}라 보류한 작업: ${tasks.join(', ')}`
+            : `${lookupResultLabel[row.lookup_result]}라 대비 일부는 원문 확인 필요예요`,
+        go: { kind: 'upload', what: row.what, label: '올리기' },
       })
     } else if (item.kind === 'needs_human_review') {
       const idx = rejectionIndex(item.target)
@@ -114,7 +128,8 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
           key: `r-${i}`,
           title: `거절이유 ${rej.no} 직접 검토`,
           desc: `AI가 다루지 않는 거절이유예요 (특허법 ${articleLabel(rej.article.value)})`,
-          go: { kind: 'anchor', id: `rejection-${rej.no}`, label: '거절이유 보기' },
+          // 직접 대응하려면 통지서 원문을 봐야 한다: 그 거절이유가 적힌 쪽으로 (글자는 F5 design 6절 그대로, 버튼만)
+          go: sourceGo(rej.article.page ?? rej.evidence[0]?.page ?? null, rej.article.raw_text ?? rej.evidence[0]?.raw_text ?? null),
         })
       } else {
         todos.push({
@@ -131,10 +146,12 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
   // 직접 판단 표시가 있고 아직 안 고른(selection === null) 묶음마다 한 줄
   for (const d of directions ?? []) {
     if (!d.flags.includes('needs_human_judgment') || d.selection !== null) continue
+    // 판단 단위 순서(order)를 알면 대응 방향 화면과 같은 "묶음 N", 모르면 단위 ID의 조문·청구항
+    const order = units?.find((u) => u.unit_id === d.unit_id)?.order
     todos.push({
       key: `j-${d.unit_id}`,
-      title: `방향 고르기: ${unitText(d.unit_id)}`,
-      desc: '확신이 낮아 미리 고르지 않았어요',
+      title: order !== undefined ? `묶음 ${order} 대응 방향 고르기` : `방향 고르기: ${unitText(d.unit_id)}`,
+      desc: '확신도가 낮아 미리 고르지 않았어요',
       go: { kind: 'route', path: '/directions', label: '고르러 가기' },
     })
   }

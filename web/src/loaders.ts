@@ -56,6 +56,8 @@ export interface OALoaderData {
   document: PageText | null
   // 대응 방향 묶음 (직접 할 일의 방향 고르기를 세려고). 결과가 아직 없으면 null (모름)
   directions: DirectionCandidates[] | null
+  // 판단 단위 (직접 할 일 "묶음 N" 번호). 결과가 아직 없거나 모르면 null
+  units: JudgmentUnit[] | null
   // 이 OA의 법률 근거 묶음 (거절이유마다 "이 거절이유의 법리"). 아직 안 찾았으면 [] (지어내지 않고 그 줄을 뺀다)
   legal: LegalEvidenceBundle[]
   // 단계마다 결과가 있는지 (D5). 404 result_not_ready였으면 false. 그 밖의 오류로 알 수 없으면 null (모름)
@@ -132,7 +134,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     directions: directionsP.unknown ? null : directions !== null,
     drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, materials, reviewItems, document, directions, legal, ready, warnings }
+  return { oa, oaResult, materials, reviewItems, document, directions, units, legal, ready, warnings }
 }
 
 // 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)
