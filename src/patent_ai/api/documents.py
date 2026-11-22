@@ -1,4 +1,5 @@
-"""빠진 자료 올리기 엔드포인트 (#16 T7, 11/17 "올려 주세요"에 답함).
+"""문서 엔드포인트: 빠진 자료 올리기 (#16 T7, 11/17 "올려 주세요"에 답함)와
+문서 쪽 글자 읽기 (GET /documents/{id}, #262).
 
 라우터만 둔다. 묶기·사건 자료 고치기·저장은 core 사건 저장소(case_repository)가 한다.
 사건 자료 읽기(GET /cases/{id}/materials)는 #57이 맡는다.
@@ -22,6 +23,7 @@ from patent_ai.api.deps import (
 )
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases import upload
+from patent_ai.core.cases.document_pages import read_document_pages
 from patent_ai.core.cases.store import now_utc
 from patent_ai.core.f1_oa_reader.case_grouping import (
     MissingNotFoundError,
@@ -34,6 +36,7 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     upload_missing_material,
 )
 from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.document import PageText
 
 router = APIRouter()
 
@@ -42,6 +45,15 @@ class UploadedMaterialOut(BaseModel):
     case_id: str
     document_id: str  # 올린 자료의 문서 ID
     result: CaseMaterials  # 고친 사건 자료 (결과 스키마 ⑥ 그대로)
+
+
+@router.get("/documents/{document_id}", response_model=PageText)
+def get_document(document_id: str, unit: Annotated[CaseUnit, Depends(get_case_unit)]) -> PageText:
+    # 원본 PDF에서 쪽 글자를 뽑는다. 원본을 못 읽으면 200 + 확인되지 않음 (core에서 정함)
+    pages = read_document_pages(unit.store, document_id)
+    if pages is None:
+        raise AppError(404, "document_not_found", "문서를 찾을 수 없습니다")
+    return pages
 
 
 @router.post("/cases/{case_id}/documents", response_model=UploadedMaterialOut)

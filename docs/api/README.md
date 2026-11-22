@@ -37,7 +37,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/oas/{oa_id}` | OA 보기 (통지 정보, 원문 문서 ID, 가장 최근 실행 `latest_run`: run_id·state·current_step). 화면은 사건을 다시 열 때 이것으로 실행을 찾는다 |
 | GET | `/cases/{id}/materials` | 사건 자료·보류 목록 (결과 스키마 ⑥). 실행이 끝나면 만든다. 아직 없으면 404 `result_not_ready`, 출원번호를 모르면(실행 전·못 읽음·같은 출원번호 사건이 이미 있음) 메시지에 그 이유 |
 | POST | `/cases/{id}/documents` | 조회하지 못한 자료를 올린다 ("올려 주세요"에 답함). 폼으로 `file`(PDF)과 `what`(답하는 빠진 자료, `missing[].what` 글자 그대로)을 받고 `{case_id, document_id, result: CaseMaterials}`를 돌려준다. 그 빠진 자료와 그 자료를 기다리던 보류 작업이 빠진다. 오류: 404 `case_not_found`·`result_not_ready`(묶기 결과 전), 422 `missing_not_found`·`upload_not_asked`(직접 확인할 자료)·`empty_file`·`not_pdf`, 409 `document_already_exists`(같은 사건에 같은 파일, `case_id`) |
-| GET | `/documents/{id}` | 원문과 쪽 |
+| GET | `/documents/{id}` | 원문과 쪽: 올린 문서의 쪽 글자 `PageText`(쪽마다 `page`·`text`·`status`·`tables`, 문서 전체 `status`). 요청 때 원본 PDF에서 뽑는다. 원본 파일을 못 읽으면 200 + `pages: []` + `status` 확인되지 않음(`lookup_failed`). 오류: 404 `document_not_found` |
 
 ### 실행
 | 메서드 | 경로 | 하는 일 |
