@@ -230,3 +230,12 @@ class PostgresCaseAppStore:
             return None
         doc, oa_id = found
         return ExistingDocument(doc.case_id, oa_id, doc.id)
+
+    def get_document_path(self, document_id: str) -> str | None:
+        # 기본 사용자 사건의 문서만 (다른 사용자 문서 ID로 원문을 읽지 못하게)
+        q = (
+            select(Document.path)
+            .join(Case, Document.case_id == Case.id)
+            .where(Document.id == document_id, Case.user_id == DEFAULT_USER_ID)
+        )
+        return self._s.execute(q).scalar_one_or_none()
