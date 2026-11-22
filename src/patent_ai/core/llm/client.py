@@ -9,6 +9,7 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -56,11 +57,59 @@ _INVALID_KIND_ORDER = ("not_json", "unknown_key", "missing_key", "bad_value")
 _PYDANTIC_KIND = {"extra_forbidden": "unknown_key", "missing": "missing_key"}
 
 
-def _invalid_kind(e: ValidationError) -> str:
-    """스키마 검사 오류를 짧은 코드로 줄인다. 오류의 type만 보고 위치·입력 값은 안 본다
-    (모르는 키의 이름·답 글자는 모델이 쓴 원문이라 기록에 남기지 않는다)."""
-    kinds = {_PYDANTIC_KIND.get(err["type"], "bad_value") for err in e.errors()}
-    return ",".join(k for k in _INVALID_KIND_ORDER if k in kinds)
+def _model_in(annotation) -> type[BaseModel] | None:
+    """칸 타입 안의 Pydantic 모델 하나를 찾는다 (list[Row]·Row | None -> Row). 없으면 None."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for arg in get_args(annotation):
+        found = _model_in(arg)
+        if found is not None:
+            return found
+    return None
+
+
+def _schema_path(schema: type[BaseModel], loc: tuple) -> str:
+    """오류 위치(loc)에서 우리 스키마에 있는 칸 이름만 골라 점으로 잇는다 (#228 리뷰).
+
+    리스트 번호는 건너뛴다. 스키마 칸이 아닌 글자(모르는 키, dict 칸의 키)를 만나면 거기서
+    멈춘다: 그 글자는 모델이 쓴 원문이라 기록·로그에 남기지 않는다.
+    """
+    names: list[str] = []
+    model: type[BaseModel] | None = schema
+    for part in loc:
+        if isinstance(part, int):
+            continue  # 리스트 번호
+        if model is None or part not in model.model_fields:
+            break
+        names.append(part)
+        model = _model_in(model.model_fields[part].annotation)
+    return ".".join(names)
+
+
+def _schema_errors(schema: type[BaseModel], e: ValidationError) -> list[tuple[str, str, str]]:
+    """검사 오류마다 (종류 코드, 스키마 칸 경로, Pydantic 설명). 답 글자(input)는 안 담는다."""
+    return [
+        (
+            _PYDANTIC_KIND.get(err["type"], "bad_value"),
+            _schema_path(schema, err["loc"]),
+            err["msg"],
+        )
+        for err in e.errors(include_url=False, include_input=False, include_context=False)
+    ]
+
+
+def _invalid_kind(errors: list[tuple[str, str, str]]) -> str:
+    """오류 종류 코드를 기록용 한 줄로. 칸이 있으면 `종류:칸`, 겹치면 한 번만,
+    종류 순서 다음 칸 이름 순서로 쉼표로 잇는다 (예: missing_key:title,bad_value:rows.number)."""
+    entries = {(kind, path) for kind, path, _ in errors}
+    ordered = sorted(entries, key=lambda kp: (_INVALID_KIND_ORDER.index(kp[0]), kp[1]))
+    return ",".join(f"{kind}:{path}" if path else kind for kind, path in ordered)
+
+
+def _schema_error_message(errors: list[tuple[str, str, str]]) -> str:
+    """다시 부르는 프롬프트·단계 기록에 가는 오류 설명. 칸과 이유만, 답 글자는 없음."""
+    lines = [f"{path or '(전체)'}: {msg}" for _, path, msg in errors]
+    return f"{len(errors)}개 오류\n" + "\n".join(lines)
 
 
 class ModelResult(BaseModel):
@@ -273,9 +322,12 @@ def call_model(
             record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
             raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason, kind) from e
         except ValidationError as e:
-            kind = _invalid_kind(e)
+            errors = _schema_errors(output_schema, e)
+            kind = _invalid_kind(errors)
             record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
-            raise ModelOutputInvalid(f"스키마 검사 실패: {e}", resp.stop_reason, kind) from e
+            # 메시지에 Pydantic 기본 글(str(e))을 쓰지 않는다: 답 일부(input_value)가 들어간다
+            message = f"스키마 검사 실패: {_schema_error_message(errors)}"
+            raise ModelOutputInvalid(message, resp.stop_reason, kind) from None
 
     # 검사를 통과한 답만 캐시에 쓴다 (위에서 예외가 나면 여기까지 오지 않음)
     if cache is not None and hit is None:

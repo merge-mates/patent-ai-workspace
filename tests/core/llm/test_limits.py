@@ -353,20 +353,31 @@ class Shaped(BaseModel):
     count: int
 
 
+class Row(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    number: int
+
+
+class Nested(BaseModel):
+    rows: list[Row]
+    notes: dict[str, int] = {}
+
+
 @pytest.mark.parametrize(
     ("text", "kind"),
     [
         ("그냥 글", "not_json"),
+        # 모르는 키의 이름은 모델이 쓴 글자라 남기지 않는다 (위 칸이 없으면 코드만)
         ('{"title": "가", "count": 1, "몰래": "비밀 글"}', "unknown_key"),
-        ('{"title": "가"}', "missing_key"),
-        ('{"title": "가", "count": "많이"}', "bad_value"),
-        # 여러 종류가 같이 나오면 정해진 순서로 겹치지 않게 잇는다
-        ('{"count": "많이", "몰래": 1}', "unknown_key,missing_key,bad_value"),
-        # JSON이지만 객체가 아님 (리스트) = 칸 모양이 틀림
+        ('{"title": "가"}', "missing_key:count"),
+        ('{"title": "가", "count": "많이"}', "bad_value:count"),
+        # 여러 종류가 같이 나오면 종류 순서, 같은 종류면 칸 이름 순서로 겹치지 않게 잇는다
+        ('{"count": "많이", "몰래": 1}', "unknown_key,missing_key:title,bad_value:count"),
+        # JSON이지만 객체가 아님 (리스트) = 칸 모양이 틀림, 칸 없음
         ("[1, 2]", "bad_value"),
     ],
 )
-def test_검사_실패_기록에_오류_종류가_남는다(tmp_path, text, kind):
+def test_검사_실패_기록에_오류_종류와_스키마_칸이_남는다(tmp_path, text, kind):
     cfg = make_config(tmp_path, max_model_calls=1)
     rec = MemoryRecorder()
     t = scripted(TransportResponse(text, 10, 3, "end_turn"))
@@ -376,15 +387,36 @@ def test_검사_실패_기록에_오류_종류가_남는다(tmp_path, text, kind
     assert e.value.invalid_kind == kind
 
 
-def test_오류_종류에는_답_원문_글자가_들어가지_않는다(tmp_path):
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        # 리스트 번호는 빼고 스키마 칸 이름만 잇는다. 같은 칸이 여러 줄이면 한 번만
+        ('{"rows": [{"number": "가"}, {"number": "나"}]}', "bad_value:rows.number"),
+        # 안쪽 모르는 키: 위 칸(스키마)만 남고 키 이름은 빠진다
+        ('{"rows": [{"number": 1, "비밀": 2}]}', "unknown_key:rows"),
+        # dict 칸의 키는 모델이 쓴 글자라 빠진다
+        ('{"rows": [], "notes": {"비밀 키": "가"}}', "bad_value:notes"),
+    ],
+)
+def test_안쪽_칸은_번호와_모델이_쓴_키를_빼고_남긴다(tmp_path, text, kind):
     cfg = make_config(tmp_path, max_model_calls=1)
     rec = MemoryRecorder()
-    t = scripted(TransportResponse('{"비밀키": "비밀 청구항 글", "count": "비밀"}', 10, 3))
+    t = scripted(TransportResponse(text, 10, 3, "end_turn"))
     with pytest.raises(ModelOutputInvalid):
+        run(t, cfg, CallBudget(), rec, schema=Nested)
+    assert rec.records[0].invalid_kind == kind
+
+
+def test_오류_종류와_예외_메시지에는_답_원문_글자가_들어가지_않는다(tmp_path):
+    cfg = make_config(tmp_path, max_model_calls=1)
+    rec = MemoryRecorder()
+    t = scripted(TransportResponse('{"title": "가", "count": "비밀 청구항 글"}', 10, 3))
+    with pytest.raises(ModelOutputInvalid) as e:
         run(t, cfg, CallBudget(), rec, schema=Shaped)
-    kind = rec.records[0].invalid_kind
-    assert "비밀" not in kind
-    assert set(kind.split(",")) <= {"not_json", "unknown_key", "missing_key", "bad_value"}
+    assert rec.records[0].invalid_kind == "bad_value:count"
+    # 예외 메시지는 다시 부르는 프롬프트·단계 기록으로 간다: 칸과 이유만, 답 글자는 없음
+    assert "비밀" not in str(e.value)
+    assert "count" in str(e.value)
 
 
 def test_잘린_답도_오류_종류를_남긴다(tmp_path):
