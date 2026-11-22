@@ -63,7 +63,7 @@ flowchart LR
 - 받은 결과가 "확인되지 않음"·"충돌"이면: requirements "근거"의 세 줄. `kind = other`는 부르지 않는다.
 
 ### 3-2. 다음 기능에 주는 것
-④ `LegalEvidenceBundle` (F4가 받음. OA 흐름 순서는 F3 → F2 → F4, #222). [제안 — 재아 님 확인 필요] 칸 이름과 모양:
+④ `LegalEvidenceBundle` (F4가 받음. OA 흐름 순서는 F3 → F2 → F4, PR #222). [제안 — 재아 님 확인 필요] 칸 이름과 모양:
 ```json
 {
   "bundle_id": "leb_…",
@@ -109,7 +109,7 @@ flowchart LR
 - OA 흐름에서 발송일판과 출원일판의 글이 다르면: 주장의 `evidence`에는 발송일판(검색 기준일 판)만 넣고, 출원일판은 `further_review`에 `other_edition` 한 줄로 넣고, 주장에 `needs_human_review`를 단다. 출처 확인의 판본 범위는 검색 기준일 하나라 출원일판이 근거로 들어가면 빠지기 때문이다 (requirements 3, 열린 질문 4).
 - 공통 칸은 [data-model.md](../../data-model.md) 3절 그대로. 더하는 칸: `question`, `search_date`, `clarifications`, `claims[].review`, `further_review`, `search_log`.
 - 다시 확인 필요: F1 ①이 다시 써져 거절이유 글이나 발송일이 바뀌면 그 ④에 `needs_recheck` (규칙 2).
-- 인터페이스 변경: 있음 (④ 코드가 새로 생김, `core/schemas/legal_evidence.py`). 받는 기능 F3·F4 문서에 알린다. data-model 4절 ④ 줄은 스키마 코드를 만드는 구현 PR에서 고친다.
+- 인터페이스 변경: 있음 (④ 코드가 새로 생김, `core/schemas/legal_evidence.py`). 받는 기능 F4 문서에 알린다 (#225 8번). data-model 4절 ④ 줄은 스키마 코드를 만드는 구현 PR에서 고친다.
 
 **법률 질문 대화 `LegalChat`** (data-model 6절 "법률 질문 대화의 칸"):
 ```json
@@ -219,9 +219,9 @@ flowchart LR
 - 판례·심결 날짜 거르기는 4절 "쓰는 판례·심결 날짜"로 옮겼다.
 - 나중 (M2에서 안 함):
   - hybrid: 1·2 뒤 BM25·벡터가 서로 다른 줄을 찾을 때만 (한국어·법률 결과가 엇갈림).
-  - 조문 참조 따라가기: "제1항 각 호" 같은 참조를 정규식으로 뽑아 후보에 더함. 그래프 DB 없이 코드로 되니 M3 그래프 판단(11/24) 때 같이 본다.
+  - 조문 참조 따라가기: "제1항 각 호" 같은 참조를 정규식으로 뽑아 후보에 더함. 그래프 DB 없이 코드로 되니 #24 조문 번호 metadata filter 때, 또는 F2가 끝난 뒤 `law` 그래프를 붙일지 정할 때(재아, [ADR 0002](../../decisions/0002-first-build-scope.md) 11/22 보완) 같이 본다.
   - 재순위(reranker): 조각이 긴 심사기준·판례에서 먼저 볼 만함. 들이려면 검색 계약에 자리가 필요하다.
-  - 임베딩 모델 비교 후보: M3는 KURE-v1(MIT) 하나 (11/22 정함, #225 3번). 하이브리드 조문 Hit@1이 BM25(0.632)보다 안 오를 때는 돌리지 않는다. `text-embedding-3-large`, bge-m3, EVE-Embed-1.1-Legal(판례 전용, Apache-2.0)은 M3 밖.
+  - 임베딩 모델 비교 후보: M3는 KURE-v1(MIT) 하나 (11/22 정함, #225 3번). 하이브리드(BM25 + `law-idx-v2`의 `text-embedding-3-small` 벡터, 아직 실험 없음) 조문 Hit@1이 BM25(0.632)보다 안 오를 때는 돌리지 않는다. `text-embedding-3-large`, bge-m3, EVE-Embed-1.1-Legal(판례 전용, Apache-2.0)은 M3 밖.
 - 각 실험의 CQ 후보는 검색 계약대로 `work/retrieval/<실험>/`에 쌓는다.
 
 ## 8. 이 기능 안의 결정
