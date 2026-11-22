@@ -97,7 +97,7 @@ graph LR
 **이번에 안 하는 것** (design에 있지만 뒤로):
 - `rejection_ground` 칸과 선필터는 7-3 실험 1b에서 (조문 조각에만 붙는 칸이라 v3 조각 모양과 따로 간다). v3에서는 칸을 만들지 않는다.
 - 심결 더 받기(requirements 열린 질문 9), 74건 밖 판례 법령 API 조회, 조 조각(7-3 1d), 조각 앞말(1c). 심사기준은 세 장 밖을 넣지 않는다.
-- F2 도구(`search_guideline`·`search_precedent`·`get_precedent`)를 v3에 붙이는 일은 #28 다음 계획.
+- F2 도구(`search_guideline`·`search_precedent`·`get_precedent`)를 v3에 붙이는 일은 #28 다음 계획. 그때 "판 사이 빈 기간(심사기준 2018.4.24~7.31, 2023.3.22~2026.3.12)이면 `edition_unknown`" 규칙과 그 재료(판 표 또는 저장소 메서드)를 같이 넣는다 (24b 리뷰).
 **정한 작은 것** (추천대로 정함, 바꿀 수 있음):
 - 새 칸은 넷이고 **법령 표(`law_chunks`)에만** 둔다 (`ChunkColumns` 공통 칸이 아니라 `LawChunk`에. 인용문헌 표는 안 바뀜): `source_kind`(`statute`/`guideline`/`precedent`/`trial`, NOT NULL + CHECK, v1·v2 행은 마이그레이션에서 `statute`로 채움), `decided_on`(date, 판례·심결만), `speaker`(`court`/`party`/`unknown`, 판례·심결만), `attrs`(JSONB: 법원·사건명·심결 결과·IPC 같은 후보 칸. 거르기에는 안 쓰고 보이기·나중 거르기용).
 - 심사기준 장 범위: 제3부 제2장 신규성, 제3부 제3장 진보성, 제2부 제4장 청구범위 기재요건(명확성, 42조 4항). 판마다 장 첫 쪽·끝 쪽은 장 제목으로 찾고, 못 찾으면 그 판에서 멈추고 알린다 (빈 판으로 넘어가지 않음).
@@ -207,8 +207,8 @@ graph LR
 
 ### 진행
 - [x] 24a: task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · task-a2 (4a25c69·950e8ad) · task-a3 (dd7b1d4) · task-a4 (7cd0587). v2 실제 점수 비교는 24d task-d2로 (로컬 jsonl 없음, 공유 DB가 새 마이그레이션 전)
-- [ ] 24b: task-b1
+- [x] 24b: task-b1 (ab4345c·5764db2, 8판 1,076조각. 빠진 판 제102·131·140호 → 101·124호에 끝 날짜)
 - [ ] 24c: task-c1 · task-c2
 - [ ] 24d: task-d1 · task-d2
-- 다음: 24a /check, PR (DB 테스트는 CI)
+- 다음: 24b PR, 24c task-c1
 - 막힌 것: 없음
