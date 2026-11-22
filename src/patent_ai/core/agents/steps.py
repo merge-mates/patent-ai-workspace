@@ -31,10 +31,19 @@ class StepRecord(BaseModel):
 
 
 class StepRecorder(Protocol):
+    """run_case가 부르는 기록 자리. 단계마다 record만 부른다."""
+
     def record(self, step: StepRecord) -> None: ...
 
+
+class StepLog(StepRecorder, Protocol):
+    """서버 실행기(RunCaseExecutor)의 step_log 자리. 결과를 저장한 뒤 결과 ID를 붙인다 (#267)."""
+
     def link_result(self, run_id: str, tool_name: str, result_id: str) -> None:
-        """그 실행·도구의 마지막 ok 기록에 저장한 결과 ID를 붙인다. 붙일 줄이 없으면 경고만."""
+        """그 실행·도구의 마지막 ok code_tool 기록에 결과 ID를 붙인다.
+
+        단계 줄을 남기는 기록기는 붙일 줄이 없으면 경고를 남긴다.
+        """
         ...
 
 
@@ -51,7 +60,12 @@ class MemoryStepRecorder:
         # 뒤에서부터 찾는다: 같은 도구를 다시 불렀으면 마지막으로 성공한 기록이 그 결과를 냈다
         for i in range(len(self.records) - 1, -1, -1):
             r = self.records[i]
-            if r.run_id == run_id and r.tool_name == tool_name and r.outcome == "ok":
+            if (
+                r.run_id == run_id
+                and r.tool_name == tool_name
+                and r.step_kind == "code_tool"
+                and r.outcome == "ok"
+            ):
                 self.records[i] = r.model_copy(update={"result_id": result_id})
                 return
         logger.warning("실행 %s: 결과 ID를 붙일 %s ok 기록이 없다", run_id, tool_name)

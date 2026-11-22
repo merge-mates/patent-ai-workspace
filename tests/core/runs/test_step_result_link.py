@@ -91,3 +91,32 @@ def test_글자가_없어_F3_F2_F4를_넘기면_그_단계_result_id는_None(tmp
     skipped = [r for r in rec.records if r.outcome == "skipped"]
     assert {r.tool_name for r in skipped} == set(RESULT_STEPS)
     assert all(r.result_id is None for r in rec.records)
+
+
+def test_결과_ID를_못_붙이면_record_failed로_끝나고_원문은_안_보인다(tmp_path, monkeypatch):
+    from patent_ai.core.runs.store import RunLogWriteFailed
+
+    wire(monkeypatch)
+
+    class BrokenLink(MemoryStepRecorder):
+        def link_result(self, run_id, tool_name, result_id):
+            raise RunLogWriteFailed(tool_name) from RuntimeError("비밀 연결문자열 postgres://x")
+
+    env = Env(tmp_path, step_log=BrokenLink())
+    st = env.run()
+    assert st.state.value == "failed" and st.error["code"] == "record_failed"
+    assert "비밀" not in st.error["message"]
+    assert st.error["message"].startswith("실행 기록 저장 실패 (run_f")
+
+
+def test_link_result는_decide_줄에는_붙이지_않는다():
+    rec = MemoryStepRecorder()
+    rec.record(_step("run_f3", "ok"))
+    rec.record(
+        StepRecord(run_id=RID, step_kind="decide", tool_name="run_f3", reason="고름", outcome="ok")
+    )
+    rec.link_result(RID, "run_f3", "sres_1")
+    assert [(r.step_kind, r.result_id) for r in rec.records] == [
+        ("code_tool", "sres_1"),
+        ("decide", None),
+    ]

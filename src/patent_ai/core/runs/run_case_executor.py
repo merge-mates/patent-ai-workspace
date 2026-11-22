@@ -26,7 +26,7 @@ from pathlib import Path
 
 from patent_ai.core.agents.orchestrator import CaseStore, RunOutcome, run_case
 from patent_ai.core.agents.step_inputs import InputMissing, f4_input
-from patent_ai.core.agents.steps import StepRecord, StepRecorder
+from patent_ai.core.agents.steps import StepLog, StepRecord, StepRecorder
 from patent_ai.core.cases.case_fill import CaseFillSink
 from patent_ai.core.cases.human_answers import apply_human_numbers
 from patent_ai.core.cases.human_inputs import HumanInputStore
@@ -91,7 +91,10 @@ class _SkippedOnlySink:
             self._store.record_skipped(step.run_id, step.tool_name, step.skipped_reason)
 
     def link_result(self, run_id: str, tool_name: str, result_id: str) -> None:
-        """단계 줄을 안 남기는 기록 자리라 붙일 곳이 없다 (옛 동작)."""
+        """단계 줄을 아예 안 남기는 기록 자리라 붙일 곳이 없다 (옛 동작).
+
+        실행마다 늘 그러니 경고하지 않는다 (붙일 줄이 빠진 게 아니라 줄이 없는 자리다).
+        """
 
 
 class _LiveSteps:
@@ -138,7 +141,7 @@ class RunCaseExecutor:
         selections: SelectionStore,
         human: HumanInputStore,
         lock: threading.Lock | None = None,
-        step_log: StepRecorder | None = None,
+        step_log: StepLog | None = None,
     ) -> None:
         self._store = store
         self._step_log = step_log or _SkippedOnlySink(store)
@@ -303,6 +306,11 @@ class RunCaseExecutor:
             return
         try:
             self._save(run_id, oa_id, outcome)
+        except RunLogWriteFailed as e:
+            # 결과 ID를 단계 기록에 붙이지 못함 (#267): 결과 저장 실패와 섞지 않고 기록 실패로
+            logger.exception("실행 %s의 실행 기록 저장 실패", run_id)
+            self._fail(run_id, "record_failed", f"실행 기록 저장 실패 ({e.where})")
+            return
         except Exception as exc:
             logger.exception("실행 %s의 결과 저장 실패", run_id)
             self._fail(run_id, "result_save_failed", safe_message("결과 저장", exc))

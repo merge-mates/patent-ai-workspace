@@ -50,14 +50,15 @@ class PostgresStepRecorder:
         """그 실행·도구의 마지막 ok 단계 줄에 step_results ID를 쓴다 (#267).
 
         단계 줄은 단계가 끝날 때(폴링하는 화면이 보게) 먼저 쓰이고, 결과는 실행 끝에 저장되므로
-        나중에 붙인다. 모델 호출 줄(model_call)과 skipped·failed 줄은 건드리지 않는다.
+        나중에 붙인다. code_tool ok 줄만 고른다 (decide·model_call·skipped·failed 줄은 안 건드림).
         """
         q = (
             select(AgentStep)
             .where(
                 AgentStep.run_id == run_id,
                 AgentStep.tool_name == tool_name,
-                AgentStep.step_kind != "model_call",
+                # decide 줄(tool_name = 고른 도구)과 모델 호출 줄은 결과를 만들지 않는다
+                AgentStep.step_kind == "code_tool",
                 AgentStep.outcome == "ok",
             )
             .order_by(AgentStep.id.desc())

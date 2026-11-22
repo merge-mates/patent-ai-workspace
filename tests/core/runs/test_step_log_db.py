@@ -229,6 +229,8 @@ def test_link_result는_그_도구의_ok_줄에만_ID를_쓰고_skipped_failed�
     rec.record(_step(rid, "run_f3", "failed"))
     rec.record(_step(rid, "run_f3", "ok"))
     rec.record(_step(rid, "run_f2", "skipped"))
+    # 지휘가 고른 줄(decide)은 tool_name이 같아도 결과를 만들지 않는다
+    rec.record(_step(rid, "run_f3", "ok").model_copy(update={"step_kind": "decide"}))
     rec.link_result(rid, "run_f3", "sres_1")
     rec.link_result(rid, "run_f2", "sres_2")  # 넘긴 단계는 붙일 줄이 없다
     with factory() as other:
@@ -239,6 +241,7 @@ def test_link_result는_그_도구의_ok_줄에만_ID를_쓰고_skipped_failed�
         ("run_f3", "failed", None),
         ("run_f3", "ok", "sres_1"),
         ("run_f2", "skipped", None),
+        ("run_f3", "ok", None),
     ]
 
 
