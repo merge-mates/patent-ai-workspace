@@ -2,7 +2,7 @@
 # 기준선과 다른 줄은 하나만: compare_variant. 바꾼 줄 옆에 # changed
 experiment: m3-i1-f3-recall-prompt
 feature: f3
-baseline: m3-i1-f3-independent-first
+baseline: m3-i1-f3-independent-first   # 기준선 판 f65f910 (#252 (나), 종속항 검색은 함)
 goldset: tune
 goldset_version: 2
 impl: split_search        # config/f3.yaml impl (기준선과 같음)

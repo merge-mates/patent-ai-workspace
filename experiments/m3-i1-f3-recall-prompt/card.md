@@ -63,7 +63,7 @@
 **회차마다 같이 볼 것**: 판정 분포(개시됨/차이 후보/불명), 줄당 근거 수, EVIDENCE_REJECTED 줄 수, 종속항 대비 묶음 수·compare 호출 수, 효과 후보 수, "없다고 단정" 0건.
 **실행 때 바꿀 줄**: `config/f3.yaml`의 `compare_variant: standard` → `recall` (나머지 그대로. 끝나면 되돌린다).
 
-## 결과 (n=10, tune 9건 실행 + case10 예측 없음 0점)
+## 결과 (옛 판 64d82fc, 대체됨) (n=10, tune 9건 실행 + case10 예측 없음 0점)
 끔 = `experiments/m3-i1-f3-independent-first/` (같은 코드 8382103, standard 2회, 실험 세션). 켬 = 이 브랜치 64d82fc, `compare_variant: recall` 2회. 같은 F1 입력 `a3_run2_pred`, `use_examiner_paragraphs: false`, 회차마다 새 캐시. 호출 기록 단계 이름이 켬은 `f3.compare_recall`(71·80회), 끔은 `f3.compare`(50·54회)라 섞이지 않음.
 scores.json은 켬 1회차. 켬 2회차는 git 밖 `work/overnight_1121/runs/score_f3_recall_run2/`, 예측 `runs/f3_recall_run{1,2}/`.
 | 지표 | 끔 1 / 2 | 켬 1 / 2 | 차이 (평균) | 참고: main 9eb8237 3회 (m3-i1-f3-rescore) |
