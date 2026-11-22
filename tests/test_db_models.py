@@ -11,7 +11,9 @@ from sqlalchemy import CheckConstraint, Date, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
 from patent_ai.core.agents.steps import StepRecord
+from patent_ai.core.cases.human_inputs import HumanInputKind
 from patent_ai.core.llm.limits import CallRecord
+from patent_ai.core.runs.store import RunKind
 from patent_ai.core.schemas.common import Origin, StatusValue
 from patent_ai.core.schemas.oa_result import RejectionKind
 from patent_ai.db import models  # noqa: F401  (표를 Base.metadata에 올린다)
@@ -38,6 +40,8 @@ RESULT_TABLES = {
     "agent_steps",
     "result_inputs",
     "api_cache",
+    "direction_selections",
+    "human_inputs",
 }
 M1_TABLES = CASE_TABLES | RESULT_TABLES
 # API 명세(docs/api/README.md)의 실행 상태 state
@@ -184,7 +188,10 @@ def test_oa_results_body_is_jsonb_with_status_origin_columns():
     for col in ("oa_id", "run_id", "status", "origin"):
         assert not t.c[col].nullable
     assert _check_values("oa_results", "ck_oa_results_status") == {s.value for s in StatusValue}
-    assert _check_values("oa_results", "ck_oa_results_origin") == {o.value for o in Origin}
+    # human_written은 방향 선택(selection.origin)에만 쓰고 결과 맨 위 origin에는 오지 않는다
+    assert _check_values("oa_results", "ck_oa_results_origin") == {
+        o.value for o in Origin if o != Origin.HUMAN_WRITTEN
+    }
 
 
 def test_oa_results_has_index_for_latest_per_oa():
@@ -202,6 +209,31 @@ def test_case_materials_one_row_per_case():
 def test_runs_state_matches_api():
     assert _check_values("runs", "ck_runs_state") == RUN_STATES
     assert not _table("runs").c.oa_id.nullable
+
+
+def test_runs_kind_matches_core_and_defaults_to_full():
+    # 실행 종류: 끝까지 도는 실행 / 사람 선택 뒤 초안만 다시 만드는 작은 실행 (#70)
+    assert _check_values("runs", "ck_runs_kind") == set(get_args(RunKind))
+    col = _table("runs").c.kind
+    assert not col.nullable
+    assert "full" in str(col.server_default.arg)
+
+
+def test_direction_selections_hold_human_choice_only():
+    # 사람이 고른 것·직접 쓴 것만 남긴다 (AI 기본값은 결과 안 selection에 있음, #70)
+    t = _table("direction_selections")
+    # run_id: 이 선택을 적용할 작은 실행 (그 실행만 이 선택을 쓴다)
+    for col in ("oa_id", "run_id", "unit_id", "origin", "created_at"):
+        assert not t.c[col].nullable
+    assert t.c.candidate_id.nullable and t.c.written_direction.nullable
+    assert _check_values("direction_selections", "ck_direction_selections_origin") == {
+        Origin.HUMAN_SELECTED.value,
+        Origin.HUMAN_WRITTEN.value,
+    }
+    one_of = _check_sql("direction_selections", "ck_direction_selections_one_of")
+    assert "candidate_id" in one_of and "written_direction" in one_of
+    idx = [[c.name for c in i.columns] for i in t.indexes]
+    assert ["run_id"] in idx and ["oa_id", "unit_id", "created_at"] in idx
 
 
 def test_agent_steps_hold_step_record_and_call_record():
@@ -226,6 +258,11 @@ def test_agent_steps_has_stop_reason_for_model_calls():
     # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등). 옛 기록은 NULL (#172)
     col = _table("agent_steps").c["stop_reason"]
     assert col.nullable
+
+
+def test_agent_steps_has_invalid_kind_for_model_calls():
+    # 출력 검사에 떨어진 오류 종류 (짧은 코드). 검사를 통과했거나 옛 기록은 NULL (#228)
+    assert _table("agent_steps").c["invalid_kind"].nullable
 
 
 def test_result_inputs_point_to_result_or_document():
@@ -259,3 +296,13 @@ def test_보정서_판은_이력_줄이_꼭_있음():
     # #120 리뷰 (가): 보정서 판인데 case_event_id가 비면 DB가 막는다 (#16 T6)
     sql = _check_sql("claim_versions", "ck_claim_versions_amendment_event")
     assert "case_event_id IS NOT NULL" in sql
+
+
+def test_human_inputs_kind_matches_core_and_only_numbers_have_value():
+    # 사람이 넣은 번호·"맞아요" (#70 계획 ②). 확인은 값이 없고 번호는 값이 있다
+    assert _check_values("human_inputs", "ck_human_inputs_kind") == set(get_args(HumanInputKind))
+    assert "value IS NULL" in _check_sql("human_inputs", "ck_human_inputs_value")
+    t = _table("human_inputs")
+    for col in ("oa_id", "run_id", "kind", "created_at"):
+        assert not t.c[col].nullable
+    assert ["run_id"] in [[c.name for c in i.columns] for i in t.indexes]

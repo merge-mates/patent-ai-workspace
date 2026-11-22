@@ -2,12 +2,13 @@
 
 채점 단위는 정답 한 줄 = OA 시점 청구항 × 거절이유. 청구항 점수 -> OA 평균 -> 세트 평균.
 - ① 다뤘나: 지표 없음. 정의를 정답 문서에서 정한 뒤 다시 넣는다 (`handled`는 ② 대상 가르기용)
-- ② 모델 1번 후보 거친 방향 일치율 (주 지표 direction_top1): 모델이 낸 1번 후보 =
-  방향 후보 목록의 첫째(candidates[0])의 청구항별 보정 종류에서 계산한 방향이 정답과 같은가.
-  확신 낮음(보류) 묶음도 빼지 않고 센다. 후보가 0개인 묶음은 틀림으로 센다.
-  화면에서 순위를 숨기는 것(rank 없음)과 상관없이 목록 순서를 믿는다.
+- ② AI 기본 선택 거친 방향 일치율 (주 지표 direction_top1): AI 기본 선택 = 순위 1 후보,
+  순위 1 후보가 없으면(보류 묶음) 목록 첫째(candidates[0])의 청구항별 보정 종류에서 계산한
+  방향이 정답과 같은가. 확신 낮음(보류) 묶음도 빼지 않고 센다. 후보가 0개인 묶음은 틀림으로 센다.
+  옛 주 지표(목록 첫째 후보로만 센 값)는 direction_top1_list_first로 같이 낸다.
 - 누락: 정답 줄 가운데 AI의 어느 묶음에도 없는 (거절이유, 청구항) 쌍 수 (failures)
-확신도별 일치율(direction_top1_conf_high/medium/low)은 1번 후보의 확신도로 줄을 나눈다.
+확신도별 일치율(direction_top1_conf_high/medium/low)은 주 지표(AI 기본 선택)를 그 후보의 확신도로
+줄을 나눈 것이다. 목록 첫째 기준은 direction_top1_list_first_conf_*로 따로 낸다.
 ③④층, 실제 방향의 순위, 독립항만 점수는 아직 내지 않는다.
 scores에는 출원번호·발송번호·원문 글자를 넣지 않는다 (건수와 비율만).
 
@@ -38,7 +39,7 @@ from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 
 logger = logging.getLogger(__name__)
 
-METRIC_NAME = "모델 1번 후보 거친 방향 일치율"
+METRIC_NAME = "AI 기본 선택 거친 방향 일치율"
 EXIT_NO_GOLD = 3  # 정답 없음: 성공(0)도 채점 실패(1)도 argparse 사용법 오류(2)도 아니다
 FAILURE_KEYS = (
     "missing_prediction",  # 예측이 없는 OA (0점으로 셈)
@@ -47,7 +48,8 @@ FAILURE_KEYS = (
     "no_candidate",  # 후보가 0개인 묶음이라 1번 후보가 없는 줄 (주 지표에서 틀림으로 셈)
     "excluded_ranked_only_conflict",  # 순위 1 후보 방향이 가지끼리 엇갈려 ranked_only에서만 뺀 줄
     "excluded_ranked_only_abstain",  # 순위 1 후보가 없는 묶음이라 ranked_only에서만 뺀 줄
-    "excluded_branch_conflict",  # 같은 크기 묶음끼리 AI 값이 엇갈려 뺀 줄 (3절 5번)
+    "excluded_branch_conflict",  # 같은 크기 묶음끼리 기본 선택 값이 엇갈려 뺀 줄 (3절 5번)
+    "excluded_list_first_conflict",  # 같은 크기 묶음끼리 목록 첫째 값이 엇갈려 뺀 줄 (list_first만)
 )
 _ABSTAIN = "abstain"  # 순위 1 후보가 없음 (직접 판단 필요)
 _NO_CANDIDATE = "no_candidate"  # 묶음에 후보가 0개라 1번 후보가 없음
@@ -63,6 +65,15 @@ def _rank1(result: DirectionCandidates) -> DirectionCandidate | None:
 def _first(result: DirectionCandidates) -> DirectionCandidate | None:
     """모델이 낸 1번 후보 = 목록의 첫째. 순위가 없어도 목록 순서가 모델이 낸 순서다."""
     return result.candidates[0] if result.candidates else None
+
+
+def _default(result: DirectionCandidates) -> DirectionCandidate | None:
+    """AI 기본 선택 = 순위 1 후보, 없으면(보류 묶음) 목록 첫째. 후보가 0개면 None.
+
+    화면이 미리 고르는 후보(directions.py의 selection)와 같은 후보를 뽑는다. 다만 순위 후보가
+    없을 때 화면은 아무것도 고르지 않고, 채점은 모델이 먼저 낸 목록 첫째로 센다.
+    """
+    return _rank1(result) or _first(result)
 
 
 def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> str:
@@ -91,9 +102,11 @@ def claim_direction(unit: JudgmentUnit, top: DirectionCandidate, claim: int) -> 
 class Reading:
     """정답 한 줄에 대한 AI 값. 값은 거친 방향 / _NO_CANDIDATE / _ABSTAIN / "conflict"."""
 
-    first: str  # 모델 1번 후보(목록 첫째)로 센 값 (주 지표)
-    confidence: str | None  # 그 1번 후보의 확신도 (후보가 없으면 None)
+    default: str  # AI 기본 선택(순위 1, 없으면 목록 첫째)으로 센 값 (주 지표)
+    first: str  # 목록 첫째 후보로 센 값 (옛 주 지표, list_first)
+    confidence: str | None  # 목록 첫째 후보의 확신도 (후보가 없으면 None)
     ranked: str  # 순위 1 후보로 센 값 (보류면 _ABSTAIN)
+    default_confidence: str | None  # AI 기본 선택 후보의 확신도 (후보가 없으면 None)
 
 
 def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
@@ -109,14 +122,19 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
     if not units:
         return None
     smallest = min(len(u.claims) for u in units)
+    defaults: set[str] = set()
     firsts: set[str] = set()
     confidences: list[str] = []
+    default_confidences: list[str] = []
     ranked: set[str] = set()
     for u in units:
         if len(u.claims) != smallest:
             continue
         result = pred.directions[u.unit_id]
-        first, top = _first(result), _rank1(result)
+        first, top, chosen = _first(result), _rank1(result), _default(result)
+        defaults.add(_NO_CANDIDATE if chosen is None else claim_direction(u, chosen, row.claim))
+        if chosen is not None:
+            default_confidences.append(chosen.confidence)
         if first is None:
             firsts.add(_NO_CANDIDATE)
         else:
@@ -126,10 +144,13 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
     # 충돌은 방향 값으로만 가른다 (3절 5번의 "AI 값" = 방향). 확신도가 갈려도 충돌이 아니다.
     # 방향이 같고 확신도만 다르면 보수적으로 가장 낮은 확신도 칸에 넣는다.
     confidence = max(confidences, key=CONFIDENCES.index, default=None)
+    default_confidence = max(default_confidences, key=CONFIDENCES.index, default=None)
     return Reading(
+        defaults.pop() if len(defaults) == 1 else "conflict",
         firsts.pop() if len(firsts) == 1 else "conflict",
         confidence,
         ranked.pop() if len(ranked) == 1 else "conflict",
+        default_confidence,
     )
 
 
@@ -137,13 +158,17 @@ def predicted(pred: F4Pred, row: GoldClaimRow) -> Reading | None:
 class OAScore:
     """OA 한 통의 줄별 맞음/틀림. scores에는 합친 값만 싣는다."""
 
-    direction: list[bool] = field(default_factory=list)  # ② 주 점수 (1번 후보, 물려받은 줄 제외)
-    direction_all: list[bool] = field(default_factory=list)  # ② 물려받은 줄 포함
+    direction: list[bool] = field(default_factory=list)  # ② 주 점수 (기본 선택, 물려받은 줄 제외)
+    direction_all: list[bool] = field(default_factory=list)  # ② 물려받은 줄 포함 (기본 선택)
+    direction_list_first: list[bool] = field(default_factory=list)  # 목록 첫째로 센 옛 주 점수
     direction_ranked_only: list[bool] = field(default_factory=list)  # 순위 1 후보, 보류 줄 뺌
     abstained: list[bool] = field(default_factory=list)  # ② 대상 줄(정답이 다룸)마다: 보류였나
     by_confidence: dict[str, list[bool]] = field(
         default_factory=lambda: {c: [] for c in CONFIDENCES}
-    )  # 주 점수를 1번 후보의 확신도로 나눈 것 (물려받은 줄 제외)
+    )  # 주 점수(기본 선택)를 그 후보의 확신도로 나눈 것 (물려받은 줄 제외)
+    by_confidence_list_first: dict[str, list[bool]] = field(
+        default_factory=lambda: {c: [] for c in CONFIDENCES}
+    )  # 목록 첫째 점수를 그 후보의 확신도로 나눈 것 (물려받은 줄 제외)
     failures: dict[str, int] = field(default_factory=lambda: dict.fromkeys(FAILURE_KEYS, 0))
 
 
@@ -168,18 +193,27 @@ def score_oa(g: F4Gold, pred: F4Pred | None) -> OAScore:
             ok_ranked = reading is not None and reading.ranked == row.direction
             if not row.inherited:
                 s.direction_ranked_only.append(ok_ranked)
-        # 주 점수: 모델 1번 후보로 센다. 보류 묶음도 뺀 채 두지 않는다
+        # 옛 주 점수(목록 첫째)와 그 확신도별: 목록 첫째 후보로 센다
         if reading is not None and reading.first == "conflict":
+            s.failures["excluded_list_first_conflict"] += 1
+        else:
+            ok_first = reading is not None and reading.first == row.direction
+            if not row.inherited:
+                s.direction_list_first.append(ok_first)
+                if reading is not None and reading.confidence in s.by_confidence_list_first:
+                    s.by_confidence_list_first[reading.confidence].append(ok_first)
+        # 주 점수: AI 기본 선택(순위 1, 없으면 목록 첫째)으로 센다. 보류 묶음도 뺀 채 두지 않는다
+        if reading is not None and reading.default == "conflict":
             s.failures["excluded_branch_conflict"] += 1
             continue
-        if reading is not None and reading.first == _NO_CANDIDATE:
-            s.failures["no_candidate"] += 1  # 1번 후보가 없으니 틀림으로 센다
-        ok = reading is not None and reading.first == row.direction  # 묶음에 없는 줄은 틀림
+        if reading is not None and reading.default == _NO_CANDIDATE:
+            s.failures["no_candidate"] += 1  # 기본 선택이 없으니 틀림으로 센다
+        ok = reading is not None and reading.default == row.direction  # 묶음에 없는 줄은 틀림
         s.direction_all.append(ok)
         if not row.inherited:
             s.direction.append(ok)
-            if reading is not None and reading.confidence in s.by_confidence:
-                s.by_confidence[reading.confidence].append(ok)
+            if reading is not None and reading.default_confidence in s.by_confidence:
+                s.by_confidence[reading.default_confidence].append(ok)
     return s
 
 
@@ -233,6 +267,7 @@ def score_f4(
     for metric, name in (
         ("direction_top1", "direction"),
         ("direction_top1_with_inherited", "direction_all"),
+        ("direction_top1_list_first", "direction_list_first"),
         ("direction_top1_ranked_only", "direction_ranked_only"),
         ("needs_human_judgment_rate", "abstained"),  # ② 대상 줄 가운데 보류로 빠진 비율
     ):
@@ -242,14 +277,19 @@ def score_f4(
         else:
             metrics[metric] = value
 
-    # 확신도별: 1번 후보의 확신도로 줄을 나눈다. 줄이 없는 단계는 0이 아니라 뺀다
-    for conf in CONFIDENCES:
-        metric = f"direction_top1_conf_{conf}"
-        value = _mean_of_oas([s.by_confidence[conf] for s in per_oa])
-        if value is None:
-            logger.warning("F4 %s: 채점한 줄이 0개 (지표를 뺌)", metric)
-        else:
-            metrics[metric] = value
+    # 확신도별: 기본 선택 후보의 확신도로(주 지표), 목록 첫째 후보의 확신도로(list_first)
+    # 줄을 나눈다. 줄이 없는 단계는 0이 아니라 뺀다
+    for prefix, attr in (
+        ("direction_top1_conf_", "by_confidence"),
+        ("direction_top1_list_first_conf_", "by_confidence_list_first"),
+    ):
+        for conf in CONFIDENCES:
+            metric = f"{prefix}{conf}"
+            value = _mean_of_oas([getattr(s, attr)[conf] for s in per_oa])
+            if value is None:
+                logger.warning("F4 %s: 채점한 줄이 0개 (지표를 뺌)", metric)
+            else:
+                metrics[metric] = value
     # scores 공통 스키마에는 줄 수를 넣을 칸이 없어 로그로만 남긴다
     logger.info(
         "F4 확신도별 줄 수 (물려받은 줄 제외): %s",

@@ -130,7 +130,7 @@ def test_사람_기다림_실행의_정리도_목록에_나온다(session):
     waiting = Run(
         oa_id=created.oa_id,
         state="waiting_for_human",
-        waiting_for="direction_selection",
+        waiting_for="application_number",
         created_at=T0,
     )
     session.add(waiting)

@@ -40,6 +40,7 @@ class Origin(StrEnum):
     AI_DEFAULT = "ai_default"
     HUMAN_SELECTED = "human_selected"
     HUMAN_EDITED = "human_edited"
+    HUMAN_WRITTEN = "human_written"  # 사람이 후보 밖 방향을 글로 씀 (DirectionSelection만)
 
 
 class Flag(StrEnum):

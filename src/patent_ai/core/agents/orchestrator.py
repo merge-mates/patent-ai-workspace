@@ -35,6 +35,7 @@ from patent_ai.core.llm.client import call_model
 from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import StatusValue
+from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,9 @@ class CaseInput(BaseModel):
     texts: F3Inputs | None = None
     # F4 확인 기준일 (실행한 날). 없으면 F4를 넘긴다 (코드가 오늘 날짜를 몰래 읽지 않는다)
     checked_on: date | None = None
+    # 사람 기다림에서 이어 돌 때(#70): 그 실행이 저장한 OA 정리 + 사람이 넣은 번호.
+    # 있으면 read_oa는 모델을 부르지 않고 이것을 결과로 쓴다 (그다음 check_oa부터 그대로)
+    resume_oa: OAResult | None = None
 
 
 class CaseStore(Protocol):
@@ -79,7 +83,6 @@ class WaitingFor(StrEnum):
 
     APPLICATION_NUMBER = "application_number"
     DISPATCH_NUMBER = "dispatch_number"
-    DIRECTION_SELECTION = "direction_selection"
 
 
 class RunOutcome(BaseModel):
@@ -291,6 +294,13 @@ def run_case(
         return {"case_id": store.find_case(app.value) or state["case_id"]}
 
     def read_oa_node(state: _State) -> dict:
+        if case_input.resume_oa is not None:
+            note("code_tool", "read_oa", "저장한 OA 정리 + 사람이 넣은 번호 (모델 안 부름)", "ok")
+            trace.append("read_oa")
+            return {
+                "results": {**state["results"], "read_oa": case_input.resume_oa},
+                "steps": state["steps"] + 1,
+            }
         return call_tool(
             "read_oa",
             state,

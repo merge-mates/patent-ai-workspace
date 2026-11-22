@@ -20,7 +20,7 @@ S, F, C = RunState.SUCCEEDED, RunState.FAILED, RunState.CANCELLED
 ALLOWED = {
     Q: {R, C, F},
     R: {S, F, W, C},
-    W: {R, C, F},
+    W: {Q, R, C, F},  # Q: 사람이 번호를 넣으면 다시 대기 (#70)
     S: set(),
     F: set(),
     C: set(),

@@ -27,14 +27,14 @@ export type CheckedOn = string | null
 export type ChunkId = string | null
 export type IndexVersion = string | null
 export type Evidence = Evidence1[]
-export type Origin = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited'
+export type Origin = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited' | 'human_written'
 export type NeedsRecheck = boolean
 export type RecheckReason = string | null
 export type Flag = 'needs_human_judgment' | 'needs_human_review'
 export type Flags = Flag[]
 export type UnitId = string
 export type Evidence2 = Evidence1[]
-export type Origin1 = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited'
+export type Origin1 = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited' | 'human_written'
 export type NeedsRecheck1 = boolean
 export type RecheckReason1 = string | null
 export type Flags1 = Flag[]
@@ -72,8 +72,9 @@ export type RebuttalType =
   | 'other'
 export type Summary = string
 export type Candidates = DirectionCandidate[]
-export type CandidateId1 = string
-export type Origin2 = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited'
+export type CandidateId1 = string | null
+export type WrittenDirection = string | null
+export type Origin2 = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_edited' | 'human_written'
 export type AmendmentLimit = 'initial' | 'final'
 export type RawText1 = string | null
 export type Page1 = number | null
@@ -151,10 +152,13 @@ export interface Rebuttal {
   summary: Summary
 }
 /**
- * 묶음에서 고른 후보. AI 기본값과 사람 선택을 origin으로 구분한다.
+ * 묶음에서 고른 방향. 후보 id 또는 사람이 쓴 글 중 정확히 하나.
+ *
+ * AI 기본값·사람 선택·사람이 직접 쓴 글을 origin으로 구분한다.
  */
 export interface DirectionSelection {
   candidate_id: CandidateId1
+  written_direction: WrittenDirection
   origin: Origin2
 }
 export interface ExtractedValueAmendmentLimit {

@@ -13,6 +13,7 @@ from f3_eval_builder import (
     DISPATCH,
     DOC,
     KEY,
+    UNIT,
     novelty_table,
     prediction,
     write_chunks,
@@ -163,6 +164,63 @@ def test_그_청구항을_찾은_기록이_없으면_0점으로_세고_건수를
     _, scores, _ = run(prediction(searched=(), selected=()))
     assert scores["metrics"]["search_recall"] == 0.0
     assert scores["failures"]["not_searched_rows"] == 1
+
+
+# ---- 대표 청구항 먼저: 건너뛴 종속항 줄 (11/22 결정 1 (나)) ----
+SKIPPED = f"f3_compare:{UNIT}:claim1:dependent"  # 정답 줄의 청구항 1을 건너뛴 보류
+
+
+def test_건너뛴_종속항_줄은_검색은_세고_선택은_분모에서_빼고_따로_센다(run):
+    # 검색은 [0014]만 가져옴 (정답 항목 2개 중 1개), 대비는 안 함 (고른 조각 없음)
+    pred = prediction(searched=((1, [14]),), selected=(), held_tasks=[SKIPPED])
+    _, scores, _ = run(pred)
+    m, f = scores["metrics"], scores["failures"]
+    assert (m["search_hit"], m["search_recall"]) == (1.0, 0.5)
+    assert "selected_hit" not in m and "selected_recall" not in m  # 분모에서 뺌 (0점 아님)
+    assert f["skipped_dependent_rows"] == 1 and f["not_searched_rows"] == 0
+
+
+def test_건너뛴_줄은_옛_셈법_selected_recall_incl_skipped에서는_0점으로_들어간다(run):
+    pred = prediction(searched=((1, [14]),), selected=(), held_tasks=[SKIPPED])
+    _, scores, _ = run(pred)
+    assert scores["metrics"]["selected_recall_incl_skipped"] == 0.0
+
+
+def test_search_recall_round1은_2차_검색_기록을_빼고_센다(run):
+    # 구성요소 1은 1차에 [0020](정답 아님), 구성요소 2는 2차에 [0014]: 전체 0.5, 1차만 0
+    pred = prediction(searched=((1, [20]), (2, [14])), selected=(), rounds={2: 2})
+    _, scores, _ = run(pred)
+    m = scores["metrics"]
+    assert m["search_recall"] == 0.5 and m["search_recall_round1"] == 0.0
+
+
+def test_건너뛴_줄인데_검색_기록이_아예_없으면_안_찾은_줄로도_센다(run):
+    pred = prediction(searched=(), selected=(), held_tasks=[SKIPPED])
+    _, scores, _ = run(pred)
+    f = scores["failures"]
+    assert f["skipped_dependent_rows"] == 1 and f["not_searched_rows"] == 1
+
+
+def test_OA의_정답_줄이_모두_건너뛴_줄이면_selected_평균에서_빠진_OA_수를_경고한다(run, caplog):
+    with caplog.at_level(logging.WARNING):
+        run(prediction(searched=((1, [14]),), selected=(), held_tasks=[SKIPPED]))
+    assert any("selected" in r.getMessage() and "1개" in r.getMessage() for r in caplog.records)
+
+
+def test_건너뛴_청구항에_그_단위_대비_줄이_있으면_채점을_멈춘다(run, capsys):
+    # 앱이 보류를 잘못 붙인 것: 청구항 1을 건너뛰었다면서 청구항 1 대비 줄이 있다
+    code, scores, _ = run(prediction(selected=(20,), held_tasks=[SKIPPED]))
+    assert code == 1 and scores is None
+    assert "건너뛴" in capsys.readouterr().err
+
+
+def test_건너뛰지_않은_줄은_선택_점수를_그대로_센다(run):
+    pred = prediction(
+        selected=(14,), held_tasks=[f"f3_compare:{UNIT}:claim9:dependent"]
+    )  # 다른 청구항
+    _, scores, _ = run(pred)
+    assert scores["metrics"]["selected_recall"] == 0.5
+    assert scores["failures"]["skipped_dependent_rows"] == 0
 
 
 # ---- 못 찾은 질문(CQ) ----
