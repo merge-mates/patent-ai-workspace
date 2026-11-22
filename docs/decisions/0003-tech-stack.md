@@ -24,7 +24,7 @@
 |---|---|---|
 | **Postgres 하나 (표 + jsonb + pgvector)** | 사건–문서–문단, 법령–판본–조각처럼 연결이 많은 자료에 맞음. 판본·시점 거르기와 벡터 검색을 한 쿼리로(pre-filter). docker compose 서비스 하나 | 한국어 키워드 검색(BM25)은 기본 기능에 없어 따로 둔다 |
 | Postgres + 별도 벡터 DB (Qdrant·Chroma) | 벡터 기능이 많음 | 저장소가 둘. 우리 문헌 양에는 이득이 작음 |
-| Neo4j (그래프 DB) | 그래프 질의가 쉬움 | 저장소가 하나 더. M2에는 그래프를 만들지 않아 안 쓴다. M3에 그래프를 넣기로 하면(11/24 판단) Neo4j 방향으로 간다. 그래프는 인터페이스 뒤라 그때 붙일 수 있음 |
+| Neo4j (그래프 DB) | 그래프 질의가 쉬움 | 저장소가 하나 더. M2에는 그래프를 만들지 않아 안 쓴다. M3에 그래프를 넣기로 하면(11/24 판단) Neo4j 방향으로 간다. → 11/22에 `cite`부터 넣기로 정함 ([ADR 0002](0002-first-build-scope.md) 11/22 보완), 저장소는 Neo4j 방향 (ADR 0003), 세부는 #27. 그래프는 인터페이스 뒤라 그때 붙일 수 있음 |
 
 ### 3) 에이전트 프레임워크·실행 기록
 | 안 | 좋은 점 | 나쁜 점 |
@@ -58,7 +58,7 @@
 |---|---|
 | 서버 | FastAPI, 패키지 uv |
 | 화면 | React + TypeScript (Vite). 타입은 서버 OpenAPI에서 뽑는다 |
-| DB | Postgres 하나: 표 + jsonb + pgvector. 그래프는 M2에 만들지 않는다. M3에 넣기로 하면 Neo4j 방향 (11/24 판단) |
+| DB | Postgres 하나: 표 + jsonb + pgvector. 그래프는 M2에 만들지 않는다. M3 그래프는 11/22에 cite부터 넣기로 정함 (ADR 0002 11/22 보완). 저장소는 Neo4j 방향, 세부는 이슈 #27 |
 | 에이전트 | LangGraph. 모델 호출은 어느 경우든 `core/llm/` 한 곳으로 |
 | 실행 기록 | DB `runs`·`agent_steps`가 먼저(M1). Langfuse는 docker compose 안에 띄움 (LangSmith 안 씀). M2 초 |
 | 모델 | 전부 Haiku 5.5로 시작. LLM 저지는 OpenAI로 시작하고, OpenAI 비용이 예산(3만 원)을 넘으면 Anthropic 모델로 바꾼다. 모델 이름·회사는 단계마다 설정 파일에 두고 코드에 쓰지 않는다 |
