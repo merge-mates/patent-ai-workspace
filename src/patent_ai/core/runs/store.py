@@ -4,12 +4,22 @@
 """
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol, get_args
 
 from pydantic import BaseModel
 
 from patent_ai.core.runs.state import RunError, RunState
 from patent_ai.core.schemas.oa_result import OAResult
+
+# 실행 종류 (runs.kind, #70): 끝까지 도는 실행 / 사람이 방향을 고른 뒤 초안만 다시 만드는 작은 실행
+RunKind = Literal["full", "redo_drafts"]
+RUN_KINDS: frozenset[str] = frozenset(get_args(RunKind))
+
+
+def check_run_kind(kind: str) -> None:
+    """모르는 실행 종류면 ValueError (DB CHECK에 닿기 전에 막는다)."""
+    if kind not in RUN_KINDS:
+        raise ValueError(f"모르는 실행 종류: {kind!r} (가능: {sorted(RUN_KINDS)})")
 
 
 class RunNotFound(LookupError):
@@ -22,6 +32,7 @@ class RunStatus(BaseModel):
     run_id: str
     oa_id: str
     state: RunState
+    kind: RunKind = "full"
     current_step: str | None = None
     waiting_for: str | None = None
     error: dict[str, Any] | None = None  # {code, message}
