@@ -93,7 +93,7 @@ const httpApi: typeof mockApi = {
   askLegal: async (q, chatId): Promise<LegalAnswer> => {
     const id = chatId ?? (await postJson<{ chat_id: string }>('/legal-chats', {})).chat_id
     const res = await postJson<LegalChatAnswerResponse>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
-    return { chat_id: res.chat_id, answer: res.result }
+    return { chat_id: res.chat_id, answer: res.result, scope_changed: res.scope_changed }
   },
   getDirections: (oaId) => getResult<DirectionCandidates>(`/oas/${oaId}/directions`),
   selectDirection: (unitId, candidateId) =>

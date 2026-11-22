@@ -137,6 +137,7 @@ export interface UploadedDocument {
 export interface LegalAnswer {
   chat_id: string
   answer: LegalEvidenceBundle
+  scope_changed: boolean // 앞 질문과 시점·자료 유형이 바뀌었는가 (서버가 알려 줌)
 }
 
 // POST /legal-chats/{id}/messages 응답: 묶음은 result에 담긴다 (docs/api/README.md)

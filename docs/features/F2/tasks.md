@@ -225,6 +225,7 @@ graph LR
 - 심사기준·판례·심결은 OA 흐름처럼 `search_not_indexed` (status `unverified(body_missing)`). 질문 글 속 자연어 시점("2020년 기준")과 선택 조건이 부딪힐 때의 `clarifications`도 29b (29a는 선택 조건 시점만 읽는다).
 - 질문 하나 = 실행 하나(`runs`)는 29b. 29a는 모델을 안 불러 금방 끝나므로 요청 안에서 바로 답한다 (화면 `askLegal`이 답을 바로 받는 모양).
 - 지난 질문 목록(`GET /legal-chats`)과 답 맨 위 한 문장 답·"한 일" 줄은 #264 (#239 뒤, 이 계획이 먼저). 29a는 대화·턴마다 `created_at`을 저장해 #264가 "대화는 최근 것이 앞, 한 대화 안 질문은 질문 순서"로 읽을 수 있게만 한다.
+- 0개면 질의를 바꿔 한 번 더 찾기(design 2절 3단계)는 29b.
 - `prior_evidence`: 앞 답에서 출처 확인을 지난 조각 ID를 모은다. 바뀐 시점에서 시행판이 아닌 조각은 `further_review`(`edition_out_of_scope`)로 보인다. 시행판인 앞 조각을 다시 후보로 넣는 것은 답 쓰기가 붙는 29b.
 
 ```mermaid
@@ -265,4 +266,4 @@ graph LR
 - 막힌 것: 없음
 
 ## m3-i2-29b  (뒤에)  상태: 계획 전  (이슈 #29, Closes)
-- 답 쓰기(모델) + 근거 검토 에이전트(`split`/`code_only`, `config/f2.yaml` `impl`), 질문 하나 = 실행 하나(`runs`·`agent_steps`), 자연어 시점과 `clarifications`, 주입 오류 탐지율(#35 정답, `feature: f2` 채점기). 29a 머지 뒤 계획을 쓴다.
+- 답 쓰기(모델) + 근거 검토 에이전트(`split`/`code_only`, `config/f2.yaml` `impl`), 질문 하나 = 실행 하나(`runs`·`agent_steps`), 자연어 시점과 `clarifications`, 주입 오류 탐지율(#35 정답, `feature: f2` 채점기). `run_f2`와 `answer_question` 두 진입점을 design 7-1 `research()` 하나로 모은다. 29a 머지 뒤 계획을 쓴다.

@@ -45,7 +45,7 @@ flowchart LR
    - 기준일이 그 유형의 가장 이른 판 시행일보다 앞서면(특허법은 2017.9.22판, 심사기준은 2018.1.1판부터 있음) 결과 0개를 `not_found_in_scope`로 내지 않는다. 두 경우로 나눈다. ① 조문 번호를 아는 `get_article`: 법령 API로 그 판을 한 번 조회하고(4절) 실패하면 `unverified(lookup_failed)`. ② 번호 없이 찾는 `search_article`과 심사기준 검색: 조회할 번호가 없거나(조문) 받을 API가 없어서(심사기준) `unverified(edition_unknown)`. 검색 계약 채점기의 `excluded_no_edition_in_scope`와 같은 경우다. 가장 이른 시행일은 저장소에서 센다 (5-1 저장소 메서드).
 4. **출처 확인 (무조건 도는 코드 단계, [ADR 0003](../../decisions/0003-tech-stack.md)):** 근거마다 `chunk_id`가 색인에 있는지, 근거의 원문 인용 글이 그 조각 글에 그대로(공백만 무시) 있는지, 판본이 계획한 기준일 범위인지 본다. 안 맞는 근거는 빼고, 근거가 0개가 된 주장은 `unverified`로 남긴다. 이유 코드는 [제안] data-model 3절에 `evidence_rejected`(근거가 출처 확인에서 빠짐)를 더한다 (`not_extracted`는 F1의 "원문에서 못 뽑음"이라 섞지 않음. ④ 스키마 구현 PR #29에서 공통 칸 PR로). 모델이 쓴 조문 번호·사건번호가 조각에 없으면 여기서 걸린다 (없는 출처 0건).
 5. **근거 검토 (LLM):** 남은 근거가 주장을 뒷받침하는지 판정(뒷받침 / 일부 / 아님 / 판단 못 함) + 이유. "아님"이면 답 쓰기로 돌아가 근거를 바꾸고 출처 확인부터 다시 지나 한 번 고치고(설정 `f2.max_review_fixes`), 그래도 아니면 주장에 "확인 필요"(`flags: needs_human_review`). 검토 입력은 주장 글 + 근거 조각 글뿐이다 (답 쓰기의 추론 과정은 주지 않음).
-6. **저장:** ④를 `legal_evidence_bundles`에 저장 (OA 흐름은 `oa_id`·거절이유 순번, 법률 질문은 `chat_id`·질문 순번).
+6. **저장:** ④를 저장한다. OA 흐름 = `step_results`, 법률 질문 = `legal_chat_turns.bundle` (`chat_id`·질문 순번).
 - 실패하면: requirements "실패할 때". 모델 호출 실패는 실행 `failed`, 이미 확인된 조각 목록은 실행 기록에 남긴다.
 - 비면: 3단계. 결과가 모두 비어도 ④는 저장한다 (`status = not_found_in_scope`, 빈 성공 아님).
 - 상한에 닿으면: 남은 거절이유(또는 질문)에도 ④를 하나씩 저장한다. 주장은 비고 `status = unverified`, 이유는 [제안] 공통 칸 PR(#29)에서 `limit_reached`를 더한다. ④가 없는 거절이유를 F3·F4가 "근거 없음"으로 읽지 않게 하려는 것이다.
@@ -113,10 +113,12 @@ flowchart LR
 
 **법률 질문 대화 `LegalChat`** (data-model 6절 "법률 질문 대화의 칸"):
 ```json
-{"chat_id": "lc_…", "case_id": null,
- "turns": [{"no": 1, "question": {"…": "LegalQuestion"}, "bundle_id": "leb_…", "scope_changed": false, "run_id": "run_…"}],
+{"chat_id": "lc_…", "case_id": null, "created_at": "2026-11-23T09:00:00Z",
+ "turns": [{"no": 1, "question": {"…": "LegalQuestion"}, "scope_changed": false,
+            "created_at": "2026-11-23T09:00:05Z", "result": {"…": "LegalEvidenceBundle"}}],
  "prior_evidence": ["<chunk_id>", "…"]}
 ```
+- 실제 `GET /legal-chats/{id}` 모양이다. 턴의 `run_id`는 질문 하나 = 실행 하나가 들어오는 29b에서 더한다.
 - 여러 번 묻고 답하기: 질문 하나 = 실행 하나 = ④ 하나. 다음 질문은 앞 질문의 조건을 물려받고(사용자가 바꾼 것만 덮음), 바뀐 조건이 있으면 `scope_changed = true`로 알린다 (requirements 2).
 - `prior_evidence`: 앞 답들에서 출처 확인을 지난 조각 ID. 다음 답은 이 조각을 다시 검색하지 않고 먼저 후보로 넣는다. 범위가 바뀌어 기준일 밖이 된 조각은 버리지 않고 `further_review`(`edition_out_of_scope`)로 보인다.
 - 대화 기억은 이 목록과 앞 질문 조건뿐이다. 앞 답 글 전체를 모델에 다시 넣지 않는다 [가정: 비용].
@@ -136,7 +138,7 @@ flowchart LR
 - 근거 위치 적는 법: 검색 계약 그대로 `doc_id` + `location.label` + `edition` + `index_version`. 화면은 `label`을 보이고 원문 보기로 잇는다 (조문은 그 조 전체, 심사기준은 그 쪽 PDF, 판례는 그 문단).
 
 ## 5. 저장
-- 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: `legal_evidence_bundles`, `legal_chats` (새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
+- 읽는 표: `law_chunks` (조문·심사기준·판례), `oa_results`, `api_cache`. 쓰는 표: OA 흐름은 `step_results`, 법률 질문은 `legal_chats`·`legal_chat_turns`(묶음은 `legal_chat_turns.bundle`, 새 마이그레이션, #29), `runs`·`agent_steps`, `result_inputs`(④ → ①).
 - 가져오는 길은 둘이다 (11/20 은진): **아는 문헌은 ID 조회, 모르는 근거는 검색.** OA에 명시된 인용문헌은 번호로 DB에서 정확히 가져온다 (F1·F3). 명시되지 않은 근거(조문·심사기준·판례·심결)와, 인용문헌 안에서 관련 문단을 고르는 일은 검색(BM25·벡터)으로 한다. F2 안에서도 같다: 조문 번호·사건번호·심판번호를 알면 `get_article`·`get_precedent`로 ID 조회, 모르면 `search_*`로 검색. 검색 계약의 `mode: hybrid`(BM25 + 벡터 섞기)와는 다른 말이라, 문서에서는 "ID 조회 + 검색"으로 부른다.
 - 검색: BM25 + 벡터 (검색 계약). 기본 `impl`은 실험 뒤 고른다. 지금 조문은 BM25가 훨씬 높다 (Hit@5 1.000 대 0.316).
 - 외부 API는 둘이고 쓰는 때가 다르다.
