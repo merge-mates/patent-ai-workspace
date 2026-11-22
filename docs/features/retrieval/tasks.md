@@ -72,19 +72,19 @@ graph LR
 - 확인 방법: `uv run pytest tests/retrieval/test_repository.py` → 전부 통과
 - 먼저: task-1
 
-### task-4: `fake` 구현 (녹화 벡터)
+### task-4: `fake` 구현 (기록된 질의 벡터)
 - 담당: 재아
 - 합격 기준: requirements.md 1 (`not_found_in_scope`, `unverified(body_missing)`, `skipped_unverified_edition`)
 - 고칠 파일: `src/patent_ai/retrieval/fake.py`, `tests/fixtures/retrieval/query_vectors.json`, `tests/retrieval/test_fake_search.py`
 - 만들 함수·인터페이스 모양: `@register_impl("fake") class FakeSearcher`
   - `bm25`: 공백으로 자른 낱말이 질의와 겹치는 수
-  - `vector`: 코사인 유사도 (녹화에 없는 질의 → `RecordedEmbeddingMissing`)
+  - `vector`: 코사인 유사도 (기록에 없는 질의 → `RecordedEmbeddingMissing`)
   - 점수 0 이하인 조각은 결과에서 뺀다
   - 거른 문헌 조각이 0개면 `status=unverified`, `status_reason=body_missing`. 결과가 0개면 `status=not_found_in_scope`
 - 테스트할 경우 (모두 `get_searcher("fake", …)`로, 래퍼를 거쳐서):
   - 평소: bm25·vector 상위 k, 같은 점수 `chunk_id` 오름차순, 한 공보 안만, 기준일 거르기 + `skipped_unverified_edition`
   - 빈 입력: 겹치는 낱말 없는 질의 → `not_found_in_scope` + `scope`, 없는 공보 → `unverified(body_missing)`
-  - 실패: 녹화 없는 질의 → `RecordedEmbeddingMissing`
+  - 실패: 기록에 없는 질의 → `RecordedEmbeddingMissing`
 - 확인 방법: `uv run pytest tests/retrieval` → 전부 통과
 - 먼저: task-2, task-3
 
@@ -243,7 +243,7 @@ graph LR
 - 테스트할 경우:
   - 평소: `gold_ok.jsonl` + `chunks_check.jsonl` → Hit@5 = 1, Recall@5 = 0.5, 무작위 Recall@5 ≈ 0.738, 배수 ≈ 0.68, `--chunks`라 출력이 `work/retrieval/<실험>/`에 감
   - 빈 입력: `gold_excluded.jsonl` → 빼는 이유별 건수, `gold_all_excluded.jsonl` → `main` 1 반환, 무작위 분모 0 → `recall_ratio@k` 키 없음 + `failures.recall_ratio_undefined` (#129 뒤로 사실상 0: 맞는 조각 0개 항목은 먼저 빠져 분모가 0이 되지 않음)
-  - 실패: 줄 검색 예외(녹화 없는 질의) → `main` 1 반환, `--chunks` + `--scores-dir experiments/x` → 1 반환·파일 안 생김, `scores.json`에 `row_id`·질의 글자 없음, `commit`은 `main(..., commit="abc")`로 넣은 값
+  - 실패: 줄 검색 예외(기록에 없는 질의) → `main` 1 반환, `--chunks` + `--scores-dir experiments/x` → 1 반환·파일 안 생김, `scores.json`에 `row_id`·질의 글자 없음, `commit`은 `main(..., commit="abc")`로 넣은 값
   - 무작위 분모 0 줄(정답 항목에 맞는 조각이 범위에 하나도 없는 줄)은 `gold_excluded.jsonl`에 둔다
 - `--chunks` 없는 경로: `PostgresChunkRepository.from_url()`(`DATABASE_URL`)로 잇는다. 머지 순서가 m2-i1 → m2-i2 → m2-i3으로 정해져 m2-i3이 m2-i2 위에 쌓였다 (11/19).
 - 확인 방법: `uv run pytest tests/retrieval_eval/test_score.py` → 통과

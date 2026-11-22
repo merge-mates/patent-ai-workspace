@@ -126,15 +126,16 @@ class OAResultRow(Base):
 
 
 class StepResultRow(Base):
-    """F3·F4 결과 (실행 하나에 단계마다 한 줄). 본문은 도구 출력 그대로 jsonb (#191).
+    """F2·F3·F4 결과 (실행 하나에 단계마다 한 줄). 본문은 도구 출력 그대로 jsonb (#191).
 
+    F2 = F2Result(판단 단위마다 법률 근거 묶음, #28),
     F3 = F3Result(판단 단위·대비표·명확성 검토), F4 = F4Output(대응 방향 후보·초안).
     결과 API는 OA의 가장 최근 보여 줄 실행(oa_results와 같은 실행)을 골라 이 표에서 읽는다.
     """
 
     __tablename__ = "step_results"
     __table_args__ = (
-        CheckConstraint("kind IN ('f3', 'f4')", name="ck_step_results_kind"),
+        CheckConstraint("kind IN ('f2', 'f3', 'f4')", name="ck_step_results_kind"),
         CheckConstraint(_STATUS_CHECK, name="ck_step_results_status"),
         UniqueConstraint("run_id", "kind", name="uq_step_results_run_kind"),
     )

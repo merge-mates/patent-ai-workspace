@@ -3,8 +3,10 @@ import { App, Button, Steps, Upload } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import { api, API_MODE } from '../api'
+import { ApplicationNumberForm } from '../components/ApplicationNumberForm'
 import { MaterialRows } from '../components/MaterialRows'
 import { RunNotice } from '../components/RunNotice'
+import { waitingForLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
 import { isRunEnded, refreshRun } from '../runPoll'
 import { existingCaseLink } from '../uploadError'
@@ -111,19 +113,25 @@ function UploadProgress({ data }: { data: OALoaderData }) {
     ready.compare ? '끝남' : undefined,
     ready.directions ? '끝남' : undefined,
   ]
+  // 사람 기다림의 이유 (GET /runs/{id}의 waiting_for). 출원번호·발송번호 확인이면 통지서 읽기 단계, 그 밖에는 방향(정리 결과가 없으면 정리) 단계
+  const waiting = run.state === 'waiting_for_human'
+  const waitingFor = snap.waitingFor
+  const numberWait = waitingFor === 'application_number' || waitingFor === 'dispatch_number'
+  const waitText = waitingForLabel(waitingFor)
   const items = titles.map((title, i) => {
     if (i < doneCount) {
-      // 사람 기다림: 대응 방향 후보 단계가 고르기를 기다리는 자리 (사건 단계 막대와 같게)
-      if (run.state === 'waiting_for_human' && i === (ready.summary ? 4 : 2))
-        return { title, description: '고르기 기다림', status: 'process' as const }
+      // 사람 기다림: 기다리는 자리 (사건 단계 막대와 같게)
+      if (waiting && i === (numberWait ? 0 : ready.summary ? 4 : 2))
+        return { title, description: waitText, status: 'process' as const }
       return { title, description: detail[i] ?? '끝남' }
     }
     // 아직 결과가 없는 첫 단계: 진행 중 (current_step 글은 Steps 위 한 줄에 따로 보인다)
     if (i === doneCount && !ended) return { title, status: 'process' as const }
     if (i === doneCount && run.state === 'failed') return { title, description: '멈춤', status: 'error' as const }
     if (i === doneCount && run.state === 'cancelled') return { title, description: '취소됨', status: 'wait' as const }
-    if (i === doneCount && run.state === 'waiting_for_human')
-      return { title, description: '고르기 기다림', status: 'process' as const }
+    // 번호 확인 기다림은 통지서 읽기 자리 하나에만 (뒤 단계에 한 번 더 그리지 않는다)
+    if (i === doneCount && waiting && (!numberWait || i === 0))
+      return { title, description: waitText, status: 'process' as const }
     return { title }
   })
 
@@ -135,6 +143,10 @@ function UploadProgress({ data }: { data: OALoaderData }) {
           {!ended && run.current_step && <span className="body2 t2">지금 하는 일: {run.current_step}</span>}
           <Steps direction="vertical" size="small" current={doneCount} items={items} />
           <RunNotice oaId={oa.oa_id} snap={snap} />
+          {/* 출원번호 입력을 기다리면 입력 칸 (사건 머리와 같은 부품) */}
+          {waiting && waitingFor === 'application_number' && (
+            <ApplicationNumberForm caseId={oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
+          )}
           <span className="label2 t3">조회는 이 통지서 시점까지만 해요. 그 뒤 보정서·등록 청구항은 넣지 않아요.</span>
           {/* 사람 기다림은 폴링이 멈춘 상태지만 새로 보기는 눌러 볼 수 있게 둔다 */}
           {(!ended || run.state === 'waiting_for_human' || runError !== null) && (

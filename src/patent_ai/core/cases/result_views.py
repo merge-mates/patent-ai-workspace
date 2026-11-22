@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.step_results import StepKind, StepResultStore
+from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.runs.state import RunState
@@ -30,7 +31,7 @@ _SOURCES: dict[str, tuple[str, StepKind | None, str | None]] = {
     "units": ("run_f3", "f3", "units"),
     "comparisons": ("run_f3", "f3", "comparisons"),
     "clarity-reviews": ("run_f3", "f3", "clarity_reviews"),
-    "legal-evidence": ("run_f2", None, None),  # F2는 아직 저장하는 결과가 없다
+    "legal-evidence": ("run_f2", "f2", "bundles"),
     "directions": ("run_f4", "f4", "directions"),
     "drafts": ("run_f4", "f4", "drafts"),
 }
@@ -47,7 +48,7 @@ class ResultView:
     run_id: str
     value: Any  # 목록이면 list, drafts면 Drafts | None
     empty_reason: str | None  # 값이 비었을 때만
-    step_result: F3Result | F4Output | None  # 알림 문구 등 결과 밖 칸이 필요할 때
+    step_result: F2Result | F3Result | F4Output | None  # 알림 문구 등 결과 밖 칸이 필요할 때
 
 
 def _why_missing(tool: str, run_id: str, runs: RunStatusStore) -> str:

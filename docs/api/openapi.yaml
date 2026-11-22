@@ -757,6 +757,10 @@ components:
           title: Source
         status:
           $ref: '#/components/schemas/Status'
+        text_status:
+          anyOf:
+          - $ref: '#/components/schemas/Status'
+          - type: 'null'
         citation_key:
           anyOf:
           - type: string
@@ -816,6 +820,13 @@ components:
           minimum: 0.0
           title: Review Items Count
           default: 0
+        review_items:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/ReviewItem'
+            type: array
+          - type: 'null'
+          title: Review Items
       additionalProperties: false
       type: object
       required:
@@ -2612,6 +2623,36 @@ components:
       - reason
       title: Review
       description: 주장이 근거로 뒷받침되는지 검토한 결과 (AI 판정, 사람이 확인).
+    ReviewItem:
+      properties:
+        kind:
+          type: string
+          enum:
+          - unverified
+          - conflict
+          - needs_recheck
+          - needs_human_judgment
+          - needs_human_review
+          - missing_material
+          title: Kind
+        target:
+          type: string
+          title: Target
+        label:
+          type: string
+          title: Label
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - target
+      - label
+      - reason
+      title: ReviewItem
+      description: 사람이 봐야 할 것 하나.
     ReviewVerdict:
       type: string
       enum:
@@ -2733,6 +2774,10 @@ components:
           minimum: 0.0
           title: Skipped Unknown Date
           default: 0
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/Status'
+          - type: 'null'
       additionalProperties: false
       type: object
       required:

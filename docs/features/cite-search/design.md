@@ -141,6 +141,12 @@ flowchart LR
 - 비교 도구: 새 `eval/retrieval/compare.py --rows bm25=<p> vector=<p> hybrid=<p> --k 10` → 표(마크다운): 방식별 Hit@1·3·5·10 전체 / 한국 공보(`doc_id`가 `KR`로 시작) / 논문(`NPL-`로 시작), 방식별 CQ 수(상위 10에 없음), "상위 10 안에서 한 방식만 찾은 줄" 수. 세 파일의 `row_id` 집합이 다르면 종료 1 (같은 정답 줄인지 검사). 표는 하이브리드 카드에 붙인다.
 - 다음 칸에 남길 것: 다른 섞는 법(점수 맞춘 가중합, 가중치, 상위 N개만) 조사는 결과를 본 뒤 (11/20 재아).
 
+### 7-6. 2단계·가중합 (이슈 #212, 11/22 밤 실험용)
+- 새 impl 둘. 둘 다 7-4처럼 안쪽 검색기를 `get_searcher`로 만들고, 결과 `mode = "hybrid"` (Mode에 다른 값이 없음), 정렬 `(-점수, chunk_id)`.
+- `two_stage` (`retrieval/two_stage.py`): BM25가 범위 안 위 N개를 후보로 고르고, 그 후보만 벡터 점수로 다시 줄세운다. 점수 = 벡터 점수. 설정 `two_stage: {candidates: N}` (1 이상의 정수, 아니면 `ValueError`). BM25 후보가 0개면 순수 벡터로 되돌아가지 않고 `not_found_in_scope`.
+- `weighted_sum` (`retrieval/weighted_sum.py`): 방식마다 돌려준 조각의 점수를 min-max로 [0, 1]에 맞추고(전부 같으면 1.0, 안 돌려준 조각은 0) `w_bm25·bm25 + w_vector·vector`. 설정 `weighted_sum: {weights: {bm25: w, vector: 1-w}}` (검사는 `hybrid.weights`와 같음).
+- 기본 impl은 그대로 `hybrid`(RRF)다. 기본을 바꿀지는 재아가 실험 결과를 보고 정한다.
+
 ## 8. 이 기능 안의 결정
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |
 |---|---|---|---|---|

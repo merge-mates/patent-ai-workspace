@@ -39,7 +39,7 @@ graph LR
     - 항목 칸: 식별번호 → `kind=paragraph, start, end`, 도면 → `kind=figure, figures=[n…]`(`3-4` 펼침, `4c`는 4), 인용문헌_청구항 → `kind=claim, claims=[n…]`, 요약 → `kind=abstract`, 논문 "N쪽" → `kind=page, start=end=N`(PDF 쪽 순서, 재아 11/19. N이 표의 쪽 수보다 크면 멈춤).
     - 그 청구항이 OA 당시 없거나 삭제됨 → 그 줄만 빼고 셈.
   - `ConvertReport`: 줄 수, 펼친 수, 빼는 이유별 수(`same_as_other`, `no_location`, 질의 없음 사건·줄, 청구항 없음).
-  - CLI `uv run python -m eval.retrieval.convert_cite_gold --src <json> --cases data/raw/cases [--goldsets-root data/goldsets]` → `<goldsets_root>/tune/retrieval/cite_gold.jsonl` (#66 법령 정답과 경로를 나눔. 실험 config `gold: retrieval/cite_gold.jsonl`).
+  - CLI `uv run python -m eval.retrieval.convert_cite_gold --src <json> --cases data/processed/cases [--goldsets-root data/goldsets]` → `<goldsets_root>/tune/retrieval/cite_gold.jsonl` (#66 법령 정답과 경로를 나눔. 실험 config `gold: retrieval/cite_gold.jsonl`).
     - 순서: `GoldRow` 검증 + `find_leaks`를 메모리에서 다 끝낸 뒤에만 파일을 쓴다. 0줄도 실패. 실패는 종료 1, 메시지에는 `row_id`·건수만 (질의 글자는 안 찍음).
     - `<goldsets_root>/VERSION`: 처음엔 없으면 1로 만들고 sha256이 다를 때 올렸다. PR #117 리뷰(11/19)로 바꿈: 공용 파일이라 변환기는 쓰지 않고, 새 파일 sha256이 기존과 다르면 "VERSION을 올려야 함" 경고만.
     - 끝에 이유별 빼는 건수를 경고 한 줄로 찍음 (`logging.warning`).
@@ -217,3 +217,6 @@ graph LR
 
 ### 끝난 뒤 (이슈가 끝난 날)
 - 된 것 / 안 된 것 / 다음 이슈로
+
+## 이슈 #212 (2단계·가중합 impl 실험, 작은 이슈: 이슈 본문 체크리스트가 계획)
+- [이슈 #212](https://github.com/merge-mates/patent-ai-workspace/issues/212) (설계는 design.md 7-6절)

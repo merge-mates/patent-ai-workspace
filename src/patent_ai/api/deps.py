@@ -20,6 +20,7 @@ from patent_ai.core.cases.step_results import StepResultStore
 from patent_ai.core.cases.step_results_pg import PostgresStepResultStore
 from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
+from patent_ai.core.cases.texts_source import PostgresTextsSource
 from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.llm.config import REPO_ROOT
@@ -150,8 +151,9 @@ def _run_case_executor() -> RunCaseExecutor:
         registry=get_cancel_registry(),
         oa_results=get_oa_result_store(),
         step_results=get_step_result_store(),
-        # 청구항 판 글자(texts)는 #16 T6 머지 뒤에 넣는다. 그 전에는 F3·F4가 넘긴 이유와 함께 빈다
-        inputs=PostgresRunInputSource(factory),
+        # F3·F4 글자: OA 당시 청구항 판 + 최초 명세서 (#205)
+        # 못 찾으면 F3·F4는 넘긴 이유와 함께 빈다
+        inputs=PostgresRunInputSource(factory, texts=PostgresTextsSource(factory)),
         cases=PostgresCaseLookup(factory),
         config_path=ORCHESTRATOR_CONFIG,
         make_ctx=_new_run_context,
