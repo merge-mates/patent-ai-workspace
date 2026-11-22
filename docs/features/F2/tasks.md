@@ -68,7 +68,7 @@ graph LR
 - [x] task-1
 - [x] task-2
 - [x] task-3
-- 다음: /check, PR
+- 다음: PR (/check 통과: 이슈 리뷰 막음 1·고칠 것 4 반영 6db2177·ee3ad79·4d38f38, 재리뷰 통과)
 - 막힌 것: 없음
 
 ## m2-i3b  (11/22)  상태: 승인 (11/22 은진 "너 추천대로")  (이슈 #28, Refs)
@@ -262,7 +262,7 @@ graph LR
 - [x] task-1 (c8aa508, 리뷰 반영 c21d845: 옛 시점 BM25 0개는 `unverified(edition_unknown)`, 검색 조문 문구 나눔)
 - [x] task-2 (2f5c49f, 마이그레이션 `d4a8c2e6b915`. 저장소 모양은 계획과 조금 다름: `create(case_id, now) -> LegalChat`, `add_turn(chat_id, question, scope_changed, bundle, now) -> LegalChatTurn`. 시각을 밖에서 받아 테스트가 쉬움)
 - [x] task-3 (087cefa·0e033fa, 리뷰 반영 e369f10: 색인 캐시는 메모리 조각만 두고 DB 세션을 닫음(`PostgresChunkRepository.close()` 추가), 요청 스키마를 OpenAPI에 실음). 저장본 못 읽음은 500 `chat_corrupt`
-- 다음: /check, PR
+- 다음: PR (/check 통과: 이슈 리뷰 막음 1·고칠 것 4 반영 6db2177·ee3ad79·4d38f38, 재리뷰 통과)
 - 막힌 것: 없음
 
 ## m3-i2-29b  (뒤에)  상태: 계획 전  (이슈 #29, Closes)
