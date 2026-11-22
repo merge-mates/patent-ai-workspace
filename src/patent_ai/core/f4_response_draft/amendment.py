@@ -22,8 +22,10 @@ from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.f4_response_draft.opinion import OpinionPart, drafts_from_opinion, has_amendment
 from patent_ai.core.f4_response_draft.result import AmendmentOverlap
+from patent_ai.core.f4_response_draft.spec_excerpt import excerpt_spec_text, full_spec_text
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.comparison import ComparisonTable, InventiveSummary, Judgment
 from patent_ai.core.schemas.direction import (
     AmendmentKind,
     DirectionCandidate,
@@ -179,7 +181,23 @@ def _basis_status(basis: list[Evidence], spec: PageText | None, needs_basis: boo
 def _spec_text(spec: PageText | None) -> str:
     if spec is None:
         return "(최초 명세서가 입력에 없음. spec_basis는 빈 목록으로 둡니다)"
-    return "\n\n".join(f"[쪽 {p.page}]\n{p.text}" for p in spec.pages)
+    return full_spec_text(spec)
+
+
+def _excerpt_query(inp: F4Input, unit: JudgmentUnit, f3: list, chosen: DirectionCandidate) -> str:
+    """발췌 질의: 차이점 구성요소 글자 + 대상 청구항 글자 + 고른 방향의 이름·이유·반박 글자."""
+    parts: list[str] = []
+    for t in f3:
+        if isinstance(t, ComparisonTable):
+            # 인용문헌에 개시됨이 아닌 줄(차이 후보·불명)의 구성요소와 요약의 차이점
+            parts += [r.element for r in t.rows if r.judgment != Judgment.DISCLOSED]
+            if isinstance(t.summary, InventiveSummary):
+                parts += t.summary.differences
+    texts = {c.claim: c.text for c in inp.claims_text}
+    parts += [texts[n] for n in unit.claims if n in texts]
+    # 고른 방향이 말하는 보정 내용: 보정 프롬프트 selected에 들어가는 그 글자
+    parts += [chosen.name, chosen.reason, *(r.response for r in chosen.per_rejection)]
+    return "\n".join(parts)
 
 
 def _held(unit: JudgmentUnit, texts: dict[int, str], reasons: dict[int, str]) -> list[AmendedClaim]:
@@ -313,7 +331,16 @@ def build_amendments(
                 mode="json", include={"coarse", "name", "reason", "per_rejection", "amendment_core"}
             )
         )
-        variables["spec"] = _spec_text(inp.spec)
+        if options.spec_excerpt_enabled and inp.spec is not None:
+            # 프롬프트에만 발췌를 넣는다. 아래 근거 대조는 그대로 inp.spec 전체로 한다
+            variables["spec"] = excerpt_spec_text(
+                inp.spec,
+                _excerpt_query(inp, unit, f3, chosen),
+                top_n=options.spec_excerpt_top_n,
+                unit_id=unit.unit_id,
+            )
+        else:
+            variables["spec"] = _spec_text(inp.spec)
         variables["limit_note"] = limit_note
         try:
             out = call_with_one_retry(
