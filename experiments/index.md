@@ -5,6 +5,7 @@
 | m1-i3-f1-effort-low | F1 | `settings.effort`: medium → low | field_accuracy 0.568 | -0.069 | $0.00 | [card](m1-i3-f1-effort-low/card.md) |
 | m1-i3-f1-effort-low-stream64k | F1 | `settings.effort`: medium → low (스트리밍·max_tokens 64000 판에서) | field_accuracy 0.653 | +0.067 | $0.00 | [card](m1-i3-f1-effort-low-stream64k/card.md) |
 | m1-i3-f1-effort-medium | F1 | `settings.effort`: (없음, 모델 기본 medium) → medium (#136 뒤 명시. 보내는 요청은 기준선과 같음) | field_accuracy 0.637 | +0.031 | $0.00 | [card](m1-i3-f1-effort-medium/card.md) |
+| m1-i3-f1-m1-remeasure | F1 | 없음 (M1 정리용 재측정, main 설정 그대로 10건 3회. 표 점수는 1회차, **3회 평균 0.742**. 기준선은 9건이라 대비 칸은 바로 견주지 않음) | field_accuracy 0.758 | +0.172 | - | [card](m1-i3-f1-m1-remeasure/card.md) |
 | m1-i3-f1-model-input-tables | F1 | `settings.model_input`: raw → tables_md | tables_md.confirmed 94.000 | 기준선 | $0.03 | [card](m1-i3-f1-model-input-tables/card.md) |
 | m1-i3-f1-pdf-tool | F1 | PDF 도구 4개 비교 (pdfplumber 유지 결정의 기준선) | pdfplumber.task2_with_cells 1.000 | 기준선 | - | [card](m1-i3-f1-pdf-tool/card.md) |
 | m1-i3-f1-prompt-null-wording | F1 | `prompts/f1/read_oa.md` null·문자열 예외 문구 맞추기 (이슈 #193 task 1, sha256 앞 12자 d680efd54818 → a2d095469fda, 커밋 9d99d3b) | field_accuracy 0.674 | +0.088 | $0.00 | [card](m1-i3-f1-prompt-null-wording/card.md) |
