@@ -184,6 +184,34 @@ class DirectionSelectionRow(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class HumanInputRow(Base):
+    """사람이 넣은 값 한 줄 (#70 계획 ②). 지우지 않고 쌓는다.
+
+    번호(application_number·dispatch_number)는 run_id = 그 번호로 이어 돌 실행,
+    확인(oa_result_confirmed, "맞아요")은 run_id = 확인한 OA 정리를 낸 실행. 값은 번호만 있다.
+    """
+
+    __tablename__ = "human_inputs"
+    __table_args__ = (
+        # core/cases/human_inputs.py HumanInputKind와 같은 값 (테스트가 비교한다)
+        CheckConstraint(
+            "kind IN ('application_number', 'dispatch_number', 'oa_result_confirmed')",
+            name="ck_human_inputs_kind",
+        ),
+        CheckConstraint(
+            "(kind = 'oa_result_confirmed') = (value IS NULL)", name="ck_human_inputs_value"
+        ),
+        Index("ix_human_inputs_run_id", "run_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("hin"))
+    oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"))
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class CaseMaterialsRow(Base):
     """⑥ CaseMaterials. 사건마다 최신 한 줄 (실행이 끝날 때·자료가 더해질 때 다시 쓴다)."""
 

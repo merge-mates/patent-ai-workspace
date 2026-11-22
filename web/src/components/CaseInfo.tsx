@@ -1,10 +1,10 @@
 import { Button, Typography } from 'antd'
 import { useContext } from 'react'
 import { claimsText } from '../format'
-import { noticeKindLabel } from '../labels'
+import { HUMAN_ENTERED_CHECKED, noticeKindLabel } from '../labels'
 import type { OAResult } from '../types/generated/OAResult'
 import { type Extracted, candidatesText } from './extracted'
-import { AiResultMark, HumanCheckTag } from './Marks'
+import { AiResultMark, HumanCheckTag, HumanTag } from './Marks'
 import { SourceContext } from './sourceContext'
 import { StatusTag } from './StatusTag'
 
@@ -22,6 +22,8 @@ function InfoField({ label, value, v, human = false }: { label: string; value: s
       {/* 확인됨은 작은 체크(마우스를 올리면 무엇을 확인했나), 그 밖은 꼬리표. 쪽이 없어도 상태는 보인다 */}
       <StatusTag status={v.status} compact />
       {human && <HumanCheckTag />}
+      {/* 사람이 직접 넣은 번호는 AI가 읽은 값과 구분해 "직접 입력" 꼬리표 */}
+      {v.status.checked === HUMAN_ENTERED_CHECKED && <HumanTag>직접 입력</HumanTag>}
       {v.page !== null && (
         // 확인된 값만 "통지서 N쪽", 아니면 "후보 위치" (F5: 원문 링크는 확인된 값만)
         <Button type="link" size="small" onClick={() => openPage(v.page, v.raw_text)}>

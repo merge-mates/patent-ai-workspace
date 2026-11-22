@@ -5,7 +5,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from patent_ai.api import cases, deps, directions, documents, health, oas, results, runs
+from patent_ai.api import (
+    cases,
+    deps,
+    directions,
+    documents,
+    health,
+    human_inputs,
+    oas,
+    results,
+    runs,
+)
 from patent_ai.api.errors import add_error_handlers
 from patent_ai.core.runs.recovery import fail_unfinished_runs
 from patent_ai.core.runs.store import RunStatusStore
@@ -34,6 +44,7 @@ def create_app(startup_store: RunStatusStore | None = None) -> FastAPI:
     app.include_router(runs.router)
     app.include_router(results.router)
     app.include_router(directions.router)
+    app.include_router(human_inputs.router)
     return app
 
 
