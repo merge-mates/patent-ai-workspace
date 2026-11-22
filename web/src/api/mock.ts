@@ -402,7 +402,7 @@ function saveAppNumber(caseId: string, n: string) {
 const needsAppNumber = (b: Bundle) =>
   b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
 
-// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 확신 낮은 묶음이 아직 안 골라졌으면 방향 고르기 기다림, 아니면 끝남.
+// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 아니면 끝남 (방향 고르기는 실행을 멈추지 않는다: 확신 낮은 묶음은 선택 null로 두고 실행은 succeeded).
 // mock 단순화: 출원번호를 기다리는 동안에도 뒤 단계 결과(예시)는 열어 둔다 (서버는 OA 정리까지만 있다)
 function runOf(b: Bundle): RunStatusLike {
   const run = loadRun(b.oa_id)
@@ -432,8 +432,8 @@ function gate(b: Bundle, need: number) {
 }
 
 // 결과 엔드포인트의 계약 (안 B): "가장 최근에 결과가 확정된 실행"의 결과만 준다. 실행 중·실패·취소된 실행의 결과는 주지 않는다.
-// 판단: waiting_for_human은 서버 계약에 빈칸이다. mock은 "방향 후보까지 결과가 확정돼 사람이 고르기를 기다리는 상태"로 보고
-// 그 실행의 결과를 열어 둔다 (안 열면 방향을 고를 수 없어 올리기 → 방향 고르기 → 초안 흐름이 끊긴다).
+// 판단: waiting_for_human은 출원번호·발송번호를 기다리는 실행뿐이다. 그 실행도 그때까지 확정된 결과는 열어 둔다
+// (방향 고르기는 실행을 멈추지 않아 succeeded 실행의 결과로 본다).
 // 돌려주는 값은 결과가 속한 실행의 run_id (다시 돌리는 중이면 이전 실행 것이라 화면의 "이전 실행 결과"가 보인다)
 function gateResult(b: Bundle): string {
   const runId = lastDoneRunId(b)

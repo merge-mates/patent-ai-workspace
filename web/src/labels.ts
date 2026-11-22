@@ -51,7 +51,7 @@ export const runStateLabel: Record<RunState, string> = {
 }
 
 // 사람 기다림 단계 글자 (waiting_for 값마다).
-// 방향 고르기만 "고르기 기다림". 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
+// 출원번호·발송번호 두 값만 글자가 있다 (방향 고르기는 실행을 멈추지 않는다). 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
 // (서버는 waiting_for 없이 waiting_for_human이 되지 않는다: core/runs/state.py)
 export function waitingForLabel(w: string | null): string {
   if (w === 'application_number') return '출원번호 입력 기다림'

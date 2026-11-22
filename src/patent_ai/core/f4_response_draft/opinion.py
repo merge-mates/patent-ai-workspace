@@ -189,7 +189,16 @@ def build_opinion(
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         chosen = selected_candidate(by_unit[unit.unit_id])
         if chosen is None:
-            logger.warning("f4.opinion %s: 고른 방향이 없어 이 묶음 의견서는 보류", unit.unit_id)
+            sel = by_unit[unit.unit_id].selection
+            if sel is not None and sel.written_direction is not None:
+                logger.warning(
+                    "f4.opinion %s: 사람이 쓴 방향이라 이 묶음 의견서는 AI가 만들지 않음",
+                    unit.unit_id,
+                )
+            else:
+                logger.warning(
+                    "f4.opinion %s: 고른 방향이 없어 이 묶음 의견서는 보류", unit.unit_id
+                )
             held.append(unit.unit_id)
             continue
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)

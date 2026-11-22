@@ -177,7 +177,7 @@ def test_확신_낮은_묶음은_모델을_부르지_않고_보류한다():
     assert text["points"] == _answer("opinion_inventive")["points"]
 
 
-def test_직접_쓴_방향을_고른_묶음은_AI가_초안을_만들지_않고_보류한다():
+def test_직접_쓴_방향을_고른_묶음은_AI가_초안을_만들지_않고_보류한다(caplog):
     transport = FakeTransport(
         {
             DIRECTION_STEP: [_text(_answer(d)) for d in ("direction_inventive", "direction_low")],
@@ -194,8 +194,10 @@ def test_직접_쓴_방향을_고른_묶음은_AI가_초안을_만들지_않고_
     data["selection"] = {"written_direction": "사람이 쓴 방향", "origin": "human_written"}
     found = [DirectionCandidates.model_validate(data) if r is held else r for r in found]
 
-    part = build_opinion(inp, found, ctx)
+    with caplog.at_level(logging.WARNING):
+        part = build_opinion(inp, found, ctx)
 
+    assert "사람이 쓴 방향" in caplog.text
     assert part.held_units == [UNIT_CLARITY]
     assert [b.unit_id for b in part.based_on] == [UNIT_INVENTIVE]
 
