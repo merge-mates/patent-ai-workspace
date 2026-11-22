@@ -4,7 +4,9 @@
   사건 저장과 같은 `plan_case_rows`로 계산한다 (저장 규칙이 둘로 갈라지지 않게).
 - 올린 임시 사건(#56)에 더한다: 이력 줄, 출원서 문서, 청구항 판. 올린 OA 이력 줄은 새로 만들지
   않고 그 줄에 순서(seq)·발송번호를 넣고, 그 OA에 심사 대상 판을 잇는다.
-  다른 OA 이력 줄(앞 OA)은 이력 줄만 넣고 OA 줄은 만들지 않는다 (올린 OA가 아니라서).
+  다른 OA 이력 줄(앞 OA)은 넣지 않는다: 그 OA를 뒤에 올리면 같은 출원번호 합치기(#272)가 그 OA의
+  이력 줄을 옮겨 와 (사건, oa, 발송번호) 줄이 겹치기 때문이다 (#54 리뷰). 심사 대상 판은 이미 이력
+  전체로 골랐으니 빠져도 판은 같다.
 - 사건 출원번호·사건 자료(⑥)는 여기서 쓰지 않는다. 실행 끝의 case_fill(#261)이 쓴다.
 - 건너뛰는 경우 (이유를 돌려준다, 조용히 넘기지 않음):
   이미 판이 있는 사건(다시 실행·평가 저장·같은 사건 둘째 OA), 같은 출원번호 사건이 따로 있음
@@ -36,7 +38,6 @@ from patent_ai.core.f1_oa_reader.case_repository import (
     plan_case_rows,
 )
 from patent_ai.core.schemas.case_materials import CaseMaterials
-from patent_ai.core.schemas.propagation import finalize_case_materials
 from patent_ai.db.ids import new_id
 from patent_ai.db.models import OA, Case, CaseEvent, ClaimVersion, Document
 from patent_ai.git_paths import REPO_ROOT
@@ -94,8 +95,9 @@ def plan_fill(
         files=files,
         history=lookup.cut.history,
         claim_versions=claim_versions,
-        # plan_case_rows가 마무리한 ⑥을 요구한다. 여기서는 쓰지 않는다 (⑥은 실행 끝 case_fill)
-        materials=finalize_case_materials([], CaseMaterials(case_id=case_id)),
+        # plan_case_rows가 마무리한 ⑥(review_items 있음)을 요구한다. 여기서는 쓰지 않는다
+        # (⑥은 실행 끝 case_fill이 만든다). 빈 결과로 모으면 "결과 0개" 경고만 남아 빈 목록을 준다
+        materials=CaseMaterials(case_id=case_id, review_items=[], review_items_count=0),
     )
     rows = plan_case_rows(record)
     target = next(
@@ -182,7 +184,11 @@ class PostgresCaseSourceFill:
             # plan 안 OA 이력 줄 id → 올린 OA 이력 줄 id (판·문서가 그 줄을 가리키면 바꿔 단다)
             remap = {plan.target_event_id: event.id}
             event.seq, event.doc_number = plan.target_seq, dispatch_number
-            s.add_all(CaseEvent(**vars(e)) for e in rows.events if e.id != plan.target_event_id)
+            s.add_all(
+                CaseEvent(**vars(e))
+                for e in rows.events
+                if e.id != plan.target_event_id and e.kind != "oa"  # 앞 OA 줄은 안 넣음 (위 설명)
+            )
             s.flush()
             for d in rows.documents:
                 s.add(

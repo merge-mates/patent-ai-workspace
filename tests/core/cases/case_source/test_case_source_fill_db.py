@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from patent_ai.core.cases.case_source.fill import PostgresCaseSourceFill
@@ -134,3 +135,51 @@ def test_받아_둔_폴더에_없으면_아무것도_안_쓰고_이유(factory, 
     with factory() as s:
         events = s.scalars(select(CaseEvent).where(CaseEvent.case_id == created.case_id)).all()
         assert [(e.seq, e.doc_number) for e in events] == [(None, None)]
+
+
+def _events(factory, case_id):
+    with factory() as s:
+        rows = s.scalars(select(CaseEvent).where(CaseEvent.case_id == case_id)).all()
+        return sorted((e.kind, e.seq, e.doc_number) for e in rows)
+
+
+def test_뒤_OA를_채우면_앞_OA_이력_줄은_넣지_않는다(factory, tmp_path):
+    oa2 = "952099000540102"
+    folder = tmp_path / APP / oa2
+    folder.mkdir(parents=True)
+    admin = ADMIN + f"{APP}¶{oa2}¶20990901¶의견제출통지서\n"
+    (folder / f"{APP}_행정이력.txt").write_text(admin, encoding="utf-8")
+    (folder / f"{APP}_청구항이력.txt").write_text(CLAIMS, encoding="utf-8")
+    (folder / f"{APP}_출원서_{FILING}.pdf").write_bytes(b"%PDF- fill 54 oa2")
+    created = _upload(factory, "fill54_oa2")
+    out = PostgresCaseSourceFill(factory, LocalFolderSource(tmp_path)).fill_before_f3(
+        created.oa_id, APP, oa2
+    )
+    assert out.filled
+    # 앞 OA(OA_NO) 줄이 없어야 그 OA를 뒤에 올려 합칠 때(#272) 줄이 겹치지 않는다
+    assert _events(factory, created.case_id) == [("oa", 3, oa2), ("other", 1, None)]
+
+
+def test_쓰다_실패하면_아무것도_남지_않는다(factory, source, monkeypatch):
+    from dataclasses import replace
+
+    from patent_ai.core.cases.case_source import fill as fill_module
+
+    real = fill_module.plan_fill
+
+    def broken(*args, **kwargs):
+        plan = real(*args, **kwargs)
+        bad = [replace(v, document_id="doc_없음") for v in plan.rows.claim_versions]
+        return replace(plan, rows=replace(plan.rows, claim_versions=bad))
+
+    monkeypatch.setattr(fill_module, "plan_fill", broken)
+    created = _upload(factory, "fill54_broken")
+    with pytest.raises(IntegrityError):
+        PostgresCaseSourceFill(factory, source).fill_before_f3(created.oa_id, APP, OA_NO)
+    assert _events(factory, created.case_id) == [("oa", None, None)]
+    with factory() as s:
+        kinds = [
+            d.kind for d in s.scalars(select(Document).where(Document.case_id == created.case_id))
+        ]
+        assert kinds == ["oa"]  # 출원서 문서도 되돌려졌다
+        assert s.get(OA, created.oa_id).examined_claim_version_id is None
