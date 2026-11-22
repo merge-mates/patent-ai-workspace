@@ -7,4 +7,7 @@ precedent_logs:
   - _download_log_1118.json
   - _download_log_1118_v2.json
 expected_precedents: 74
+# 심결 PDF: <trial_dir>/<유형 폴더>/<심판번호 13자리>.pdf. 개수가 다르면 멈춘다
+trial_dir: data/raw/trials_cv_1117
+expected_trials: 12
 out: data/processed/law/precedent-v3.jsonl

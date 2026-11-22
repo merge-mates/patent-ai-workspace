@@ -9,17 +9,22 @@ import pytest
 import yaml
 
 from patent_ai.db.models.chunks import check_law_chunk
+from patent_ai.retrieval import precedent_index
 from patent_ai.retrieval.precedent_index import (
     PrecedentIndexError,
     chunk_precedent,
+    chunk_trial,
     classify_heading,
     main,
     select_precedents,
+    trial_doc_id,
 )
 from patent_ai.retrieval.schemas import Chunk
 
 V = "law-idx-v3"
 FIX = Path(__file__).parent.parent / "fixtures" / "retrieval" / "precedent"
+TRIAL_FIX = Path(__file__).parent.parent / "fixtures" / "retrieval" / "trial"
+TRIAL_FILE = "2099101001234.pdf"
 
 
 def _load(name: str) -> dict:
@@ -167,7 +172,11 @@ def test_건수가_설정과_다르면_멈춤():
         select_precedents([[_rec("body_a.json", "진보성")]], expected=74)
 
 
-def _config(tmp_path: Path, expected: int) -> Path:
+def _config(tmp_path: Path, expected: int, expected_trials: int = 1) -> Path:
+    # 심결 PDF는 빈 파일 하나만 두고, 글 읽기는 테스트에서 가짜로 바꾼다
+    trials = tmp_path / "trials"
+    (trials / "진보성만").mkdir(parents=True)
+    (trials / "진보성만" / TRIAL_FILE).write_bytes(b"")
     raw = tmp_path / "prec"
     raw.mkdir()
     for name in ("patent_court.json", "supreme_no_summary.json"):
@@ -181,6 +190,8 @@ def _config(tmp_path: Path, expected: int) -> Path:
         "precedent_dir": str(raw),
         "precedent_logs": ["log.json"],
         "expected_precedents": expected,
+        "trial_dir": str(trials),
+        "expected_trials": expected_trials,
         "out": str(tmp_path / "out" / "precedent-v3.jsonl"),
     }
     p = tmp_path / "cfg.yaml"
@@ -188,7 +199,12 @@ def _config(tmp_path: Path, expected: int) -> Path:
     return p
 
 
-def test_명령_같은_입력_같은_바이트_있으면_멈춤_force로_덮음(tmp_path):
+def _fake_pdf(monkeypatch):
+    monkeypatch.setattr(precedent_index, "read_trial_pages", lambda _path: _trial_pages())
+
+
+def test_명령_같은_입력_같은_바이트_있으면_멈춤_force로_덮음(tmp_path, monkeypatch):
+    _fake_pdf(monkeypatch)
     cfg = _config(tmp_path, expected=2)
     out = Path(yaml.safe_load(cfg.read_text(encoding="utf-8"))["out"])
     assert main(["--config", str(cfg)]) == 0
@@ -197,14 +213,113 @@ def test_명령_같은_입력_같은_바이트_있으면_멈춤_force로_덮음(
     assert out.read_bytes() == first
     assert main(["--config", str(cfg), "--force"]) == 0
     assert out.read_bytes() == first
-    ids = [json.loads(line)["chunk_id"] for line in first.decode().splitlines()]
+    rows = [json.loads(line) for line in first.decode().splitlines()]
+    ids = [r["chunk_id"] for r in rows]
     assert ids == sorted(ids)
+    # 판례 둘 + 심결 하나가 한 파일에 들어간다
+    assert {r["doc_id"] for r in rows} == {"판례_2099허1001", "판례_2099후2002", "심결_2099원1234"}
+    assert {r["source_kind"] for r in rows} == {"precedent", "trial"}
 
 
-def test_명령_건수가_다르면_종료_1과_파일_없음(tmp_path):
+def test_명령_건수가_다르면_종료_1과_파일_없음(tmp_path, monkeypatch):
+    _fake_pdf(monkeypatch)
     cfg = _config(tmp_path, expected=74)
     assert main(["--config", str(cfg)]) == 1
     assert not Path(yaml.safe_load(cfg.read_text(encoding="utf-8"))["out"]).exists()
+
+
+def test_명령_심결_건수가_다르면_종료_1(tmp_path, monkeypatch):
+    _fake_pdf(monkeypatch)
+    cfg = _config(tmp_path, expected=2, expected_trials=12)
+    assert main(["--config", str(cfg)]) == 1
+    assert not Path(yaml.safe_load(cfg.read_text(encoding="utf-8"))["out"]).exists()
+
+
+# ---------- 심결 (task-c2) ----------
+
+
+def _trial_pages() -> list[str]:
+    return [(TRIAL_FIX / f"page{i}.txt").read_text(encoding="utf-8") for i in (1, 2)]
+
+
+def test_심판번호는_파일_이름_13자리에서(tmp_path):
+    assert trial_doc_id("2026101000634.pdf") == "심결_2026원634"
+    assert trial_doc_id("2016101007372.pdf") == "심결_2016원7372"
+    assert trial_doc_id("2099101001234.pdf") == "심결_2099원1234"
+    for bad in ("abc.pdf", "202610100063.pdf", "2026102000634.pdf"):  # 자리 수·종류 코드가 다름
+        with pytest.raises(PrecedentIndexError):
+            trial_doc_id(bad)
+
+
+def test_심결_이유_번호_문단마다_조각_쪽을_넘는_문단은_이어붙임():
+    chunks = chunk_trial(_trial_pages(), TRIAL_FILE, V, trial_type="진보성만")
+    by = _by_id(chunks)
+    assert list(by) == ["r1-1", "r1-2", "r2-0", "r3-1", "r3-2", "r4-0"]
+    assert [c.location.label for c in chunks] == [
+        "이유 1. 가.",
+        "이유 1. 나.",
+        "이유 2.",
+        "이유 3. 가.",
+        "이유 3. 나.",
+        "이유 4.",
+    ]
+    assert by["r1-1"].text.startswith(
+        "1. 기초사실\n가. 절차의 경위\n① 특허출원 : 2099. 1. 1.\n② 거절결정"
+    )
+    # 쪽 바닥에서 끊긴 문장은 다음 쪽 글과 이어진다, 쪽 번호 줄은 없다
+    assert "끝나지 않고 쪽을 넘어서 이어진다." in by["r2-0"].text
+    assert "1/2" not in by["r2-0"].text
+    # 번호가 이어지지 않는 "1. 문장 속 목록"은 앞 조각 글이다
+    assert "2. 문장 속 목록 둘" in by["r3-1"].text
+    # 심판관 서명과 [별지]는 뺀다
+    assert by["r4-0"].text == "4. 결론\n지어낸 결론 글이다."
+    assert all("청구항" not in c.text and "심판관" not in c.text for c in chunks)
+
+
+def test_심결_조각_메타와_발언_주체():
+    chunks = chunk_trial(_trial_pages(), TRIAL_FILE, V, trial_type="진보성만")
+    by = _by_id(chunks)
+    for c in chunks:
+        assert c.doc_id == "심결_2099원1234"
+        assert c.chunk_id.startswith("law-idx-v3:심결_2099원1234:r")
+        assert c.chunk_kind == "judgment"
+        assert c.source_kind == "trial"
+        assert c.edition.status == "not_applicable"
+        assert c.decided_on == date(2099, 10, 1)
+        assert c.attrs == {"결과": "원결정 취소", "유형": "진보성만"}
+        assert (
+            check_law_chunk(c.chunk_kind, c.edition.status, c.source_kind, c.decided_on, c.speaker)
+            is None
+        )
+    assert by["r1-1"].speaker == "unknown"  # 기초사실
+    assert by["r2-0"].speaker == "party"  # 청구인의 주장
+    assert by["r3-1"].speaker == "court"  # 판단 (심판부)
+    assert by["r4-0"].speaker == "court"  # 결론
+
+
+def test_심결일_못_뽑으면_null과_경고(caplog):
+    pages = [p.replace("심    결   일   2099. 10. 1.", "") for p in _trial_pages()]
+    with caplog.at_level(logging.WARNING):
+        chunks = chunk_trial(pages, TRIAL_FILE, V)
+    assert {c.decided_on for c in chunks} == {None}
+    assert "심결_2099원1234" in caplog.text
+
+
+def test_결과는_주문에서_기각도_읽음():
+    pages = [
+        p.replace(
+            "원결정을 취소하고, 이 사건 출원을 심사관에게 보내어 다시 심사에 부친다.",
+            "이 사건 심판청구를 기각한다.",
+        )
+        for p in _trial_pages()
+    ]
+    assert chunk_trial(pages, TRIAL_FILE, V)[0].attrs["결과"] == "기각"
+
+
+def test_심결_이유_제목_없으면_오류():
+    pages = [p.replace("이          유", "") for p in _trial_pages()]
+    with pytest.raises(PrecedentIndexError, match="이 유"):
+        chunk_trial(pages, TRIAL_FILE, V)
 
 
 @pytest.mark.parametrize(
