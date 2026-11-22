@@ -5,6 +5,8 @@
 결과 스키마로 올릴 때 이름·칸을 그대로 옮긴다.
 """
 
+from datetime import date
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from patent_ai.core.schemas.common import Flag, Status
@@ -48,3 +50,6 @@ class F4Output(BaseModel):
     # 보류·누락처럼 사람이 봐야 할 것은 flags·held_units·uncovered로 본다
     status: Status
     flags: list[Flag] = Field(default_factory=list)
+    # 이 결과를 만든 확인 기준일 (F4Input.checked_on). 초안만 다시 만드는 실행이 이어 쓴다 (#293).
+    # 이 칸이 생기기 전에 저장한 결과는 None
+    checked_on: date | None = None

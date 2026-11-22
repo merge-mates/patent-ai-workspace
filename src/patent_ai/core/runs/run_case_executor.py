@@ -240,6 +240,23 @@ class RunCaseExecutor:
             raise _CannotResume("no_saved_oa_result", "이어 돌 OA 정리가 저장돼 있지 않습니다")
         return apply_human_numbers(saved, numbers)
 
+    def _prev_checked_on(self, run_id: str, f4: F4Output, f2) -> date:
+        """앞 실행의 확인 기준일 (#293). 날을 넘겨 골라도 방향 후보와 같은 기준일로 초안을 만든다.
+
+        앞 F4 결과 → 앞 F2 묶음 순으로 찾고, 둘 다 없으면 오늘 날짜를 쓰고 경고한다.
+        """
+        if f4.checked_on is not None:
+            return f4.checked_on
+        bundles = getattr(f2, "bundles", None) or []
+        days = {b.checked_on for b in bundles}
+        if len(days) == 1:
+            return days.pop()
+        today = self._today()
+        logger.warning(
+            "실행 %s: 앞 실행의 확인 기준일을 몰라 오늘(%s)을 확인 기준일로 씀", run_id, today
+        )
+        return today
+
     def _redo(self, run_id: str, oa_id: str) -> None:
         """사람 선택 뒤 초안만 다시 만든다 (#70). 앞 실행 결과는 지우지 않고 이 실행으로 옮긴다."""
         self._store.set_current_step(run_id, REDO_STEP)
@@ -254,7 +271,9 @@ class RunCaseExecutor:
         try:
             texts = self._inputs.case_input(oa_id).texts
             payload = f4_input(
-                {"read_oa": saved.result, "run_f3": f3, "run_f2": f2}, texts, self._today()
+                {"read_oa": saved.result, "run_f3": f3, "run_f2": f2},
+                texts,
+                self._prev_checked_on(run_id, f4, f2),
             )
             if isinstance(payload, InputMissing):
                 self._fail(run_id, "step_failed", f"초안 입력을 만들지 못함 ({payload.why})")
