@@ -45,6 +45,7 @@ data/goldsets/
 - 실험 설정은 `goldset: tune`·`goldset_version: 2`·`gold: <세트 안 경로>`로 고른다. `gold`에 `..`·절대 경로는 못 쓴다 (`eval/common/goldset.py`).
 - 채점 단위는 기능마다 위 "한 줄"이고, 세트 점수는 OA 한 통을 한 표로 모은다 (청구항 점수 → OA 평균 → 세트 평균). 자세한 건 각 형식 문서.
 - 검색 정답에서 채점 범위 밖 줄을 빼는 규칙(`exclude`)은 retrieval design 7-1을 따른다. 정답 항목에 맞는 조각이 검색 범위에 하나도 없으면 그 항목을 빼고(모두 없으면 줄째, `excluded_gold_not_in_scope`·`excluded_gold_items_not_in_scope`, #138) 건수를 `failures`에 남긴다. 정답 파일은 고치지 않는다 (채점기가 셈).
+- 검색 정답 줄의 선택 칸 `chunk_kinds`(예 `["article"]`): 그 줄을 찾을 조각 종류(검색 범위). 없으면 law 줄은 `["article"]`(조문 줄에 심사기준·판례가 섞이지 않음), cite 줄은 거르지 않는다. 빈 목록은 오류.
 
 ### 인용문헌 둘째 점수 풀 표 (`<세트>/retrieval/cite_pool.yaml`, #178)
 - 노이즈 범위(`cite_noise_b.jsonl`)의 재료다. `uv run python -m eval.retrieval.noise_scope`가 이 표와 `cite_gold.jsonl`로 범위를 만든다 (넣는 조건은 [search-gold.md](../docs/evaluation/search-gold.md) 5절). 정답이 아니라서 VERSION과 따로 간다.
