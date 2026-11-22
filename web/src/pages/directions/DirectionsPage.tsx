@@ -132,7 +132,7 @@ function Fields({ c }: { c: DirectionCandidate }) {
               </div>
             ))}
       </Field>
-      {claims.length > 0 && <Field label="함께 바뀌는 청구항">청구항 {claimRange(claims)}</Field>}
+      {claims.length > 0 && <Field label="보정하는 청구항">청구항 {claimRange(claims)}</Field>}
       {c.per_rejection.length > 0 && (
         <Field label="거절이유별 대응">
           {c.per_rejection.map((r) => (
