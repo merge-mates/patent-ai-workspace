@@ -12,7 +12,7 @@
 
 **가설**: BM25로 후보를 좁힌 뒤 벡터로 순위를 매기면 낱말이 하나도 안 겹치는 조각(벡터만 높음)을 빼서 위쪽 순위가 깨끗해진다.
 **종류**: 구현 비교 (같은 검색 계약 뒤 `impl`만 다름)
-**설정**: 안쪽 BM25·벡터 설정과 녹화 질의 벡터는 기준선과 같다. 주 설정 N=100은 실행 전에 50·100·200 가운데로 정했다. 새 임베딩 호출 0 (녹화 질의 벡터만).
+**설정**: 안쪽 BM25·벡터 설정과 기록된 질의 벡터는 기준선과 같다. 주 설정 N=100은 실행 전에 50·100·200 가운데로 정했다. 새 임베딩 호출 0 (기록된 질의 벡터만).
 - 같은 설정 2회: 결정적 계산이라 두 번 다 같은 점수 (14개 설정 모두 1·2회 같음).
 - 기본 범위 = 그 OA 인용문헌 안 (주 점수), 노이즈 B = tune 인용문헌 전체에서 줄마다 문헌 평균 10.6개 (#178 둘째 점수, `noise_scope: retrieval/cite_noise_b.jsonl`).
 - scores.json은 주 설정(N=100, 기본 범위). 나머지는 git 밖 `work/overnight_1121/exp_techniques/out/` (같은 채점기 score() 그대로).
@@ -29,7 +29,7 @@
 | 2단계 N=50 | 노이즈 B | 0.059 | 0.294 | 0.353 | 0.426 | 0.215 | 44 | 0.779 |
 | 2단계 N=100 | 노이즈 B | 0.059 | 0.294 | 0.382 | 0.500 | 0.255 | 42 | 0.779 |
 | 2단계 N=200 | 노이즈 B | 0.074 | 0.324 | **0.412** | 0.500 | 0.267 | 40 | 0.794 |
-- 비용: $0 (모델·임베딩 호출 0, 녹화 질의 벡터).
+- 비용: $0 (모델·임베딩 호출 0, 기록된 질의 벡터).
 - 한 줄: tune v2 인용문헌 기본 범위 Hit@10 RRF 0.706 / 2단계 N=50·100·200 0.706·0.691·0.691, 노이즈 B 0.382 / 0.353·0.382·0.412, 비용 0.
 
 ## 해석 (Claude 초안, 사람이 고칠 것)
@@ -38,4 +38,4 @@
 - **제안 (바꾸지 않음, 결정은 재아)**: 기본 방식은 RRF 그대로. 2단계는 노이즈가 큰 범위(미국 공보·v4 넓은 범위)에서 N=200 이상으로 다시 볼 후보.
 
 ## 다시 내는 법
-`uv run python eval/run_eval.py --config experiments/m3-i1-cite-search-two-stage/config.yaml` (녹화 질의 벡터 `work/retrieval/m2-i2-cite-search-vector/query_vectors.json` 필요). N·노이즈 표는 config의 `two_stage.candidates`와 `noise_scope` 한 줄만 바꿔 같은 명령.
+`uv run python eval/run_eval.py --config experiments/m3-i1-cite-search-two-stage/config.yaml` (기록된 질의 벡터 `work/retrieval/m2-i2-cite-search-vector/query_vectors.json` 필요). N·노이즈 표는 config의 `two_stage.candidates`와 `noise_scope` 한 줄만 바꿔 같은 명령.

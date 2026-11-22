@@ -12,7 +12,7 @@
 
 **가설**: RRF는 순위만 쓴다. 점수 크기(얼마나 더 비슷한가)를 쓰면 한쪽이 크게 확신하는 조각이 위로 온다.
 **종류**: 구현 비교 (같은 검색 계약 뒤 `impl`만 다름)
-**설정**: 안쪽 BM25·벡터와 녹화 질의 벡터는 기준선과 같다. min-max는 방식마다 그 방식이 돌려준 조각 위에서 (BM25는 0점 조각을 안 돌려줌 → 그 조각의 BM25 몫 0). 주 설정 0.5/0.5는 실행 전에 0.3·0.5·0.7 가운데로 정했다. 새 임베딩 호출 0.
+**설정**: 안쪽 BM25·벡터와 기록된 질의 벡터는 기준선과 같다. min-max는 방식마다 그 방식이 돌려준 조각 위에서 (BM25는 0점 조각을 안 돌려줌 → 그 조각의 BM25 몫 0). 주 설정 0.5/0.5는 실행 전에 0.3·0.5·0.7 가운데로 정했다. 새 임베딩 호출 0.
 - 같은 설정 2회: 결정적 계산이라 1·2회 같음. 기본·노이즈 B 범위 (위 two-stage 카드와 같은 정의).
 - scores.json은 주 설정(BM25 0.5, 기본 범위). 나머지는 git 밖 `work/overnight_1121/exp_techniques/out/`.
 - 코드: feat/212-cite-two-stage-hybrid f1316f0.
@@ -38,4 +38,4 @@
 - **제안 (바꾸지 않음, 결정은 재아)**: 기본 방식은 RRF 그대로. 가중합은 B1 질의 확장(같은 tune에서 Hit@10 +0.09~+0.10, git 밖 시제품)처럼 차이가 큰 기법보다 우선순위가 낮다.
 
 ## 다시 내는 법
-`uv run python eval/run_eval.py --config experiments/m3-i1-cite-search-weighted-sum/config.yaml` (녹화 질의 벡터 필요). 가중치·노이즈 표는 config의 `weighted_sum.weights`와 `noise_scope` 한 줄만 바꿔 같은 명령.
+`uv run python eval/run_eval.py --config experiments/m3-i1-cite-search-weighted-sum/config.yaml` (기록된 질의 벡터 필요). 가중치·노이즈 표는 config의 `weighted_sum.weights`와 `noise_scope` 한 줄만 바꿔 같은 명령.

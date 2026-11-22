@@ -14,7 +14,7 @@ settings:
   tokenizer: kiwi        # kiwipiepy 0.24.1
   pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
   bm25: {method: lucene, k1: 1.5, b: 0.75}   # bm25s 0.3.16
-  query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 녹화
+  query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 기록된 질의 벡터
   two_stage:
     candidates: 100        # BM25 후보 수 N (50·100·200 중 가운데를 미리 주 설정으로 정함)
 budget:
