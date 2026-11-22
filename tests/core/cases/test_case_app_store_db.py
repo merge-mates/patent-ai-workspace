@@ -157,3 +157,12 @@ def test_OA2를_올린_직후_OA1_거절이유가_안_보인다(session):
     row = next(r for r in store.list_cases() if r.case_id == created.case_id)
     # 앞 OA 거절이유가 이번 OA 것으로 읽히지 않게, 새 OA 기준 기본값
     assert (row.rejection_kinds, row.status, row.run_state) == ([], "unverified", "queued")
+
+
+def test_문서_ID로_원본_경로를_찾는다(session):
+    # GET /documents/{id} (#262): 올린 문서의 경로, 없는 ID는 None
+    store = PostgresCaseAppStore(session)
+    sha = "db_docpath_" + "c" * 20
+    created = store.create_case(_file(sha))
+    assert store.get_document_path(created.document_id) == f"work/uploads/{sha}.pdf"
+    assert store.get_document_path("doc_없음") is None

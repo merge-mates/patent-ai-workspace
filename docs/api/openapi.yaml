@@ -239,6 +239,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /documents/{document_id}:
+    get:
+      summary: Get Document
+      operationId: get_document_documents__document_id__get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageText'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /cases/{case_id}/documents:
     post:
       summary: Upload Missing Document
@@ -2687,6 +2711,54 @@ components:
       - human_edited
       - human_written
       title: Origin
+    Page:
+      properties:
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+        text:
+          type: string
+          title: Text
+        status:
+          $ref: '#/components/schemas/Status'
+        tables:
+          items:
+            items:
+              items:
+                type: string
+              type: array
+            type: array
+          type: array
+          title: Tables
+      additionalProperties: false
+      type: object
+      required:
+      - page
+      - text
+      - status
+      title: Page
+      description: 쪽 하나의 글자와 표. 쪽 번호는 1부터. status는 그 쪽에 글자가 있는지.
+    PageText:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        pages:
+          items:
+            $ref: '#/components/schemas/Page'
+          type: array
+          title: Pages
+        status:
+          $ref: '#/components/schemas/Status'
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - pages
+      - status
+      title: PageText
+      description: 문서 한 건의 쪽별 글자와 문서 전체 status.
     ParagraphSource:
       type: string
       enum:

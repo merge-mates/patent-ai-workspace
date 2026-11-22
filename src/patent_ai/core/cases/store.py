@@ -208,6 +208,10 @@ class CaseAppStore(Protocol):
         case_id를 주면 그 사건 안에서만 찾는다."""
         ...
 
+    def get_document_path(self, document_id: str) -> str | None:
+        """기본 사용자 사건의 문서 원본 경로 (GET /documents/{id}, #262). 없으면 None."""
+        ...
+
 
 def now_utc() -> datetime:
     return datetime.now(UTC)
@@ -339,6 +343,7 @@ class _Doc:
     id: str
     case_id: str
     sha256: str
+    path: str
 
 
 class InMemoryCaseAppStore:
@@ -363,7 +368,7 @@ class InMemoryCaseAppStore:
         # 같은 사건 안 같은 파일은 거부 (DB의 uq_documents_case_sha256과 같은 규칙)
         if any(d.case_id == case.id and d.sha256 == file.sha256 for d in self._docs):
             raise DuplicateDocumentError("같은 사건에 같은 파일이 이미 있음")
-        doc = _Doc(new_id("doc"), case.id, file.sha256)
+        doc = _Doc(new_id("doc"), case.id, file.sha256, file.path)
         oa = _OA(new_id("oa"), case.id, doc.id, self._clock())
         self._docs.append(doc)
         self._oas[oa.id] = oa
@@ -457,3 +462,6 @@ class InMemoryCaseAppStore:
                 oa = next((o for o in self._oas.values() if o.document_id == d.id), None)
                 return ExistingDocument(d.case_id, oa.id if oa else None, d.id)
         return None
+
+    def get_document_path(self, document_id: str) -> str | None:
+        return next((d.path for d in self._docs if d.id == document_id), None)
