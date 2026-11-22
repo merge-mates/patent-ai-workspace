@@ -127,7 +127,7 @@ graph LR
 - 마이그레이션 갈래 주의: PR #257(`chore/228-invalid-output-reason`, #70 ①-2도 예정)의 `d9e4b1c7a352`(agent_steps.invalid_kind)도 down = `b3f8d2e6a914`다. 늦게 머지되는 쪽이 main을 받아 down_revision을 먼저 머지된 rev로 바꾼다 (head 둘이 되면 `alembic upgrade head`가 멈춤). PR 본문에 적는다.
 - 고칠 파일: `src/patent_ai/retrieval/schemas.py`(`ChunkKind`에 `judgment_summary`, `Chunk`에 `source_kind`·`decided_on`·`speaker`·`attrs`, 모두 선택 칸), `src/patent_ai/db/models/chunks.py`(`LawChunk`에만 새 칸 + 검사 함수), `src/patent_ai/db/migrations/versions/20261123_<rev>_law_chunks_source_meta.py`(down = `b3f8d2e6a914`), `src/patent_ai/retrieval/repository.py`(`chunk_to_row`·`row_to_chunk`, `from_jsonl`), `src/patent_ai/retrieval/law_index_db.py`(`_check`, `read_chunks_jsonl`), `src/patent_ai/db/index_dump.py`(`fixture_rows`), `src/patent_ai/retrieval/law_index.py`(조문 조각 `source_kind=statute`), `docs/features/retrieval/design.md`(5-1 `not_applicable` 뜻·`chunk_kind` 값), `docs/features/F2/design.md`(5-1 바뀜 3·4의 `rejection_ground`를 "7-3 1b로 미룸"으로), `docs/data-model.md`(조각 표 칸), 테스트(`tests/retrieval/test_schemas.py`, `test_row_mapping.py`, `test_law_index_db.py`, `test_index_dump.py`, `test_repository.py`, `tests/test_migrations.py`, `tests/test_db_models.py`)
 - 규칙:
-  - 법령 표의 `not_applicable`은 `chunk_kind`가 `judgment`·`judgment_summary`일 때만. 검사 함수 `check_law_edition(chunk_kind, edition_status, source_kind)`는 `db/models/chunks.py`에 문자열만 받게 둔다 (db는 retrieval을 import하지 못하므로, retrieval 넣기·저장소와 db 덤프가 이 하나를 부른다).
+  - 법령 표의 `not_applicable`은 `chunk_kind`가 `judgment`·`judgment_summary`일 때만. 검사 함수 `check_law_chunk(chunk_kind, edition_status, source_kind, decided_on, speaker)`(인용문헌은 `check_cite_chunk_meta`)는 `db/models/chunks.py`에 문자열만 받게 둔다 (db는 retrieval을 import하지 못하므로, retrieval 넣기·저장소와 db 덤프가 이 하나를 부른다).
   - `decided_on`·`speaker`는 `source_kind`가 `precedent`·`trial`일 때만 값이 있을 수 있다. 인용문헌 조각은 새 칸이 모두 비어야 한다.
   - 옛 JSONL(새 칸 없음)의 `source_kind`는 함수 하나 `fill_law_defaults(chunk) -> Chunk`가 `statute`로 채운다. `from_jsonl`과 `read_chunks_jsonl` 둘 다 이것을 부른다 (마이그레이션으로 채운 DB 행과 `content_sha256`이 같게).
 - 테스트할 경우: 판례 조각 `not_applicable` 넣기 통과 / 조문 조각 `not_applicable` 거부 (세 곳) / 새 칸 왕복(메모리·행 변환·덤프 fixture) / 옛 v1 JSONL을 읽으면 `statute` / v2 JSONL 다시 넣기 → 내용 같음(멈추지 않음) / `judgment_summary` 값 / 인용문헌 조각에 `source_kind` 거부 / 마이그레이션 upgrade·downgrade (DB)
@@ -206,9 +206,9 @@ graph LR
 - 재아 님께 알릴 것 (PR 본문 + 스레드): 새 마이그레이션 rev, 덤프 이름(`law-idx-v3`)·지문, 드라이브에서 바꿀 파일(law 셋, cite `.revision`), `index-load` 순서.
 
 ### 진행
-- [ ] 24a: task-a1 · task-a2 · task-a3 · task-a4
+- [ ] 24a: [x] task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · [ ] task-a2 · [ ] task-a3 · [ ] task-a4
 - [ ] 24b: task-b1
 - [ ] 24c: task-c1 · task-c2
 - [ ] 24d: task-d1 · task-d2
-- 다음: 계획 승인
+- 다음: 24a task-a2
 - 막힌 것: 없음
