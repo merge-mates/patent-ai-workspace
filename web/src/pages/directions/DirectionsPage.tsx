@@ -21,6 +21,8 @@ import {
   LOW_CONFIDENCE_TEXT,
 } from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
+import { seedRun } from '../../runPoll'
+import { useRunSnapshot } from '../../useRunSnapshot'
 import type { Evidence1 } from '../../types/generated/ComparisonTable'
 import type { DirectionCandidate, DirectionCandidates, DirectionSelection } from '../../types/generated/DirectionCandidates'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
@@ -173,10 +175,13 @@ export function DirectionsPage() {
   const { message } = App.useApp()
   const revalidator = useRevalidator()
   const navigate = useNavigate()
-  // 묶음마다 지금 선택 (처음엔 서버가 준 값: AI 기본값 또는 비어 있음)
-  const [chosen, setChosen] = useState<Record<string, DirectionSelection | null>>(() =>
-    Object.fromEntries(directions.map((d) => [d.unit_id, d.selection])),
-  )
+  // 방금 고른 선택(PUT 응답 값). 서버는 작은 실행이 끝날 때까지 GET의 selection을 옛 값으로 두므로
+  // 화면의 선택(d.selection)은 loader 값이고, 이 값은 실행이 도는 동안만 "방금 고름 · 반영 중"으로 따로 보인다.
+  // 끝나면 loader가 새 선택을 주니 따로 지우지 않는다 (묶음별로 들고 있어 다른 묶음 값이 섞이지 않는다)
+  const [justChosen, setJustChosen] = useState<Record<string, DirectionSelection>>({})
+  // 그 OA의 최근 실행이 도는 동안은 못 고른다 (서버는 409 run_in_progress)
+  const runState = useRunSnapshot(oa.latest_run)?.run.state
+  const rebuilding = runState === 'queued' || runState === 'running'
   // 저장 중인 묶음들 (여러 묶음을 빨리 골라도 서로 덮지 않게 묶음마다 따로)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [checkOpen, setCheckOpen] = useState(false)
@@ -189,10 +194,13 @@ export function DirectionsPage() {
   const choose = async (d: DirectionCandidates, candidateId: string) => {
     setSaving((prev) => ({ ...prev, [d.unit_id]: true }))
     try {
-      const saved = await api.selectDirection(d.unit_id, candidateId)
-      // 응답이 늦게 와도 다른 묶음의 선택을 덮지 않게 그때의 최신 값에 더한다
-      setChosen((prev) => ({ ...prev, [d.unit_id]: saved.selection }))
-      // 사건 틀의 "직접 할 일" 개수도 고른 묶음을 빼고 다시 센다
+      const saved = await api.selectDirection(d.unit_id, { candidate_id: candidateId })
+      // 응답이 늦게 와도 다른 묶음의 값을 덮지 않게 그때의 최신 값에 더한다 (응답 값만, 지어내지 않음)
+      setJustChosen((prev) => ({ ...prev, [d.unit_id]: saved.selection }))
+      // 응답의 run_id는 초안만 다시 만드는 새 작은 실행: 폴링에 넣고 화면 데이터를 다시 받는다.
+      // 다시 받은 OA의 latest_run이 그 실행이라 사건 틀이 구독하고, 끝나면 runPoll이 방향·초안을 다시 받게 한다
+      // (사건 틀의 "직접 할 일" 개수는 실행이 끝나 loader가 새 선택을 받아야 줄어든다)
+      seedRun({ run_id: saved.run_id, state: 'queued', current_step: null })
       revalidator.revalidate()
     } catch (e) {
       message.error(`저장하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
@@ -214,6 +222,10 @@ export function DirectionsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
+      {/* 서버는 작은 실행이 끝날 때까지 옛 선택을 돌려준다: 끝나면 고른 선택이 여기에 보인다 */}
+      {rebuilding && (
+        <Alert type="info" showIcon message="고른 방향으로 초안을 만드는 중이에요 · 끝나면 선택이 여기에 보여요" />
+      )}
       {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
       {directions.length === 0 &&
         (directionsEmptyReason ? (
@@ -222,7 +234,9 @@ export function DirectionsPage() {
           <span className="body2 t3">대응 방향 후보가 아직 없습니다</span>
         ))}
       {directions.map((d, idx) => {
-        const sel = chosen[d.unit_id]
+        const sel = d.selection
+        const just = rebuilding ? justChosen[d.unit_id] : undefined
+        const justName = d.candidates.find((c) => c.candidate_id === just?.candidate_id)?.name
         const picked = d.candidates.find((c) => c.candidate_id === sel?.candidate_id)
         return (
           <div key={d.unit_id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -234,6 +248,7 @@ export function DirectionsPage() {
                   d.unit_id,
                 )}
               </span>
+              {just && <HumanCheckTag>방금 고름 · 반영 중{justName ? `: ${justName}` : ''}</HumanCheckTag>}
               {sel ? (
                 <OriginTag origin={sel.origin} />
               ) : d.candidates.length === 0 ? (
@@ -287,8 +302,8 @@ export function DirectionsPage() {
                 {picked ? '다른 후보로 바꾸기' : '후보 고르기'} · 순위는 검토 순서 제안이고 등록을 보증하지 않아요
               </span>
               <Radio.Group
-                value={sel?.candidate_id ?? null}
-                disabled={saving[d.unit_id] === true}
+                value={just?.candidate_id ?? sel?.candidate_id ?? null}
+                disabled={saving[d.unit_id] === true || rebuilding}
                 onChange={(e) => choose(d, e.target.value as string)}
                 options={d.candidates.map((c) => ({
                   label: (

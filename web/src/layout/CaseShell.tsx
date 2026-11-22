@@ -71,6 +71,8 @@ function stepItems(
       return { ...base, status: 'wait', disabled: true }
     }
     // queued · running
+    // 초안 단계는 결과가 있어도 실행이 도는 동안은 옛 초안이다 (방향을 고른 뒤 초안만 다시 만드는 중일 수 있다)
+    if (ready[i] && i === 3) return { ...base, description: <><div>다시 만드는 중</div>{stepText}</>, status: 'process' }
     if (ready[i]) return { ...base, description: doneText, status: 'finish' }
     if (i === firstMissing) return { ...base, description: <><div>찾는 중</div>{stepText}</>, status: 'process', disabled: true }
     return { ...base, description: '대기', status: 'wait', disabled: true }

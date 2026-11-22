@@ -18,6 +18,8 @@ import type {
   OAResultResponse,
   RunStatus,
   CreatedRun,
+  SelectionBody,
+  SelectionResult,
   UploadedDocument,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
@@ -165,6 +167,7 @@ export const mockApi = {
   // 사건 목록에 더 보이는 값 (fixture·예시에서 채운다). 서버 모드는 비어 있어 "모름"
   async listCaseExtras(): Promise<CaseListExtra[]> {
     return (await bundles()).map((b) => {
+      flushPending(b)
       const todos = directTodos({
         reviewItems: b.review_items,
         materials: b.materials,
@@ -208,20 +211,35 @@ export const mockApi = {
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<ResultList<DirectionCandidates>> {
-    gateResult(await byOA(oaId))
+    const b = await byOA(oaId)
+    flushPending(b)
+    gateResult(b)
     return listOf(directions[oaId] ?? [])
   },
-  async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
-    const list = Object.values(directions).flat()
-    const found = list.find((d) => d.unit_id === unitId)
-    if (!found) throw new ApiError('unit_not_found', '판단 단위를 찾을 수 없습니다', 404)
+  // 방향을 고르면 서버처럼 초안만 다시 만드는 새 작은 실행이 생긴 것으로 흉내 낸다 (run_id를 돌려준다)
+  async selectDirection(unitId: string, body: SelectionBody): Promise<SelectionResult> {
+    // 직접 쓰기는 다음 task (화면 없음): mock은 저장하지 못한다고 알린다
+    if (!('candidate_id' in body)) throw new ApiError('not_in_mock', 'mock에서는 방향을 직접 쓸 수 없습니다', 0)
+    const candidateId = body.candidate_id
+    const entry = Object.entries(directions).find(([, list]) => list.some((d) => d.unit_id === unitId))
+    const found = entry?.[1].find((d) => d.unit_id === unitId)
+    if (!entry || !found) throw new ApiError('unit_not_found', '판단 단위를 찾을 수 없습니다', 404)
     if (!found.candidates.some((c) => c.candidate_id === candidateId))
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
+    const b = await byOA(entry[0])
+    flushPending(b)
+    // 서버처럼 실행이 도는 동안은 못 고른다
+    const now = runOf(b).state
+    if (now === 'queued' || now === 'running') throw new ApiError('run_in_progress', '이미 진행 중인 실행이 있습니다', 409)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
-    found.selection = { candidate_id: candidateId, written_direction: null, origin: 'human_selected' }
-    saveSelection(unitId, candidateId)
+    // 작은 실행이 끝날 때까지 GET directions는 옛 선택을 준다: 고른 것은 그 실행에 묶어 두고 끝나면 반영한다
     // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
-    return found
+    const selection = { candidate_id: candidateId, written_direction: null, origin: 'human_selected' } as const
+    // 그 OA에 작은 실행 시작: 앞 결과는 이어 보인다 (서버도 앞 실행 결과를 옮긴다)
+    startRun(b, true, true)
+    const run = loadRun(b.oa_id)
+    if (run) saveRun(b.oa_id, { ...run, pending: [{ unitId, candidateId }] })
+    return { unit_id: unitId, run_id: runOf(b).run_id, selection }
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {
     gateResult(await byOA(oaId))
@@ -268,8 +286,9 @@ export const mockApi = {
     if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
     const run = loadRun(b.oa_id)
     // 이미 끝난 실행은 취소할 수 없다 (끝난 것을 취소로 바꾸지 않는다)
-    if (run && !run.cancelledAt && elapsedOf(run) < STEP_MS * RUN_STEPS.length) {
+    if (run && !run.cancelledAt && elapsedOf(run) < (run.small ? SMALL_RUN_MS : STEP_MS * RUN_STEPS.length)) {
       run.cancelledAt = Date.now()
+      run.pending = [] // 취소한 작은 실행은 고른 것을 반영하지 않는다
       saveRun(b.oa_id, run)
     }
     return { ...runOf(b), oa_id: b.oa_id, error: null }
@@ -320,6 +339,10 @@ const RUN_STEPS = [
   '인용발명 대비 · 법률 근거',
   '대응 방향 후보',
 ]
+// 작은 실행(방향 고른 뒤 초안 다시 만들기): 1초 queued, 4초까지 running, 그 뒤 succeeded (판단)
+const SMALL_QUEUED_MS = 1000
+const SMALL_RUN_MS = 4000
+const SMALL_STEP = '초안 다시 만드는 중'
 const STEP_MS = 3000 // 단계마다 약 3초 (판단)
 // 결과가 "열리는" 단계 번호: 그 단계를 지나면(번호 이상이면) 결과 엔드포인트가 200
 // 사건 자료 목록만 단계로 연다 (사건 단위 자료라 실행 결과 계약 밖으로 보고, 올리기 화면이 "찾아온 자료"를 실행 중에 보인다).
@@ -335,6 +358,10 @@ interface MockRun {
   runId?: string
   // 다시 돌리기 전에 끝나 있던 실행의 run_id: 이 실행이 끝나기 전까지 결과는 그 실행 것으로 보인다
   prevRunId?: string | null
+  // 방향을 고른 뒤 초안만 다시 만드는 작은 실행: 짧게 queued → running → succeeded, 단계는 한 줄
+  small?: boolean
+  // 작은 실행이 끝나야 GET directions에 반영되는 선택 (서버도 선택을 새 실행에 묶어 저장한다)
+  pending?: { unitId: string; candidateId: string }[]
 }
 // mockRuns[oa_id]: 새로고침해도 이어지게 sessionStorage에 둔다 (막히면 메모리만)
 const mockRuns: Record<string, MockRun> = {}
@@ -361,9 +388,24 @@ function saveRun(oaId: string, run: MockRun) {
   }
 }
 // 올리기(새 사건·다음 OA)는 이전 결과가 없고, 다시 돌리기(keepPrev)는 마지막으로 끝난 실행의 결과를 이어 보인다
-function startRun(b: Bundle, keepPrev: boolean) {
+function startRun(b: Bundle, keepPrev: boolean, small = false) {
+  flushPending(b, true) // 앞 작은 실행이 남긴 선택은 새 실행을 만들기 전에 반영한다
   const prevRunId = keepPrev ? lastDoneRunId(b) : null
-  saveRun(b.oa_id, { startedAt: Date.now(), runId: `${b.run_id}_r${Date.now()}`, prevRunId })
+  saveRun(b.oa_id, { startedAt: Date.now(), runId: `${b.run_id}_r${Date.now()}`, prevRunId, ...(small ? { small: true } : {}) })
+}
+// 끝난 작은 실행이 묶어 둔 선택을 방향 목록에 반영하고 저장한다 (force면 도는 중이어도)
+function flushPending(b: Bundle, force = false) {
+  const run = loadRun(b.oa_id)
+  if (!run?.pending?.length) return
+  const state = runOf(b).state
+  if (!force && (state === 'queued' || state === 'running')) return
+  for (const p of run.pending) {
+    const unit = directions[b.oa_id]?.find((d) => d.unit_id === p.unitId)
+    if (!unit) continue
+    unit.selection = { candidate_id: p.candidateId, written_direction: null, origin: 'human_selected' }
+    saveSelection(p.unitId, p.candidateId)
+  }
+  saveRun(b.oa_id, { ...run, pending: [] })
 }
 const currentRunId = (b: Bundle) => loadRun(b.oa_id)?.runId ?? b.run_id
 // 지금까지 결과가 확정된 마지막 실행 (없으면 null)
@@ -379,7 +421,8 @@ const elapsedOf = (run: MockRun) => (run.cancelledAt ?? Date.now()) - run.starte
 // 지금 몇 번째 단계까지 왔나: 0~4는 그 단계를 하는 중, 5는 모두 끝남. 표에 없으면 5
 function phaseOf(oaId: string): number {
   const run = loadRun(oaId)
-  if (!run) return RUN_STEPS.length
+  // 작은 실행은 앞 단계를 다시 돌지 않아 앞 결과가 처음부터 다 열려 있다
+  if (!run || run.small) return RUN_STEPS.length
   return Math.min(Math.floor(elapsedOf(run) / STEP_MS), RUN_STEPS.length)
 }
 
@@ -428,6 +471,12 @@ function runOf(b: Bundle): RunStatusLike {
   const phase = phaseOf(b.oa_id)
   const run_id = currentRunId(b)
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
+  if (run.small) {
+    const t = elapsedOf(run)
+    if (t < SMALL_QUEUED_MS) return { run_id, state: 'queued', current_step: null }
+    if (t < SMALL_RUN_MS) return { run_id, state: 'running', current_step: SMALL_STEP }
+    return { run_id, state: 'succeeded', current_step: null }
+  }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
   // 방향 고르기는 실행을 멈추지 않는다 (확신 낮은 묶음은 선택 null + 초안 보류, 실행은 succeeded)

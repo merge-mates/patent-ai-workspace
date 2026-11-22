@@ -9,6 +9,7 @@ import { TrackedText } from '../../components/TrackedText'
 import type { DraftsLoaderData, OALoaderData } from '../../loaders'
 import { unsupportedRejectionNos } from '../../format'
 import { LOW_CONFIDENCE_TEXT, rejectionKindLabel } from '../../labels'
+import { useRunSnapshot } from '../../useRunSnapshot'
 import type { AmendedClaim, Evidence1 } from '../../types/generated/Drafts'
 import type { DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
 import { CoverageTable } from './CoverageTable'
@@ -57,17 +58,31 @@ function claimKind(before: string, text: string): '보정' | '삭제' | '그대�
 // 5 초안 단계: 대응 현황 표 → 제출 전에 고칠 곳 → 초안 본문(의견서 / 보정 청구항)
 export function DraftsPage() {
   const { drafts: initial, directions, caseCheck, draftsEmptyReason } = useLoaderData() as DraftsLoaderData
-  const { oaResult } = useRouteLoaderData('oa') as OALoaderData
+  const { oaResult, oa } = useRouteLoaderData('oa') as OALoaderData
+  // 그 OA의 최근 실행이 아직 도는 동안 보이는 초안은 옛것이다 (방향을 고르면 초안만 다시 만드는 작은 실행이 생긴다)
+  const runState = useRunSnapshot(oa.latest_run)?.run.state
+  const rebuilding = runState === 'queued' || runState === 'running'
   const { message } = App.useApp()
   const { openCite } = useContext(SourceContext)
   const [drafts, setDrafts] = useState<DraftsWithCheck | null>(initial)
   const [view, setView] = useState<'opinion' | 'claims'>('opinion')
   const [aiShown, setAiShown] = useState<string[]>([]) // AI 원문을 펼친 칸: 's:<key>' / 'c:<청구항>'
   const [editing, setEditing] = useState<Editing>(null)
+  // loader가 "다른 초안"을 받으면(작은 실행이 끝나 새 초안이 옴) 화면 state를 새로 시작한다 (렌더 중 이전 값과 비교).
+  // 객체 참조로 비교하면 단계 전환 revalidate마다 새 객체가 와 고치던 글이 지워지므로, 초안 id와 바탕 선택으로 비교한다
+  const initialKey = initial === null ? null : `${initial.draft_id}|${JSON.stringify(initial.based_on)}`
+  const [seenKey, setSeenKey] = useState(initialKey)
+  if (seenKey !== initialKey) {
+    setSeenKey(initialKey)
+    setDrafts(initial)
+    setEditing(null)
+    setAiShown([])
+  }
 
   if (drafts === null) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rebuilding && <Alert type="info" showIcon message="초안 만드는 중 · 끝나면 초안이 여기에 보여요" />}
         <h2 className="heading2">대응 현황 · 거절이유 × 청구항</h2>
         <span className="body1 t2">초안이 아직 없어 대응 현황을 셀 수 없어요</span>
         {/* 실행이 끝났는데 초안이 없으면 서버가 준 이유 (모든 묶음 보류·F4 넘김 등) */}
@@ -156,16 +171,20 @@ export function DraftsPage() {
             <Alert
               type="info"
               showIcon
-              message="방향을 골랐어요. 이 묶음의 초안은 실행을 다시 돌리면 만들어져요 · 다시 만들어야 함"
+              message={
+                rebuilding
+                  ? '고른 방향으로 초안을 만드는 중 · 끝나면 보여요'
+                  : '방향을 골랐어요. 이 묶음의 초안은 아직 없어요 · 다시 만들어야 함'
+              }
               description={
                 API_MODE === 'mock'
-                  ? '고른 방향은 새로고침해도 남아요. 다만 mock은 초안을 새로 만들지 못해 이 묶음의 초안이 예시에 없는 채로 보여요. 서버에서는 실행을 다시 돌리면(POST /oas/{oa_id}/runs) 만들어져요.'
+                  ? 'mock은 초안을 새로 만들지 못해 이 묶음의 초안이 예시에 없는 채로 보여요.'
                   : undefined
               }
             />
           ) : (
             <Space wrap>
-              <span className="body1" style={{ fontWeight: 600 }}>직접 판단 필요: 방향을 골라 주세요</span>
+              <span className="body1" style={{ fontWeight: 600 }}>직접 판단 필요: 방향을 고르면 초안을 만들어요</span>
               <Link to="../directions" relative="path">
                 <Button size="small">고르기</Button>
               </Link>
@@ -189,7 +208,7 @@ export function DraftsPage() {
               <Typography.Link onClick={() => toggleAi(key)}>{showAi ? '고친 글 보기' : 'AI 원문 보기'}</Typography.Link>
             )}
             {!isEditing && (
-              <Button size="small" type="text" onClick={() => setEditing({ claim: c.claim, text: c.human_text ?? c.ai_text ?? '' })}>
+              <Button size="small" type="text" disabled={rebuilding} onClick={() => setEditing({ claim: c.claim, text: c.human_text ?? c.ai_text ?? '' })}>
                 고치기
               </Button>
             )}
@@ -243,6 +262,10 @@ export function DraftsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+      {/* 실행이 도는 동안 아래 초안은 이전 것: 새 초안으로 보이지 않게 한 줄 */}
+      {rebuilding && (
+        <Alert type="info" showIcon message="초안 다시 만드는 중 · 지금 보이는 초안은 이전 방향으로 만든 것이에요. 끝나면 새 초안으로 바뀌어요 · 그때까지는 옛 초안을 고칠 수 없어요" />
+      )}
       <CoverageTable model={coverage} />
       <FixList
         fixes={fixes}
@@ -282,7 +305,7 @@ export function DraftsPage() {
               const isEditing = editing?.section === s.key
               const edited = s.human_text !== null
               const showAi = aiShown.includes(key)
-              const startEdit = () => setEditing({ section: s.key, text: s.human_text ?? s.ai_text })
+              const startEdit = () => !rebuilding && setEditing({ section: s.key, text: s.human_text ?? s.ai_text })
               return (
                 <div key={s.key} id={`op-${s.title}`} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
