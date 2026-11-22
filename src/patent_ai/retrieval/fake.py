@@ -1,7 +1,8 @@
 """fake 검색 구현 (design.md 7-2절). 실제 모델·DB 없이 계약을 시험하는 용도.
 
 - bm25: 질의 낱말(공백으로 자름)이 조각 낱말과 겹치는 수
-- vector: embed(질의)와 조각 벡터의 코사인 유사도. 테스트는 녹화 파일을 읽는 embed를 쓴다
+- vector: embed(질의)와 조각 벡터의 코사인 유사도.
+  테스트는 기록된 모델 응답(질의 벡터) 파일을 읽는 embed를 쓴다
 core를 import하지 않는다.
 """
 
@@ -26,7 +27,7 @@ class FakeSearcher:
     def __init__(self, repo: ChunkRepository, settings: dict, embed: Embed | None = None) -> None:
         self._repo = repo
         self._index_version: str = settings["index_version"]
-        # embed를 안 넘기고 설정에 녹화 파일만 있으면 그 파일을 읽는 embed를 쓴다 (채점기 설정용)
+        # embed 없이 설정에 기록된 모델 응답(질의 벡터) 파일만 있으면 그걸 읽는다 (채점기)
         if embed is None and settings.get("query_vectors"):
             embed = recorded_embed(settings["query_vectors"])
         self._embed = embed
@@ -41,7 +42,7 @@ class FakeSearcher:
             # 겹치는 낱말 수 (같은 낱말은 한 번만 센다)
             return float(len(set(query.split()) & set(chunk.text.split())))
         if chunk.embedding is None:
-            # 조용히 빠지면 안 된다. 녹화 데이터가 빠진 것이니 오류로 알린다
+            # 조용히 빠지면 안 된다. 기록된 모델 응답(질의 벡터)이 빠진 것이니 오류로 알린다
             raise ValueError(f"조각에 embedding이 없다: {chunk.chunk_id}")
         assert qvec is not None
         return cosine(qvec, chunk.embedding)

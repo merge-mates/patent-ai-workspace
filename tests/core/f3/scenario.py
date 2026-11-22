@@ -89,7 +89,7 @@ def _row(no, judgment, *evidence):
 
 
 def responses() -> dict:
-    """단계마다 차례로 낼 기록된 모델 응답."""
+    """단계마다 차례로 낼 가짜 응답."""
     return {
         "f3.split_elements": [
             _split(1, [SENSOR, TANK]),

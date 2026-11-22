@@ -2,7 +2,8 @@
 
 BM25와 벡터 두 검색기의 순위를 RRF(Reciprocal Rank Fusion)로 섞는다.
 안쪽 검색기는 get_searcher로 만든다 (계약 검사 래퍼를 그대로 거침).
-core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나 녹화 파일).
+core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나
+기록된 모델 응답 파일).
 """
 
 import math

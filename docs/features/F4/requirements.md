@@ -35,7 +35,7 @@
   - 사건 자료: OA 당시 청구항 글자, 최초 명세서 쪽 글자, 확인 기준일. 데이터 카드는 F1·F3와 같다 ([product.md](../../product.md) 8절 F1·F3·F4 줄).
 - **필요한 판:** 대상 OA의 심사 대상 청구항 판(OA 당시 청구항). 보정 근거 위치는 최초 명세서(출원서, 없으면 공개공보). 등록공보는 AI 입력에 넣지 않는다 ([product.md](../../product.md) 8절). 보정 제한은 F1이 읽은 통지 종류(최초/최후)를 따른다.
 - **출력:** [`docs/data-model.md`](../../data-model.md) 4절 ⑤ `DirectionCandidates`(묶음마다 하나)와 `Drafts`(의견서·보정 청구항 초안, OA 하나에 하나. data-model.md 4절에는 이름만 있고, 칸은 코드 `src/patent_ai/core/schemas/drafts.py`와 [design.md](design.md) 3-2절). 한 번 실행의 결과는 도구 출력 `F4Output`에 한데 담긴다 (저장 스키마 아님). 칸은 [design.md](design.md) 3-2절.
-- **예시:** 지어낸 사건 `tests/fixtures/f4/case_basic.json`, 기록된 모델 응답 `tests/fixtures/f4/llm/*.json`, 지어낸 명세서 `tests/fixtures/f4/spec_basic.pages.json`. 실제 OA·청구항 글자는 넣지 않는다 (CLAUDE.md).
+- **예시:** 지어낸 사건 `tests/fixtures/f4/case_basic.json`, 가짜 응답 `tests/fixtures/f4/llm/*.json`, 지어낸 명세서 `tests/fixtures/f4/spec_basic.pages.json`. 실제 OA·청구항 글자는 넣지 않는다 (CLAUDE.md).
 
 ## 합격 기준 (테스트로 바꿀 수 있게)
 1~7은 [product.md](../../product.md) 5절 F4 1~7과 같다 (번호도 같음). 아래 "점수 기준"은 5절 밖, 6절 F4 평가에서 왔다.
