@@ -37,12 +37,16 @@ class Run(Base):
             "'cancelled')",
             name="ck_runs_state",
         ),
+        # core/runs/store.py RunKind와 같은 값 (테스트가 비교한다, #70)
+        CheckConstraint("kind IN ('full', 'redo_drafts')", name="ck_runs_kind"),
         Index("ix_runs_oa_id_created_at", "oa_id", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("r"))
     oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"))
     state: Mapped[str] = mapped_column(Text, server_default="queued")
+    # full = 끝까지 도는 실행, redo_drafts = 사람 방향 선택 뒤 초안만 다시 만드는 작은 실행
+    kind: Mapped[str] = mapped_column(Text, server_default="full")
     current_step: Mapped[str | None] = mapped_column(Text)  # "지금 하는 주요 작업" 한 줄
     waiting_for: Mapped[str | None] = mapped_column(Text)  # waiting_for_human일 때 이유
     error: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # {code, message}

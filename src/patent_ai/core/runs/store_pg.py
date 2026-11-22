@@ -31,6 +31,7 @@ def _status(r: Run) -> RunStatus:
         run_id=r.id,
         oa_id=r.oa_id,
         state=RunState(r.state),
+        kind=r.kind,
         current_step=r.current_step,
         waiting_for=r.waiting_for,
         error=r.error,

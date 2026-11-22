@@ -51,13 +51,29 @@ export const runStateLabel: Record<RunState, string> = {
 }
 
 // 사람 기다림 단계 글자 (waiting_for 값마다).
-// 방향 고르기만 "고르기 기다림". 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
+// 출원번호·발송번호 두 값만 글자가 있다 (방향 고르기는 실행을 멈추지 않는다). 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
 // (서버는 waiting_for 없이 waiting_for_human이 되지 않는다: core/runs/state.py)
 export function waitingForLabel(w: string | null): string {
   if (w === 'application_number') return '출원번호 입력 기다림'
   if (w === 'dispatch_number') return '발송번호 확인 기다림'
-  if (w === 'direction_selection') return '고르기 기다림'
   return '사람 기다림'
+}
+
+// 올리기 화면 진행 목록에서 넘긴 단계(GET /runs/{id} skipped_steps의 step = 지휘 도구 이름)가 놓이는 줄 (이슈 #260).
+// 0 통지서 읽기 · 1 자료 찾아오기 · 2 거절이유별 정리 · 3 인용발명 대비·법률 근거 · 4 대응 방향 후보.
+// 여기 없는 이름은 목록 아래 한 줄로 따로 보인다 (숨기지 않는다)
+export const skippedStepRow: Record<string, number> = {
+  read_oa: 2,
+  run_f3: 3,
+  run_f2: 3,
+  run_f4: 4,
+}
+
+export const skippedStepLabel: Record<string, string> = {
+  read_oa: '거절이유별 정리',
+  run_f3: '인용발명 대비',
+  run_f2: '법률 근거',
+  run_f4: '대응 방향 후보',
 }
 
 export const lookupResultLabel: Record<LookupResult, string> = {
@@ -157,6 +173,10 @@ export const coarseLabel: Record<CoarseDirection, string> = {
 // 대응 방향·초안(F4)의 확신 낮음 보류는 "직접 판단 필요". 둘을 같은 "보류"로 쓰지 않는다
 export const COMPARE_UNVERIFIED_TEXT = '원문 확인 필요'
 export const LOW_CONFIDENCE_TEXT = '직접 판단 필요'
+
+// 사람이 넣은 번호 칸의 확인 글 (서버 core/cases/human_answers.py HUMAN_CHECKED와 같은 글자, #70).
+// 화면은 이 글자로 "직접 입력" 꼬리표를 단다. 서버와 같은지는 tests/web/test_web_human_checked.py가 본다
+export const HUMAN_ENTERED_CHECKED = '사람이 직접 입력함 (원문 대조 아님)'
 
 // 보류 작업 이름(⑥ held_tasks[].task, 코드 이름) → 작업 종류 한국어 (F5 #19 남은 일).
 // 이름 모양은 core가 만드는 것: f3_compare:<oa>:<인용 라벨> · f3_compare:<unit_id>[:…] · f3_units:<oa>:r<N>[:c<M>] ·

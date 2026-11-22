@@ -10,7 +10,7 @@ import { StatusTag } from './StatusTag'
 // 출원번호 입력 칸 (F5 design 6절 "출원번호 입력 기다림": 실행 waiting_for_human + waiting_for application_number → 사건 머리에 입력 칸).
 // 통지서에서 출원번호를 확인하지 못해(확인되지 않음·충돌) 실행이 사람을 기다릴 때만 보인다.
 // 입력을 요청하는 줄에 "직접 확인" 꼬리표와 AI가 읽은 값의 상태(충돌 등)를 같이 단다 (AI가 읽은 값과 사람이 넣을 값을 구분).
-// 저장은 PATCH /cases/{id} 자리 (api.setApplicationNumber). 서버에 아직 없으면 오류 글을 그대로 보인다
+// 저장은 PATCH /cases/{id} (api.setApplicationNumber, #70). 같은 실행이 이어 돌아 runId를 다시 받는다. 오류는 글을 그대로 보인다
 export function ApplicationNumberForm({
   caseId,
   runId,
