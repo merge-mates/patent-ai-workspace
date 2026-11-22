@@ -2,6 +2,7 @@
 // 눌러 봐서는 안 보이는 타이머·재시도 동작만 본다. 기대값은 runPoll.ts 맨 위 주석과 이슈 #197 목록에서 가져온다.
 // - 첫 구독자가 붙고 끝난 상태가 아니면 2.5초 뒤 한 번 GET /runs/{id}만 부르고, 마지막 구독자가 떠나면 멈춘다.
 // - failed·waiting_for_human이면 이유를 한 번 받고, 받기가 실패하면 다음 seedRun에서 다시 묻는다.
+// - succeeded면 넘긴 단계(skipped_steps)를 한 번 받고 다시 묻지 않는다 (이슈 #260).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LatestRun, RunStatus } from './types/provisional/case'
 
@@ -65,7 +66,7 @@ describe('폴링 타이머', () => {
   })
 
   it('안 끝났으면 계속 부르고, 끝난 상태가 되면 타이머를 다시 걸지 않는다', async () => {
-    // cancelled: 끝난 상태 중 이유를 따로 받지 않는 것 (succeeded는 #260에서 넘긴 단계를 받으러 한 번 부르게 된다)
+    // cancelled: 끝난 상태 중 이유를 따로 받지 않는 것 (succeeded는 넘긴 단계를 받으러 한 번 부른다, 아래 '넘긴 단계 받기')
     // 안 끝났으면 2.5초마다 계속 부르고, 끝난 상태를 받은 뒤로는 멈춘다
     getRun.mockResolvedValueOnce(status('running', { current_step: '인용발명 대비 중' }))
     getRun.mockResolvedValueOnce(status('cancelled'))
@@ -124,5 +125,36 @@ describe('이유 받기 (failed·waiting_for_human)', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(getRun).toHaveBeenCalledTimes(2)
     expect(rp.getRunSnapshot('r_1')).toMatchObject({ error: null, reason: '도구 오류' })
+  })
+})
+
+describe('넘긴 단계 받기 (succeeded, 이슈 #260)', () => {
+  const skippedSteps = [{ step: 'run_f3', reason: 'input_unverified: 앞 단계 결과가 없음 (read_oa)' }]
+
+  it('succeeded면 넘긴 단계를 한 번 받고 다시 안 묻는다', async () => {
+    getRun.mockResolvedValue(status('succeeded', { skipped_steps: skippedSteps }))
+    rp.seedRun(run('succeeded'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getRun).toHaveBeenCalledTimes(1)
+    expect(rp.getRunSnapshot('r_1')?.skipped).toEqual(skippedSteps)
+
+    rp.seedRun(run('succeeded'))
+    rp.subscribeRun('r_1')(() => {})
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(getRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('지켜보던 실행이 succeeded로 끝나면 그 응답의 넘긴 단계를 쓰고 뒤따르는 seedRun에서 또 묻지 않는다', async () => {
+    getRun.mockResolvedValue(status('succeeded', { skipped_steps: skippedSteps }))
+    rp.seedRun(run('running', '인용발명 대비 중'))
+    rp.subscribeRun('r_1')(() => {})
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(getRun).toHaveBeenCalledTimes(1)
+    expect(rp.getRunSnapshot('r_1')?.skipped).toEqual(skippedSteps)
+
+    // 끝나면 화면 데이터를 다시 받고(revalidate) loader가 같은 실행을 succeeded로 다시 넣는다
+    rp.seedRun(run('succeeded'))
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(getRun).toHaveBeenCalledTimes(1)
   })
 })
