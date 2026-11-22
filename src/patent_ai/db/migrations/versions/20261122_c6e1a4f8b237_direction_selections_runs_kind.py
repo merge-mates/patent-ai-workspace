@@ -1,7 +1,7 @@
 """direction_selections 표와 runs.kind 더하기 (사람 방향 선택 기록, 초안만 다시 만드는 실행)
 
 Revision ID: c6e1a4f8b237
-Revises: b3f8d2e6a914
+Revises: d9e4b1c7a352
 Create Date: 2026-11-22 10:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c6e1a4f8b237"
-down_revision: str | Sequence[str] | None = "b3f8d2e6a914"
+down_revision: str | Sequence[str] | None = "d9e4b1c7a352"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
