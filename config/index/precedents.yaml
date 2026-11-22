@@ -1,0 +1,15 @@
+# 판례·심결 조각 설정 (#24 24c). law-idx-v3의 판례·심결 몫. 설정을 바꾸면 새 판으로, 이 파일의 index_version은 v3 빌드와 같아야 한다.
+index_version: law-idx-v3
+precedent_dir: data/raw/prec
+# 받은 기록 셋 (순서 상관없음). 성공한 것 − v2의 `표시`(신규성 아님) − 사건명 (상)·(디)
+precedent_logs:
+  - _download_log_1116.json
+  - _download_log_1118.json
+  - _download_log_1118_v2.json
+expected_precedents: 74
+# 심결 PDF: <trial_dir>/<유형 폴더>/<심판번호 13자리>.pdf. 개수가 다르면 멈춘다
+trial_dir: data/raw/trials_cv_1117
+expected_trials: 12
+# 조각 글자 수 상한. 넘으면 문단 경계에서 나눠 키에 -p<n>, label에 (n/m)을 붙인다
+max_chars: 3000
+out: data/processed/law/precedent-v3.jsonl
