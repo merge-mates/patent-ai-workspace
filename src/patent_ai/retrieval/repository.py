@@ -13,6 +13,7 @@ from sqlalchemy import and_, create_engine, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import (
+    DATED_SOURCE_KINDS,
     CiteChunk,
     LawChunk,
     check_cite_chunk_meta,
@@ -113,6 +114,7 @@ def fill_law_defaults(chunk: Chunk) -> Chunk:
 def chunk_problem(corpus: Corpus, chunk: Chunk) -> str | None:
     """표에 맞지 않는 조각이면 이유 한 줄 (db의 검사 함수를 부른다. 넣기·덤프도 같은 함수)."""
     if corpus == "law":
+        chunk = fill_law_defaults(chunk)  # source_kind 빈 조각은 채운 값(statute)으로 판단한다
         return check_law_chunk(
             chunk.chunk_kind,
             chunk.edition.status,
@@ -123,7 +125,7 @@ def chunk_problem(corpus: Corpus, chunk: Chunk) -> str | None:
     return check_cite_chunk_meta(chunk.source_kind, chunk.decided_on, chunk.speaker, chunk.attrs)
 
 
-def _check_doc_ids(
+def _check_lists(
     doc_ids: list[str] | None,
     chunk_kinds: list[ChunkKind] | None = None,
     source_kinds: list[SourceKind] | None = None,
@@ -138,18 +140,14 @@ def _check_doc_ids(
             raise ValueError(f"{name}가 빈 목록이다. 전체는 None으로 표현한다")
 
 
-# 선고일이 있어야 하는 자료 유형 (날짜 거르기를 거는 대상)
-_DATED = ("precedent", "trial")
-
-
 def _date_unknown(chunk: Chunk) -> bool:
     """판례·심결인데 선고일을 모르는 조각 (날짜 거르기에서 빠지고 skipped_unknown_date로 센다)."""
-    return chunk.source_kind in _DATED and chunk.decided_on is None
+    return chunk.source_kind in DATED_SOURCE_KINDS and chunk.decided_on is None
 
 
 def _passes_date(chunk: Chunk, cutoff: date) -> bool:
     """선고일 거르기: 조문·심사기준은 통과, 판례·심결은 선고일 <= cutoff만 (날짜 모름은 뺀다)."""
-    if chunk.source_kind not in _DATED:
+    if chunk.source_kind not in DATED_SOURCE_KINDS:
         return True
     return chunk.decided_on is not None and chunk.decided_on <= cutoff
 
@@ -243,7 +241,7 @@ class InMemoryChunkRepository:
         source_kinds: list[SourceKind] | None = None,
         decided_on_or_before: date | None = None,
     ) -> list[Chunk]:
-        _check_doc_ids(doc_ids, chunk_kinds, source_kinds)
+        _check_lists(doc_ids, chunk_kinds, source_kinds)
         allowed = None if doc_ids is None else set(doc_ids)
         rows = [
             c
@@ -428,7 +426,7 @@ class PostgresChunkRepository:
         source_kinds: list[SourceKind] | None = None,
         decided_on_or_before: date | None = None,
     ):
-        _check_doc_ids(doc_ids, chunk_kinds, source_kinds)
+        _check_lists(doc_ids, chunk_kinds, source_kinds)
         t = _TABLES[corpus]
         conds = [t.index_version == index_version]
         if doc_ids is not None:
@@ -443,7 +441,7 @@ class PostgresChunkRepository:
                 # 조문·심사기준은 통과, 판례·심결은 선고일 <= 기준일만 (날짜 모름은 뺀다)
                 conds.append(
                     or_(
-                        t.source_kind.not_in(_DATED),
+                        t.source_kind.not_in(DATED_SOURCE_KINDS),
                         and_(t.decided_on.is_not(None), t.decided_on <= decided_on_or_before),
                     )
                 )
@@ -539,7 +537,7 @@ class PostgresChunkRepository:
         t, conds = self._where(corpus, index_version, doc_ids, chunk_kinds, source_kinds)
         if corpus != "law":
             return 0  # 인용문헌 조각은 선고일 개념이 없다
-        conds.append(and_(t.source_kind.in_(_DATED), t.decided_on.is_(None)))
+        conds.append(and_(t.source_kind.in_(DATED_SOURCE_KINDS), t.decided_on.is_(None)))
         return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0
 
     def earliest_effective_from(

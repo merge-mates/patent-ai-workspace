@@ -150,7 +150,7 @@ flowchart LR
 - 인덱스: `(index_version, doc_id)`, 법령 표는 `(index_version, edition_effective_from)`.
 - 마이그레이션은 `CREATE EXTENSION IF NOT EXISTS vector`를 먼저 한다. 그래서 DB 첫 생성 때 확장을 만들던 `scripts/db/init.sql`은 지운다 (#79 때 정한 대로).
 - 폴더: ORM 모델은 `src/patent_ai/db/models/chunks.py`, 인터페이스 `ChunkRepository`·`InMemoryChunkRepository`·`PostgresChunkRepository`는 `src/patent_ai/retrieval/repository.py`. 부르는 방향에 `retrieval → db`를 더한다. db는 retrieval을 import하지 않는다. ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더 절에 같은 문장)
-- 저장소 인터페이스 `ChunkRepository`(조각 읽기·셈)를 두고, 테스트는 `InMemoryChunkRepository`(fixture JSONL을 읽음), 실제는 `PostgresChunkRepository`(기준 7, 있으면 좋음)다. 둘 다 같은 거르기(색인 판·문헌·기준일)를 한다.
+- 저장소 인터페이스 `ChunkRepository`(조각 읽기·셈)를 두고, 테스트는 `InMemoryChunkRepository`(fixture JSONL을 읽음), 실제는 `PostgresChunkRepository`(기준 7, 있으면 좋음)다. 둘 다 같은 거르기(색인 판·문헌·기준일·자료 유형·선고일)를 한다.
 
 ### 5-2. 덤프 ([db/CLAUDE.md](../../../src/patent_ai/db/CLAUDE.md) 검색 색인 절)
 - `make index-dump CORPUS=law` → `pg_dump -Fc -t law_chunks` → `data/index/law-idx-<그 표의 가장 높은 색인 판>.dump`. 그 표의 모든 색인 판이 들어간다.
@@ -182,6 +182,9 @@ def get_searcher(impl: str, repo: ChunkRepository, settings: dict, embed: Callab
   - `chunk_kinds`·`source_kinds`: 그 값인 조각만. 빈 목록 `[]`·모르는 값은 `ValueError`, `corpus="cite"`에 `source_kinds`·`decided_on_or_before`를 주면 `ValueError` (래퍼가 검사).
   - `decided_on_or_before`: 판례·심결(`source_kind` `precedent`·`trial`)은 `decided_on ≤ 날짜`(그날 포함)만 남긴다. `decided_on`이 null인 판례·심결은 빼고 `skipped_unknown_date`에 센다. 조문·심사기준은 그냥 통과한다. 안 걸면 `skipped_unknown_date`는 0이다.
   - 상태는 그대로다 (`StatusReason`은 안 늘림): 자료 유형·문헌으로 거른 조각이 0개면 `unverified(body_missing)`, 그 뒤 점수 대상이 0개면 `not_found_in_scope` + `skipped_unverified_edition`·`skipped_unknown_date`. 0개 + 건수 > 0을 `edition_unknown`으로 바꾸는 것은 F2 도구 몫이다. hybrid는 두 쪽 건수 중 큰 값을 쓴다.
+- 저장소(`ChunkRepository`)가 거르기 인자와 함께 주는 메서드:
+  - `count_unknown_date(corpus, index_version, doc_ids=None, chunk_kinds=None, source_kinds=None) -> int`: 선고일이 null인 판례·심결 조각 수 (날짜 거르기에서 빠질 조각).
+  - `earliest_effective_from(corpus, index_version, chunk_kinds, source_kinds=None) -> date | None`: 그 유형 조각 중 가장 이른 시행 시작일. 판본이 `confirmed`이고 시작일이 있는 조각만 보고, 없으면(유형 조각 0개, 판본 모름만, 판례·심결) `None`. 기준일이 이보다 앞서면 F2 도구가 `edition_unknown`을 낼 재료다.
 - 색인 판은 `settings["index_version"]`으로 넘긴다 (`search()` 인자에는 없음). `SearchResult.index_version`도 이 값이다.
 - `Corpus = Literal["law", "cite"]`, `Mode = Literal["bm25", "vector", "hybrid"]`.
 - `impl`은 이름 → 클래스 등록표(`register_impl("fake")`)로 고른다. #66·#67은 새 이름만 등록하고 이 파일들은 고치지 않는다.

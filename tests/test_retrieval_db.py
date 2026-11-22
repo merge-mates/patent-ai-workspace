@@ -289,3 +289,27 @@ def test_가장_이른_시행일이_메모리와_같다(both, session):
     assert pg.earliest_effective_from("cite", "cite-idx-v1", ["body"]) is None
     with pytest.raises(ValueError):
         pg.earliest_effective_from("law", v, [])
+
+
+def test_같은_조문_두_판이_replace_index로_넣어도_둘_다_남는다(session):
+    # #24 합격 기준 3: 같은 위치의 두 판(시행 기간 다름)이 DB에도 둘 다 남는다
+    from patent_ai.retrieval.law_index_db import replace_index
+    from patent_ai.retrieval.schemas import Chunk
+
+    def one(frm, to):
+        return Chunk(
+            chunk_id=f"law-idx-v3:특허법:제29조제2항:{frm}",
+            index_version="law-idx-v3",
+            doc_id="특허법",
+            chunk_kind="article",
+            location={"kind": "article", "label": "제29조제2항"},
+            edition={"status": "confirmed", "effective_from": frm, "effective_to": to},
+            text="가짜",
+        )
+
+    rows = [one("2015-01-01", "2019-12-31"), one("2020-01-01", None)]
+    assert replace_index(session, rows, "law", "law-idx-v3") == 2
+    pg = PostgresChunkRepository(session)
+    assert len(pg.chunks("law", "law-idx-v3")) == 2
+    assert len(pg.chunks("law", "law-idx-v3", as_of=date(2016, 1, 1))) == 1
+    assert len(pg.chunks("law", "law-idx-v3", as_of=date(2021, 1, 1))) == 1

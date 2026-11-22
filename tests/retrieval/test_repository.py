@@ -206,3 +206,36 @@ def test_가장_이른_시행일_빈_목록은_오류():
     repo = InMemoryChunkRepository({"law": []})
     with pytest.raises(ValueError):
         repo.earliest_effective_from("law", "law-idx-v3", [])
+
+
+# ---- #24 합격 기준 3: 같은 조문·같은 절의 두 판이 둘 다 남는다 ----
+def _versioned(name, kind, source_kind, label, frm, to=None):
+    return Chunk(
+        chunk_id=f"law-idx-v3:{name}:{label}:{frm}",
+        index_version="law-idx-v3",
+        doc_id=name,
+        chunk_kind=kind,
+        location={"kind": "article" if kind == "article" else "page", "label": label},
+        edition={"status": "confirmed", "effective_from": frm, "effective_to": to},
+        text="가짜",
+        source_kind=source_kind,
+    )
+
+
+def test_같은_조문_두_판이_둘_다_남는다():
+    rows = [
+        _versioned("특허법", "article", "statute", "제29조제2항", "2015-01-01", "2019-12-31"),
+        _versioned("특허법", "article", "statute", "제29조제2항", "2020-01-01"),
+        _versioned("심사기준", "guideline", "guideline", "6.4.1", "2020-01-01", "2023-12-31"),
+        _versioned("심사기준", "guideline", "guideline", "6.4.1", "2024-01-01"),
+    ]
+    repo = InMemoryChunkRepository({"law": rows})
+    got = repo.chunks("law", "law-idx-v3")  # 기준일 없이 넷 다
+    assert len(got) == 4
+    assert len({c.chunk_id for c in got}) == 4  # 같은 위치라도 chunk_id가 서로 다르다
+    # 기준일을 주면 조문·심사기준 각각 그날 판 하나씩
+    old = repo.chunks("law", "law-idx-v3", as_of=date(2020, 6, 1))
+    assert sorted(c.edition.effective_from.isoformat() for c in old) == ["2020-01-01", "2020-01-01"]
+    assert {c.chunk_kind for c in old} == {"article", "guideline"}
+    new = repo.chunks("law", "law-idx-v3", as_of=date(2024, 6, 1))
+    assert sorted(c.edition.effective_from.isoformat() for c in new) == ["2020-01-01", "2024-01-01"]

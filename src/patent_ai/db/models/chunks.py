@@ -86,7 +86,8 @@ class CiteChunk(ChunkColumns, Base):
 # ---- 넣기 전 검사 ----
 # retrieval 넣기·저장소와 db 덤프가 같이 부른다. db는 retrieval을 import 못 해 문자열만 받는다.
 _JUDGMENT_KINDS = {"judgment", "judgment_summary"}
-_DATED_SOURCES = {"precedent", "trial"}
+# 선고일이 있어야 하는 자료 유형 (판례·심결). 저장소의 날짜 거르기도 이 상수를 쓴다
+DATED_SOURCE_KINDS = ("precedent", "trial")
 
 
 def check_law_chunk(
@@ -100,12 +101,23 @@ def check_law_chunk(
 
     - 판본 not_applicable은 판례·심결 조각(chunk_kind가 judgment·judgment_summary)만.
     - 선고일·발언 주체는 source_kind가 precedent·trial일 때만 값이 있을 수 있다.
+    - 판례·심결 chunk_kind(judgment·judgment_summary)는 source_kind가 precedent·trial이어야 하고,
+      source_kind statute는 chunk_kind article만. source_kind None은 채우기(fill) 전 값이라 통과
+      (호출하는 쪽이 채운 뒤 값으로 부른다).
     """
     if edition_status == "not_applicable" and chunk_kind not in _JUDGMENT_KINDS:
         return (
             f"판본 not_applicable은 판례·심결 조각만 법령 표에 넣는다 (chunk_kind {chunk_kind!r})"
         )
-    if (decided_on is not None or speaker is not None) and source_kind not in _DATED_SOURCES:
+    if source_kind is not None:
+        if chunk_kind in _JUDGMENT_KINDS and source_kind not in DATED_SOURCE_KINDS:
+            return (
+                f"판례·심결 chunk_kind {chunk_kind!r}는 source_kind가 precedent·trial이어야 한다 "
+                f"({source_kind!r})"
+            )
+        if source_kind == "statute" and chunk_kind != "article":
+            return f"source_kind statute는 chunk_kind article만 가진다 ({chunk_kind!r})"
+    if (decided_on is not None or speaker is not None) and source_kind not in DATED_SOURCE_KINDS:
         return f"decided_on·speaker는 판례·심결 조각만 가진다 (source_kind {source_kind!r})"
     return None
 

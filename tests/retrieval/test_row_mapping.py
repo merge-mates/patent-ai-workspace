@@ -68,13 +68,15 @@ def test_새_칸이_메모리_행_변환_덤프_fixture를_왕복한다(tmp_path
 
 
 def test_옛_JSONL은_source_kind가_없어도_statute로_읽는다():
-    # v1 fixture에는 새 칸이 없다. law는 모두 statute, 나머지 새 칸은 비어 있다
+    # fixture에는 source_kind 칸이 없는 조문 조각이 있다 (심사기준 조각 하나만 guideline을 적었다).
+    # 칸이 빈 조각은 모두 statute, 나머지 새 칸은 비어 있다
     path = FIXTURES / "chunks_law.jsonl"
     chunks = InMemoryChunkRepository.from_jsonl("law", path)._tables["law"]
-    assert chunks and {c.source_kind for c in chunks} == {"statute"}
+    assert {c.source_kind for c in chunks if c.chunk_kind == "article"} == {"statute"}
+    assert {c.source_kind for c in chunks if c.chunk_kind == "guideline"} == {"guideline"}
     assert {(c.decided_on, c.speaker, c.attrs) for c in chunks} == {(None, None, None)}
     rows = fixture_rows("law", path.read_text(encoding="utf-8"))
-    assert {r.source_kind for r in rows} == {"statute"}
+    assert {r.source_kind for r in rows} == {"statute", "guideline"}
 
 
 def test_인용문헌_조각은_새_칸이_비어_있다():
@@ -97,11 +99,13 @@ def test_v2_JSONL을_다시_넣어도_마이그레이션으로_채운_DB와_내�
     from_file = read_chunks_jsonl(path, "law")
     old = InMemoryChunkRepository.from_jsonl("law", path)._tables["law"]
     db_like = [
-        row_to_chunk(chunk_to_row("law", c.model_copy(update={"source_kind": "statute"})))
+        row_to_chunk(
+            chunk_to_row("law", c.model_copy(update={"source_kind": c.source_kind or "statute"}))
+        )
         for c in old
     ]
     assert content_sha256(from_file) == content_sha256(db_like)
-    assert {c.source_kind for c in from_file} == {"statute"}
+    assert {c.source_kind for c in from_file} == {"statute", "guideline"}
 
 
 # ---- 판례·심결 not_applicable 허용과 거부 (세 곳이 같은 검사 함수를 쓴다, #24 24a) ----
@@ -188,3 +192,50 @@ def test_chunk_to_row는_source_kind가_빈_law_조각을_statute로_채운다()
 
     c = Chunk.model_validate(_precedent_chunk(source_kind=None, decided_on=None, speaker=None))
     assert chunk_to_row("law", c).source_kind == "statute"
+
+
+# ---- source_kind와 chunk_kind의 짝 (statute는 article만, 판례 chunk_kind는 precedent·trial만) ----
+def _without_source_kind(**over):
+    # source_kind가 빠진 판례 조각: fill_law_defaults가 statute로 채우면 안 되고 거부돼야 한다
+    d = _na_precedent(chunk_kind="judgment", **over)
+    d.pop("source_kind")
+    return d
+
+
+def test_source_kind_없는_판례_조각은_세_곳_모두_거부한다(tmp_path):
+    from patent_ai.db.index_dump import IndexDumpError
+    from patent_ai.retrieval.law_index_db import IndexDbError, _check
+    from patent_ai.retrieval.schemas import Chunk
+
+    bad = _without_source_kind(decided_on=None, speaker=None)
+    path = _write(tmp_path, bad)
+    with pytest.raises(ValueError, match=r"v3\.jsonl:1"):  # 저장소
+        InMemoryChunkRepository.from_jsonl("law", path)
+    with pytest.raises(IndexDbError):  # 넣기
+        _check([Chunk.model_validate(bad)], "law", "law-idx-v3")
+    with pytest.raises(IndexDumpError):  # 덤프
+        fixture_rows("law", path.read_text(encoding="utf-8"))
+
+
+def test_심사기준_조각에_statute는_세_곳_모두_거부한다(tmp_path):
+    from patent_ai.db.index_dump import IndexDumpError
+    from patent_ai.retrieval.law_index_db import IndexDbError, _check
+    from patent_ai.retrieval.schemas import Chunk
+
+    bad = _precedent_chunk(
+        chunk_kind="guideline", source_kind="statute", decided_on=None, speaker=None
+    )
+    path = _write(tmp_path, bad)
+    with pytest.raises(ValueError):
+        InMemoryChunkRepository.from_jsonl("law", path)
+    with pytest.raises(IndexDbError):
+        _check([Chunk.model_validate(bad)], "law", "law-idx-v3")
+    with pytest.raises(IndexDumpError):
+        fixture_rows("law", path.read_text(encoding="utf-8"))
+
+
+def test_판례_chunk_kind에_조문이나_심사기준_source_kind는_거부한다(tmp_path):
+    for source_kind in ("statute", "guideline"):
+        bad = _na_precedent(source_kind=source_kind, decided_on=None, speaker=None)
+        with pytest.raises(ValueError):
+            InMemoryChunkRepository.from_jsonl("law", _write(tmp_path, bad))
