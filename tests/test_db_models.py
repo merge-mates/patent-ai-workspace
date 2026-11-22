@@ -220,7 +220,8 @@ def test_runs_kind_matches_core_and_defaults_to_full():
 def test_direction_selections_hold_human_choice_only():
     # 사람이 고른 것·직접 쓴 것만 남긴다 (AI 기본값은 결과 안 selection에 있음, #70)
     t = _table("direction_selections")
-    for col in ("oa_id", "unit_id", "origin", "created_at"):
+    # run_id: 이 선택을 적용할 작은 실행 (그 실행만 이 선택을 쓴다)
+    for col in ("oa_id", "run_id", "unit_id", "origin", "created_at"):
         assert not t.c[col].nullable
     assert t.c.candidate_id.nullable and t.c.written_direction.nullable
     assert _check_values("direction_selections", "ck_direction_selections_origin") == {
@@ -230,7 +231,7 @@ def test_direction_selections_hold_human_choice_only():
     one_of = _check_sql("direction_selections", "ck_direction_selections_one_of")
     assert "candidate_id" in one_of and "written_direction" in one_of
     idx = [[c.name for c in i.columns] for i in t.indexes]
-    assert ["oa_id", "unit_id", "created_at"] in idx
+    assert ["run_id"] in idx and ["oa_id", "unit_id", "created_at"] in idx
 
 
 def test_agent_steps_hold_step_record_and_call_record():

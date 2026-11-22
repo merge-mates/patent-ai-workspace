@@ -2,7 +2,9 @@
 
 - `PUT /directions/{unit_id}/selection`이 사람이 고른 후보(human_selected)나 직접 쓴 방향
   (human_written)을 한 줄씩 쌓는다. 지우지 않는다 (사람 판단 이력).
-- 묶음(oa_id, unit_id)마다 가장 최근 줄이 지금 선택이다. 초안만 다시 만드는 작은 실행이 읽는다.
+- 줄마다 그 선택을 적용할 작은 실행(redo_drafts)의 run_id를 같이 둔다. 그 실행은 자기에게 묶인
+  선택만 앞 F4 위에 덮는다 (앞 선택들은 이미 앞 F4의 selection에 들어 있다). 그래서 끝까지
+  다시 돌린(full) 뒤에는 옛 선택이 새 후보 위에 되살아나지 않는다.
 - AI 기본값(ai_default)은 여기 넣지 않는다: 이 기록은 사람 판단만 담아 AI 결과와 구분한다.
 """
 
@@ -27,30 +29,32 @@ def check_human(selection: DirectionSelection) -> None:
 
 
 class SelectionStore(Protocol):
-    def save_selection(self, oa_id: str, unit_id: str, selection: DirectionSelection) -> None:
-        """한 줄 더한다. 사람 선택(human_selected·human_written)이 아니면 ValueError."""
+    def save_selection(
+        self, oa_id: str, unit_id: str, selection: DirectionSelection, *, run_id: str
+    ) -> None:
+        """한 줄 더한다. run_id = 이 선택을 적용할 작은 실행. 사람 선택이 아니면 ValueError."""
         ...
 
-    def latest_selections(self, oa_id: str) -> dict[str, DirectionSelection]:
-        """그 OA에서 묶음(unit_id)마다 가장 최근 선택. 없으면 빈 dict."""
+    def selections_for_run(self, run_id: str) -> dict[str, DirectionSelection]:
+        """그 작은 실행에 묶인 선택 (unit_id -> 선택). 없으면 빈 dict."""
         ...
 
 
 class InMemorySelectionStore:
-    """테스트용. 시각이 같으면 나중에 넣은 줄이 이긴다 (Postgres는 id 순서로 같은 규칙)."""
+    """테스트용."""
 
     def __init__(self, clock: Callable[[], datetime] = now_utc) -> None:
         self._clock = clock
         self._lock = threading.Lock()
-        self._rows: list[tuple[str, str, datetime, int, DirectionSelection]] = []
+        self._rows: list[tuple[str, str, str, datetime, DirectionSelection]] = []
 
-    def save_selection(self, oa_id: str, unit_id: str, selection: DirectionSelection) -> None:
+    def save_selection(
+        self, oa_id: str, unit_id: str, selection: DirectionSelection, *, run_id: str
+    ) -> None:
         check_human(selection)
         with self._lock:
-            self._rows.append((oa_id, unit_id, self._clock(), len(self._rows), selection))
+            self._rows.append((oa_id, run_id, unit_id, self._clock(), selection))
 
-    def latest_selections(self, oa_id: str) -> dict[str, DirectionSelection]:
+    def selections_for_run(self, run_id: str) -> dict[str, DirectionSelection]:
         with self._lock:
-            mine = sorted((r for r in self._rows if r[0] == oa_id), key=lambda r: (r[2], r[3]))
-        # 오래된 것부터 덮어써서 묶음마다 마지막 줄이 남는다
-        return {unit_id: sel for _, unit_id, _, _, sel in mine}
+            return {unit_id: sel for _, rid, unit_id, _, sel in self._rows if rid == run_id}

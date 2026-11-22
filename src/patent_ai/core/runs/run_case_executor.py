@@ -27,7 +27,7 @@ from patent_ai.core.agents.step_inputs import InputMissing, f4_input
 from patent_ai.core.agents.steps import StepRecord
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.run_inputs import RunInputSource
-from patent_ai.core.cases.selections import InMemorySelectionStore, SelectionStore
+from patent_ai.core.cases.selections import SelectionStore
 from patent_ai.core.cases.step_results import StepResultStore
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.result import F4Output
@@ -99,8 +99,8 @@ class RunCaseExecutor:
         config_path: Path,
         make_ctx: Callable[[str], RunContext],
         today: Callable[[], date],
+        selections: SelectionStore,
         lock: threading.Lock | None = None,
-        selections: SelectionStore | None = None,
     ) -> None:
         self._store = store
         self._registry = registry  # 취소 API와 같은 것이어야 취소가 닿는다
@@ -112,8 +112,7 @@ class RunCaseExecutor:
         self._make_ctx = make_ctx  # 실행마다 새 모델 호출 맥락 (상한·기록이 실행끼리 안 섞이게)
         self._today = today  # F4 확인 기준일 = 실행한 날 (코드가 몰래 오늘을 읽지 않게 받는다)
         self._lock = lock or threading.Lock()
-        # 사람 방향 선택 기록 (초안만 다시 만드는 실행이 읽는다). 비우면 늘 빈 기록
-        self._selections = selections or InMemorySelectionStore()
+        self._selections = selections  # 사람 방향 선택 기록 (초안만 다시 만드는 실행이 읽는다)
 
     def execute(self, run_id: str, oa_id: str) -> None:
         with self._lock:  # 한 번에 하나만 돈다
@@ -194,11 +193,12 @@ class RunCaseExecutor:
             if isinstance(payload, InputMissing):
                 self._fail(run_id, "step_failed", f"초안 입력을 만들지 못함 ({payload.why})")
                 return
-            # 앞 실행 묶음에 있는 선택만 (사라진 묶음의 옛 선택은 쓰지 않는다)
-            units = {d.unit_id for d in f4.directions}
-            picks = {
-                u: sel for u, sel in self._selections.latest_selections(oa_id).items() if u in units
-            }
+            # 이 실행에 묶인 선택만 덮는다. 앞 선택들은 앞 F4의 selection에 이미 들어 있다
+            picks = self._selections.selections_for_run(run_id)
+            if not picks:
+                # 선택 없이 같은 초안을 다시 만들어 성공처럼 보이지 않게 멈춘다
+                self._fail(run_id, "no_selection", "이 실행에 적용할 사람 선택이 없습니다")
+                return
             out = redo_drafts(
                 F4Input.model_validate(payload), f4, picks, ctx=self._make_ctx(run_id)
             )

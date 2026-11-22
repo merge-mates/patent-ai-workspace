@@ -116,7 +116,7 @@ def test_directions_api_직접_쓴_방향은_기록되고_그_묶음_초안은_�
         "origin": "human_written",
     }
     assert env.get(oa_id, "drafts").json()["held_units"] == [CLARITY]
-    assert env.selections.latest_selections(oa_id)[CLARITY].origin == "human_written"
+    assert env.selections.selections_for_run(run_id)[CLARITY].origin == "human_written"
 
 
 def test_directions_api_나중에_고른_것이_이긴다(env):
@@ -150,7 +150,7 @@ def test_directions_api_잘못된_선택은_오류이고_기록도_실행도_안
     created = env.upload()
     res = _put(env, unit_id, body)
     assert (res.status_code, res.json()["code"]) == (status, code)
-    assert env.selections.latest_selections(created["oa_id"]) == {}
+    assert env.selections._rows == []  # 기록이 안 남는다
     assert env.cases.get_oa(created["oa_id"]).latest_run.id == created["run_id"]
 
 
@@ -168,3 +168,20 @@ def test_directions_api_진행_중_실행이_있으면_409(env):
     env.client.post(f"/oas/{created['oa_id']}/runs")  # queued로 남는 새 실행
     res = _put(env, CLARITY, {"candidate_id": LOW_PICK})
     assert (res.status_code, res.json()["code"]) == (409, "run_in_progress")
+
+
+def test_directions_api_다시_돌린_뒤_다른_묶음을_골라도_옛_선택이_되살아나지_않는다(env):
+    # 리뷰 막음 재현: A 고름 → 끝까지 다시 돌리기 → B 고름 → A는 새 후보 위에서 사람이 안 고름
+    oa_id = env.upload()["oa_id"]
+    _put(env, CLARITY, {"candidate_id": LOW_PICK})
+    rerun = env.client.post(f"/oas/{oa_id}/runs").json()["run_id"]
+    assert env.client.get(f"/runs/{rerun}").json()["state"] == "succeeded"
+    assert _units(env, oa_id)[CLARITY]["selection"] is None  # 새 후보, 아직 안 고름
+
+    res = _put(env, INVENTIVE, {"candidate_id": f"{INVENTIVE}:d1"})
+
+    assert env.client.get(f"/runs/{res.json()['run_id']}").json()["state"] == "succeeded"
+    units = _units(env, oa_id)
+    assert units[CLARITY]["selection"] is None
+    assert units[INVENTIVE]["selection"]["origin"] == "human_selected"
+    assert env.get(oa_id, "drafts").json()["held_units"] == [CLARITY]

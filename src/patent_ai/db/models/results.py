@@ -152,7 +152,10 @@ class StepResultRow(Base):
 class DirectionSelectionRow(Base):
     """사람이 고른(또는 직접 쓴) 대응 방향 한 줄 (#70). 지우지 않고 쌓는다.
 
-    묶음(oa_id, unit_id)마다 가장 최근 줄이 지금 선택이다. AI 기본값(ai_default)은 여기 넣지 않고
+    run_id = 이 선택을 적용할 작은 실행(redo_drafts). 그 실행만 이 줄을 쓴다.
+    FK는 두지 않는다: 선택 줄과 실행 줄을 다른 세션에서 커밋해서다.
+    실행 줄이 커밋되지 못하면 이 줄은 아무 실행에도 안 쓰인다.
+    AI 기본값(ai_default)은 여기 넣지 않고
     F4 결과 안 selection에만 있다: 이 표는 사람 판단만 담아 AI 결과와 데이터에서 구분한다.
     """
 
@@ -167,11 +170,13 @@ class DirectionSelectionRow(Base):
             "(candidate_id IS NULL) <> (written_direction IS NULL)",
             name="ck_direction_selections_one_of",
         ),
+        Index("ix_direction_selections_run_id", "run_id"),
         Index("ix_direction_selections_oa_unit_created", "oa_id", "unit_id", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("sel"))
     oa_id: Mapped[str] = mapped_column(ForeignKey("oas.id"))
+    run_id: Mapped[str] = mapped_column(Text)  # 이 선택을 적용할 작은 실행
     unit_id: Mapped[str] = mapped_column(Text)
     candidate_id: Mapped[str | None] = mapped_column(Text)
     written_direction: Mapped[str | None] = mapped_column(Text)  # 사람이 쓴 방향 글

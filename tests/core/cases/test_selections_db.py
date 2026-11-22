@@ -46,26 +46,36 @@ def _oa(factory, sha: str):
     return created
 
 
-def test_선택을_쌓고_묶음마다_가장_최근을_읽는다(factory):
+def test_선택은_그_작은_실행에_묶여_저장되고_다시_읽힌다(factory):
     created = _oa(factory, "db_sel")
+    with factory() as s:
+        r1 = PostgresCaseAppStore(s).create_run(created.oa_id, kind="redo_drafts")
+        r2 = PostgresCaseAppStore(s).create_run(created.oa_id, kind="redo_drafts")
+        s.commit()
     store = PostgresSelectionStore(factory)
     pick = DirectionSelection(candidate_id="c1", origin=Origin.HUMAN_SELECTED)
     write = DirectionSelection(written_direction="청구항 1 한정", origin=Origin.HUMAN_WRITTEN)
 
-    store.save_selection(created.oa_id, "u1", pick)
-    store.save_selection(created.oa_id, "u1", write)
-    store.save_selection(created.oa_id, "u2", pick)
+    store.save_selection(created.oa_id, "u1", pick, run_id=r1.id)
+    store.save_selection(created.oa_id, "u2", write, run_id=r2.id)
 
-    assert store.latest_selections(created.oa_id) == {"u1": write, "u2": pick}
-    assert store.latest_selections("oa_없음") == {}
+    assert store.selections_for_run(r1.id) == {"u1": pick}
+    assert store.selections_for_run(r2.id) == {"u2": write}
+    assert store.selections_for_run("r_없음") == {}
 
 
 def test_DB가_둘_다_없거나_AI_기본값인_줄을_거부한다(factory):
     created = _oa(factory, "db_sel_ck")
     for row in (
-        DirectionSelectionRow(oa_id=created.oa_id, unit_id="u1", origin="human_selected"),
         DirectionSelectionRow(
-            oa_id=created.oa_id, unit_id="u1", candidate_id="c1", origin="ai_default"
+            oa_id=created.oa_id, run_id=created.run_id, unit_id="u1", origin="human_selected"
+        ),
+        DirectionSelectionRow(
+            oa_id=created.oa_id,
+            run_id=created.run_id,
+            unit_id="u1",
+            candidate_id="c1",
+            origin="ai_default",
         ),
     ):
         with factory() as s:

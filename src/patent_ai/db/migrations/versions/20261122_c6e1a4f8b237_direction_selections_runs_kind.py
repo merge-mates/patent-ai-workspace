@@ -24,6 +24,7 @@ def upgrade() -> None:
         "direction_selections",
         sa.Column("id", sa.Text(), nullable=False),
         sa.Column("oa_id", sa.Text(), nullable=False),
+        sa.Column("run_id", sa.Text(), nullable=False),
         sa.Column("unit_id", sa.Text(), nullable=False),
         sa.Column("candidate_id", sa.Text(), nullable=True),
         sa.Column("written_direction", sa.Text(), nullable=True),
@@ -44,6 +45,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["oa_id"], ["oas.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index("ix_direction_selections_run_id", "direction_selections", ["run_id"])
     op.create_index(
         "ix_direction_selections_oa_unit_created",
         "direction_selections",
@@ -58,4 +60,5 @@ def downgrade() -> None:
     op.drop_constraint("ck_runs_kind", "runs", type_="check")
     op.drop_column("runs", "kind")
     op.drop_index("ix_direction_selections_oa_unit_created", table_name="direction_selections")
+    op.drop_index("ix_direction_selections_run_id", table_name="direction_selections")
     op.drop_table("direction_selections")

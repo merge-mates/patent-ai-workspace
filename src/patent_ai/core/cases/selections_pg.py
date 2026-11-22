@@ -20,12 +20,15 @@ class PostgresSelectionStore:
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._factory = session_factory
 
-    def save_selection(self, oa_id: str, unit_id: str, selection: DirectionSelection) -> None:
+    def save_selection(
+        self, oa_id: str, unit_id: str, selection: DirectionSelection, *, run_id: str
+    ) -> None:
         check_human(selection)
         with self._factory() as s:
             s.add(
                 DirectionSelectionRow(
                     oa_id=oa_id,
+                    run_id=run_id,
                     unit_id=unit_id,
                     candidate_id=selection.candidate_id,
                     written_direction=selection.written_direction,
@@ -34,11 +37,10 @@ class PostgresSelectionStore:
             )
             s.commit()
 
-    def latest_selections(self, oa_id: str) -> dict[str, DirectionSelection]:
-        # 오래된 것부터 읽어 덮어쓴다: 묶음마다 마지막 줄이 남는다 (같은 시각이면 id 순)
+    def selections_for_run(self, run_id: str) -> dict[str, DirectionSelection]:
         q = (
             select(DirectionSelectionRow)
-            .where(DirectionSelectionRow.oa_id == oa_id)
+            .where(DirectionSelectionRow.run_id == run_id)
             .order_by(DirectionSelectionRow.created_at, DirectionSelectionRow.id)
         )
         out: dict[str, DirectionSelection] = {}

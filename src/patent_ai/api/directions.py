@@ -53,7 +53,7 @@ class SelectionOut(BaseModel):
     selection: DirectionSelection
 
 
-@router.put("/directions/{unit_id}/selection", response_model=SelectionOut)
+@router.put("/directions/{unit_id:path}/selection", response_model=SelectionOut)
 def put_selection(
     unit_id: str,
     body: SelectionIn,

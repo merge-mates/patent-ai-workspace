@@ -96,6 +96,7 @@ def select_direction(
     if candidate_id is not None and candidate_id not in {c.candidate_id for c in unit.candidates}:
         raise CandidateNotFoundError(candidate_id)
 
-    selections.save_selection(oa_id, unit_id, selection)
+    # 실행 줄을 먼저 만들고 선택을 그 실행에 묶는다 (그 실행만 이 선택을 쓴다)
     run = store.create_run(oa_id, kind=REDO_DRAFTS)
+    selections.save_selection(oa_id, unit_id, selection, run_id=run.id)
     return SelectionMade(oa_id=oa_id, unit_id=unit_id, selection=selection, run=run)
