@@ -1,0 +1,20 @@
+# F4 첫 점수 (이슈 #39·#30): F4 정답(tune v2 f4)이 생긴 뒤 처음 채점. main 9eb8237, tune 같은 설정 3회. scores.json은 1회차
+experiment: m3-i1-f4-first-score
+feature: f4
+baseline: m3-f4-skeleton
+goldset: tune
+goldset_version: 2
+gold: f4                  # data/goldsets/tune/f4/
+impl: skeleton            # 묶음마다 방향 후보 → 의견서 초안 → 보정 청구항 초안, 호출마다 1회 + 출력 검사 실패 때 1회 다시
+settings:                 # config/f4.yaml (실행은 그 파일을 읽는다, main 9eb8237 그대로)
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  max_candidates: 3
+  min_basis_chars: 10
+  final_rejection_limit: true   # main 기본값 (m3-f4-skeleton 때는 false)
+runs: 3
+runner: work/overnight_1121/scripts/f4_run.py work/overnight_1121/runs/f4_run<N> --workers 4 --f3-dir work/overnight_1121/runs/f3_run1 --cache-dir work/overnight_1121/runs/cache_f4_run<N>   # git 밖. F3 입력은 m3-i1-f3-rescore 1회차, F2 없음
+budget:
+  max_usd: 2.0
+  max_external_calls: 300
