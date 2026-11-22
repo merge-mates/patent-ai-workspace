@@ -12,7 +12,7 @@
 
 **가설**: 그 OA 인용문헌 안에서 문단을 찾는 일은 문헌을 통째로 LLM에 넣어도 하이브리드 검색만큼 맞힌다. 그러면 F3 대비에서 검색이 꼭 필요한지 답이 나온다.
 **종류**: 구현 비교 (같은 검색 계약 뒤 `impl`만 다름)
-**설정**: `config/cite_rank.yaml` `whole_doc` (claude-haiku-5-5, effort medium, max_tokens 16000, 출력 검사 실패 때 1회 더), 프롬프트 `prompts/cite_rank/whole_doc.md`. 범위 (a) "그 OA 인용문헌 안"만 (노이즈 범위는 줄마다 20만 토큰을 넘어 재지 않음). 색인 cite-idx-v2 (16문헌 1,998조각, 지문 aa2a82ee… 기준선과 같음).
+**설정**: 이 폴더의 `cite_rank.yaml` `whole_doc` 칸 (`settings.config_dir`로 읽음, 11/22 실행 때 `config/cite_rank.yaml`과 같은 값: claude-haiku-5-5, effort medium, max_tokens 16000, 출력 검사 실패 때 1회 더), 프롬프트 `prompts/cite_rank/whole_doc.md`. 범위 (a) "그 OA 인용문헌 안"만 (노이즈 범위는 줄마다 20만 토큰을 넘어 재지 않음). 색인 cite-idx-v2 (16문헌 1,998조각, 지문 aa2a82ee… 기준선과 같음).
 - 같은 설정 2회, 회마다 새 캐시 폴더 (git 밖 `work/cite_whole_doc/cache_run{1,2}`). 11/22 새벽 git 밖 시제품 캐시는 쓰지 않음.
 - scores.json은 1회차. 2회차는 git 밖 `work/cite_whole_doc/run2/scores.json`. 줄별 결과·CQ 후보도 `work/cite_whole_doc/run{1,2}/`.
 - 코드: feat/248-cite-search-whole-doc 0723d69. 실행 전 `count_tokens`(무료)로 69요청 입력 1,957,766 토큰, 최대 64,649 (10만 넘는 요청 0 → Haiku $0.10/$0.50 단가 구간, claude-api 스킬 모델 표 2026-11-03).
@@ -81,4 +81,4 @@
 - 후보: 하이브리드 상위 N → LLM 재순위 (입력이 N조각으로 줄어 비용·노이즈 범위 문제를 같이 푼다). F3 `impl`로 F3 전체 점수까지 볼지는 그 뒤.
 
 ## 다시 내는 법
-`uv run --env-file .env python eval/run_eval.py --config experiments/m3-i1-cite-search-whole-doc/config.yaml --cache-dir work/cite_whole_doc/cache_run1 --cq-dir work/cite_whole_doc/run1 --rows-out work/cite_whole_doc/run1/rows.jsonl` (2회차는 `cache_run2`, `--scores-dir work/cite_whole_doc/run2`, `run2`). 같은 캐시 폴더로 다시 돌리면 호출 0으로 같은 점수. 색인은 로컬 DB(`DATABASE_URL`)의 cite-idx-v2. 표 숫자는 git 밖 `work/cite_whole_doc/analyze.py`.
+`uv run --env-file .env python eval/run_eval.py --config experiments/m3-i1-cite-search-whole-doc/config.yaml --cache-dir work/cite_whole_doc/cache_run1 --cq-dir work/cite_whole_doc/run1 --rows-out work/cite_whole_doc/run1/rows.jsonl` (2회차는 `cache_run2`, `--scores-dir work/cite_whole_doc/run2`, `run2`). 모델·effort·프롬프트는 이 폴더 `cite_rank.yaml`에서 읽으므로 공용 `config/cite_rank.yaml`을 고쳐도 같은 설정으로 돈다. 같은 캐시 폴더로 다시 돌리면 호출 0으로 같은 점수 (11/23 실험 폴더 설정으로 옮긴 뒤 두 회 모두 호출 0·같은 점수 확인, 모델을 바꾼 설정은 캐시가 빗나감도 확인). 색인은 로컬 DB(`DATABASE_URL`)의 cite-idx-v2. 표 숫자는 git 밖 `work/cite_whole_doc/analyze.py`.
