@@ -65,3 +65,35 @@ def parse_dispatch_date(raw: str | None) -> date | None:
         return date(int(m["y"]), int(m["m"]), int(m["d"]))
     except ValueError:
         return None  # 없는 날 (2월 30일 등)
+
+
+# 글 속 조문 꼴: `제29조제2항`, `제42조 제4항 제2호`, `29조 2항`, `제29조의2제1항`.
+# 항까지 있어야 한다 (색인 조각이 항 단위라서, 항이 없으면 지어내지 않고 건너뛴다).
+_REF_IN_TEXT = re.compile(
+    r"(?<![0-9])제?\s*(?P<jo>[1-9][0-9]*)\s*조(?:\s*의\s*(?P<gaji>[1-9][0-9]*))?"
+    r"\s*제?\s*(?P<hang>[1-9][0-9]*)\s*항(?:\s*제?\s*(?P<ho>[1-9][0-9]*)\s*호)?"
+)
+# 조문 바로 앞에 붙은 법 이름 (`특허법`, `실용신안법 시행령`, `시행규칙`)
+_LAW_BEFORE = re.compile(r"(?P<law>[가-힣]+법)?\s*(?P<sub>시행령|시행규칙)?\s*$")
+
+
+def article_refs_in_text(text: str) -> list[ArticleRef]:
+    """질문 글 속 조문을 ArticleRef로. 법 이름이 없으면 특허법, 다른 법(시행령 포함)은 버린다.
+
+    같은 조·가지·항은 처음 하나만 남긴다 (호만 다른 것도 같은 항 조각이라서).
+    """
+    refs: list[ArticleRef] = []
+    seen: set[tuple[int, int, int]] = set()
+    for m in _REF_IN_TEXT.finditer(text):
+        before = _LAW_BEFORE.search(text[: m.start()])
+        if before and (before["sub"] or (before["law"] and before["law"] != LAW)):
+            continue  # 특허법 시행령·실용신안법 등: 우리 색인의 특허법 조문이 아니다
+        jo, gaji, hang = int(m["jo"]), int(m["gaji"] or 0), int(m["hang"])
+        if (jo, gaji, hang) in seen:
+            continue
+        seen.add((jo, gaji, hang))
+        ho = int(m["ho"]) if m["ho"] else None
+        label = f"{LAW} 제{jo}조" + (f"의{gaji}" if gaji else "") + f"제{hang}항"
+        label += f"제{ho}호" if ho else ""
+        refs.append(ArticleRef(law=LAW, jo=jo, gaji=gaji, hang=hang, ho=ho, label=label))
+    return refs

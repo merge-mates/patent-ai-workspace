@@ -67,6 +67,7 @@ class F2Settings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     index_version: str  # 법령 색인 판 (law corpus)
+    chat_search_k: int = Field(default=3, ge=1)  # 법률 질문: 번호 없는 질문의 BM25 조문 수
 
 
 class F2Input(BaseModel):
@@ -105,7 +106,7 @@ def make_law_repo() -> ChunkRepository:
     return PostgresChunkRepository.from_url()
 
 
-def _edition_text(chunk: Chunk) -> str | None:
+def edition_text(chunk: Chunk) -> str | None:
     """사람이 읽는 판본: `특허법_1002_20200101 시행 2020-01-01 ~ 현행`. 시작일 모르면 None."""
     ed = chunk.edition
     if ed.status != "confirmed" or ed.effective_from is None:
@@ -210,7 +211,7 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
         document_id=chunk.doc_id,
         location=chunk.location.label,
         raw_text=chunk.text,
-        edition=_edition_text(chunk),
+        edition=edition_text(chunk),
         checked_on=checked_on,
         chunk_id=chunk.chunk_id,
         index_version=chunk.index_version,

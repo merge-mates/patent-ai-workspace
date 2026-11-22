@@ -4,7 +4,12 @@ from datetime import date
 
 import pytest
 
-from patent_ai.core.f2_legal_research.refs import ArticleRef, article_ref, parse_dispatch_date
+from patent_ai.core.f2_legal_research.refs import (
+    ArticleRef,
+    article_ref,
+    article_refs_in_text,
+    parse_dispatch_date,
+)
 
 
 @pytest.mark.parametrize(
@@ -48,3 +53,32 @@ def test_발송일_글자를_날짜로(raw, expected):
 @pytest.mark.parametrize("raw", [None, "", "날짜 없음", "2020.02.30."])
 def test_발송일을_못_읽으면_None(raw):
     assert parse_dispatch_date(raw) is None
+
+
+def _labels(text):
+    return [r.label for r in article_refs_in_text(text)]
+
+
+def test_글_속_조문_세_꼴을_읽는다():
+    assert _labels("특허법 제29조제2항이 뭔가요") == ["특허법 제29조제2항"]
+    assert _labels("제42조 제4항 제2호는?") == ["특허법 제42조제4항제2호"]  # 법 이름 없으면 특허법
+    assert _labels("29조 2항 알려줘") == ["특허법 제29조제2항"]
+    ref = article_refs_in_text("제42조 제4항 제2호")[0]
+    assert (ref.jo, ref.hang, ref.ho, ref.loc) == (42, 4, 2, 420004)
+
+
+def test_다른_법_이름이_붙은_조문은_버린다():
+    assert _labels("특허법 시행령 제5조제1항") == []
+    assert _labels("실용신안법 제4조제2항") == []
+    assert _labels("실용신안법 제4조제2항과 특허법 제29조제2항") == ["특허법 제29조제2항"]
+
+
+def test_같은_조_항은_하나로_합친다():
+    assert _labels("특허법 제29조제2항, 29조 2항, 제42조제4항") == [
+        "특허법 제29조제2항",
+        "특허법 제42조제4항",
+    ]
+
+
+def test_조문_번호가_없으면_빈_목록():
+    assert article_refs_in_text("진보성이 뭔가요") == []

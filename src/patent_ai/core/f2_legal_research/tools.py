@@ -79,7 +79,7 @@ class ArticleLookup:
     conflicts: tuple[Chunk, ...] = ()  # 같은 날 시행판이 둘 이상일 때 그 조각들 (사람이 볼 것)
 
 
-def _law_of(doc_id: str) -> str | None:
+def law_of(doc_id: str) -> str | None:
     m = _LAW_DOC.match(doc_id)
     return m["law"] if m else None
 
@@ -95,7 +95,7 @@ def get_article(pool: LawPool, ref: ArticleRef, as_of: date) -> ArticleLookup:
         # 시행령(`특허법_시행령_…`)은 법 이름이 달라 섞이지 않는다
         return (
             c.chunk_kind == "article"
-            and _law_of(c.doc_id) == ref.law
+            and law_of(c.doc_id) == ref.law
             and c.location.start == ref.loc
         )
 
