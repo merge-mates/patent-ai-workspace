@@ -95,6 +95,11 @@ def test_offline_sql_adds_stop_reason_and_output_truncated_to_agent_steps():
     assert "'invalid_output'" in last_check
 
 
+def test_offline_sql_adds_invalid_kind_to_agent_steps():
+    # 이슈 #228: 출력 검사 실패 호출의 오류 종류 칸
+    assert re.search(r"ALTER TABLE agent_steps ADD COLUMN invalid_kind TEXT", _offline_sql())
+
+
 # --- 이슈 #57 T5: 건너뛴 단계 ---
 
 
