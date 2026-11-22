@@ -6,7 +6,8 @@ import { api, API_MODE } from '../api'
 // "올려 주세요": 조회하지 못한 자료를 올린다 (POST /cases/{id}/documents).
 // what = 이 버튼이 답하는 빠진 자료 (missing[].what 글자 그대로). 서버가 이 글자로 빠진 자료를 찾는다.
 // 서버 모드에서만 눌린다. mock은 파일을 읽지 않아 지어내지 않고 막아 둔다 (api.uploadDocument도 오류를 던진다)
-export function UploadMaterialButton({ caseId, what }: { caseId: string; what: string }) {
+// label: 버튼 글자 (자료 줄은 "올려 주세요", 직접 할 일은 "올리기")
+export function UploadMaterialButton({ caseId, what, label = '올려 주세요' }: { caseId: string; what: string; label?: string }) {
   const { message } = App.useApp()
   const revalidator = useRevalidator()
 
@@ -27,7 +28,7 @@ export function UploadMaterialButton({ caseId, what }: { caseId: string; what: s
       <Tooltip title="mock에서는 올릴 수 없어요. 서버가 오면 올릴 수 있어요">
         <span>
           <Button size="small" icon={<UploadOutlined />} disabled>
-            올려 주세요
+            {label}
           </Button>
         </span>
       </Tooltip>
@@ -36,7 +37,7 @@ export function UploadMaterialButton({ caseId, what }: { caseId: string; what: s
   return (
     <Upload accept=".pdf,application/pdf" showUploadList={false} beforeUpload={upload}>
       <Button size="small" icon={<UploadOutlined />}>
-        올려 주세요
+        {label}
       </Button>
     </Upload>
   )

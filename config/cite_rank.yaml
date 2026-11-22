@@ -1,0 +1,11 @@
+# 인용문헌 문단 검색: 문헌 통째 LLM (impl whole_doc_llm, 이슈 #248).
+# 단계 칸(whole_doc)은 core/llm이 읽는다. 가격은 claude-haiku-5-5, 요청 10만 토큰 이하 기준 (claude-api 스킬 모델 표, 2026-11-03 확인).
+whole_doc:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 16000
+  prompt: prompts/cite_rank/whole_doc.md
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
+  max_model_calls: 150   # 질의 68줄 + 출력 검사 실패 때 1회 더
+  max_retries: 2         # 전송 오류(429·연결)를 다시 부르는 횟수

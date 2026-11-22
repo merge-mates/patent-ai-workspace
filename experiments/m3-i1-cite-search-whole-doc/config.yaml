@@ -1,0 +1,19 @@
+# 인용문헌 문단 찾기: 문헌 통째 LLM (이슈 #248). 그 OA 인용문헌 조각 전부를 번호 붙여 Haiku에 넣고 관련 조각 번호를 순위로 10개 받는다.
+# 모델·effort·max_tokens·프롬프트는 이 폴더의 cite_rank.yaml whole_doc 칸에서 읽는다 (settings.config_dir).
+# 값은 11/22 실행 때 config/cite_rank.yaml 그대로 (claude-haiku-5-5, medium, max_tokens 16000, prompts/cite_rank/whole_doc.md)
+experiment: m3-i1-cite-search-whole-doc
+feature: retrieval
+baseline: m2-i2-cite-search-hybrid-rrf
+goldset: tune
+goldset_version: 2
+corpus: cite
+index_version: cite-idx-v2
+mode: hybrid             # 계약 칸이라 기준선과 같은 값 (whole_doc_llm은 mode를 쓰지 않음)
+impl: whole_doc_llm
+k: [1, 3, 5, 10]
+gold: retrieval/cite_gold.jsonl
+settings:
+  config_dir: experiments/m3-i1-cite-search-whole-doc   # 공용 config/cite_rank.yaml을 고쳐도 이 실험은 같은 모델로 돈다
+budget:
+  max_usd: 1             # 회당 상한 (실행마다 새로 셈). 11/22 재아 허락: 1회 약 $0.21, 2회 합쳐 약 $0.42
+  max_external_calls: 150

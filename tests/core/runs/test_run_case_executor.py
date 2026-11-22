@@ -66,12 +66,23 @@ class _Inputs:
         )
 
 
+class _CaseFill:
+    """F1 뒤 사건 채우기 기록 (#261). 채우는 규칙은 tests/core/cases/test_case_fill.py가 본다."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def fill_after_f1(self, oa_id, run_id, result, text_status):
+        self.calls.append((oa_id, run_id, result.oa_id, text_status))
+
+
 class Env:
     def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None):
         self.store = store or MemoryStatusStore()
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.store)
         self.step_results = InMemoryStepResultStore()
+        self.case_fill = _CaseFill()
         self.inputs = _Inputs(tmp_path, with_texts)
         self.selections = InMemorySelectionStore()
         self.human = InMemoryHumanInputStore()
@@ -81,6 +92,7 @@ class Env:
             registry=self.registry,
             oa_results=self.oa_results,
             step_results=self.step_results,
+            case_fill=self.case_fill,
             inputs=self.inputs,
             cases=cases or _Cases(),
             config_path=real_config(tmp_path),
@@ -203,6 +215,22 @@ def test_run_case_사람을_기다리면_waiting_for_human이고_그때까지_�
     assert st.state == RunState.WAITING_FOR_HUMAN and st.waiting_for == "application_number"
     assert [run for _, run, _ in env.oa_results.saved] == [RID]
     assert env.step_results.step_result(RID, "f3") is None  # F3 전에 멈춤
+    # 사람 기다림에서도 사건 채우기를 부른다 (못 읽은 출원번호는 채우기 쪽이 넣지 않음, #261)
+    assert [(c[0], c[1]) for c in env.case_fill.calls] == [(OID, RID)]
+
+
+def test_run_case_발송번호를_기다릴_때도_사건_채우기를_부른다(tmp_path, monkeypatch):
+    # 출원번호는 읽었으니 사건 이름·사건 자료는 채운다 (발송번호는 채우기 쪽이 넣지 않음, #261)
+    oa = wire(monkeypatch)
+    unknown = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    oa = oa.model_copy(
+        update={"dispatch_number": oa.dispatch_number.model_copy(update={"status": unknown})}
+    )
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", lambda *a, **k: oa)
+    env = Env(tmp_path)
+    st = env.run()
+    assert st.state == RunState.WAITING_FOR_HUMAN and st.waiting_for == "dispatch_number"
+    assert [(c[0], c[1]) for c in env.case_fill.calls] == [(OID, RID)]
 
 
 def test_run_case_도는_중에_취소하면_다음_단계_전에_cancelled이고_결과를_안_남긴다(env):
@@ -251,6 +279,31 @@ def test_run_case_서버에서는_한_번에_하나만_돈다(env):
     second.join(10)
     assert env.store.get_status("r_a").state == RunState.SUCCEEDED
     assert env.store.get_status("r_b").state == RunState.SUCCEEDED
+
+
+def test_run_case_F1_정리를_저장한_뒤_사건_번호와_사건_자료를_채운다(env):
+    # #261: 채우기가 없으면 사건 이름이 "출원번호 확인 전"에 남고 사건 자료가 404다
+    st = env.run()
+    assert st.state == RunState.SUCCEEDED
+    assert [(oa, run, res_oa) for oa, run, res_oa, _ in env.case_fill.calls] == [(OID, RID, OID)]
+    assert env.case_fill.calls[0][3] is not None  # 글자 추출 상태를 넘긴다
+
+
+def test_run_case_실패하면_사건을_채우지_않는다(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    env = Env(tmp_path, cases=_Cases(found=("c_옛", "oa_옛")))
+    env.run()
+    assert env.case_fill.calls == []
+
+
+def test_run_case_사건_채우기가_실패하면_failed_result_save_failed(env):
+    def boom(*a):
+        raise RuntimeError("postgres://비밀")
+
+    env.case_fill.fill_after_f1 = boom
+    st = env.run()
+    assert st.state == RunState.FAILED and st.error["code"] == "result_save_failed"
+    assert "비밀" not in st.error["message"]
 
 
 # ---- 초안만 다시 만드는 작은 실행 (kind = redo_drafts, #70) ----

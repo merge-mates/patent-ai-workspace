@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from patent_ai.api.deps import (
     get_cancel_registry,
+    get_case_materials_store,
     get_case_repository_unit,
     get_case_unit,
     get_human_input_store,
@@ -25,7 +26,9 @@ from patent_ai.api.deps import (
     get_upload_dir,
 )
 from patent_ai.api.main import create_app
+from patent_ai.core.cases.case_fill import InMemoryCaseFill
 from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
+from patent_ai.core.cases.materials import InMemoryCaseMaterialsStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputSource
 from patent_ai.core.cases.selections import InMemorySelectionStore
@@ -83,6 +86,7 @@ class RunCaseApp:
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.runs)
         self.steps = InMemoryStepResultStore()
+        self.materials = InMemoryCaseMaterialsStore()
         self.selections = InMemorySelectionStore()
         self.human = InMemoryHumanInputStore()
         self.launch_enabled = True
@@ -91,6 +95,7 @@ class RunCaseApp:
             registry=self.registry,
             oa_results=self.oa_results,
             step_results=self.steps,
+            case_fill=InMemoryCaseFill(self.cases, self.materials, self._latest_result),
             inputs=make_inputs(self.cases),
             cases=NewCase(),
             config_path=real_config(tmp_path),
@@ -110,6 +115,7 @@ class RunCaseApp:
                 get_cancel_registry: lambda: self.registry,
                 get_oa_result_store: lambda: self.oa_results,
                 get_step_result_store: lambda: self.steps,
+                get_case_materials_store: lambda: self.materials,
                 get_selection_store: lambda: self.selections,
                 get_human_input_store: lambda: self.human,
                 get_run_executor: lambda: self.executor,
@@ -117,6 +123,10 @@ class RunCaseApp:
             }
         )
         self.client = TestClient(app, raise_server_exceptions=False)
+
+    def _latest_result(self, oa_id: str):
+        saved = self.oa_results.latest_visible_oa_result(oa_id)
+        return saved.result if saved else None
 
     def _launch(self, run_id: str, oa_id: str) -> None:
         # 그 자리에서 바로 돈다 (진짜 앱은 백그라운드 스레드)

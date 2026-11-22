@@ -1,10 +1,14 @@
 import { Button } from 'antd'
+import { useRouteLoaderData } from 'react-router'
+import type { OALoaderData } from '../loaders'
 import type { DirectTodo } from '../todos'
+import { UploadMaterialButton } from './UploadMaterialButton'
 import { useTodoGo } from './useTodoGo'
 
 // 직접 할 일 줄들. panel = 단계 막대 아래 회색 판(작게), page = 정리 단계 맨 위 목록(크게)
 export function TodoRows({ todos, variant }: { todos: DirectTodo[]; variant: 'panel' | 'page' }) {
   const go = useTodoGo()
+  const { oa } = useRouteLoaderData('oa') as OALoaderData
   const page = variant === 'page'
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -37,7 +41,10 @@ export function TodoRows({ todos, variant }: { todos: DirectTodo[]; variant: 'pa
               </span>
             </>
           )}
-          {page && t.go.kind === 'source' ? (
+          {t.go.kind === 'upload' ? (
+            // 빠진 자료는 이 자리에서 바로 올린다 (사건 자료 카드의 "올려 주세요"와 같은 요청)
+            <UploadMaterialButton caseId={oa.case_id} what={t.go.what} label={t.go.label} />
+          ) : page && t.go.kind === 'source' ? (
             <Button type="link" onClick={() => go(t.go)}>
               {t.go.label}
             </Button>

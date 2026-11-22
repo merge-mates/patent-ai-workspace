@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from eval.common.goldset import gold_path as goldset_file
 from eval.common.paths import check_experiment_name, git_commit
@@ -23,6 +24,7 @@ from eval.retrieval.config import RetrievalEvalConfig, load_config
 from eval.retrieval.cq import write_cq
 from eval.retrieval.errors import RetrievalEvalError
 from eval.retrieval.gold import GoldRow, load_gold
+from eval.retrieval.llm_cost import check_budget, cost_fields, invalid_attempts
 from eval.retrieval.matchers import MATCHERS, LawMatcher, Matcher
 from eval.retrieval.metrics import random_hit, random_recall, row_hit, row_recall
 from eval.retrieval.noise_scope import load_noise_scope
@@ -34,6 +36,9 @@ from patent_ai.retrieval.repository import (
     InMemoryChunkRepository,
     PostgresChunkRepository,
 )
+
+if TYPE_CHECKING:  # 타입 표시만. 실제 import는 whole_doc_llm일 때 함수 안에서
+    from patent_ai.core.llm.limits import RunContext
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,9 @@ FAILURE_KEYS = [
     "cq_candidates",
     "recall_ratio_undefined",
 ]
+# 문헌 통째 LLM(whole_doc_llm)일 때만 failures에 더하는 이름
+LLM_FAILURE_KEYS = ["llm_output_invalid", "not_extracted"]
+WHOLE_DOC_IMPL = "whole_doc_llm"
 EXCLUDE_TO_KEY = {
     "no_location": "excluded_no_location",
     "clarity": "excluded_clarity",
@@ -71,6 +79,8 @@ class RowResult:
     # 노이즈 범위(#178)에서만 쓴다: 순위마다 정답 문헌 조각인가, 범위 안 정답 문헌 조각 수
     gold_doc_by_rank: list[bool] = field(default_factory=list)
     gold_doc_size: int = 0
+    # 결과 상태 이유. 모델 출력을 못 읽은 줄은 "not_extracted" (못 찾음과 나눠 세려는 표시)
+    status_reason: str | None = None
 
 
 @dataclass
@@ -99,6 +109,22 @@ def _matcher_for(cfg: RetrievalEvalConfig) -> Matcher:
     return MATCHERS[cfg.corpus]
 
 
+def new_run_context(cfg: RetrievalEvalConfig, cache_dir: Path) -> RunContext:
+    """채점 실행마다 새로 만드는 모델 호출 맥락: 상한 세기·기록기는 새것, 캐시는 파일.
+
+    테스트는 이 함수를 바꿔 끼워 가짜 전송층을 넣는다.
+    """
+    from patent_ai.core.llm.cache import FileCache
+    from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
+
+    return RunContext(
+        run_id=cfg.experiment,
+        budget=CallBudget(),
+        recorder=MemoryRecorder(),
+        cache=FileCache(cache_dir),
+    )
+
+
 def score(
     cfg: RetrievalEvalConfig,
     repo: ChunkRepository,
@@ -108,6 +134,7 @@ def score(
     chunks_mode: bool = True,
     scores_dir: Path | None = None,
     cq_dir: Path | None = None,
+    run_context: RunContext | None = None,
 ) -> ScoreReport:
     """정답 줄마다 검색해 점수를 낸다. 파일은 쓰지 않는다 (쓰기는 main).
 
@@ -131,7 +158,18 @@ def score(
     matcher = _matcher_for(cfg)
     failures = dict.fromkeys(FAILURE_KEYS, 0)
     # 색인 판은 설정의 값이 기준이다 (settings에 따로 없어도 넣어 준다)
-    searcher = get_searcher(cfg.impl, repo, {**cfg.settings, "index_version": cfg.index_version})
+    settings = {**cfg.settings, "index_version": cfg.index_version}
+    llm = cfg.impl == WHOLE_DOC_IMPL
+    if llm:
+        # 이 impl일 때만 core를 불러온다 (import하면 impl이 등록된다.
+        # 다른 impl 채점은 core를 안 끌어온다)
+        import patent_ai.core.cite_rank.whole_doc  # noqa: F401
+
+        if run_context is None:
+            raise RetrievalEvalError("whole_doc_llm 채점에는 run_context가 필요하다")
+        settings["run_context"] = run_context
+        failures.update(dict.fromkeys(LLM_FAILURE_KEYS, 0))
+    searcher = get_searcher(cfg.impl, repo, settings)
     k_max = max(cfg.k)
     results: list[RowResult] = []
     # 둘째 점수(#178): 줄마다 노이즈를 섞은 검색 범위. 없으면 그 인용문헌 안(주 점수)
@@ -173,6 +211,14 @@ def score(
                 failures["excluded_body_missing"] += 1
                 continue
 
+        if llm and cfg.budget is not None:
+            # 줄을 검색하기 전에 예산을 본다: 상한에 닿았으면 반쯤 채점한 점수를 남기지 않고 멈춘다
+            check_budget(
+                run_context.recorder.records,
+                cfg.budget.max_usd,
+                cfg.budget.max_external_calls,
+            )
+
         # 4. 줄마다 search를 한 번 (k는 가장 큰 값, 작은 k는 앞부분을 자른다)
         try:
             result = searcher.search(
@@ -187,7 +233,13 @@ def score(
         except Exception as e:  # 줄 하나의 검색 예외는 조용히 넘기지 않는다
             # 메시지에 질의 글자가 섞일 수 있어 예외 종류만 적는다
             raise RetrievalEvalError(f"줄 {row.row_id}: 검색 실패 ({type(e).__name__})") from None
-        if result.status == "unverified":  # 본문 미확보는 여기서만 정한다
+        not_extracted = result.status == "unverified" and result.status_reason == "not_extracted"
+        if not_extracted:
+            # 모델 출력을 못 읽은 줄: 점수에서 빼지 않고 결과 0개(못 맞힌 줄)로 n에 남긴다.
+            # 빼면 출력 실패가 많을수록 점수가 오른다. 건수는 failures에 따로 센다
+            # 건수는 아래 results에 넣을 때 센다 (범위 밖 제외로 빠지는 줄은 두 번 세지 않게)
+            pass
+        elif result.status == "unverified":  # 본문 미확보는 여기서만 정한다
             failures["excluded_body_missing"] += 1
             continue
         # 채점기가 색인 판을 한 번 더 본다
@@ -235,6 +287,8 @@ def score(
                 }
             )
             match_sizes = [m for m in match_sizes if m > 0]
+        if not_extracted:
+            failures["not_extracted"] += 1
         results.append(
             RowResult(
                 row=row,
@@ -250,7 +304,17 @@ def score(
                 ),
                 gold_doc_by_rank=[h.doc_id in (row.doc_ids or []) for h in result.hits],
                 gold_doc_size=sum(1 for c in scope if c.doc_id in (row.doc_ids or [])),
+                status_reason="not_extracted" if not_extracted else None,
             )
+        )
+
+    if llm and cfg.budget is not None:
+        # 마지막 줄이 상한을 넘겨 쓴 경우는 줄 앞 검사가 못 본다: 끝에서 한 번 더 (점수를 안 남김)
+        check_budget(
+            run_context.recorder.records,
+            cfg.budget.max_usd,
+            cfg.budget.max_external_calls,
+            final=True,
         )
 
     # 5. 남은 줄이 0개면 빈 평균으로 성공하지 않는다
@@ -299,7 +363,7 @@ def score(
         "n": n,
         "metrics": metrics,
         "failures": failures,
-        "cost": {  # 모델 호출이 없어 seconds만 채운다
+        "cost": {  # 모델 호출이 없는 impl은 seconds만 채운다
             "usd": 0,
             "input_tokens": 0,
             "output_tokens": 0,
@@ -307,6 +371,11 @@ def score(
             "seconds": round(time.monotonic() - started, 3),
         },
     }
+    if llm:
+        # 호출 기록(recorder)의 합으로 채운다. 모르는 값(None)은 0으로 메우지 않고 None으로 둔다
+        records = run_context.recorder.records
+        scores["cost"] = cost_fields(records, round(time.monotonic() - started, 3))
+        failures["llm_output_invalid"] = invalid_attempts(records)
     if noise is not None:
         # 주 점수와 섞어 읽지 않게 범위 종류와 파일 지문을 남긴다
         scores["scope"] = {
@@ -343,6 +412,8 @@ def write_rows(report: ScoreReport, path: Path) -> None:
                 # 채점 때 검색한 가장 큰 k. 이보다 큰 k로 비교하면 틀린 값이라 compare가 막는다
                 "k_max": report.k_max,
             }
+            if r.status_reason is not None:  # 출력을 못 읽은 줄만 표시 (다른 줄엔 키 없음)
+                line["status_reason"] = r.status_reason
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
@@ -358,6 +429,11 @@ def main(
     ap.add_argument("--chunks", default=None, help="조각 JSONL. 없으면 Postgres(DATABASE_URL)")
     ap.add_argument("--scores-dir", default=None)
     ap.add_argument("--cq-dir", default=None)
+    ap.add_argument(
+        "--cache-dir",
+        default=None,
+        help="모델 답 캐시 폴더 (whole_doc_llm은 필수, git 제외 경로만. 회마다 새 폴더)",
+    )
     ap.add_argument("--rows-out", default=None, help="줄별 결과 JSONL (git 제외 경로만)")
     args = ap.parse_args(argv)
 
@@ -373,6 +449,21 @@ def main(
     chunks_mode = args.chunks is not None
     try:
         cfg = load_config(args.config)
+        run_context = None
+        if cfg.impl == WHOLE_DOC_IMPL:
+            # 같은 폴더를 몰래 다시 쓰지 않게 기본값이 없다. 캐시에 인용문헌 글자가 들어가
+            # 커밋될 수 있는 곳이면 아무것도 쓰기 전에 멈춘다
+            if args.cache_dir is None:
+                print("whole_doc_llm 채점에는 --cache-dir가 필요하다", file=sys.stderr)
+                return 1
+            cache_dir = Path(args.cache_dir).resolve()
+            if not ignored(cache_dir):
+                print(
+                    f"--cache-dir 경로가 git 제외 확인 안 됨 (커밋될 수 있음): {cache_dir}",
+                    file=sys.stderr,
+                )
+                return 1
+            run_context = new_run_context(cfg, cache_dir)
         if chunks_mode:
             repo = InMemoryChunkRepository.from_jsonl(cfg.corpus, args.chunks)
         else:
@@ -391,6 +482,7 @@ def main(
             chunks_mode=chunks_mode,
             scores_dir=scores_dir,
             cq_dir=cq_dir,
+            run_context=run_context,
         )
     except RetrievalEvalError as e:
         print(f"채점 실패: {e}", file=sys.stderr)
