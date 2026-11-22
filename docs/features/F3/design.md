@@ -210,7 +210,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 | 심사관 지정 조각을 표시 없이 후보에 섞고 출처는 코드가 붙임, 채점 실행은 `use_examiner_paragraphs=false` | 표시해서 줌 / 늘 줌 | 모델이 심사관 표시에 끌리지 않게, 평가 누출 막기 | 설계 | 커밋 3ec845d·f865f66 |
 | CQ는 채점기가 만듦, 앱은 `search_log`만 | 앱이 CQ를 만듦 | CQ는 정답이 있어야 정해짐 | 설계 | 커밋 f4dba41, retrieval design 7-1 |
 | 대비 방식은 `impl` 전략 패턴, 공통 단계는 `run_f3`에 | 방식마다 전체 흐름 | 방식이 공통 단계를 빠뜨리지 않게 | 리뷰 | 커밋 8ca79e7·ed8c9d8 |
-| 검색 기본 하이브리드 RRF k=10 | BM25 / 벡터 | 모든 k에서 둘 이상 (단정은 못 함) | 실험 | [`experiments/m2-i2-cite-search-hybrid-rrf/`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md). 채택 확정은 tune 30건(#168) 뒤 |
+| 검색 기본 하이브리드 RRF k=10 | BM25 / 벡터 / 문헌 통째 LLM(`whole_doc_llm`) | BM25·벡터: 모든 k에서 둘 이상 (단정은 못 함). 통째 LLM: Hit@1은 낫지만 Hit@10은 흔들림 안, 줄당 약 $0.003·3.4초 (5절) | 실험, 11/22 재아·은진 정함 (이슈 #248) | [`experiments/m2-i2-cite-search-hybrid-rrf/`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md), [`experiments/m3-i1-cite-search-whole-doc/`](../../../experiments/m3-i1-cite-search-whole-doc/card.md). 둘 다 tune v2 68줄이라, tune 30건(#168)이 들어오면 같은 비교를 다시 잰다 (기본은 그때까지 RRF) |
 | `second_search` 기본 켬, 끔은 비교 실험 설정으로만 | 기본 끔 (M3에 켬/끔 비교) | PRD F3 3번이 필수라 기본 실행이 지켜야 함. 켜면 못 찾은 청구항마다 대비 모델 호출이 한 번 더(유료) | PR #184 리뷰 [사람 판단], 11/21 재아 결정 | 설정 한 줄 PR (기준선 카드 `m2-f3-skeleton`은 끔으로 잰 값) |
 | 구성요소 나누는 규칙은 프롬프트에 판단으로 둠 | 이슈 #25 "eval/GUIDE.md와 같게" | GUIDE에 그 규칙이 없음 | 구현 중 | `prompts/f3/split_elements.md`, 출처 없음·판단 |
 
