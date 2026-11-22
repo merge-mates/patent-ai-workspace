@@ -5,6 +5,7 @@
 | m1-i3-f1-effort-low | F1 | `settings.effort`: medium → low | field_accuracy 0.568 | -0.069 | $0.00 | [card](m1-i3-f1-effort-low/card.md) |
 | m1-i3-f1-effort-low-stream64k | F1 | `settings.effort`: medium → low (스트리밍·max_tokens 64000 판에서) | field_accuracy 0.653 | +0.067 | $0.00 | [card](m1-i3-f1-effort-low-stream64k/card.md) |
 | m1-i3-f1-effort-medium | F1 | `settings.effort`: (없음, 모델 기본 medium) → medium (#136 뒤 명시. 보내는 요청은 기준선과 같음) | field_accuracy 0.637 | +0.031 | $0.00 | [card](m1-i3-f1-effort-medium/card.md) |
+| m1-i3-f1-m1-remeasure | F1 | 없음 (M1 정리용 재측정, main 설정 그대로 10건 3회. 표 점수는 1회차, **3회 평균 0.742**. 기준선은 9건이라 대비 칸은 바로 견주지 않음) | field_accuracy 0.758 | +0.172 | - | [card](m1-i3-f1-m1-remeasure/card.md) |
 | m1-i3-f1-model-input-tables | F1 | `settings.model_input`: raw → tables_md | tables_md.confirmed 94.000 | 기준선 | $0.03 | [card](m1-i3-f1-model-input-tables/card.md) |
 | m1-i3-f1-pdf-tool | F1 | PDF 도구 4개 비교 (pdfplumber 유지 결정의 기준선) | pdfplumber.task2_with_cells 1.000 | 기준선 | - | [card](m1-i3-f1-pdf-tool/card.md) |
 | m1-i3-f1-prompt-null-wording | F1 | `prompts/f1/read_oa.md` null·문자열 예외 문구 맞추기 (이슈 #193 task 1, sha256 앞 12자 d680efd54818 → a2d095469fda, 커밋 9d99d3b) | field_accuracy 0.674 | +0.088 | $0.00 | [card](m1-i3-f1-prompt-null-wording/card.md) |
@@ -29,3 +30,5 @@
 | m2-i3-cite-search-hybrid-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → hybrid (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-hybrid-noise-c/card.md) |
 | m2-i3-cite-search-vector-noise-c | cite-search (이슈 #178 둘째 점수, C안) | `mode`·`impl`: bm25 → vector (같은 색인 cite-idx-v4·같은 C안 범위) | hit@10 0.338 | +0.074 | $0.00 | [card](m2-i3-cite-search-vector-noise-c/card.md) |
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
+| m3-i1-cite-search-two-stage | cite-search (이슈 #212) | `impl`: hybrid(RRF) → two_stage (BM25 후보 N=100 → 그 후보만 벡터로 다시 순위) | hit@10 0.691 | -0.015 | $0.00 | [card](m3-i1-cite-search-two-stage/card.md) |
+| m3-i1-cite-search-weighted-sum | cite-search (이슈 #212, lane_extra C3) | `impl`: hybrid(RRF, 순위로 섞음) → weighted_sum (점수를 min-max로 맞춘 뒤 BM25 0.5 / 벡터 0.5 가중합) | hit@10 0.706 | +0.000 | $0.00 | [card](m3-i1-cite-search-weighted-sum/card.md) |

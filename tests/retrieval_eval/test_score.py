@@ -279,7 +279,8 @@ def test_scores_json에_색인_지문이_있다(tmp_path, goldsets_root):
 
 
 def test_줄_검색_예외는_main이_1을_돌려준다(tmp_path, goldsets_root, capsys):
-    # vector 검색인데 녹화에 없는 질의 -> RecordedEmbeddingMissing -> 조용히 넘기지 않고 실패
+    # vector 검색인데 기록된 모델 응답에 없는 질의
+    # -> RecordedEmbeddingMissing -> 조용히 넘기지 않고 실패
     cfg = make_config(tmp_path)
     text = cfg.read_text(encoding="utf-8").replace("mode: bm25", "mode: vector")
     text += f"  query_vectors: {FIX / 'query_vectors.json'}\n"

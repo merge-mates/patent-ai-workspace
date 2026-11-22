@@ -1,8 +1,9 @@
 """실행 입력 만들기 (이슈 #191 T1·T4): OA id로 지휘(run_case)에 넘길 CaseInput과 사건 찾기.
 
 - CaseInput: 사건 id, OA 원문 PDF 경로·문서 id, F3·F4가 읽을 글자(texts).
-- texts(OA 당시 청구항 판·최초 명세서)는 #16 T6 저장소가 머지된 뒤 그 판을 읽어 채운다.
-  지금은 TextsSource 기본값이 None을 돌려 F3·F4가 "확인되지 않음(input_unverified)"으로 넘겨진다.
+- texts(OA 당시 청구항 판·최초 명세서)는 TextsSource가 만든다
+  (앱은 texts_source.PostgresTextsSource, #205).
+  기본값 NoTexts는 None을 돌려 F3·F4가 "확인되지 않음(input_unverified)"으로 넘겨진다.
   판을 지어내지 않는다 (성공처럼 보이지 않게).
 - checked_on(F4 확인 기준일)은 여기서 넣지 않고 실행기가 실행한 날로 넣는다.
 실행기가 백그라운드 스레드에서 부르므로 Postgres 구현은 호출마다 새 세션을 연다.
@@ -40,7 +41,7 @@ class TextsSource(Protocol):
 
 
 class NoTexts:
-    """#16 T6(청구항 판 저장) 전 기본값: 글자를 늘 못 찾는다 → F3·F4는 넘긴 이유가 남는다."""
+    """기본값(테스트용): 글자를 늘 못 찾는다 → F3·F4는 넘긴 이유가 남는다."""
 
     def texts_for(self, oa_id: str) -> F3Inputs | None:
         return None
