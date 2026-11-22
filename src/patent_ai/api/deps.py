@@ -12,6 +12,8 @@ from fastapi import Depends
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from patent_ai.core.cases.human_inputs import HumanInputStore
+from patent_ai.core.cases.human_inputs_pg import PostgresHumanInputStore
 from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
@@ -127,6 +129,12 @@ def get_selection_store() -> SelectionStore:
 
 
 @lru_cache
+def get_human_input_store() -> HumanInputStore:
+    """사람이 넣은 번호·"맞아요" 기록 (#70). 번호 PATCH가 쓰고 이어 도는 실행이 읽는다."""
+    return PostgresHumanInputStore(sessionmaker(_engine()))
+
+
+@lru_cache
 def get_case_materials_store() -> CaseMaterialsStore:
     return PostgresCaseMaterialsStore(sessionmaker(_engine()))
 
@@ -165,6 +173,7 @@ def _run_case_executor() -> RunCaseExecutor:
         make_ctx=_new_run_context,
         today=date.today,
         selections=get_selection_store(),
+        human=get_human_input_store(),
     )
 
 

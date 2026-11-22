@@ -46,7 +46,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/runs/{id}` | 실행 상태 + "지금 하는 주요 작업" 한 줄 (세부 과정 중계 없음) |
 | POST | `/runs/{id}/cancel` | 실행 취소 |
 
-실행 상태 `state`: `queued`(대기) / `running`(실행 중) / `waiting_for_human`(사람 기다림: OA 번호(출원번호·발송번호)를 못 읽어 사람 입력을 기다림) / `succeeded`(끝남) / `failed`(실패, 이유를 남김) / `cancelled`(취소). 실패를 succeeded로 돌려주지 않는다. 자동 조회의 진행·실패도 이 실행에 남는다. 화면은 `GET /runs/{id}`만 폴링한다. `waiting_for` 값은 `application_number`·`dispatch_number` 둘뿐이다. 번호를 넣으면 같은 실행이 이어 돈다 (그 API `PATCH /cases/{id}`·`PATCH /oas/{id}`는 이슈 #70 계획 ②에서 명세한다). 방향 고르기는 실행을 멈추지 않는다: 실행은 `succeeded`로 끝나고 확신 낮은 묶음만 선택 `null` + 초안 보류이며, 사람이 고르면(`PUT /directions/{unit_id}/selection`) 그 OA에 작은 실행을 새로 만든다.
+실행 상태 `state`: `queued`(대기) / `running`(실행 중) / `waiting_for_human`(사람 기다림: OA 번호(출원번호·발송번호)를 못 읽어 사람 입력을 기다림) / `succeeded`(끝남) / `failed`(실패, 이유를 남김) / `cancelled`(취소). 실패를 succeeded로 돌려주지 않는다. 자동 조회의 진행·실패도 이 실행에 남는다. 화면은 `GET /runs/{id}`만 폴링한다. `waiting_for` 값은 `application_number`·`dispatch_number` 둘뿐이다. 번호를 넣으면(`PATCH /cases/{id}`·`PATCH /oas/{id}`) 같은 실행이 `waiting_for_human → running`으로 이어 돈다. 체크포인터 없이, 그 실행이 저장해 둔 OA 정리에 사람이 넣은 번호를 덮어 `check_oa`부터 돈다 (OA 글자 읽기는 다시 하지만 F1 모델은 다시 부르지 않는다). 방향 고르기는 실행을 멈추지 않는다: 실행은 `succeeded`로 끝나고 확신 낮은 묶음만 선택 `null` + 초안 보류이며, 사람이 고르면(`PUT /directions/{unit_id}/selection`) 그 OA에 작은 실행을 새로 만든다.
 
 ### 결과 (OA 아래)
 | 메서드 | 경로 | 결과 스키마 |
@@ -64,6 +64,10 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
 | PUT | `/directions/{unit_id}/selection` | `unit_id`는 내용으로 정한 ID ([데이터 모델](../data-model.md) 4절 ②). 대응 방향을 후보 중에서 고르거나 직접 쓰기. 본문은 `{candidate_id}` 또는 `{written_direction}` 중 하나. 응답은 `{unit_id, run_id, selection}`이고 `run_id`는 새로 만든 작은 실행이다(화면은 그 `run_id`를 폴링). 작은 실행은 앞 실행의 OA 정리·F3·F2를 그대로 옮기고 F4 방향 후보도 그대로 둔 채 선택만 바꿔 의견서·보정 초안을 다시 만든다. 직접 쓴 묶음은 AI가 초안을 만들지 않고 보류한다("사람이 쓴 방향", origin = `human_written`). 오류: 404 `oa_not_found`·`unit_not_found`, 404 `result_not_ready`, 409 `run_in_progress`(그 OA에 진행 중 실행), 422 `candidate_not_found`·`invalid_selection`(빈 글 등). 고르지 않으면 1등 후보(origin = AI 기본값). 확신 "낮음" 묶음은 선택이 비어 있고(`null`), 사람이 고를 때까지 그 묶음 초안은 만들지 않는다(서버 코드로 막음). 이 PUT으로 저장한 선택은 1등 후보와 같아도 origin = 사람이 고름 |
+| PATCH | `/cases/{id}` | 본문 `{application_number}`. 그 사건 OA 중 출원번호를 기다리는(`waiting_for: application_number`) 실행에 사람이 읽은 출원번호를 넣고 그 실행을 이어 돌린다. 하이픈은 있어도 되고 숫자로 맞춘다. 응답 `{case_id, oa_id, run_id}` (화면은 그 run_id를 폴링). 사람이 넣은 값은 `human_inputs` 표에 남기고, OA 정리의 그 칸은 status 확인됨 + `checked: "사람이 직접 입력함 (원문 대조 아님)"`으로 AI가 읽은 값과 구분한다. 오류: 404 `case_not_found`, 409 `not_waiting`(출원번호를 기다리는 실행 없음), 422 `invalid_application_number`(출원번호 꼴 아님) |
+| PATCH | `/oas/{id}` | 본문 `{dispatch_number}`. 발송번호를 기다리는 실행에 넣고 이어 돌린다. 응답·남기는 방식은 위와 같다. 오류: 404 `oa_not_found`, 409 `not_waiting`, 422 `invalid_dispatch_number` |
+| PUT | `/oas/{id}/oa-result/confirmation` | 정리 결과 "맞아요": 사람이 지금 보이는 OA 정리(그 `run_id`)를 확인했다고 남긴다. 본문 없음. 응답 `{oa_id, run_id, confirmed_at}`. 다시 보내면 시각만 새로 남는다. 다른 실행의 정리가 보이게 되면(다시 돌림) 확인은 그 실행 것이 아니라 비어 보인다. 오류: 404 `oa_not_found`·`result_not_ready` |
+| GET | `/oas/{id}/oa-result/confirmation` | 지금 보이는 OA 정리를 사람이 확인했는지. `{oa_id, run_id, confirmed_at}`, 확인 전이면 `confirmed_at: null`. 오류: 404 `oa_not_found`·`result_not_ready` |
 | PATCH | `/drafts/{draft_id}` | 사람이 초안을 고친다. AI 원본 값은 남긴다. 중간 결과(F1·F2·F3)는 고치지 않는다 |
 
 ### 법률 질문 (자리만, 필드와 여러 번 묻고 답하는 방식은 F2 설계 때)

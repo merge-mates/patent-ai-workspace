@@ -15,6 +15,7 @@ from patent_ai.api.deps import (
     get_cancel_registry,
     get_case_repository_unit,
     get_case_unit,
+    get_human_input_store,
     get_oa_result_store,
     get_run_executor,
     get_run_launcher,
@@ -24,6 +25,7 @@ from patent_ai.api.deps import (
     get_upload_dir,
 )
 from patent_ai.api.main import create_app
+from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputSource
 from patent_ai.core.cases.selections import InMemorySelectionStore
@@ -82,6 +84,7 @@ class RunCaseApp:
         self.oa_results = InMemoryOAResultStore(self.runs)
         self.steps = InMemoryStepResultStore()
         self.selections = InMemorySelectionStore()
+        self.human = InMemoryHumanInputStore()
         self.launch_enabled = True
         self.executor = RunCaseExecutor(
             store=self.runs,
@@ -94,6 +97,7 @@ class RunCaseApp:
             make_ctx=make_ctx,
             today=lambda: CHECKED_ON,
             selections=self.selections,
+            human=self.human,
         )
         unit = FakeUnit(self.cases)
         app = create_app(startup_store=self.runs)
@@ -107,6 +111,7 @@ class RunCaseApp:
                 get_oa_result_store: lambda: self.oa_results,
                 get_step_result_store: lambda: self.steps,
                 get_selection_store: lambda: self.selections,
+                get_human_input_store: lambda: self.human,
                 get_run_executor: lambda: self.executor,
                 get_run_launcher: lambda: self._launch,
             }

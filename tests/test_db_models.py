@@ -11,6 +11,7 @@ from sqlalchemy import CheckConstraint, Date, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
 from patent_ai.core.agents.steps import StepRecord
+from patent_ai.core.cases.human_inputs import HumanInputKind
 from patent_ai.core.llm.limits import CallRecord
 from patent_ai.core.runs.store import RunKind
 from patent_ai.core.schemas.common import Origin, StatusValue
@@ -40,6 +41,7 @@ RESULT_TABLES = {
     "result_inputs",
     "api_cache",
     "direction_selections",
+    "human_inputs",
 }
 M1_TABLES = CASE_TABLES | RESULT_TABLES
 # API 명세(docs/api/README.md)의 실행 상태 state
@@ -289,3 +291,13 @@ def test_보정서_판은_이력_줄이_꼭_있음():
     # #120 리뷰 (가): 보정서 판인데 case_event_id가 비면 DB가 막는다 (#16 T6)
     sql = _check_sql("claim_versions", "ck_claim_versions_amendment_event")
     assert "case_event_id IS NOT NULL" in sql
+
+
+def test_human_inputs_kind_matches_core_and_only_numbers_have_value():
+    # 사람이 넣은 번호·"맞아요" (#70 계획 ②). 확인은 값이 없고 번호는 값이 있다
+    assert _check_values("human_inputs", "ck_human_inputs_kind") == set(get_args(HumanInputKind))
+    assert "value IS NULL" in _check_sql("human_inputs", "ck_human_inputs_value")
+    t = _table("human_inputs")
+    for col in ("oa_id", "run_id", "kind", "created_at"):
+        assert not t.c[col].nullable
+    assert ["run_id"] in [[c.name for c in i.columns] for i in t.indexes]

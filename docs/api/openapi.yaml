@@ -79,6 +79,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Patch Case
+      operationId: patch_case_cases__case_id__patch
+      parameters:
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationNumberIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberEnteredOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /cases/{case_id}/materials:
     get:
       summary: Get Case Materials
@@ -151,6 +180,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OADetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      summary: Patch Oa
+      operationId: patch_oa_oas__oa_id__patch
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispatchNumberIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NumberEnteredOut'
         '422':
           description: Validation Error
           content:
@@ -457,6 +515,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /oas/{oa_id}/oa-result/confirmation:
+    put:
+      summary: Put Confirmation
+      operationId: put_confirmation_oas__oa_id__oa_result_confirmation_put
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: Get Confirmation
+      operationId: get_confirmation_oas__oa_id__oa_result_confirmation_get
+      parameters:
+      - name: oa_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Oa Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AddedSource:
@@ -544,6 +649,15 @@ components:
       - initial
       - final
       title: AmendmentLimit
+    ApplicationNumberIn:
+      properties:
+        application_number:
+          type: string
+          title: Application Number
+      type: object
+      required:
+      - application_number
+      title: ApplicationNumberIn
     AsOfSource:
       type: string
       enum:
@@ -1339,6 +1453,26 @@ components:
       - medium
       - low
       title: Confidence
+    ConfirmationOut:
+      properties:
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+      type: object
+      required:
+      - oa_id
+      - run_id
+      - confirmed_at
+      title: ConfirmationOut
     CreatedCase:
       properties:
         case_id:
@@ -1550,6 +1684,15 @@ components:
       - result
       - rank_notice
       title: DirectionsOut
+    DispatchNumberIn:
+      properties:
+        dispatch_number:
+          type: string
+          title: Dispatch Number
+      type: object
+      required:
+      - dispatch_number
+      title: DispatchNumberIn
     Drafts:
       properties:
         status:
@@ -2344,6 +2487,23 @@ components:
       - substantially_same_candidate
       - different
       title: NoveltyVerdict
+    NumberEnteredOut:
+      properties:
+        case_id:
+          type: string
+          title: Case Id
+        oa_id:
+          type: string
+          title: Oa Id
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - case_id
+      - oa_id
+      - run_id
+      title: NumberEnteredOut
     OADetail:
       properties:
         oa_id:

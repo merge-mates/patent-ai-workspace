@@ -25,6 +25,8 @@ from pathlib import Path
 from patent_ai.core.agents.orchestrator import CaseStore, RunOutcome, run_case
 from patent_ai.core.agents.step_inputs import InputMissing, f4_input
 from patent_ai.core.agents.steps import StepRecord
+from patent_ai.core.cases.human_answers import apply_human_numbers
+from patent_ai.core.cases.human_inputs import HumanInputStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.run_inputs import RunInputSource
 from patent_ai.core.cases.selections import SelectionStore
@@ -60,6 +62,14 @@ _OUTCOME_MESSAGES = {
     "invalid_tool_choice": "지휘 설정·선택이 잘못돼 멈췄습니다",
     "no_oa_result": "OA 정리 없이 멈췄습니다",
 }
+
+
+class _CannotResume(Exception):
+    """기다리던 실행을 이어 돌 재료가 없다 (실행은 failed로 끝난다)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code, self.message = code, message
 
 
 class _Cancelled(Exception):
@@ -100,6 +110,7 @@ class RunCaseExecutor:
         make_ctx: Callable[[str], RunContext],
         today: Callable[[], date],
         selections: SelectionStore,
+        human: HumanInputStore,
         lock: threading.Lock | None = None,
     ) -> None:
         self._store = store
@@ -113,6 +124,7 @@ class RunCaseExecutor:
         self._today = today  # F4 확인 기준일 = 실행한 날 (코드가 몰래 오늘을 읽지 않게 받는다)
         self._lock = lock or threading.Lock()
         self._selections = selections  # 사람 방향 선택 기록 (초안만 다시 만드는 실행이 읽는다)
+        self._human = human  # 사람이 넣은 번호 (기다리던 실행이 이어 돌 때 읽는다)
 
     def execute(self, run_id: str, oa_id: str) -> None:
         with self._lock:  # 한 번에 하나만 돈다
@@ -131,6 +143,8 @@ class RunCaseExecutor:
         self._finish(run_id, RunState.FAILED, error=RunError(code, message))
 
     def _run(self, run_id: str, oa_id: str) -> None:
+        before = self._store.get_status(run_id)
+        resuming = before is not None and before.state == RunState.WAITING_FOR_HUMAN
         # 기다리는 동안 취소됐으면(queued -> cancelled) 여기서 막혀 돌지 않는다
         try:
             self._store.transition(run_id, RunState.RUNNING, current_step=FIRST_STEP)
@@ -148,6 +162,13 @@ class RunCaseExecutor:
             case_input = self._inputs.case_input(oa_id).model_copy(
                 update={"checked_on": self._today()}
             )
+            if resuming:
+                case_input = case_input.model_copy(
+                    update={"resume_oa": self._resume_oa(run_id, oa_id)}
+                )
+        except _CannotResume as exc:
+            self._fail(run_id, exc.code, exc.message)
+            return
         except Exception as exc:
             logger.exception("실행 %s의 입력을 만들지 못함", run_id)
             self._fail(run_id, "step_failed", safe_message("실행 입력 준비", exc))
@@ -173,6 +194,17 @@ class RunCaseExecutor:
             self._fail(run_id, "step_failed", safe_message(where, exc))
             return
         self._apply(run_id, oa_id, outcome, steps)
+
+    def _resume_oa(self, run_id: str, oa_id: str):
+        """기다리던 실행이 저장한 OA 정리에 사람이 넣은 번호를 덮는다 (#70)."""
+        saved = self._oa_results.oa_result_of_run(run_id)
+        if saved is None:
+            raise _CannotResume("no_saved_oa_result", "이어 돌 OA 정리가 저장돼 있지 않습니다")
+        numbers = self._human.numbers_for_run(run_id)
+        if not numbers:
+            # 번호 없이 이어 돌면 같은 자리에서 또 멈춘다: 성공처럼 두지 않고 멈춘다
+            raise _CannotResume("no_human_input", "이어 돌 때 쓸 사람 입력 번호가 없습니다")
+        return apply_human_numbers(saved, numbers)
 
     def _redo(self, run_id: str, oa_id: str) -> None:
         """사람 선택 뒤 초안만 다시 만든다 (#70). 앞 실행 결과는 지우지 않고 이 실행으로 옮긴다."""
