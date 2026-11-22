@@ -239,7 +239,7 @@ flowchart LR
 
 ## 9. 테스트 방법
 - 어디서: `research()` 입력 → 출력 한 곳. 출처 확인은 따로 촘촘히 (꼭 지킬 선).
-- 가짜 응답: 검색은 검색 계약 `fake` 구현 + `tests/fixtures/f2/chunks.jsonl`(지어낸 조문 두 판, 심사기준 문단, 판례 요지·전문). 모델은 녹화 응답 `tests/fixtures/f2/llm/`.
+- 가짜 응답 / 기록된 모델 응답: 검색은 검색 계약 `fake` 구현 + `tests/fixtures/f2/chunks.jsonl`(지어낸 조문 두 판, 심사기준 문단, 판례 요지·전문). 모델은 기록된 모델 응답 `tests/fixtures/f2/llm/` (사람이 쓴 답이면 가짜 응답).
 - 상태마다 하나씩 (`tests/fixtures/f2/`):
   - `confirmed`: 진보성 질문 → 조문·심사기준·판례 근거, 근거 검토 뒷받침.
   - `not_found_in_scope`: 어느 조각과도 안 겹치는 질문 → 다시 찾기 1번 뒤 빈 결과 + 찾아본 범위.
@@ -247,13 +247,13 @@ flowchart LR
   - 시점 없음: 같은 조문 두 판 → 현행판 조각만 나온다 (`as_of = checked_on`).
   - 출원일판 ≠ 발송일판: 근거는 발송일판, 출원일판은 `further_review`의 `other_edition`.
   - `unverified(body_missing)`: 심사기준·심결 색인 없음. 그 유형 조각이 0개면 `search`를 부르지 않는다 (가짜 검색기 호출 0번).
-  - 기준일이 색인의 가장 이른 판보다 앞섬: `get_article`(조문 번호 앎) → 법령 API 녹화 응답으로 그 판, 녹화 없으면 `lookup_failed` / `search_article`(번호 모름) → `edition_unknown`, 법령 API 호출 0번 / 심사기준 → `edition_unknown` (셋 다 `not_found_in_scope`가 아님).
-  - 74건 밖 사건번호: 법령 API 녹화 응답에 있음 → 근거, 없음 → `not_found_in_scope`.
+  - 기준일이 색인의 가장 이른 판보다 앞섬: `get_article`(조문 번호 앎) → 법령 API 기록된 응답으로 그 판, 기록 없으면 `lookup_failed` / `search_article`(번호 모름) → `edition_unknown`, 법령 API 호출 0번 / 심사기준 → `edition_unknown` (셋 다 `not_found_in_scope`가 아님).
+  - 74건 밖 사건번호: 법령 API 기록된 응답에 있음 → 근거, 없음 → `not_found_in_scope`.
   - 심결 내용 검색: 사건번호 없는 진보성 질문 → `search_precedent`가 심결 조각도 낸다.
   - 상한: `max_model_calls`를 1로 두고 거절이유 3개 → ④ 3개 저장, 못 다룬 2개는 `unverified`.
   - 받은 12건 밖의 심판번호 → `not_found_in_scope` + 찾아본 범위.
   - `unverified(input_unverified)`: F1 조문이 `unverified`인 거절이유.
-  - 오류 주입 5종: 녹화 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
+  - 오류 주입 5종: 기록된 응답에 없는 사건번호 / 주장과 반대인 인용 / 다른 판본 / 요지를 전문으로 / 개정 전 기한 → 출처 확인 또는 근거 검토에서 걸림.
   - 부딪힘: 글 시점 ≠ 선택 시점 → `clarifications` 1건, 판례 검색은 두 날짜 중 이른 날로 끝나 있음, 조문·심사기준은 확인 대기.
   - 대화 두 번: 두 번째에 시점 바꿈 → `scope_changed`, `prior_evidence` 유지.
   - 사건번호만 입력 "2007후3660" → `get_precedent`로 읽음.
@@ -262,4 +262,4 @@ flowchart LR
   - OA 흐름: 거절이유 3개인 가짜 `OAResult` → ④ 3개, 모두 `origin = ai_generated`. 질의에 등록공보 글 0자 (등록공보 판을 넘기면 멈춤).
   - OA 발송일 `unverified` → 조문·심사기준·판례·심결 검색 모두 보류, 결과 `input_unverified`.
   - 판례 날짜: 선고일이 OA 발송일보다 뒤인 판례 조각 하나 + 날짜 모름 심결 조각 하나 → 앞의 것은 검색 결과에서 빠지고(`get_precedent`로 읽으면 `further_review`), 뒤의 것은 `skipped_unknown_date` 1로 `search_log`에 남는다. 이 둘만 있으면 결과는 `unverified(edition_unknown)`.
-  - 사건 적용 표현: 녹화 응답의 답 글(따옴표 안 원문 인용 밖)에 "이 사건에 적용"·"등록 가능"을 넣으면 거부하지 않고 그 주장에 `needs_human_review` + 경고. 판례 인용 안의 "적용된다"는 걸리지 않는다.
+  - 사건 적용 표현: 기록된 모델 응답의 답 글(따옴표 안 원문 인용 밖)에 "이 사건에 적용"·"등록 가능"을 넣으면 거부하지 않고 그 주장에 `needs_human_review` + 경고. 판례 인용 안의 "적용된다"는 걸리지 않는다.

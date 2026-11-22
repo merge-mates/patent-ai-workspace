@@ -85,7 +85,7 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
 
   const skipped = t.citations.filter((c) => !c.compared)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <CoreLabel />
         <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
