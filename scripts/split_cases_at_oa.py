@@ -15,8 +15,10 @@
   ... --write --log work/split_cases_<날짜>.log   # 실제로 쓰기, 파일 이름 목록은 git 밖 로그로
   uv run python scripts/split_cases_at_oa.py --audit data/processed/cases   # 다 쓴 뒤 새는 것 세기
 report 입력 (마일스톤 끝 채점용, 사람이 터미널에서 직접. Claude는 report 경로를 열지 않는다, #159):
-  ... --src data/goldsets/report/case_full --out data/processed/report/cases --allow-report --write
-  ... --audit data/processed/report/cases --allow-report
+  ... --src data/goldsets/report/case_full --out data/goldsets/report/cases_at_oa \
+      --log data/goldsets/report/split_cases.log --allow-report --write
+  ... --audit data/goldsets/report/cases_at_oa --allow-report
+  출력·검사·로그는 goldsets/report/ 아래만 된다 (훅·settings deny가 막는 자리, PR #226 리뷰).
 출력에는 원문 글자를 넣지 않는다. 대상 폴더가 하나라도 이미 있으면 아무것도 안 쓰고 멈춘다.
 --src는 받은 묶음 폴더다. tune은 정답 쪽 `data/goldsets/tune/case_full/`에 있어 이 스크립트가
 거기를 읽는다 (입력을 만드는 데이터 준비 단계라 예외. 앱 코드는 여전히 goldsets를 읽지 않는다).
@@ -277,7 +279,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--allow-report",
         action="store_true",
-        help="사람만 쓴다: report 묶음을 자른다. 출력·검사 폴더도 report 경로여야 한다",
+        help="사람만 쓴다: report 묶음을 자른다. 출력·검사·로그는 goldsets/report/ 아래만",
     )
     args = ap.parse_args(argv)
 
@@ -287,12 +289,17 @@ def main(argv: list[str]) -> int:
             for part in (*path.parts, *path.resolve().parts)
         )
 
+    def under_goldsets_report(path: Path) -> bool:
+        # 링크를 따라간 실제 경로에 goldsets/report가 이어져 있어야 한다.
+        # 훅과 settings deny가 막는 자리는 여기뿐이다 (data/processed/report는 안 막힘)
+        parts = path.resolve().parts
+        return any(parts[i : i + 2] == ("goldsets", "report") for i in range(len(parts) - 1))
+
     if args.allow_report:
-        # report 입력이 개발 세션이 읽는 data/processed/cases에 섞이지 않게
-        # 출력도 봉인 자리만 (#159)
-        for path in (args.out, args.audit):
-            if path and not sealed(path):
-                msg = f"--allow-report면 출력·검사 폴더도 report 경로여야 함: {path}"
+        # report 입력·파일 이름 로그가 개발 세션이 읽는 data/processed·work에 남지 않게 (#159)
+        for path in (args.out, args.audit, args.log):
+            if path and not under_goldsets_report(path):
+                msg = f"--allow-report면 출력·검사·로그가 goldsets/report/ 아래여야 함: {path}"
                 print(msg, file=sys.stderr)
                 return 1
     else:
