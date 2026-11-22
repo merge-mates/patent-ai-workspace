@@ -2,7 +2,8 @@
 
 BM25와 벡터 두 검색기의 순위를 RRF(Reciprocal Rank Fusion)로 섞는다.
 안쪽 검색기는 get_searcher로 만든다 (계약 검사 래퍼를 그대로 거침).
-core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나 녹화 파일).
+core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나
+기록된 모델 응답 파일).
 """
 
 import math
@@ -45,17 +46,25 @@ def _read_hybrid_settings(settings: dict) -> tuple[int, dict[str, float]]:
     # bool은 int의 하위 타입이라 따로 막는다
     if not isinstance(rrf_k, int) or isinstance(rrf_k, bool) or rrf_k <= 0:
         raise ValueError(f"hybrid.rrf_k는 1 이상의 정수여야 한다: {rrf_k!r}")
-    weights = cfg.get("weights")
+    return rrf_k, read_weights(cfg.get("weights"), "hybrid")
+
+
+def read_weights(weights, name: str) -> dict[str, float]:
+    """bm25·vector 가중치를 검사한다 (hybrid·weighted_sum이 같이 쓴다. 규칙이 어긋나지 않게).
+
+    키는 bm25, vector 둘. 값은 0 이상의 유한한 숫자이고 둘 다 0이면 안 된다.
+    """
     if not isinstance(weights, dict) or set(weights) != _METHODS:
-        raise ValueError(f"hybrid.weights 키는 bm25, vector여야 한다: {weights!r}")
+        raise ValueError(f"{name}.weights 키는 bm25, vector여야 한다: {weights!r}")
+    # bool은 int의 하위 타입이라 따로 막는다
     if any(
         isinstance(w, bool) or not isinstance(w, int | float) or not math.isfinite(w) or w < 0
         for w in weights.values()
     ):
-        raise ValueError(f"hybrid.weights는 0 이상의 유한한 숫자여야 한다: {weights!r}")
+        raise ValueError(f"{name}.weights는 0 이상의 유한한 숫자여야 한다: {weights!r}")
     if sum(weights.values()) == 0:
-        raise ValueError("hybrid.weights가 둘 다 0이다")
-    return rrf_k, {m: float(w) for m, w in weights.items()}
+        raise ValueError(f"{name}.weights가 둘 다 0이다")
+    return {m: float(w) for m, w in weights.items()}
 
 
 @register_impl("hybrid")

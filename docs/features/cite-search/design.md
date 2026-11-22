@@ -24,7 +24,7 @@ requirements: ./requirements.md
 | 9 하이브리드 Hit@k | 7-4 |
 | 10 세 방식 표 | 7-5 비교 카드 (`score --rows-out` 줄별 결과 + `eval/retrieval/compare.py`) |
 | 11 벡터 색인 | 7-3 색인 단계 (`core/index_embed`가 같은 글은 한 번만), 비용은 호출 기록 |
-| 12 조용히 안 뺌 | `vector` impl이 이미 멈춤(벡터 없는 조각, 녹화에 없는 질의), 하이브리드도 그대로 올림 |
+| 12 조용히 안 뺌 | `vector` impl이 이미 멈춤(벡터 없는 조각, 기록된 모델 응답(질의 벡터)에 없는 질의), 하이브리드도 그대로 올림 |
 
 ## 2. 흐름
 ```mermaid
@@ -123,7 +123,7 @@ flowchart LR
     tokenizer: kiwi
     pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
     bm25: {method: lucene, k1: 1.5, b: 0.75}
-    query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 녹화
+    query_vectors: work/retrieval/m2-i2-cite-search-vector/query_vectors.json  # 벡터 실험과 같은 기록된 모델 응답(질의 벡터)
     hybrid:
       rrf_k: 60
       weights: {bm25: 0.5, vector: 0.5}
@@ -132,7 +132,7 @@ flowchart LR
 - RRF: 조각마다 `Σ w_m / (rrf_k + rank_m)` (m = bm25, vector). 한쪽 결과에 없는 조각은 그쪽 항이 0. 기본 `rrf_k = 60`, `w = 0.5 / 0.5` (11/20 재아가 추천대로 고름, 값은 실험 config `settings.hybrid`). 정렬은 `(-점수, chunk_id)` (계약).
 - 섞기 전 깊이: 위 안쪽 `k`로 두 검색기 모두 범위 안 전체 순위를 받는다 (문헌 하나가 조각 수백 개 아래라 작음, 판단). BM25는 0점 조각을 안 돌려주므로 BM25 쪽은 겹치는 낱말이 있는 조각만 들어간다.
 - 상태: 두 쪽 모두 `body_missing`이면 그대로, 섞은 hit가 0개면 `not_found_in_scope`. `skipped_unverified_edition`은 두 쪽 중 큰 값 (인용문헌은 판본 칸이 `not_applicable`이라 0).
-- 모델 호출: 없음 (질의 벡터는 7-3 녹화 파일).
+- 모델 호출: 없음 (질의 벡터는 7-3 기록된 모델 응답(질의 벡터) 파일).
 
 ### 7-5. 비교 카드
 - 같은 지문에서 비교: 채점기는 "지문이 다른 실험끼리는 점수를 비교하지 않는다"(`eval/retrieval/score.py` 지문 주석). v1과 v2는 `chunk_id` 앞말이 달라 지문이 다르므로, BM25도 `cite-idx-v2`로 다시 채점한다 (법령 `m2-i2-law-bm25-v2`와 같은 방식). v2 BM25 점수가 v1 기준선과 같은지도 카드에 한 줄.
@@ -140,6 +140,12 @@ flowchart LR
 - 줄별 결과: `eval.retrieval.score`에 `--rows-out <git 밖 경로>`를 더해 줄마다 `row_id`·`doc_ids`·처음 맞힌 순위 `first_hit_rank`(1부터, 없으면 null)·채점 때 가장 큰 k `k_max`를 JSONL로 쓴다. `compare.py`는 `k_max`가 없거나 `--k`가 `k_max`보다 크면 종료 1 (조용히 틀린 Hit@k를 막음, 구현 중 리뷰 11/20) (`RowResult`는 지금 메모리에만 있음). scores.json 모양은 안 바꾼다. 경로가 git에 들어갈 수 있으면 종료 1 (`cite_index --jsonl`과 같은 검사).
 - 비교 도구: 새 `eval/retrieval/compare.py --rows bm25=<p> vector=<p> hybrid=<p> --k 10` → 표(마크다운): 방식별 Hit@1·3·5·10 전체 / 한국 공보(`doc_id`가 `KR`로 시작) / 논문(`NPL-`로 시작), 방식별 CQ 수(상위 10에 없음), "상위 10 안에서 한 방식만 찾은 줄" 수. 세 파일의 `row_id` 집합이 다르면 종료 1 (같은 정답 줄인지 검사). 표는 하이브리드 카드에 붙인다.
 - 다음 칸에 남길 것: 다른 섞는 법(점수 맞춘 가중합, 가중치, 상위 N개만) 조사는 결과를 본 뒤 (11/20 재아).
+
+### 7-6. 2단계·가중합 (이슈 #212, 11/22 밤 실험용)
+- 새 impl 둘. 둘 다 7-4처럼 안쪽 검색기를 `get_searcher`로 만들고, 결과 `mode = "hybrid"` (Mode에 다른 값이 없음), 정렬 `(-점수, chunk_id)`.
+- `two_stage` (`retrieval/two_stage.py`): BM25가 범위 안 위 N개를 후보로 고르고, 그 후보만 벡터 점수로 다시 줄세운다. 점수 = 벡터 점수. 설정 `two_stage: {candidates: N}` (1 이상의 정수, 아니면 `ValueError`). BM25 후보가 0개면 순수 벡터로 되돌아가지 않고 `not_found_in_scope`.
+- `weighted_sum` (`retrieval/weighted_sum.py`): 방식마다 돌려준 조각의 점수를 min-max로 [0, 1]에 맞추고(전부 같으면 1.0, 안 돌려준 조각은 0) `w_bm25·bm25 + w_vector·vector`. 설정 `weighted_sum: {weights: {bm25: w, vector: 1-w}}` (검사는 `hybrid.weights`와 같음).
+- 기본 impl은 그대로 `hybrid`(RRF)다. 기본을 바꿀지는 재아가 실험 결과를 보고 정한다.
 
 ## 8. 이 기능 안의 결정
 | 고른 것 | 버린 것 | 이유 | 계기 | 근거 |
@@ -166,6 +172,6 @@ flowchart LR
 ## 9. 테스트 방법
 - 경계: `PageExtractor.extract` 뒤(줄 목록 → 조각)와 정답 변환(JSON → gold 줄), bm25 impl(메모리 저장소 → `SearchResult`).
 - PDF 글자 추출은 지어낸 작은 PDF 하나(테스트가 만들거나 fixture)로 한 번만. 나머지는 줄 목록 fixture.
-- 벡터·하이브리드 (11/20): 메모리 저장소 + 지어낸 벡터 fixture + 녹화 질의 벡터로. RRF 계산(두 목록에 다 있는 조각이 위로, 한쪽에만 있는 조각, 같은 점수는 `chunk_id` 순, 바깥 k=1이어도 1위가 같음), 한쪽만 `not_found_in_scope`일 때, 둘 다 `body_missing`일 때, `settings.hybrid` 빠짐 → `ValueError`, 래퍼가 `hybrid`를 받음, `index_embed`가 cite 판을 받고 판 앞말만 바뀜, DB 넣기 cite 검사(`@pytest.mark.db`), `--rows-out` 줄 수 = n, `compare.py` 한국/논문 나눔과 `row_id` 집합 다름 → 종료 1. 진짜 임베딩 호출은 테스트에 없음.
+- 벡터·하이브리드 (11/20): 메모리 저장소 + 지어낸 벡터 fixture + 기록된 모델 응답(질의 벡터)로. RRF 계산(두 목록에 다 있는 조각이 위로, 한쪽에만 있는 조각, 같은 점수는 `chunk_id` 순, 바깥 k=1이어도 1위가 같음), 한쪽만 `not_found_in_scope`일 때, 둘 다 `body_missing`일 때, `settings.hybrid` 빠짐 → `ValueError`, 래퍼가 `hybrid`를 받음, `index_embed`가 cite 판을 받고 판 앞말만 바뀜, DB 넣기 cite 검사(`@pytest.mark.db`), `--rows-out` 줄 수 = n, `compare.py` 한국/논문 나눔과 `row_id` 집합 다름 → 종료 1. 진짜 임베딩 호출은 테스트에 없음.
 - 경우: 지어낸 3쪽 공보에서 머리말·쪽 번호가 빠지고 본문 줄은 남음 / 쪽을 넘는 문단이 이어짐 / 청구항·요약·도면 설명 조각 / 미국 문헌 건너뜀 경고 / 식별번호 0개 경고 / 정답 범위 펼치기·같은이유·위치 없음·질의 없음 / 두 번 색인 같음 / bm25 같은 점수 순서.
 - Postgres 쓰기는 `@pytest.mark.db`.

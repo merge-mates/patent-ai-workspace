@@ -40,4 +40,4 @@ class ModelCallLimitExceeded(Exception):
 
 
 class RecordingMissing(Exception):
-    """녹화한 답 파일이 없음. 조용히 진짜 호출하지 않고 멈춘다."""
+    """기록된 모델 응답 파일이 없음. 조용히 진짜 호출하지 않고 멈춘다."""

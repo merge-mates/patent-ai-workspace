@@ -1,6 +1,6 @@
 """F3·F4 결과 조회 API (이슈 #191 T3). 확인: uv run pytest tests/api -k results_api
 
-진짜 실행기(RunCaseExecutor) + 메모리 저장소 + 기록된 응답. 네트워크·키·DB 없음.
+진짜 실행기(RunCaseExecutor) + 메모리 저장소 + 가짜 응답. 네트워크·키·DB 없음.
 launcher는 그 자리에서 바로 돈다 (진짜 앱은 백그라운드 스레드).
 """
 
