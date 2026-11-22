@@ -58,6 +58,8 @@ export function seedRun(run: LatestRun) {
   }
   if (!sameRun(e.snap.run, run) || e.snap.error !== null) {
     const stateChanged = e.snap.run.state !== run.state
+    // 앞서 이유 받기(GET /runs)가 실패했으면 상태가 같아도 다시 묻는다 (PR #235 리뷰)
+    const hadError = e.snap.error !== null
     // 실행 상태가 달라지면 이전 실패 이유는 버린다 (다시 돌린 경우)
     e.snap = {
       run,
@@ -66,7 +68,7 @@ export function seedRun(run: LatestRun) {
       waitingFor: run.state === 'waiting_for_human' ? e.snap.waitingFor : null,
     }
     // 상태가 바뀌면(예: 사람 기다림 → 실패) 이유를 다시 받는다
-    if (stateChanged || !needsDetail(run.state)) e.reasonAsked = false
+    if (stateChanged || hadError || !needsDetail(run.state)) e.reasonAsked = false
     notify(e)
   }
   askReason(run.run_id)
