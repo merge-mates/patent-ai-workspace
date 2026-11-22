@@ -8,6 +8,8 @@
   (폴링하는 화면이 도는 중에도 본다).
 - 취소: 단계 기록이 하나 남을 때마다 취소 표시를 보고, 있으면 그 자리에서 멈춘다
   (지금 단계는 끝까지 돈 뒤라 "지금 단계가 끝난 뒤 cancelled" 규칙과 같다). 결과는 저장하지 않는다.
+- 초안만 다시 만드는 실행(kind = redo_drafts, #70): 지휘를 돌리지 않는다. 보여 줄 앞 실행의
+  OA 정리·F3·F2를 이 실행으로 옮기고, 앞 F4 결과 + 가장 최근 사람 선택으로 초안만 다시 만든다.
 - 한 번에 하나: 서버 안 실행은 잠금 하나를 같이 쓴다. 뒤에 온 실행은 queued로 기다린다
   (모델 호출 상한·비용과 공유 DB 쓰기를 한 실행씩 보려고. 한 사람이 쓰는 앱이라 충분하다).
 """
@@ -21,14 +23,20 @@ from datetime import date
 from pathlib import Path
 
 from patent_ai.core.agents.orchestrator import CaseStore, RunOutcome, run_case
+from patent_ai.core.agents.step_inputs import InputMissing, f4_input
 from patent_ai.core.agents.steps import StepRecord
+from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.run_inputs import RunInputSource
+from patent_ai.core.cases.selections import InMemorySelectionStore, SelectionStore
 from patent_ai.core.cases.step_results import StepResultStore
+from patent_ai.core.f4_response_draft.inputs import F4Input
+from patent_ai.core.f4_response_draft.result import F4Output
+from patent_ai.core.f4_response_draft.run import redo_drafts
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import safe_message
 from patent_ai.core.runs.state import InvalidRunTransition, RunError, RunState
-from patent_ai.core.runs.store import OAResultSink, RunStatusStore
+from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
@@ -43,6 +51,7 @@ _NEXT_STEP = {
     "run_f4": "결과 저장 중",
 }
 FIRST_STEP = "OA 글자 읽는 중"
+REDO_STEP = "고른 방향으로 초안 다시 만드는 중"
 
 # 지휘가 낸 실패 코드 중 그대로 내보내는 것과 그 이유 글 (원문 예외 글은 쓰지 않는다)
 _OUTCOME_MESSAGES = {
@@ -83,7 +92,7 @@ class RunCaseExecutor:
         *,
         store: RunStatusStore,
         registry: CancelRegistry,
-        oa_results: OAResultSink,
+        oa_results: OAResultStore,
         step_results: StepResultStore,
         inputs: RunInputSource,
         cases: CaseStore,
@@ -91,6 +100,7 @@ class RunCaseExecutor:
         make_ctx: Callable[[str], RunContext],
         today: Callable[[], date],
         lock: threading.Lock | None = None,
+        selections: SelectionStore | None = None,
     ) -> None:
         self._store = store
         self._registry = registry  # 취소 API와 같은 것이어야 취소가 닿는다
@@ -102,6 +112,8 @@ class RunCaseExecutor:
         self._make_ctx = make_ctx  # 실행마다 새 모델 호출 맥락 (상한·기록이 실행끼리 안 섞이게)
         self._today = today  # F4 확인 기준일 = 실행한 날 (코드가 몰래 오늘을 읽지 않게 받는다)
         self._lock = lock or threading.Lock()
+        # 사람 방향 선택 기록 (초안만 다시 만드는 실행이 읽는다). 비우면 늘 빈 기록
+        self._selections = selections or InMemorySelectionStore()
 
     def execute(self, run_id: str, oa_id: str) -> None:
         with self._lock:  # 한 번에 하나만 돈다
@@ -128,6 +140,10 @@ class RunCaseExecutor:
             return
         if self._registry.is_requested(run_id):
             self._finish(run_id, RunState.CANCELLED)
+            return
+        status = self._store.get_status(run_id)
+        if status is not None and status.kind == "redo_drafts":
+            self._redo(run_id, oa_id)
             return
         try:
             case_input = self._inputs.case_input(oa_id).model_copy(
@@ -158,6 +174,55 @@ class RunCaseExecutor:
             self._fail(run_id, "step_failed", safe_message(where, exc))
             return
         self._apply(run_id, oa_id, outcome, steps)
+
+    def _redo(self, run_id: str, oa_id: str) -> None:
+        """사람 선택 뒤 초안만 다시 만든다 (#70). 앞 실행 결과는 지우지 않고 이 실행으로 옮긴다."""
+        self._store.set_current_step(run_id, REDO_STEP)
+        saved = self._oa_results.latest_visible_oa_result(oa_id)
+        prev_run = saved.run_id if saved else None
+        f4 = self._step_results.step_result(prev_run, "f4") if prev_run else None
+        if saved is None or not isinstance(f4, F4Output):
+            self._fail(run_id, "no_previous_drafts", "다시 만들 앞 실행의 방향 후보가 없습니다")
+            return
+        f3 = self._step_results.step_result(prev_run, "f3")
+        f2 = self._step_results.step_result(prev_run, "f2")
+        try:
+            texts = self._inputs.case_input(oa_id).texts
+            payload = f4_input(
+                {"read_oa": saved.result, "run_f3": f3, "run_f2": f2}, texts, self._today()
+            )
+            if isinstance(payload, InputMissing):
+                self._fail(run_id, "step_failed", f"초안 입력을 만들지 못함 ({payload.why})")
+                return
+            # 앞 실행 묶음에 있는 선택만 (사라진 묶음의 옛 선택은 쓰지 않는다)
+            units = {d.unit_id for d in f4.directions}
+            picks = {
+                u: sel for u, sel in self._selections.latest_selections(oa_id).items() if u in units
+            }
+            out = redo_drafts(
+                F4Input.model_validate(payload), f4, picks, ctx=self._make_ctx(run_id)
+            )
+        except Exception as exc:
+            logger.exception("실행 %s의 초안 다시 만들기 실패", run_id)
+            self._fail(run_id, "step_failed", safe_message("초안 다시 만들기", exc))
+            return
+        if self._registry.is_requested(run_id):
+            self._finish(run_id, RunState.CANCELLED)
+            return
+        try:
+            # 결과 칸들이 한 실행에서 나오게 OA 정리·F3·F2도 이 실행으로 옮긴다 (넘긴 이유도)
+            self._oa_results.save_oa_result(oa_id, run_id, saved.result)
+            for body in (f3, f2, out):
+                if body is not None:
+                    self._step_results.save_step_result(oa_id, run_id, body)
+            for skipped in self._store.skipped_steps(prev_run):
+                if skipped.step != "run_f4":
+                    self._store.record_skipped(run_id, skipped.step, skipped.reason)
+        except Exception as exc:
+            logger.exception("실행 %s의 결과 저장 실패", run_id)
+            self._fail(run_id, "result_save_failed", safe_message("결과 저장", exc))
+            return
+        self._finish(run_id, RunState.SUCCEEDED)
 
     def _apply(self, run_id: str, oa_id: str, outcome: RunOutcome, steps: _LiveSteps) -> None:
         if outcome.state == "failed":
