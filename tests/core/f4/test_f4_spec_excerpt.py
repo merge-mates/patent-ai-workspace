@@ -228,7 +228,9 @@ def test_안내_문구_파일이_없거나_비면_멈춘다(tmp_path, monkeypatc
 def _query_for(unit_id: str) -> str:
     inp = _case()
     unit = next(u for u in inp.units if u.unit_id == unit_id)
-    return _excerpt_query(inp, unit, f3_results(inp, unit))
+    # 고른 방향 글자는 비워 둔다: 기존 질의 몫만 본다
+    blank = _chosen(name="", reason="", per_rejection=[])
+    return _excerpt_query(inp, unit, f3_results(inp, unit), blank)
 
 
 def test_질의에_개시됨_줄은_없고_차이_후보와_차이점과_청구항_글자는_있다():
@@ -248,7 +250,7 @@ def test_불명_줄의_구성요소도_질의에_들어간다():
         for r in table.rows[:1]
     ]
     table = table.model_copy(update={"rows": rows})
-    assert "불명 구성 문구" in _excerpt_query(inp, unit, [table])
+    assert "불명 구성 문구" in _excerpt_query(inp, unit, [table], _chosen())
 
 
 def test_개시됨_줄의_구성요소는_질의_줄에_따로_없다():
@@ -256,8 +258,59 @@ def test_개시됨_줄의_구성요소는_질의_줄에_따로_없다():
     unit = next(u for u in inp.units if u.unit_id == UNIT_INVENTIVE)
     disclosed = [r for r in inp.tables[0].rows if r.judgment == "disclosed"]
     assert disclosed
-    lines = _excerpt_query(inp, unit, f3_results(inp, unit)).split("\n")
+    lines = _excerpt_query(inp, unit, f3_results(inp, unit), _chosen()).split("\n")
     assert all(r.element not in lines for r in disclosed)
+
+
+# ---- 질의에 고른 방향의 보정 핵심 더하기 (재아 11/22 결정) ----
+def _chosen(**update):
+    """가짜 전송층으로 만든 방향 후보 하나(묶음 1의 1순위)를 바탕으로 글자만 바꾼다."""
+    inp = _case()
+    transport = FakeTransport(
+        {
+            "f4.direction": [
+                _text(_answer("direction_inventive")),
+                _text(_answer("direction_clarity")),
+            ]
+        }
+    )
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    found = build_directions(inp, ctx, options=_on(2))
+    cand = next(c for d in found if d.unit_id == UNIT_INVENTIVE for c in d.candidates)
+    return cand.model_copy(update=update)
+
+
+def _query_with(chosen) -> str:
+    inp = _case()
+    unit = next(u for u in inp.units if u.unit_id == UNIT_INVENTIVE)
+    return _excerpt_query(inp, unit, f3_results(inp, unit), chosen)
+
+
+def test_고른_방향의_이름_이유_대응_글자가_질의에_더해진다():
+    from patent_ai.core.schemas.direction import RejectionResponse
+
+    chosen = _chosen(
+        name="방열판 추가",
+        reason="냉각핀 구성을 더해 차이를 만듦",
+        per_rejection=[RejectionResponse(rejection=1, response="냉각핀은 인용발명에 없다")],
+    )
+    base, query = _query_for(UNIT_INVENTIVE), _query_with(chosen)
+    assert query.startswith(base.rstrip("\n"))  # 기존 질의는 그대로 앞에 있다
+    for word in ("방열판 추가", "냉각핀 구성을 더해", "냉각핀은 인용발명에 없다"):
+        assert word in query and word not in base
+
+
+def test_켬이면_고른_방향_글에만_겹치는_문단이_발췌에_들어간다():
+    # 픽스처 1순위 방향의 reason("심사관이 청구항 3을 특허 가능한 청구항으로 적었음")에만 있는 낱말
+    extra = "[0030] 심사관이 특허 가능한 구성으로 적었음을 이 문단이 설명한다."
+    spec = _spec(f"{FILLER_1}\n{FILLER_2}\n{extra}", f"{HIT_1}\n{FILLER_3}")
+    inp = _case().model_copy(update={"spec": spec})
+    assert not any(w in _query_for(UNIT_INVENTIVE) for w in ("심사관이", "특허", "가능한"))
+    text, _ = _prompt_spec(inp, _on(2))
+    assert extra in text and HIT_1 in text
+    assert FILLER_1 not in text and FILLER_3 not in text
 
 
 # ---- 켬인데 전체로 돌아가는 경우는 WARNING ----

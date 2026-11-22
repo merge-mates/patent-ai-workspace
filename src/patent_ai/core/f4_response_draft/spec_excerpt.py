@@ -44,16 +44,6 @@ def _excerpt_note() -> str:
     return note
 
 
-def _excerpt_note() -> str:
-    path = REPO_ROOT / EXCERPT_NOTE_PROMPT
-    if not path.is_file():
-        raise ModelConfigError(f"명세서 발췌 안내 문구 파일이 없음: {path}")
-    note = path.read_text(encoding="utf-8").strip()
-    if not note:
-        raise ModelConfigError(f"명세서 발췌 안내 문구 파일이 비어 있음: {path}")
-    return note
-
-
 def split_paragraphs(spec: PageText) -> list[tuple[int, str]]:
     """명세서를 (쪽 번호, 문단 글자) 목록으로 나눈다. 원래 순서, 빈 문단은 뺀다."""
     out: list[tuple[int, str]] = []

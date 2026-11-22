@@ -185,8 +185,8 @@ def _spec_text(spec: PageText | None) -> str:
     return full_spec_text(spec)
 
 
-def _excerpt_query(inp: F4Input, unit: JudgmentUnit, f3: list) -> str:
-    """발췌 질의: 이 묶음의 차이점 구성요소 글자 + 대상 청구항 글자."""
+def _excerpt_query(inp: F4Input, unit: JudgmentUnit, f3: list, chosen: DirectionCandidate) -> str:
+    """발췌 질의: 차이점 구성요소 글자 + 대상 청구항 글자 + 고른 방향의 이름·이유·반박 글자."""
     parts: list[str] = []
     for t in f3:
         if isinstance(t, ComparisonTable):
@@ -196,6 +196,8 @@ def _excerpt_query(inp: F4Input, unit: JudgmentUnit, f3: list) -> str:
                 parts += t.summary.differences
     texts = {c.claim: c.text for c in inp.claims_text}
     parts += [texts[n] for n in unit.claims if n in texts]
+    # 고른 방향이 말하는 보정 내용: 보정 프롬프트 selected에 들어가는 그 글자
+    parts += [chosen.name, chosen.reason, *(r.response for r in chosen.per_rejection)]
     return "\n".join(parts)
 
 
@@ -335,7 +337,7 @@ def build_amendments(
             # 프롬프트에만 발췌를 넣는다. 아래 근거 대조는 그대로 inp.spec 전체로 한다
             variables["spec"] = excerpt_spec_text(
                 inp.spec,
-                _excerpt_query(inp, unit, f3),
+                _excerpt_query(inp, unit, f3, chosen),
                 top_n=options.spec_excerpt_top_n,
                 unit_id=unit.unit_id,
             )
