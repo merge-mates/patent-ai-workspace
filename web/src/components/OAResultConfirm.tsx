@@ -37,6 +37,8 @@ export function OAResultConfirm({
   const confirmedAt = own?.confirmed_at ?? null
   // 확인 여부를 못 받았다(GET 실패 등): "확인 전"으로 그리지 않고 모름으로 보인다
   const unknown = pressed === null && confirmation === null
+  // 실행이 막 끝나 화면이 새 정리를 다시 받는 중(revalidate)일 때도 막는다: 그 사이엔 옛 정리가 보이는데 PUT은 새 정리에 남는다
+  const busy = running || revalidator.state !== 'idle'
 
   const confirm = async () => {
     setSaving(true)
@@ -62,13 +64,13 @@ export function OAResultConfirm({
         <>
           <HumanTag>직접 확인함</HumanTag>
           <span className="label2 t3">{confirmedAtText(confirmedAt)}</span>
-          <Button size="small" loading={saving} disabled={running} onClick={() => void confirm()}>
+          <Button size="small" loading={saving} disabled={busy} onClick={() => void confirm()}>
             다시 확인
           </Button>
         </>
       ) : (
         <>
-          <Button type="primary" size="small" loading={saving} disabled={running} onClick={() => void confirm()}>
+          <Button type="primary" size="small" loading={saving} disabled={busy} onClick={() => void confirm()}>
             정리 결과 맞아요
           </Button>
           <span className="label2 t3">
