@@ -175,3 +175,52 @@ def test_claim_region_보정서는_첫_청구항_항목부터_마지막_청구�
 
 def test_claim_region_청구항이_없으면_None():
     assert claim_region("【발명의 설명】\n【0001】 화분.", first=True) is None
+
+
+# 이슈 #266: 추가 청구항 번호는 앞 판 최대 번호(삭제된 번호도 셈) + 1부터 빈틈없이 이어진다
+TWO_CLAIMS = "【청구범위】\n【청구항 1】\n화분.\n【청구항 2】\n제1항의 화분."
+
+
+def _add(*numbers: int) -> str:
+    return "".join(
+        f"【보정대상항목】 청구항 {n}\n【보정방법】 추가\n【보정내용】\n"
+        f"【청구항 {n}】\n새 화분 {n}.\n"
+        for n in numbers
+    )
+
+
+def test_claim_texts_추가_번호가_건너뛰면_unverified():
+    got = claims_at_version([TWO_CLAIMS, _add(7)])
+    assert got.status.value == StatusValue.UNVERIFIED
+    assert got.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+def test_claim_texts_추가_번호가_앞_판_다음부터_이어지면_confirmed():
+    got = claims_at_version([TWO_CLAIMS, _add(3, 4)])
+    assert got.status.value == StatusValue.CONFIRMED
+    assert sorted(got.claims) == [1, 2, 3, 4]
+
+
+def test_claim_texts_추가_번호_사이가_비면_unverified():
+    got = claims_at_version([TWO_CLAIMS, _add(3, 5)])
+    assert got.status.value == StatusValue.UNVERIFIED
+
+
+def test_claim_texts_앞_보정에서_삭제한_번호를_다시_추가하면_unverified():
+    # 삭제된 청구항 3도 번호를 차지한다. 다음 추가는 4부터
+    delete_3 = "【보정대상항목】 청구항 3\n【보정방법】 삭제\n"
+    got = claims_at_version([APPLICATION, delete_3, _add(3)])
+    assert got.status.value == StatusValue.UNVERIFIED
+
+
+def test_claim_texts_앞_보정에서_삭제가_섞여도_최대_번호_다음이면_confirmed():
+    delete_3 = "【보정대상항목】 청구항 3\n【보정방법】 삭제\n"
+    got = claims_at_version([APPLICATION, delete_3, _add(4)])
+    assert got.status.value == StatusValue.CONFIRMED
+    assert sorted(got.claims) == [1, 2, 4]
+
+
+def test_claim_texts_출원서에_삭제로_적힌_마지막_번호도_센다():
+    text = "【청구범위】\n【청구항 1】\n화분.\n【청구항 2】\n삭제"
+    assert claims_at_version([text, _add(2)]).status.value == StatusValue.UNVERIFIED
+    assert claims_at_version([text, _add(3)]).status.value == StatusValue.CONFIRMED
