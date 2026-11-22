@@ -125,6 +125,10 @@ const httpApi: typeof mockApi = {
   // POST /oas/{oa_id}/runs: 다시 돌리기. 명세에는 "다시 확인 필요가 붙은 판단 단위만" 고르는 말이 있으나
   // 요청 필드가 없어 빈 본문으로 보낸다(전체 실행). 필드가 정해지면 인자를 더한다
   rerunOA: (oaId) => postJson<CreatedRun>(`/oas/${encodeURIComponent(oaId)}/runs`, {}),
+  // 출원번호 입력 (F5 design 6절 "PATCH /cases/{id}"): API v0·서버에 아직 없어 지어내지 않고 알린다
+  setApplicationNumber: async () => {
+    throw new ApiError('not_in_api_v0', '출원번호 저장(PATCH /cases/{id})은 API v0에 아직 없음', 0)
+  },
   // GET /legal-chats/{id}: 대화 보기 (응답 모양 미정)
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }

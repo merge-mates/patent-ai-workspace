@@ -140,7 +140,7 @@ export const mockApi = {
       case_id: b.case_id,
       case_name: b.case_name,
       document_id: b.document?.document_id ?? null,
-      latest_run: runOf(b),
+      latest_run: latestOf(runOf(b)),
     }
   },
   async getOAResult(oaId: string): Promise<OAResultResponse> {
@@ -294,6 +294,11 @@ export const mockApi = {
   async uploadDocument(_caseId: string, _file: File, _what: string): Promise<UploadedDocument> {
     throw new ApiError('not_in_mock', 'mock에서는 자료를 올릴 수 없습니다', 0)
   },
+  // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버에는 아직 이 API가 없다)
+  async setApplicationNumber(caseId: string, applicationNumber: string): Promise<void> {
+    const b = await byCase(caseId)
+    saveAppNumber(b.case_id, applicationNumber)
+  },
   // 다시 돌리기: 그 OA의 실행이 처음부터 새로 도는 것으로 흉내 낸다
   async rerunOA(oaId: string): Promise<CreatedRun> {
     const b = await byOA(oaId)
@@ -377,19 +382,46 @@ function phaseOf(oaId: string): number {
   return Math.min(Math.floor(elapsedOf(run) / STEP_MS), RUN_STEPS.length)
 }
 
-// 실행이 끝나면: 확신 낮은 묶음이 아직 안 골라졌으면 사람 기다림, 아니면 끝남
-function runOf(b: Bundle): LatestRun {
+// 사람이 넣은 출원번호 (mock만, sessionStorage). "mock 처음으로"(patent_ai:mock: 지우기)로 함께 지워진다
+const appNumberKey = (caseId: string) => `patent_ai:mock:v1:appnum:${caseId}`
+function loadAppNumber(caseId: string): string | null {
+  try {
+    return sessionStorage.getItem(appNumberKey(caseId))
+  } catch {
+    return null
+  }
+}
+function saveAppNumber(caseId: string, n: string) {
+  try {
+    sessionStorage.setItem(appNumberKey(caseId), n)
+  } catch (e) {
+    console.warn(`[mock] 출원번호를 저장하지 못함 (${appNumberKey(caseId)})`, e)
+  }
+}
+// 지휘(orchestrator)와 같은 규칙: 통지서에서 읽은 출원번호가 확인됨이 아니면(확인되지 않음·충돌) 사람에게 묻는다
+const needsAppNumber = (b: Bundle) =>
+  b.oa_result.application_number.status.value !== 'confirmed' && loadAppNumber(b.case_id) === null
+
+// 실행이 끝나면: 출원번호를 모르면 출원번호 입력 기다림, 확신 낮은 묶음이 아직 안 골라졌으면 방향 고르기 기다림, 아니면 끝남.
+// mock 단순화: 출원번호를 기다리는 동안에도 뒤 단계 결과(예시)는 열어 둔다 (서버는 OA 정리까지만 있다)
+function runOf(b: Bundle): RunStatusLike {
   const run = loadRun(b.oa_id)
   if (!run) return { run_id: b.run_id, state: 'succeeded', current_step: null }
   const phase = phaseOf(b.oa_id)
   const run_id = currentRunId(b)
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
+  if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
   const waiting = (directions[b.oa_id] ?? []).some(
     (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
   )
-  return { run_id, state: waiting ? 'waiting_for_human' : 'succeeded', current_step: null }
+  return waiting
+    ? { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'direction_selection' }
+    : { run_id, state: 'succeeded', current_step: null }
 }
+// latest_run(getOA)에는 waiting_for가 없고 GET /runs/{id}에만 있다 (서버 oas.py LatestRun과 같게)
+type RunStatusLike = LatestRun & { waiting_for?: string | null }
+const latestOf = (r: RunStatusLike): LatestRun => ({ run_id: r.run_id, state: r.state, current_step: r.current_step })
 
 // run_id로 사건 묶음 찾기: 다시 돌린 실행은 fixture의 run_id에 꼬리가 붙어 있다
 async function byRun(runId: string): Promise<Bundle> {
