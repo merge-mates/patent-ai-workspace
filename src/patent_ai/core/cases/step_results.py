@@ -1,6 +1,6 @@
-"""F3·F4 결과 저장·다시 읽기 (이슈 #191 T2). Postgres 구현은 `step_results_pg.py`.
+"""F2·F3·F4 결과 저장·다시 읽기 (이슈 #191 T2, F2는 #28). Postgres 구현은 `step_results_pg.py`.
 
-- 실행 하나에 단계(f3·f4)마다 한 줄. 본문은 도구 출력 그대로(F3Result·F4Output)라
+- 실행 하나에 단계(f2·f3·f4)마다 한 줄. 본문은 도구 출력 그대로(F2Result·F3Result·F4Output)라
   다시 읽으면 같은 객체가 나온다.
 - 어느 실행을 보여 줄지는 여기서 고르지 않는다: 결과 API가 OA 정리(oa_results)와 같은 실행을
   골라 run_id로 읽는다. 그래야 화면의 결과 칸들이 서로 다른 실행에서 섞이지 않는다.
@@ -11,22 +11,25 @@ from __future__ import annotations
 import threading
 from typing import Literal, Protocol
 
+from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
 
-StepKind = Literal["f3", "f4"]
-StepBody = F3Result | F4Output
+StepKind = Literal["f2", "f3", "f4"]
+StepBody = F2Result | F3Result | F4Output
 
-_MODELS: dict[str, type[StepBody]] = {"f3": F3Result, "f4": F4Output}
+_MODELS: dict[str, type[StepBody]] = {"f2": F2Result, "f3": F3Result, "f4": F4Output}
 
 
 def kind_of(body: StepBody) -> StepKind:
     """결과 객체가 어느 단계 것인지. 모르는 객체면 TypeError (조용히 다른 칸에 넣지 않는다)."""
+    if isinstance(body, F2Result):
+        return "f2"
     if isinstance(body, F3Result):
         return "f3"
     if isinstance(body, F4Output):
         return "f4"
-    raise TypeError(f"F3·F4 결과가 아님: {type(body).__name__}")
+    raise TypeError(f"F2·F3·F4 결과가 아님: {type(body).__name__}")
 
 
 def parse_body(kind: StepKind, data: dict) -> StepBody:

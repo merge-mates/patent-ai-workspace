@@ -202,7 +202,15 @@ class _Server(RunCaseApp):
         raise AssertionError(f"실행이 끝나지 않음: {run}")
 
 
-RESULTS = ("oa-result", "units", "comparisons", "clarity-reviews", "directions", "drafts")
+RESULTS = (
+    "oa-result",
+    "units",
+    "comparisons",
+    "clarity-reviews",
+    "legal-evidence",
+    "directions",
+    "drafts",
+)
 
 
 def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
@@ -223,7 +231,7 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
         return {n: r.json() for n, r in got.items()}
 
     first = results()
-    # 저장된 것이 이 실행의 F1·F3·F4 결과다 (빈 목록이 아니다)
+    # 저장된 것이 이 실행의 F1·F2·F3·F4 결과다 (빈 목록이 아니다)
     assert first["oa-result"]["run_id"] == run_id
     for name in RESULTS[1:]:
         assert first[name]["run_id"] == run_id and first[name]["result"], name
@@ -231,11 +239,12 @@ def test_e2e_server_올리기_실행_폴링_다시_열기(tmp_path, offline):
         f"{oa_id}:29-2:c1",
         f"{oa_id}:42-4-2:c2",
     ]
-    # F2는 돌지만 결과 저장은 아직 없다 (#224): 이유가 붙은 빈 목록이다
-    legal = client.get(f"/oas/{oa_id}/legal-evidence")
-    assert legal.status_code == 200
-    assert legal.json()["result"] == []
-    assert legal.json()["empty_reason"] == "확인되지 않음: 이 실행에 결과가 없음"
+    # F2 법률 근거 묶음도 저장되어 판단 단위마다 하나, 이유 없이 열린다 (다시 열기 비교에도 들어감)
+    legal = first["legal-evidence"]
+    assert legal["empty_reason"] is None
+    assert [b["unit_id"] for b in legal["result"]] == [
+        u["unit_id"] for u in first["units"]["result"]
+    ]
 
     # 다시 열기: 사건 → OA 목록 → latest_run → 같은 결과
     case = client.get(f"/cases/{case_id}").json()

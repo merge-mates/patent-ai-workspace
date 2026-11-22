@@ -70,3 +70,18 @@ graph LR
 - [x] task-3
 - 다음: /check, PR
 - 막힌 것: 없음
+
+## m2-i3b  (11/22)  상태: 승인 (11/22 은진 "너 추천대로")  (이슈 #28, Refs)
+**목표** (한 줄): 서버 실행이 낸 F2 결과(`F2Result`)를 `step_results`에 저장하고 `GET /oas/{id}/legal-evidence`로 다시 연다 (걷는 뼈대의 "저장·다시 열기").
+**먼저**: m2-i3 (PR #222). **공유 자원**: 마이그레이션 하나 (`step_results.kind`에 `f2`).
+**끝나면 보여 줄 것**: `uv run pytest tests/api/test_results_api.py tests/core/runs/test_run_case_executor.py tests/core/cases/test_step_results.py` → 올리기 뒤 `legal-evidence`가 판단 단위마다 29조 2항·42조 4항 묶음을 돌려주고, 다시 열어도 같다.
+
+### task-1: `step_results`에 f2 칸 + 실행기 저장 + 결과 API
+- 고칠 파일: `src/patent_ai/db/migrations/versions/20261122_b3f8d2e6a914_step_results_kind_f2.py`, `src/patent_ai/db/models/results.py`, `src/patent_ai/core/cases/step_results.py`, `src/patent_ai/core/cases/result_views.py`, `src/patent_ai/core/runs/run_case_executor.py`, `docs/data-model.md`, `docs/api/README.md`, 테스트(`tests/api/test_results_api.py`, `tests/core/cases/test_step_results.py`, `test_step_results_db.py`, `tests/core/runs/test_run_case_executor.py`)
+- 테스트할 경우: F2 저장·왕복(메모리·DB) / 결과 API가 F2 묶음을 주고 다시 열어도 같음 / F2를 넘기면 빈 목록 + `넘김: input_unverified` / 저장본을 못 읽으면 `확인되지 않음: 저장된 결과를 읽지 못함`
+- 확인 방법: 위 데모 명령 + `make test-db`(CI)
+
+### 진행
+- [x] task-1
+- 다음: PR
+- 막힌 것: 없음
