@@ -96,6 +96,11 @@ def test_임시_사건은_지우지_않고_합친_사건_id를_알려_준다(mer
     # 사건 자료는 합친 사건에 있다: 이유 없는 404가 아니라 그 사건 id를 알려 준다
     res = client.get(f"/cases/{second['case_id']}/materials")
     assert res.status_code == 404 and first["case_id"] in res.json()["message"]
+    # 옛 링크로 임시 사건에 빠진 자료를 올려도 합친 사건 id를 알려 준다
+    res = client.post(
+        f"/cases/{second['case_id']}/documents", files=_pdf(b"x"), data={"what": "D1"}
+    )
+    assert res.status_code == 404 and first["case_id"] in res.json()["message"]
 
 
 def test_실행은_최종_case_id를_돌려준다(merged):
