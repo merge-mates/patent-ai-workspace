@@ -19,7 +19,12 @@ from sqlalchemy.orm import Session
 
 from patent_ai.db.models.chunks import CiteChunk
 from patent_ai.git_paths import is_git_ignored
-from patent_ai.retrieval.cite_index.chunker import ChunkingConfig, chunk_document
+from patent_ai.retrieval.cite_index.chunker import (
+    ChunkingConfig,
+    UsChunkingConfig,
+    chunk_document_checked,
+)
+from patent_ai.retrieval.cite_index.columns import PdfplumberColumnExtractor
 from patent_ai.retrieval.cite_index.header_footer import HeaderFooterConfig, strip_repeated
 from patent_ai.retrieval.cite_index.pages import PageExtractor, PdfplumberExtractor
 from patent_ai.retrieval.repository import chunk_to_row
@@ -31,6 +36,8 @@ log = logging.getLogger("patent_ai.cite_index")
 REPO_ROOT = Path(__file__).resolve().parents[4]
 # 한국 공보 파일 이름은 그대로 doc_id (KR10…A, KR10…B1 등)
 _KR_STEM = re.compile(r"^KR\d+[AB]\d?$")
+# 미국 공보도 파일 이름이 그대로 doc_id (US2013…A1, US7…B2 등)
+_US_STEM = re.compile(r"^US\d+[AB]\d?$")
 
 
 @dataclass
@@ -85,10 +92,15 @@ def _list_pdfs(raw_root: Path) -> list[Path]:
     return sorted(pdfs, key=lambda p: (p.name, str(p.parent)))
 
 
-def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], IndexReport]:
+def build_index(
+    cfg: dict, extractor: PageExtractor, column_extractor: PageExtractor | None = None
+) -> tuple[list[Chunk], IndexReport]:
     iv = cfg["index_version"]
     hf = HeaderFooterConfig.from_dict(cfg["header_footer"])
     chunking = _chunking_config(cfg)
+    us_chunking = UsChunkingConfig.from_dict(cfg["us_chunking"]) if "us_chunking" in cfg else None
+    # 미국 공보는 두 단이라 단 순서 추출기를 쓴다 (안 주면 같은 추출기)
+    column_extractor = column_extractor or extractor
     table_path = _resolve(cfg["doc_id_table"])
     table = yaml.safe_load(table_path.read_text(encoding="utf-8")) if table_path.exists() else {}
     table = table or {}
@@ -112,7 +124,7 @@ def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], Index
             continue
         if stem in id_table:
             doc_id = id_table[stem]
-        elif _KR_STEM.match(stem):
+        elif _KR_STEM.match(stem) or _US_STEM.match(stem):
             doc_id = stem
         else:
             log.warning("표에 없는 PDF를 건너뜀: %s", stem)
@@ -130,7 +142,8 @@ def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], Index
         seen_sha[doc_id] = sha
 
         try:
-            pages = extractor.extract(pdf)
+            use = column_extractor if doc_id.startswith("US") else extractor
+            pages = use.extract(pdf)
         except Exception as e:  # noqa: BLE001 한 문헌의 오류가 전체를 멈추지 않게
             reason = f"추출 오류: {type(e).__name__}: {e}"
             log.warning("건너뜀 %s: %s", stem, reason)
@@ -140,7 +153,9 @@ def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], Index
         stripped, removed = strip_repeated(
             pages, hf.scan_lines, hf.min_page_ratio, hf.keep_patterns
         )
-        doc_chunks, warns = chunk_document(doc_id, stripped, iv, chunking)
+        doc_chunks, warns, check = chunk_document_checked(
+            doc_id, stripped, iv, chunking, us_chunking
+        )
         for w in warns:
             log.warning(w)
         chunks.extend(doc_chunks)
@@ -151,6 +166,8 @@ def build_index(cfg: dict, extractor: PageExtractor) -> tuple[list[Chunk], Index
             # 이유를 보고에서 가를 수 있게 문구 그대로 (doc_id·키만 들어 있음)
             "warnings": list(warns),
         }
+        if check is not None:  # 미국 공개공보: 문단 번호 검사 숫자
+            report.docs[doc_id]["paragraph_check"] = check
 
     out = _resolve(cfg["report_dir"]) / iv / "index_report.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +203,12 @@ def main(argv: list[str] | None = None, extractor: PageExtractor | None = None) 
         return 1
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    chunks, report = build_index(cfg, extractor or PdfplumberExtractor())
+    chunks, report = build_index(
+        cfg,
+        extractor or PdfplumberExtractor(),
+        extractor
+        or PdfplumberColumnExtractor(**cfg.get("us_columns", {})),  # 주어지면 둘 다 그것으로
+    )
     totals = report.to_dict()["totals"]
     if not chunks:
         print(f"조각이 0개라 멈춤 (건너뜀 {totals['skipped']}개, 보고서 확인)", file=sys.stderr)

@@ -1,4 +1,5 @@
-"""쪽 줄 목록 → 조각 (design 3-2절). 한국 공보는 식별번호·청구항·요약·도면 설명, 논문은 쪽.
+"""쪽 줄 목록 → 조각 (design 3-2절). 한국 공보는 식별번호·청구항·요약·도면 설명, 논문은 쪽,
+미국 공개공보는 문단 번호·청구항·요약.
 
 식별번호가 없는 공보의 본문은 조각으로 만들지 않는다 (문단 번호를 지어내지 않음, 재아 11/19).
 """
@@ -53,6 +54,33 @@ class ChunkingConfig:
 def load_chunking_config(path: Path = DEFAULT_CONFIG) -> ChunkingConfig:
     return ChunkingConfig.from_dict(
         yaml.safe_load(Path(path).read_text(encoding="utf-8"))["chunking"]
+    )
+
+
+@dataclass
+class UsChunkingConfig:
+    abstract_heading: re.Pattern  # 공백을 빼고 대문자로 바꾼 줄에 맞춘다
+    claims_heading: re.Pattern  # 대소문자 무시
+    section_heading: re.Pattern
+    inid_line: re.Pattern
+    max_number_jump: int  # 문단 번호가 한 번에 이만큼보다 크게 뛰면 문단 번호가 아님
+
+    @classmethod
+    def from_dict(cls, cfg: dict) -> UsChunkingConfig:
+        # 설정 파일의 us_chunking 칸 -> 정규식
+        return cls(
+            abstract_heading=re.compile(cfg["abstract_heading"]),
+            claims_heading=re.compile(cfg["claims_heading"], re.IGNORECASE),
+            section_heading=re.compile(cfg["section_heading"]),
+            inid_line=re.compile(cfg["inid_line"]),
+            max_number_jump=int(cfg["max_number_jump"]),
+        )
+
+
+@lru_cache(maxsize=4)
+def load_us_chunking_config(path: Path = DEFAULT_CONFIG) -> UsChunkingConfig:
+    return UsChunkingConfig.from_dict(
+        yaml.safe_load(Path(path).read_text(encoding="utf-8"))["us_chunking"]
     )
 
 
@@ -267,21 +295,376 @@ def _chunk_paper(doc_id: str, pages: list[PageText], iv: str) -> tuple[list[Chun
     return chunks, warns
 
 
-def chunk_document(
+# --- 미국 공개공보 ---
+# 문단 번호 줄 머리. OCR이 "["를 1·I·l·| 로, "]"를 ) 등으로, "0"을 O로 읽기도 한다.
+# 닫는 괄호가 있는 꼴: [0025] / [0 025 ] / 10025 ] (숫자 사이 공백 허용)
+_US_NUM_CLOSED = re.compile(
+    r"^[\[【(\{|Il1]?\s*([0-9Oo](?:\s?[0-9Oo]){3})\s*[\]】)\}|]\s*\.?\s*(.*)$"
+)
+# 닫는 괄호가 없는 꼴: 0025 Text / 0025. Text / I0025. Text / (0025 Text
+_US_NUM_BARE = re.compile(r"^[\[【(\{|Il]?\s*([0-9Oo]{4})\.?\s+(\S.*)$")
+_US_CLAIM_ONE = re.compile(r"^1\s?\.\s+\S")
+_US_CLAIM_LINE = re.compile(r"^(\d{1,3})\s?\.\s+(\S.*)$")
+# 도면 번호: FIG. 3 / FIG. 3A / FIGS. 3 and 4 / FIGS. 3-5 · 3 to 5 · 3 through 5
+_US_FIG_HEAD = re.compile(
+    r"(?<![A-Za-z])FIG(?:URE)?S?\.?\s*(\d+)(?!\d|\.\d)[A-Za-z]?", re.IGNORECASE
+)
+_US_FIG_RANGE = re.compile(
+    r"\s*(?:-|–|to|through)\s*(?:FIG(?:URE)?S?\.?\s*)?(\d+)(?!\d|\.\d)[A-Za-z]?", re.IGNORECASE
+)
+_US_FIG_AND = re.compile(
+    r"\s*(?:and|&)\s*(?:FIG(?:URE)?S?\.?\s*)?(\d+)(?!\d|\.\d)[A-Za-z]?", re.IGNORECASE
+)
+
+
+def us_paragraph_number(line: str) -> tuple[int, str] | None:
+    """줄 머리의 문단 번호 → (번호, 나머지 글). 네 자리가 아니거나 0이면 None.
+
+    표지의 연도·번호(4321 …)도 후보로 읽힌다. 걸러내는 건 longest_increasing이다.
+    """
+    s = line.strip()
+    m = _US_NUM_CLOSED.match(s)
+    bare = False
+    if not m:
+        m = _US_NUM_BARE.match(s)
+        bare = True
+    if not m:
+        return None
+    digits = re.sub(r"\s", "", m.group(1))
+    # 닫는 괄호가 없는 꼴은 진짜 숫자가 하나는 있어야 한다 ("Oooo" 같은 낱말 방지)
+    if bare and not any(c.isdigit() for c in digits):
+        return None
+    num = int(digits.replace("O", "0").replace("o", "0"))
+    if num < 1:
+        return None
+    return num, m.group(2).strip()
+
+
+def longest_increasing(nums: list[int], max_jump: int | None = None) -> list[int]:
+    """가장 긴 '엄격하게 늘어나는' 부분수열의 위치(index) 목록. O(n²).
+
+    max_jump가 있으면 첫 번호와 이어지는 걸음(앞 번호와의 차이)이 모두 max_jump 이하여야 한다
+    (본문 속 "1102 is coupled", "1000 degrees" 같은 큰 수가 문단 번호로 읽히는 것을 막는다).
+    같은 길이가 여럿이면 정해진 규칙: 앞 번호는 길이가 같은 것 중 가장 뒤 위치, 끝은 가장 앞 위치.
+    같은 입력이면 늘 같은 결과.
+    """
+    n = len(nums)
+    length = [0] * n  # 0 = 이 번호는 수열에 못 들어감
+    prev = [-1] * n
+    for j in range(n):
+        if max_jump is None or nums[j] <= max_jump:
+            length[j] = 1
+        for i in range(j):
+            if not length[i] or nums[i] >= nums[j]:
+                continue
+            if max_jump is not None and nums[j] - nums[i] > max_jump:
+                continue
+            if length[i] + 1 >= length[j]:  # 같으면 더 뒤의 i가 이긴다
+                length[j], prev[j] = length[i] + 1, i
+    best = max(length, default=0)
+    if best == 0:
+        return []
+    i = length.index(best)  # 가장 앞 위치의 끝
+    out: list[int] = []
+    while i != -1:
+        out.append(i)
+        i = prev[i]
+    return out[::-1]
+
+
+def parse_us_figures(text: str) -> list[int]:
+    """글 속 도면 번호: FIG. 3, FIG. 3A(→3), FIGS. 3 and 4, FIGS. 3-5·3 to 5(→3,4,5)."""
+    out: list[int] = []
+    for m in _US_FIG_HEAD.finditer(text):
+        nums = [int(m.group(1))]
+        pos = m.end()
+        while True:
+            r = _US_FIG_RANGE.match(text, pos)
+            if r:
+                hi = int(r.group(1))
+                nums += list(range(nums[-1] + 1, hi + 1)) if 0 <= hi - nums[-1] <= 50 else [hi]
+                pos = r.end()
+                continue
+            a = _US_FIG_AND.match(text, pos)
+            if a:
+                nums.append(int(a.group(1)))
+                pos = a.end()
+                continue
+            break
+        for n in nums:
+            if n not in out:
+                out.append(n)
+    return out
+
+
+class _UsChunker:
+    """미국 공개공보(A1·A2·A9) 한 건. 요약 → 문단 번호 확정 → 본문·청구항 순으로 훑는다."""
+
+    def __init__(self, doc_id: str, iv: str, cfg: UsChunkingConfig):
+        self.doc_id, self.iv, self.cfg = doc_id, iv, cfg
+        self.chunks: list[Chunk] = []
+        self.warnings: list[str] = []
+        self.seen: set[str] = set()
+        self.check: dict = {}
+        self.dropped = 0  # 조각에 못 든 줄 수 (조용히 버리지 않고 센다)
+
+    def _add(self, key, kind, loc, lines) -> bool:
+        # 한국 청커와 같다: 같은 키는 앞의 것만, 빈 조각은 만들지 않고 경고
+        if key in self.seen:
+            self.warnings.append(f"조각 키 중복: {self.doc_id} {key} 뒤의 것을 버림")
+            self.dropped += sum(1 for s in lines if s.strip())
+            return False
+        if not any(s.strip() for s in lines):
+            self.warnings.append(f"빈 조각: {self.doc_id} {key}")
+            return False
+        self.seen.add(key)
+        self.chunks.append(_chunk(self.doc_id, self.iv, key, kind, loc, lines))
+        return True
+
+    def _flush_para(self, num: int | None, lines: list[str]) -> None:
+        if num is None:
+            return
+        loc = Location(
+            kind="paragraph",
+            start=num,
+            end=num,
+            label=f"[{num:04d}]",
+            figures=parse_us_figures(" ".join(lines)),
+        )
+        self._add(f"p{num:04d}", "body", loc, lines)
+
+    def _flush_claim(self, num: int | None, lines: list[str]) -> None:
+        if num is None:
+            return
+        loc = Location(kind="claim", label=f"청구항 {num}", claims=[num])
+        self._add(f"claim{num}", "claim", loc, lines)
+
+    def _abstract(self, flat: list[tuple[int, str]]) -> set[int]:
+        """요약 조각을 만들고 쓴 줄 위치를 돌려준다. 제목 뒤 맨 앞 빈 줄은 건너뛴다."""
+        cfg = self.cfg
+        used: set[int] = set()
+        for i, (pg, s) in enumerate(flat):
+            if not (s and cfg.abstract_heading.match(re.sub(r"\s+", "", s).upper())):
+                continue
+            used.add(i)
+            body: list[str] = []
+            for j in range(i + 1, len(flat)):
+                pj, sj = flat[j]
+                if pj != pg or cfg.inid_line.match(sj):
+                    break
+                if not sj:
+                    if body:  # 글이 한 줄 이상 나온 뒤의 빈 줄이 요약의 끝
+                        break
+                    continue
+                body.append(sj)
+                used.add(j)
+            if body:
+                text = " ".join(body)
+                loc = Location(kind="abstract", label="요약", figures=parse_us_figures(text))
+                self._add("abs", "abstract", loc, body)
+            break
+        if "abs" not in self.seen:
+            self.warnings.append(f"요약 없음: {self.doc_id}")
+        return used
+
+    @staticmethod
+    def _claim_start(flat: list[tuple[int, str]], frm: int, end: int) -> tuple[int, int] | None:
+        """frm 이후에서 청구항이 시작되는 (줄 위치, 첫 청구항 번호).
+
+        "1. …" 줄이 있으면 거기서 시작. 없으면 번호 n 줄이 있고 뒤에 n+1 줄이 또 있는 첫 줄
+        (앞 청구항이 글자층에 없는 문헌)."""
+        for i in range(frm, end):
+            if _US_CLAIM_ONE.match(flat[i][1]):
+                return i, 1
+        for i in range(frm, end):
+            m = _US_CLAIM_LINE.match(flat[i][1])
+            if m and int(m.group(1)) > 1:
+                nxt = int(m.group(1)) + 1
+                for j in range(i + 1, end):
+                    m2 = _US_CLAIM_LINE.match(flat[j][1])
+                    if m2 and int(m2.group(1)) == nxt:
+                        return i, int(m.group(1))
+        return None
+
+    def run(self, pages: list[PageText]) -> None:
+        cfg = self.cfg
+        flat = [(p.page, ln.strip()) for p in pages for ln in p.lines]
+        used = self._abstract(flat)  # 요약으로 쓴 줄은 문단 후보에서 뺀다
+        n = len(flat)
+
+        # 1) 청구항 머리 줄이 있으면 그 앞 줄만 문단 번호 후보
+        head = next(
+            (i for i in range(n) if i not in used and cfg.claims_heading.match(flat[i][1])), None
+        )
+        cand_end = head if head is not None else n
+
+        # 2) 문단 번호 후보 중 번호 점프가 작게 늘어나는 것만 진짜로 본다
+        cands: list[tuple[int, int, str]] = []  # (줄 위치, 번호, 나머지 글)
+        for i in range(cand_end):
+            if i in used or not flat[i][1]:
+                continue
+            r = us_paragraph_number(flat[i][1])
+            if r:
+                cands.append((i, r[0], r[1]))
+        keep = longest_increasing([c[1] for c in cands], cfg.max_number_jump)
+        accepted = {cands[k][0]: (cands[k][1], cands[k][2]) for k in keep}
+        nums = sorted(v[0] for v in accepted.values())
+        last = nums[-1] if nums else None
+        first_line = min(accepted) if accepted else n
+        last_line = max(accepted) if accepted else -1
+        # 첫 문단 앞의 후보(표지 숫자)는 경고 없이 세기만, 첫~끝 사이에서 버린 것은 경고
+        skipped_before_first = sum(1 for c in cands if c[0] < first_line)
+        out_of_order = sum(
+            1 for c in cands if first_line < c[0] < last_line and c[0] not in accepted
+        )
+        # 마지막 확정 번호 뒤에서 튄 후보: 글자는 앞 문단에 남지만 조용히 두지 않고 센다
+        # (확정 번호가 0개면 모든 후보가 표지 숫자 쪽에 이미 세졌으니 0)
+        after_last = sum(1 for c in cands if c[0] > last_line) if accepted else 0
+
+        # 3) 청구항 시작 위치
+        claims_idx: int | None = None  # 청구항 구간 첫 줄 (머리 줄이거나 첫 청구항 줄)
+        first_claim = 1
+        # 청구항 머리 줄이 있으면 문단 번호가 하나도 없어도 청구항은 만든다
+        if head is not None:
+            found = self._claim_start(flat, head + 1, n)
+            claims_idx = head
+            if found:
+                first_claim = found[1]
+        elif accepted:
+            found = self._claim_start(flat, last_line + 1, n)
+            if found:
+                claims_idx, first_claim = found
+        claims_found = False
+
+        def after_heading_run(i: int) -> int | None:
+            # 제목 줄 i 뒤로 이어지는 대문자 제목 줄(두 줄로 꺾인 제목)을 건너뛰고
+            # 처음 나오는 다른 줄의 위치. 문단 번호·청구항 시작 줄이면 거기서 멈춘다
+            for j in range(i + 1, n):
+                if j in accepted or j == claims_idx:
+                    return j
+                if flat[j][1] and not cfg.section_heading.match(flat[j][1]):
+                    return j
+            return None
+
+        # 4) 본문과 청구항을 한 번에 훑는다
+        cur_num: int | None = None
+        cur_lines: list[str] = []
+        claim_no: int | None = None
+        claim_lines: list[str] = []
+        expected = first_claim
+        for i in range(first_line if accepted else (head if head is not None else n), n):
+            s = flat[i][1]
+            if i in used or not s:
+                continue
+            if i in accepted:
+                self._flush_para(cur_num, cur_lines)
+                cur_num, rest = accepted[i]
+                cur_lines = [rest] if rest else []
+                continue
+            if claims_idx is not None and i >= claims_idx:
+                if i == claims_idx and head is not None:
+                    self._flush_para(cur_num, cur_lines)
+                    cur_num, cur_lines = None, []
+                    continue  # 청구항 머리 줄은 버린다 (제목이라 센 줄 아님)
+                if i == claims_idx:  # 머리 줄 없이 "1. A …" 줄에서 시작
+                    self._flush_para(cur_num, cur_lines)
+                    cur_num, cur_lines = None, []
+                c = _US_CLAIM_LINE.match(s)
+                if c and int(c.group(1)) == expected:
+                    self._flush_claim(claim_no, claim_lines)
+                    claim_no, claim_lines = expected, [c.group(2)]
+                    expected += 1
+                    claims_found = True
+                elif claim_no is not None:
+                    claim_lines.append(s)
+                else:
+                    self.dropped += 1  # 첫 청구항 전의 줄
+                continue
+            # 본문 구간. 대문자 제목처럼 보여도 바로 뒤가 문단 번호나 청구항 시작일 때만 제목
+            if cfg.section_heading.match(s):
+                nx = after_heading_run(i)
+                if nx is not None and (nx in accepted or nx == claims_idx):
+                    self._flush_para(cur_num, cur_lines)
+                    cur_num, cur_lines = None, []
+                    continue
+            if cur_num is not None:
+                cur_lines.append(s)
+            else:
+                self.dropped += 1
+        self._flush_para(cur_num, cur_lines)
+        self._flush_claim(claim_no, claim_lines)
+
+        # 5) 검사 결과와 경고
+        missing = len(set(range(1, (last or 0) + 1)) - set(nums))
+        self.check = {
+            "last": last,
+            "accepted": len(nums),
+            "missing": missing,
+            "out_of_order": out_of_order,
+            "after_last": after_last,
+            "skipped_before_first": skipped_before_first,
+            "dropped_lines": self.dropped,
+        }
+        if last is None:
+            self.warnings.append("문단 번호 없음: 본문 조각 안 만듦")
+            if head is None:
+                return  # 청구항 머리도 없으면 청구항 경고는 없다
+        if missing:
+            self.warnings.append(f"문단 번호 빠짐: {self.doc_id} {missing}개 (1~{last})")
+        if out_of_order:
+            self.warnings.append(
+                f"문단 번호 역순·튐 무시: {self.doc_id} {out_of_order}개 (본문 글자로 둠)"
+            )
+        if after_last:
+            self.warnings.append(
+                f"문단 번호 끝 뒤 튐 무시: {self.doc_id} {after_last}개 (앞 문단 글자로 둠)"
+            )
+        if not claims_found:
+            self.warnings.append(f"청구항 시작 못 찾음: {self.doc_id}")
+        elif first_claim > 1:
+            self.warnings.append(f"청구항 1~{first_claim - 1} 글자층에 없음: {self.doc_id}")
+        if self.dropped:
+            self.warnings.append(f"버린 줄: {self.doc_id} {self.dropped}개")
+
+
+_US_APPLICATION = re.compile(r"^US\d+A[129]$")
+
+
+def chunk_document_checked(
     doc_id: str,
     pages: list[PageText],
     index_version: str,
     config: ChunkingConfig | None = None,
-) -> tuple[list[Chunk], list[str]]:
-    """문헌 하나의 쪽 목록을 조각으로 나눈다. 나라는 doc_id 앞 글자로 정한다."""
+    us_config: UsChunkingConfig | None = None,
+) -> tuple[list[Chunk], list[str], dict | None]:
+    """chunk_document + 문단 번호 검사 결과(미국 공개공보만, 나머지는 None)."""
+    check: dict | None = None
     if doc_id.startswith("NPL-"):
         chunks, warns = _chunk_paper(doc_id, pages, index_version)
     elif doc_id.startswith("KR"):
         k = _KrChunker(doc_id, index_version, config or load_chunking_config())
         k.run(pages)
         chunks, warns = k.chunks, k.warnings
+    elif _US_APPLICATION.match(doc_id):
+        u = _UsChunker(doc_id, index_version, us_config or load_us_chunking_config())
+        u.run(pages)
+        chunks, warns, check = u.chunks, u.warnings, u.check
+    elif doc_id.startswith("US"):
+        return [], [f"지원 안 함: {doc_id} (미국 등록공보는 #308 task 2)"], None
     else:
-        return [], [f"지원 안 함: {doc_id} (KR·NPL- 만 지원)"]
+        return [], [f"지원 안 함: {doc_id} (KR·US·NPL- 만 지원)"], None
     if not chunks:
         warns.append(f"조각 0개: {doc_id}")
+    return chunks, warns, check
+
+
+def chunk_document(
+    doc_id: str,
+    pages: list[PageText],
+    index_version: str,
+    config: ChunkingConfig | None = None,
+    us_config: UsChunkingConfig | None = None,
+) -> tuple[list[Chunk], list[str]]:
+    """문헌 하나의 쪽 목록을 조각으로 나눈다. 나라는 doc_id 앞 글자로 정한다."""
+    chunks, warns, _ = chunk_document_checked(doc_id, pages, index_version, config, us_config)
     return chunks, warns

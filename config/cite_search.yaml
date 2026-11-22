@@ -46,6 +46,26 @@ chunking:
     - '^[<【(\[]?(도면의주요부분에대한)?부호의설명[>】)\]]?$'
     - '^산업상이용가능성$'
 
+# 미국 공개공보 청킹 패턴 (두 단으로 읽은 줄에 맞춘다)
+us_chunking:
+  # 요약 제목 줄: 공백을 뺀 뒤 대문자로 바꾼 글자에 맞춘다 ("(57) ABSTRACT" → "(57)ABSTRACT")
+  abstract_heading: '^(\(57\))?ABSTRACT$'
+  # 청구항 머리 줄 (대소문자 무시). 줄 전체가 머리여야 한다 ("We claim priority …" 본문 줄은 아님): "What is claimed is:", "We claim:" 등
+  claims_heading: '^(what is claimed( is)?|what we claim( is)?|we claim|i claim|the invention claimed( is)?|.*claimed (is|are) defined as follows)\s*[:.]?$'
+  # 본문 구역 제목 줄 (BACKGROUND 등 숫자·소문자 없는 대문자 줄). 만나면 앞 문단이 거기서 끝나고 제목은 버린다
+  section_heading: '^[A-Z][A-Z ,;:\-–/&()''’]{2,}$'
+  # 표지 서지 항목 줄 "(21) Appl. No." 꼴. 요약이 여기서 끝난다
+  inid_line: '^\(\d{2}\)'
+  # 문단 번호는 한 번에 이만큼 넘게 뛰지 않고, 첫 번호도 이 값 이하 ("1102 is coupled"·"2008 …" 같은 본문 숫자 거르기).
+  # 50 = 한 쪽 10~15문단 × 글자층 빠짐 3~4쪽까지 받는 안전값 (판단). tune 미국 공개공보 6건은 실제 간격 최대 3이고
+  # 5~100 어느 값이어도 결과가 같다 (PR #320 고침, 값을 tune에 맞추지 않음)
+  max_number_jump: 50
+
+# 미국 공보 두 단 읽기 (columns.py): 줄 묶기 높이 허용 오차와 "큰 세로 간격" 배수 (쪽 좌표 단위 pt)
+us_columns:
+  line_tol: 3.0
+  gap_factor: 2.0
+
 # 조각 벡터·질의 벡터 (core/llm/embed.py가 `cite_search.embed` 단계로 읽는다). cite-idx-v2 색인용
 embed:
   model: text-embedding-3-small
