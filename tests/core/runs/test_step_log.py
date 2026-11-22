@@ -16,7 +16,7 @@ from tests.core.runs.fake_executor import MemoryStatusStore
 from tests.core.runs.test_run_case_executor import OID, RID, _Cases, _Inputs
 
 
-def _run(tmp_path, step_log=None):
+def _run(tmp_path, step_log=None, with_texts=True):
     store = MemoryStatusStore()
     store.add(RID, OID)
     kwargs = {} if step_log is None else {"step_log": step_log}
@@ -25,7 +25,7 @@ def _run(tmp_path, step_log=None):
         registry=CancelRegistry(),
         oa_results=InMemoryOAResultStore(store),
         step_results=InMemoryStepResultStore(),
-        inputs=_Inputs(tmp_path),
+        inputs=_Inputs(tmp_path, with_texts=with_texts),
         cases=_Cases(),
         config_path=real_config(tmp_path),
         make_ctx=fake_ctx,
@@ -41,7 +41,8 @@ def test_step_recorder를_주면_ok와_skipped가_모두_기록기로_가고_저
 ):
     wire(monkeypatch)
     rec = MemoryStepRecorder()
-    store = _run(tmp_path, rec)
+    # F2가 붙어(#28) 평소엔 넘기는 단계가 없다: 글자를 빼 F3·F2·F4를 넘기게 한다
+    store = _run(tmp_path, rec, with_texts=False)
     assert store.get_status(RID).state == RunState.SUCCEEDED
     outcomes = {(r.tool_name, r.outcome) for r in rec.records}
     assert ("read_oa", "ok") in outcomes and ("run_f2", "skipped") in outcomes
@@ -50,8 +51,8 @@ def test_step_recorder를_주면_ok와_skipped가_모두_기록기로_가고_저
 
 def test_step_recorder를_안_주면_skipped가_저장소에_남는다(tmp_path, monkeypatch):
     wire(monkeypatch)
-    store = _run(tmp_path)
-    assert [s.step for s in store.skipped_steps(RID)] == ["run_f2"]
+    store = _run(tmp_path, with_texts=False)  # 글자가 없어 F3·F2·F4를 넘긴다
+    assert [s.step for s in store.skipped_steps(RID)] == ["run_f3", "run_f2", "run_f4"]
 
 
 def test_step_recorder_쓰기가_실패하면_record_failed로_끝나고_원문은_안_보인다(
