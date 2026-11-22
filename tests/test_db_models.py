@@ -228,6 +228,11 @@ def test_agent_steps_has_stop_reason_for_model_calls():
     assert col.nullable
 
 
+def test_agent_steps_has_invalid_kind_for_model_calls():
+    # 출력 검사에 떨어진 오류 종류 (짧은 코드). 검사를 통과했거나 옛 기록은 NULL (#228)
+    assert _table("agent_steps").c["invalid_kind"].nullable
+
+
 def test_result_inputs_point_to_result_or_document():
     key = {"result_id", "input_kind", "input_id"}
     assert key in _unique_column_sets("result_inputs")
