@@ -377,11 +377,50 @@ def test_사건_자료_빠진_자료와_보류():
         ],
         missing=[missing()],
         held_tasks=[{"task": "F3", "waiting_for": "인용문헌 본문"}],
+        review_items=[_item("a"), _item("b")],
         review_items_count=2,
     )
     assert m.missing[0].ask_upload is True
     assert m.held_tasks[0].task == "F3"
     assert m.review_items_count == 2
+
+
+def _item(label: str) -> dict:
+    return {"kind": "unverified", "target": f"t.{label}", "label": label, "reason": "r"}
+
+
+def test_검토할_사항_줄_수와_개수가_같으면_통과():
+    m = CaseMaterials(case_id="c_1", review_items=[_item("a"), _item("b")], review_items_count=2)
+    assert len(m.review_items) == m.review_items_count == 2
+
+
+def test_검토할_사항_빈_목록과_개수_0은_통과():
+    m = CaseMaterials(case_id="c_1", review_items=[], review_items_count=0)
+    assert m.review_items == [] and m.review_items_count == 0
+
+
+def test_검토할_사항_줄_2개에_개수_3이면_거부():
+    with pytest.raises(ValidationError):
+        CaseMaterials(case_id="c_1", review_items=[_item("a"), _item("b")], review_items_count=3)
+
+
+def test_검토할_사항_목록이_없는데_개수가_있으면_거부():
+    # 목록 None = 마무리 안 한 ⑥. 개수만 있으면 줄이 없는 개수라 거부
+    with pytest.raises(ValidationError):
+        CaseMaterials(case_id="c_1", review_items=None, review_items_count=2)
+
+
+def test_문서에_글자_추출_상태_칸이_있고_기본은_None():
+    doc = {
+        "document_id": "d_1",
+        "kind": "oa",
+        "source": "uploaded",
+        "status": {"value": "confirmed", "checked": "x"},
+    }
+    assert CaseMaterials(case_id="c_1", documents=[doc]).documents[0].text_status is None
+    doc["text_status"] = {"value": "unverified", "reason": "body_missing"}
+    got = CaseMaterials(case_id="c_1", documents=[doc]).documents[0]
+    assert got.text_status.reason == "body_missing"
 
 
 def test_지원_안_하는_나라인데_ask_upload_true면_거부():

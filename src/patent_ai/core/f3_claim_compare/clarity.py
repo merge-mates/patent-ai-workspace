@@ -86,7 +86,7 @@ class ClarityOutput(BaseModel):
 
     reviews: list[ClarityReview] = Field(default_factory=list)
     held_tasks: list[HeldTask] = Field(default_factory=list)
-    # compare.CompareOutput과 같은 뜻: 호출 실패(상한 제외)의 원래 예외와 시도한 묶음 수
+    # compare.CompareOutput과 같은 뜻: 호출 실패(상한 제외)의 원래 예외와 모델 호출까지 간 묶음 수
     call_errors: list[Exception] = Field(default_factory=list, exclude=True)
     units_tried: int = 0
 
@@ -396,7 +396,8 @@ def review_clarity_unit(
             # 못 찾음: 없다고 단정하지 않고 찾아본 범위를 남긴다
             status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
         reviews.append(review(term, location, status, note, one.definition))
-    return ClarityOutput(reviews=reviews)
+    # 모델을 부른 묶음만 "모든 묶음 실패"의 분모로 센다 (문구를 하나도 못 찾았으면 안 부름)
+    return ClarityOutput(reviews=reviews, units_tried=1 if located else 0)
 
 
 def review_clarity_units(
@@ -410,17 +411,18 @@ def review_clarity_units(
         return ClarityOutput()
     index = build_spec_index(config.inputs.spec, config.settings)  # 사건마다 한 번
     errors: list[Exception] = []
+    tried = 0
     for unit in mine:
         try:
             out = review_clarity_unit(unit, oa, config, ctx=ctx, spec_index=index)
         except BUNDLE_ERRORS as e:
             # 모델 호출이 실패한 묶음만 보류하고 나머지는 끝까지 한다
             held.append(hold_for_error("f3_clarity", unit.unit_id, e))
+            tried += 1  # BUNDLE_ERRORS는 모델 호출에서만 난다
             if not is_limit(e):
                 errors.append(e)
             continue
+        tried += out.units_tried
         reviews += out.reviews
         held += out.held_tasks
-    return ClarityOutput(
-        reviews=reviews, held_tasks=held, call_errors=errors, units_tried=len(mine)
-    )
+    return ClarityOutput(reviews=reviews, held_tasks=held, call_errors=errors, units_tried=tried)

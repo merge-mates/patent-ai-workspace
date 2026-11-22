@@ -37,7 +37,7 @@ export function ClarityView({ c, unit }: { c: ClarityReview; unit: JudgmentUnit 
   const { openCite } = useContext(SourceContext)
   const def = c.spec_definition
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <CoreLabel />
         <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>

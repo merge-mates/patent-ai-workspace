@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from patent_ai.core.f4_response_draft.config import F4Options
 from patent_ai.core.f4_response_draft.directions import build_directions
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.run import run_f4
@@ -221,3 +222,53 @@ def test_F3가_상한으로_보류한_것은_F4_후보에서도_limit_reached로
     assert first.status.reason == UnverifiedReason.LIMIT_REACHED
     assert all(c.status.reason == UnverifiedReason.LIMIT_REACHED for c in first.candidates)
     assert second.status.reason != UnverifiedReason.LIMIT_REACHED
+
+
+# ---- 묶음 수 상한 max_units: 넘는 묶음은 호출 없이 limit_reached 보류, 실행은 failed가 아님 ----
+def test_묶음_수가_max_units를_넘으면_앞_묶음만_처리하고_나머지는_세_단계_모두_보류():
+    options = F4Options(final_rejection_limit=False, max_units=1, max_candidates=3)
+    ctx, transport = _ctx(
+        directions=[ONE], opinions=["opinion_inventive"], amendments=["amendment_inventive"]
+    )
+    out = run_f4(_case(), ctx=ctx, options=options)  # 예외 없음
+    # 호출은 앞 묶음 하나분만: 방향 1 + 의견서 1 + 보정 1
+    assert [c["step"] for c in transport.calls] == ["f4.direction", "f4.opinion", "f4.amendment"]
+    assert [b.unit_id for b in out.drafts.based_on] == [UNIT_INVENTIVE]
+    assert out.held_units == [UNIT_CLARITY]
+    rest = next(d for d in out.directions if d.unit_id == UNIT_CLARITY)
+    assert rest.status.reason == UnverifiedReason.LIMIT_REACHED
+    assert Flag.NEEDS_HUMAN_JUDGMENT in out.flags
+    held = next(c for c in out.drafts.claims if c.unit_id == UNIT_CLARITY)
+    assert held.ai_text is None and "max_units" in held.held_reason
+    assert out.status.value == StatusValue.UNVERIFIED
+    assert (
+        out.status.reason == UnverifiedReason.LIMIT_REACHED
+    )  # 이유가 다른 status에 가려지지 않는다
+    assert (
+        out.drafts.status.reason == UnverifiedReason.LIMIT_REACHED
+    )  # 초안 status에도 이유가 남는다
+    assert out.uncovered == []
+    assert "직접 판단" in held.held_reason
+
+
+def test_상한으로_자르기는_목록_순서가_아니라_order_순이다():
+    data = json.loads((FIXTURES / "case_basic.json").read_text("utf-8"))
+    data["spec"] = json.loads((FIXTURES / "spec_basic.pages.json").read_text("utf-8"))
+    data["units"].reverse()  # 목록은 명확성 묶음이 앞, order는 진보성 묶음이 앞
+    options = F4Options(final_rejection_limit=False, max_units=1, max_candidates=3)
+    ctx, _ = _ctx(directions=[ONE])
+    results = build_directions(F4Input.model_validate(data), ctx, options=options)
+    by_id = {r.unit_id: r for r in results}
+    assert by_id[UNIT_INVENTIVE].candidates  # order 1이 앞이라 처리됨
+    assert by_id[UNIT_CLARITY].status.reason == UnverifiedReason.LIMIT_REACHED
+
+
+def test_둘째_묶음만_방향_호출이_실패하면_실행_이유는_not_extracted():
+    ctx, _ = _ctx(
+        directions=[ONE, BAD, BAD],
+        opinions=["opinion_inventive"],
+        amendments=["amendment_inventive"],
+    )
+    out = run_f4(_case(), ctx=ctx)
+    assert out.status.reason == UnverifiedReason.NOT_EXTRACTED
+    assert out.drafts.status.reason == UnverifiedReason.NOT_EXTRACTED

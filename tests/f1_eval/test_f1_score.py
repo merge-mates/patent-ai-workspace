@@ -457,6 +457,22 @@ def test_호출_기록_파일을_읽으면_모르는_키는_무시한다(tmp_pat
     assert len(_load(tmp_path, [_rec(stop_reason="end_turn", extra=1)])) == 1
 
 
+def test_호출_기록에_오류_종류_칸이_있어도_읽고_합친다(tmp_path):
+    # #228: 출력 검사 실패 호출에 invalid_kind(짧은 코드) 칸이 생겼다. 옛 기록은 칸이 없다
+    calls = _load(
+        tmp_path,
+        [
+            _rec(invalid_kind=None),
+            _rec(outcome="invalid_output", invalid_kind="missing_key,bad_value"),
+            _rec(),
+        ],
+    )
+    assert len(calls) == 3
+    from eval.f1.score import sum_calls
+
+    assert sum_calls(calls, 1)["external_calls"] == 3
+
+
 @pytest.mark.parametrize(
     "bad",
     [

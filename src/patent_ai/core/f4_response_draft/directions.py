@@ -25,7 +25,6 @@ from patent_ai.core.bundle_errors import (
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
-from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import (
     Candidate,
@@ -213,6 +212,20 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
         logger.warning("f4.direction %s: F3가 대비하지 못한 것 %s", unit.unit_id, checks)
     return F3Gaps(
         statuses=statuses, checks=[*checks, *notes], needs_review=needs_review or bool(checks)
+    )
+
+
+LEGAL_REVIEW_CHECK = "법률 근거: 근거 검토 전 (직접 검토 필요)"
+
+
+def legal_needs_review(bundle: LegalEvidenceBundle) -> bool:
+    """법률 근거 묶음이나 그 주장에 직접 검토 필요가 있나 (#28: 근거 검토 전 F2 묶음).
+
+    묶음 status는 주장 status만 모아 확인됨이 될 수 있어, 주장의 표시를 따로 옮기지 않으면
+    근거 검토를 안 한 법률 근거가 후보에서 "확인됨 + 표시 없음"으로 보인다.
+    """
+    return Flag.NEEDS_HUMAN_REVIEW in bundle.flags or any(
+        Flag.NEEDS_HUMAN_REVIEW in c.flags for c in bundle.claims
     )
 
 
@@ -423,6 +436,31 @@ def _failed_result(
     )
 
 
+def _over_limit_result(
+    unit: JudgmentUnit,
+    limit: ExtractedValue[AmendmentLimit],
+    evidence: list[Evidence],
+    flags: list[Flag],
+    max_units: int,
+    all_ids: list[str],
+) -> DirectionCandidates:
+    """판단 단위 상한 max_units 밖 묶음의 자리 표시: 호출 없이 limit_reached + 직접 판단 필요."""
+    return DirectionCandidates(
+        unit_id=unit.unit_id,
+        candidates=[],
+        selection=None,
+        amendment_limit=limit,
+        status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.LIMIT_REACHED),
+        evidence=evidence,
+        needs_recheck=True,
+        recheck_reason=(
+            f"판단 단위 상한 max_units {max_units}에 닿아 다루지 않음 "
+            f"(전체 {len(all_ids)}묶음 중 앞 {max_units}묶음만 다룸)"
+        ),
+        flags=[Flag.NEEDS_HUMAN_JUDGMENT, *(f for f in flags if f != Flag.NEEDS_HUMAN_JUDGMENT)],
+    )
+
+
 # ---- 단계 진입 ----
 def build_directions(
     inp: F4Input, ctx: RunContext, *, options: F4Options | None = None
@@ -442,9 +480,18 @@ def build_directions(
     ids = [u.unit_id for u in inp.units]
     if len(set(ids)) != len(ids):
         raise ValueError(f"판단 단위 unit_id에 중복이 있음: {ids}")
-    # 묶음이 상한보다 많으면 중간에 끊기지 않게 모델을 부르기 전에 멈춘다
-    if len(inp.units) > options.max_units:
-        raise ModelCallLimitExceeded("max_units", len(inp.units), options.max_units)
+    # 묶음이 상한보다 많으면 앞 max_units개만 모델을 부르고, 넘는 묶음은 부르지 않고 보류한다.
+    # 의견서·보정 단계는 이 결과(넘는 묶음은 후보 없음)를 받으므로 같은 묶음 집합을 다룬다.
+    ordered = sorted(inp.units, key=lambda u: (u.order, u.unit_id))
+    over_ids = {u.unit_id for u in ordered[options.max_units :]}
+    if over_ids:
+        logger.warning(
+            "f4.direction %s: 판단 단위 %d개가 상한 max_units %d를 넘어 %d개는 보류",
+            inp.oa.oa_id,
+            len(ordered),
+            options.max_units,
+            len(over_ids),
+        )
 
     limit = amendment_limit_of(inp.oa)
     # 보정 제한 스위치가 켜져 있는데 통지 종류를 모르면: 제한을 짐작하지 않고 확인을 요청한다
@@ -460,20 +507,21 @@ def build_directions(
     )
     results: list[DirectionCandidates] = []
     errors: list[Exception] = []  # 호출 실패로 보류한 묶음의 예외 (호출 상한은 담지 않음)
-    for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
+    for unit in ordered:
         f3 = f3_results(inp, unit)
         bundle = legal_bundle_for(inp, unit)
         gaps = f3_gaps(inp, unit, f3)
         status, evidence = _status_of(f3, bundle, unit, gaps.statuses), _evidence_of(f3)
-        review = [Flag.NEEDS_HUMAN_REVIEW] if gaps.needs_review else []
-        unit_checks = [*checks, *gaps.checks]
+        legal_review = legal_needs_review(bundle)
+        review = [Flag.NEEDS_HUMAN_REVIEW] if gaps.needs_review or legal_review else []
+        unit_checks = [*checks, *gaps.checks, *([LEGAL_REVIEW_CHECK] if legal_review else [])]
         # 청구항 글자 없이 모델을 부르면 후보가 글자를 못 보고 나온 것이라 사람이 보게 표시한다
         missing = missing_claim_texts(inp, unit)
         if missing:
             logger.warning("f4.direction %s: 청구항 글자가 입력에 없음 %s", unit.unit_id, missing)
         flags = (
             [Flag.NEEDS_HUMAN_REVIEW]
-            if missing or ask_kind or unlimited_final or gaps.needs_review
+            if missing or ask_kind or unlimited_final or gaps.needs_review or legal_review
             else []
         )
 
@@ -499,6 +547,10 @@ def build_directions(
                 review,
             )
 
+        if unit.unit_id in over_ids:
+            # 상한 밖 묶음: 호출 없이 limit_reached 보류 (원문 글자 없이 상한 숫자와 범위만)
+            results.append(_over_limit_result(unit, limit, evidence, flags, options.max_units, ids))
+            continue
         variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)
         try:
             out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
@@ -516,5 +568,5 @@ def build_directions(
                 unit.unit_id,
             )
         results.append(result)
-    raise_if_all_failed(STEP, len(inp.units), errors)
+    raise_if_all_failed(STEP, len(ordered) - len(over_ids), errors)
     return results

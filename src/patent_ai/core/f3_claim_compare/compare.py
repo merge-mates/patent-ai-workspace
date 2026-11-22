@@ -105,7 +105,8 @@ class CompareOutput(BaseModel):
 
     tables: list[ComparisonTable] = Field(default_factory=list)
     held_tasks: list[HeldTask] = Field(default_factory=list)
-    # 호출 실패(상한 제외)로 보류한 묶음의 원래 예외와 대비를 시도한 묶음 수.
+    # 호출 실패(상한 제외)로 보류한 묶음의 원래 예외와 모델 호출까지 간 묶음 수
+    # (모델을 부르기 전에 보류로 끝난 묶음, 예: 인용문헌 본문 없음은 세지 않는다).
     # run_f3가 "모든 묶음 실패 = 단계 전체가 못 돔"을 가르고 마지막 원래 예외를 올리는 데 쓴다
     # (결과 모양이 아니라 저장하지 않는다)
     call_errors: list[Exception] = Field(default_factory=list, exclude=True)
@@ -1028,7 +1029,9 @@ def compare_unit(
         return _compare_unit(unit, oa, splits, config, ctx, searcher, repo, seen, spec_index)
     except BUNDLE_ERRORS as e:
         _hold_error(seen, unit.unit_id, e)
-        return CompareOutput(held_tasks=seen.held, call_errors=[] if is_limit(e) else [e])
+        # BUNDLE_ERRORS는 모델 호출에서만 나므로 이 묶음은 모델을 부른 묶음으로 센다
+        errors = [] if is_limit(e) else [e]
+        return CompareOutput(held_tasks=seen.held, call_errors=errors, units_tried=1)
 
 
 def _compare_unit(
@@ -1069,6 +1072,7 @@ def _compare_unit(
     input_ok = config.inputs.claims_status.value == StatusValue.CONFIRMED
     # 어느 묶음에서든 대비된 청구항 (신규성은 문헌마다 묶음이 따로라 합쳐서 본다)
     compared_anywhere: set[int] = set()
+    called_model = False  # 청구항 대비(모델 호출)까지 갔는가 ("모든 묶음 실패"의 분모)
     for group in groups:
         rows: list[ComparisonRow] = []
         # 이 묶음(문헌)에서 청구항마다 대비하는 문헌. 부모가 "이미 대비됨"인지 문헌까지 따진다
@@ -1097,6 +1101,7 @@ def _compare_unit(
         first = [rep] if staged else in_order
         later = [c for c in in_order if c not in first]
         for claim in first:
+            called_model = True
             rows += _compare_claim(
                 unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
             )
@@ -1132,6 +1137,7 @@ def _compare_unit(
                 views = {c: _make_view(splits[c], compared, splits, config) for c in compared}
             for claim in later:
                 if claim not in skip_claims:
+                    called_model = True
                     rows += _compare_claim(
                         unit, views[claim], cites_of[claim], oa, config, ctx, searcher, repo, seen
                     )
@@ -1214,6 +1220,7 @@ def _compare_unit(
     return CompareOutput(
         tables=tables,
         held_tasks=seen.held,
+        units_tried=1 if called_model else 0,
         search_log=seen.search_log,
         examiner_locations=seen.examiner,
     )
@@ -1246,11 +1253,12 @@ def compare_units(
     for unit in sorted(units, key=lambda u: u.order):
         if unit.rejection_kind == RejectionKind.CLARITY:
             continue
-        tried += 1
-        # 호출 실패는 compare_unit이 그 단위만 보류한 결과로 돌려준다
+        # 호출 실패는 compare_unit이 그 단위만 보류한 결과로 돌려준다.
+        # 모델을 부르기 전에 보류로 끝난 단위(본문 없음 등)는 tried에 세지 않는다
         out = compare_unit(
             unit, oa, splits, config, ctx=ctx, searcher=searcher, repo=repo, spec_index=spec_index
         )
+        tried += out.units_tried
         errors += out.call_errors
         tables += out.tables
         total.search_log += out.search_log

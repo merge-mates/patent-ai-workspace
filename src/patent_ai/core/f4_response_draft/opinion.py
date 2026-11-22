@@ -17,7 +17,6 @@ from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.directions import f3_results, to_json, unit_variables
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
-from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import (
     Evidence,
@@ -178,8 +177,7 @@ def build_opinion(
     missing = [u.unit_id for u in inp.units if u.unit_id not in by_unit]
     if missing:
         raise ValueError(f"방향 후보 결과가 없는 판단 단위: {missing}")
-    if len(inp.units) > options.max_units:
-        raise ModelCallLimitExceeded("max_units", len(inp.units), options.max_units)
+    # 묶음 수 상한은 방향 후보 단계에서 한 번 자른다: 상한 밖 묶음은 후보가 없어 여기서 보류가 된다
     if not inp.units:
         logger.warning("f4.opinion %s: 판단 단위가 0개라 의견서를 만들지 않음", inp.oa.oa_id)
 
