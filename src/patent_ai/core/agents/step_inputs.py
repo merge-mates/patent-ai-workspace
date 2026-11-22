@@ -12,6 +12,7 @@ from patent_ai.core.f2_legal_research.run import F2Result, load_f2_settings
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
 from patent_ai.core.f3_claim_compare.inputs import F3Inputs
 from patent_ai.core.f3_claim_compare.result import F3Result
+from patent_ai.core.f3_claim_compare.run import PreparedUnits
 from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.oa_result import OAResult
 
@@ -34,6 +35,18 @@ def _missing(what: str) -> InputMissing:
     return InputMissing(f"input_unverified: {what}")
 
 
+def prepare_input(
+    results: dict[str, Any], case_id: str, texts: F3Inputs | None
+) -> dict | InputMissing:
+    """prepare_units 입력: read_oa 결과(OAResult) + 설정·글자. run_f3와 같은 것을 먼저 본다."""
+    oa = results.get("read_oa")
+    if not isinstance(oa, OAResult):
+        return _missing(NO_OA)
+    if texts is None:
+        return _missing(NO_TEXTS)
+    return {"oa_result": oa, "config": {"settings": load_f3_settings(), "inputs": texts}}
+
+
 def f3_input(results: dict[str, Any], case_id: str, texts: F3Inputs | None) -> dict | InputMissing:
     """run_f3 입력: read_oa 결과(OAResult) + 실행 입력 글자 + config/f3.yaml 설정."""
     oa = results.get("read_oa")
@@ -41,17 +54,22 @@ def f3_input(results: dict[str, Any], case_id: str, texts: F3Inputs | None) -> d
         return _missing(NO_OA)
     if texts is None:
         return _missing(NO_TEXTS)
-    return {
+    payload = {
         "oa_result": oa,
         # 사건 자료 목록은 자르기(#54)가 아직 CaseMaterials를 만들지 않아 빈 목록으로 넘긴다
         "case_materials": CaseMaterials(case_id=case_id),
         "config": {"settings": load_f3_settings(), "inputs": texts},
     }
+    prepared = results.get("prepare_units")
+    if isinstance(prepared, PreparedUnits):  # 앞 고정 단계가 나눈 결과를 이어 쓴다 (다시 안 나눔)
+        payload["prepared"] = prepared
+    return payload
 
 
 def f2_input(results: dict[str, Any], checked_on: date | None) -> dict | InputMissing:
     """run_f2 입력: read_oa 결과(OAResult) + F3 판단 단위 + 확인 기준일 + config/f2.yaml 설정."""
     oa, f3 = results.get("read_oa"), results.get("run_f3")
+    prepared = results.get("prepare_units")
     if not isinstance(oa, OAResult):
         return _missing(NO_OA)
     if not isinstance(f3, F3Result):
@@ -61,7 +79,8 @@ def f2_input(results: dict[str, Any], checked_on: date | None) -> dict | InputMi
         return _missing(NO_CHECKED_ON)
     return {
         "oa": oa,
-        "units": f3.units,
+        # 판단 단위는 앞 고정 단계 결과를 쓰고, 없을 때만 run_f3 결과 (F2 인터페이스 그대로)
+        "units": prepared.units if isinstance(prepared, PreparedUnits) else f3.units,
         "checked_on": checked_on,
         "settings": load_f2_settings(),
     }

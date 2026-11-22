@@ -81,11 +81,20 @@ def test_e2e_한_사건이_F1_F3_F2_F4로_돈다(tmp_path, offline):
     out, steps, _ = _run(tmp_path, _all_responses())
 
     assert out.state == "succeeded" and out.error is None
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f2", "run_f4"]
+    assert out.trace == [
+        "extract_pages",
+        "read_oa",
+        "cut_to_oa",
+        "prepare_units",
+        "run_f3",
+        "run_f2",
+        "run_f4",
+    ]
     assert [(r.tool_name, r.outcome) for r in steps.records] == [
         ("extract_pages", "ok"),
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
+        ("prepare_units", "ok"),
         ("run_f3", "ok"),
         ("run_f2", "ok"),
         ("run_f4", "ok"),

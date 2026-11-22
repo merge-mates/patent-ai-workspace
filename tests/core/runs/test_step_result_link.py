@@ -89,7 +89,8 @@ def test_글자가_없어_F3_F2_F4를_넘기면_그_단계_result_id는_None(tmp
     env = Env(tmp_path, with_texts=False, step_log=rec)
     env.run(RID, OID)
     skipped = [r for r in rec.records if r.outcome == "skipped"]
-    assert {r.tool_name for r in skipped} == set(RESULT_STEPS)
+    # 판단 단위 나누기(prepare_units, 고정 단계)도 글자가 없어 같이 넘긴다 (#309)
+    assert {r.tool_name for r in skipped} == set(RESULT_STEPS) | {"prepare_units"}
     assert all(r.result_id is None for r in rec.records)
 
 

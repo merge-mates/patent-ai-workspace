@@ -141,6 +141,8 @@ def test_run_case_지금_하는_일이_단계마다_바뀐다(env):
         "OA 정리 중",
         "OA 시점까지 자료 자르는 중",
         "청구항–인용문헌 대비 중",
+        # 판단 단위 나누기(prepare_units, #309) 뒤에도 같은 글: 자르기 뒤와 나누기 뒤 두 번
+        "청구항–인용문헌 대비 중",
         "법률 근거 조사 중",
         "대응 방향·초안 만드는 중",
         "결과 저장 중",
@@ -163,7 +165,7 @@ def test_run_case_청구항_글자가_없으면_F3_F4는_넘긴_이유가_남고
     assert env.step_results.step_result(RID, "f3") is None
     assert env.step_results.step_result(RID, "f4") is None
     skipped = {s.step: s.reason for s in env.store.skipped_steps(RID)}
-    assert set(skipped) == {"run_f3", "run_f2", "run_f4"}
+    assert set(skipped) == {"prepare_units", "run_f3", "run_f2", "run_f4"}
     assert skipped["run_f3"].startswith("input_unverified")
     assert skipped["run_f4"].startswith("input_unverified")
 

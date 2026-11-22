@@ -91,10 +91,11 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
         out, steps = _go(tmp_path, body)
     # 나머지 단계는 끝까지 돈다
     assert out.state == "succeeded"
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
+    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]  # prepare_units는 넘김
     # 넘긴 단계는 결과에도, 돈 순서에도 없다 (성공한 것처럼 보이지 않는다)
     assert "run_later" not in out.results
-    assert list(out.skipped) == ["run_later"]
+    # (이 사건은 청구항 글자가 없어 판단 단위 나누기 prepare_units도 같은 이유로 넘어간다)
+    assert list(out.skipped) == ["prepare_units", "run_later"]
     head, body = out.skipped["run_later"].split(": ", 1)
     # 앞머리 코드 뒤 글은 화면에 그대로 보이므로 설정 이름 같은 코드 이름이 없다 (이슈 #294)
     assert head == "tool_missing" and body and "skip_if_missing" not in body
@@ -108,7 +109,9 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
     assert rec.result_status == "unverified"
     assert rec.skipped_reason == out.skipped["run_later"]
     # 넘기지 않은 단계에는 이유 칸이 비어 있다
-    assert all(r.skipped_reason is None for r in steps.records[:-1])
+    assert all(
+        r.skipped_reason is None for r in steps.records[:-1] if r.tool_name != "prepare_units"
+    )
     assert any(
         "run_later" in r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
     )
@@ -127,6 +130,7 @@ def test_넘긴_단계가_가운데에_있어도_뒤_단계는_돈다(tmp_path, 
         "run_later",
         "read_oa",
         "cut_to_oa",
+        "prepare_units",  # 글자가 없어 넘김
     ]
     assert len([r for r in steps.records if r.tool_name == "run_later"]) == 1  # 한 번만 적는다
 
@@ -137,7 +141,7 @@ def test_표시_없는_모르는_단계_이름은_설정_오류로_failed(tmp_pa
     assert out.state == "failed"
     assert out.error["code"] == "invalid_tool_choice"
     assert "run_later" in out.error["message"] and "skip_if_missing" in out.error["message"]
-    assert out.skipped == {}
+    assert list(out.skipped) == ["prepare_units"]  # 글자가 없어 넘김. run_later는 안 넘김
     assert (steps.records[-1].step_kind, steps.records[-1].outcome) == ("decide", "failed")
 
 
@@ -145,7 +149,7 @@ def test_넘겨도_된다고_적혀도_도구가_있으면_그대로_돈다(tmp_
     body = {"plan": "fixed_order", "fixed_order": F1_STEPS, "skip_if_missing": ["read_oa"]}
     out, _ = _go(tmp_path, body)
     assert out.state == "succeeded"
-    assert out.skipped == {} and "read_oa" in out.results
+    assert list(out.skipped) == ["prepare_units"] and "read_oa" in out.results
 
 
 def test_agent_모드는_넘김_표시와_상관없이_없는_도구를_고르면_failed(tmp_path, notice_pages):

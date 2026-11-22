@@ -11,6 +11,8 @@
 
 import logging
 
+from pydantic import BaseModel
+
 from patent_ai.core.bundle_errors import (
     held_error_status,
     is_dependent_skip,
@@ -87,6 +89,45 @@ def _split_claims(
     return splits, held
 
 
+class PreparedUnits(BaseModel):
+    """판단 단위 나누기 결과 (F3 앞 고정 단계 prepare_units의 출력). run_f3가 그대로 이어 쓴다."""
+
+    splits: dict[int, SplitClaim]
+    units: list[JudgmentUnit]
+    held_tasks: list[HeldTask]
+    status: Status  # units status 중 가장 나쁜 값 (도구 결과는 status가 있어야 한다)
+
+
+def prepare_units(oa_result: OAResult, config: F3Config, *, ctx: RunContext) -> PreparedUnits:
+    """청구항 나누기(모델 호출) -> 판단 단위 -> (청구항 판이 확인되지 않았으면) 단위 낮추기.
+
+    어느 대비 방식이든 같은 공통 단계라 run_f3 안에서 꺼냈다. 기본 동작은 그대로다.
+    """
+    oa_id = oa_result.oa_id
+    for rej in oa_result.rejections:
+        if not rej.supported or rej.kind == RejectionKind.OTHER:
+            # 지원 안 하는 거절이유는 단위를 만들지 않는다 (OA 결과의 flags로 사람에게 보인다)
+            logger.warning(
+                "run_f3 %s: 거절이유 %d는 지원 안 함 (단위를 만들지 않음)", oa_id, rej.no
+            )
+    # 1) 청구항 나누기 -> 2) 판단 단위
+    splits, held = _split_claims(oa_result, config, ctx)
+    units, unit_held = build_units(oa_result, splits)
+    held += unit_held
+    if config.inputs.claims_status.value != StatusValue.CONFIRMED:
+        # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified.
+        # 대비 전에 낮춰야 대비표의 직접 검토 필요 표시가 이 상태를 본다
+        units = [_unverified_unit(u) for u in units]
+    if not units:
+        logger.warning("prepare_units %s: 판단 단위가 0개", oa_id)
+    return PreparedUnits(
+        splits=splits,
+        units=units,
+        held_tasks=held,
+        status=worst_status([u.status for u in units], "판단 단위가 모두 확인됨"),
+    )
+
+
 def run_f3(
     oa_result: OAResult,
     case_materials: CaseMaterials,
@@ -95,10 +136,12 @@ def run_f3(
     ctx: RunContext,
     searcher: Searcher | None = None,
     repo: ChunkRepository | None = None,
+    prepared: PreparedUnits | None = None,
 ) -> F3Result:
     """F3 한 바퀴. searcher·repo를 안 주면 진짜 것(색인 DB + 질의 임베딩)을 만든다.
 
     searcher·repo는 데이터가 아니라 객체라 설정 모델에 싣지 않고 따로 받는다.
+    prepared(판단 단위 나누기 결과)를 주면 그것을 쓰고, 안 주면 안에서 prepare_units를 부른다.
     """
     if (searcher is None) != (repo is None):
         raise ValueError("searcher와 repo는 같이 주거나 같이 비운다 (repo 없이 searcher만은 안 됨)")
@@ -110,21 +153,10 @@ def run_f3(
             oa_id,
             config.inputs.claims_document_id,
         )
-    for rej in oa_result.rejections:
-        if not rej.supported or rej.kind == RejectionKind.OTHER:
-            # 지원 안 하는 거절이유는 단위를 만들지 않는다 (OA 결과의 flags로 사람에게 보인다)
-            logger.warning(
-                "run_f3 %s: 거절이유 %d는 지원 안 함 (단위를 만들지 않음)", oa_id, rej.no
-            )
-
-    # 1) 청구항 나누기 -> 2) 판단 단위 (어느 대비 방식이든 같은 공통 단계)
-    splits, held = _split_claims(oa_result, config, ctx)
-    units, unit_held = build_units(oa_result, splits)
-    held += unit_held
-    if config.inputs.claims_status.value != StatusValue.CONFIRMED:
-        # OA 당시 청구항 판이 확인되지 않았으면 뒤 결과는 모두 input_unverified.
-        # 대비 전에 낮춰야 대비표의 직접 검토 필요 표시가 이 상태를 본다
-        units = [_unverified_unit(u) for u in units]
+    if prepared is None:
+        prepared = prepare_units(oa_result, config, ctx=ctx)
+    splits, units = prepared.splits, prepared.units
+    held = list(prepared.held_tasks)  # 뒤 단계 보류를 덧붙이므로 복사
 
     # 3) 대비 방식(config/f3.yaml impl): 진보성·신규성 대비만 맡는다.
     #    검색기는 방식이 필요할 때만 만든다. 모르는 impl 이름이면 여기서 멈춘다
