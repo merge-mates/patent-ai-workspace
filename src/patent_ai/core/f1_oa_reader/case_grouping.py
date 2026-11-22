@@ -387,6 +387,11 @@ def build_case_materials(
             key = c.number.value or what
             prev = missing.get(key)
             if prev is None:
+                # 한 OA만 번호를 못 읽었어도 이름(what)이 같으면 같은 줄 (같은 what 두 줄 금지)
+                key, prev = next(
+                    ((k, m) for k, m in missing.items() if m.what == what), (key, None)
+                )
+            if prev is None:
                 missing[key] = MissingMaterial(
                     what=what,
                     depends_on_tasks=[task],

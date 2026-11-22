@@ -899,3 +899,20 @@ def test_oas_인용문헌이_없는_OA만_있으면_경고하고_빠진_자료_�
         got = build_case_materials("c_1", [], [empty], received_citations=set())
     assert got.missing == [] and got.held_tasks == []
     assert "인용문헌이 0건" in caplog.text
+
+
+def test_oas_한_OA만_번호를_못_읽어도_이름이_같으면_빠진_자료는_한_줄이다():
+    # OA1은 번호를 읽고(값 US_D2), OA2는 못 읽었지만 원문 글자가 같아 이름이 같다
+    oa1 = _fixture_oa()
+    d = _second_oa(oa1).model_dump(mode="json")
+    first = d["rejections"][0]["citations"][0]
+    first["label"] = "D2"
+    first["number"] = first["number"] | {"value": None, "raw_text": US_D2}
+    first["number"]["status"] = {"value": "unverified", "reason": "not_extracted"}
+    d["rejections"][0]["citations"] = [first]
+    d["rejections"][0]["status"] = first["number"]["status"]
+    oa2 = OAResult.model_validate(d | {"status": first["number"]["status"]})
+    got = build_case_materials("c_1", _fixture_grouped(oa1), [oa1, oa2], received_citations={KR_D1})
+    (m,) = got.missing
+    assert m.what == "D2 US20990000001A1 본문" and m.citation_key == US_D2
+    assert m.depends_on_tasks == ["f3_compare:oa_1:D2", "f3_compare:oa_2:D2"]

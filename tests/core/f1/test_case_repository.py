@@ -140,8 +140,10 @@ def test_개수와_줄_수가_어긋난_6번은_저장_전에_다시_검사해_�
     # model_copy는 검사를 거치지 않아 어긋난 값이 들어올 수 있다: 저장 전에 다시 검사
     record = _record()
     broken = record.materials.model_copy(update={"review_items_count": 99})
-    with pytest.raises(ValidationError):
+    # 설명대로 저장 거부는 CaseStoreError 하나로 (검사 오류는 원인으로 붙음)
+    with pytest.raises(CaseStoreError, match="개수") as e:
         plan_case_rows(record.model_copy(update={"materials": broken}))
+    assert isinstance(e.value.__cause__, ValidationError)
 
 
 def test_없는_사건은_None():

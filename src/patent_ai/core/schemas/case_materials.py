@@ -79,7 +79,7 @@ class ReviewItem(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: ReviewKind
-    # 결과 안 경로. 예: oa_result[0].rejections[0].citations[1].country, materials.missing[0]
+    # 결과 안 경로. 예: oa_result[oa_1].rejections[0].citations[1].country, materials.missing[0]
     target: str
     label: str  # 사람이 읽는 이름. 예: 조문 "42-3", 인용문헌 번호, 빠진 자료 이름
     reason: str  # 왜. 예: not_extracted, "지원 안 하는 거절이유 42-3"
