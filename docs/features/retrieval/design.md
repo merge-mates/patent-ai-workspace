@@ -89,6 +89,10 @@ flowchart LR
       "location": {"kind": "paragraph", "start": 23, "end": 23, "label": "[0023]", "figures": [], "claims": []},
       "edition": {"status": "not_applicable", "effective_from": null, "effective_to": null, "label": null},
       "text": "…",
+      "source_kind": null,
+      "decided_on": null,
+      "speaker": null,
+      "attrs": null,
       "score": 3.2,
       "rank": 1
     }
@@ -97,7 +101,7 @@ flowchart LR
 ```
 - `SearchHit` = 조각 `Chunk`의 칸(5-1 표에서 `embedding`·`created_at` 뺀 것) + `score` + `rank`다. `Chunk`도 `retrieval/schemas.py`에 둔다. 저장소는 `Chunk`를 돌려주고 `Matcher`는 `Chunk`를 받으므로(7-1), 검색 결과와 무작위 기준선 계산이 같은 판정을 쓴다.
 - `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "body_missing"`, 거른 문헌 조각이 0개). 이름은 결과 공통 칸 `core/schemas/common.py`(#103)의 `body_missing`과 같다.
-- 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `edition.status: not_applicable`(인용문헌) 하나다 (`status_reason: body_missing`은 #103 공통 칸 이름을 그대로 씀).
+- 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `edition.status: not_applicable`(인용문헌·판례·심결: 판본이 아니라 선고일로 다루는 자료) 하나다 (`status_reason: body_missing`은 #103 공통 칸 이름을 그대로 씀).
 - 다시 확인 필요: 해당 없음 (검색은 저장하지 않는 도구 결과).
 - 인터페이스 변경: 있음 (새로 생김). F2·F3 설계가 이 모양을 받는다. 스키마는 `src/patent_ai/retrieval/schemas.py`에 둔다. `core/schemas/`에 두지 않는 이유는 부르는 방향이 `core → retrieval`이라 `retrieval`이 `core`를 import하면 안 되기 때문이다 ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더). data-model 4절 표에 "도구 결과" 줄로 이름을 더하는 것은 스키마 코드를 만드는 구현 task에서 한다.
 
@@ -121,17 +125,26 @@ flowchart LR
 | `chunk_id` | text PK | 내용으로 정함 `<index_version>:<doc_id>:<위치 키>`. 같은 설정으로 다시 만들면 같은 ID (#66·#67 "두 번 만들면 같다") |
 | `index_version` | text not null | `<말뭉치>-idx-v<n>`. 정규식 `^(law|cite)-idx-v[0-9]+$`, 말뭉치와 표가 맞아야 함 (CHECK) |
 | `doc_id` | text not null | 법령: 법령 이름·심사기준·판례 사건번호 등 (#66이 값 규칙), 인용문헌: 공보 번호 |
-| `chunk_kind` | text not null | `body` 본문 문단 / `claim` 청구항 / `abstract` 요약 / `figure_desc` 도면의 간단한 설명 / `article` 조문 / `guideline` 심사기준 문단 / `judgment` 판결 이유. 값을 더하면 이 문서를 고치는 PR |
+| `chunk_kind` | text not null | `body` 본문 문단 / `claim` 청구항 / `abstract` 요약 / `figure_desc` 도면의 간단한 설명 / `article` 조문 / `guideline` 심사기준 문단 / `judgment` 판결 이유 / `judgment_summary` 판례 요지(판시사항·판결요지). 값을 더하면 이 문서를 고치는 PR |
 | `loc_kind` | text not null | `paragraph` / `column_line` / `article` / `page` / `figure` / `claim` / `abstract` |
 | `loc_start`, `loc_end` | integer null | 정렬 키. 문단 = 번호, 칼럼:줄 = 칼럼 × 10000 + 줄, 쪽 = 쪽 번호, 조문 = #66이 정함 (그 전엔 null) |
 | `loc_figures`, `loc_claims` | integer[] not null default `{}` | 그 조각이 담은 도면 번호·청구항 번호 |
 | `loc_label` | text not null | 원문 표기 그대로 (`[0023]`, `3:10-25`, `제29조 제2항`, `4206쪽`) |
-| `edition_status` | text not null | `confirmed` / `unverified` / `not_applicable`(인용문헌). 법령 판본을 모르면 `unverified`, 빈칸 안 됨 |
+| `edition_status` | text not null | `confirmed` / `unverified` / `not_applicable`(인용문헌·판례·심결). 법령 판본을 모르면 `unverified`, 빈칸 안 됨. 법령 표의 `not_applicable`은 `chunk_kind`가 `judgment`·`judgment_summary`일 때만 |
 | `edition_effective_from`, `edition_effective_to` | date null | 법령 판본 시행 기간 |
 | `edition_label` | text null | 예 `특허청 예규 제113호` |
 | `text` | text not null | 본문 |
 | `embedding` | `vector` (길이 안 정함) null | 색인 판마다 모델이 달라도 담음. 인덱스 없음 ([가정] 5번) |
 | `created_at` | timestamptz not null | |
+
+법령 표(`law_chunks`)에만 있는 칸 넷 (인용문헌 표는 그대로, `Chunk`에는 선택 칸이고 인용문헌 조각은 모두 비운다. #24):
+
+| 칸 | 타입 | 뜻 |
+|---|---|---|
+| `source_kind` | text not null | `statute` 조문 / `guideline` 심사기준 / `precedent` 판례 / `trial` 심결 (CHECK). 옛 판(v1·v2) 행은 마이그레이션이 `statute`로 채움 |
+| `decided_on` | date null | 판례·심결 선고(결정)일. `source_kind`가 `precedent`·`trial`일 때만 값이 있을 수 있다 |
+| `speaker` | text null | `court` 법원 / `party` 당사자 / `unknown` (CHECK). 판례·심결일 때만 |
+| `attrs` | jsonb null | 법원·사건명·심결 결과 같은 보이기용 칸. 거르기에는 안 씀 |
 
 - 인덱스: `(index_version, doc_id)`, 법령 표는 `(index_version, edition_effective_from)`.
 - 마이그레이션은 `CREATE EXTENSION IF NOT EXISTS vector`를 먼저 한다. 그래서 DB 첫 생성 때 확장을 만들던 `scripts/db/init.sql`은 지운다 (#79 때 정한 대로).

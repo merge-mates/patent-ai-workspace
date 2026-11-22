@@ -183,6 +183,15 @@ def fixture_rows(corpus: str, text: str) -> list[LawChunk | CiteChunk]:
             raise IndexDumpError(
                 f"{no}번째 줄 판본 상태 {ed['status']!r}이 {corpus} 표와 안 맞는다"
             )
+        # law 표 새 칸 넷 (retrieval.chunk_to_row·fill_law_defaults와 같은 규칙: 없으면 statute)
+        extra = {}
+        if corpus == "law":
+            extra = {
+                "source_kind": d.get("source_kind") or "statute",
+                "decided_on": _date(d.get("decided_on")),
+                "speaker": d.get("speaker"),
+                "attrs": d.get("attrs"),
+            }
         rows.append(
             table(
                 chunk_id=d["chunk_id"],
@@ -201,6 +210,7 @@ def fixture_rows(corpus: str, text: str) -> list[LawChunk | CiteChunk]:
                 edition_label=ed.get("label"),
                 text=d["text"],
                 embedding=d.get("embedding"),
+                **extra,
             )
         )
     return rows

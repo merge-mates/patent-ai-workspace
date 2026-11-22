@@ -42,6 +42,16 @@ class ChunkRepository(Protocol):
     ) -> int: ...
 
 
+def fill_law_defaults(chunk: Chunk) -> Chunk:
+    """law 조각의 source_kind가 없으면 statute로 채운다 (v1·v2 JSONL은 조문뿐).
+
+    마이그레이션이 옛 DB 행을 statute로 채운 것과 같아서, 옛 JSONL을 다시 넣어도 내용 지문이 같다.
+    """
+    if chunk.source_kind is None:
+        return chunk.model_copy(update={"source_kind": "statute"})
+    return chunk
+
+
 def _check_doc_ids(doc_ids: list[str] | None) -> None:
     # None만 "전체"다. 빈 목록은 실수일 가능성이 커서 조용히 0건을 돌려주지 않고 막는다
     if doc_ids is not None and len(doc_ids) == 0:
@@ -100,6 +110,8 @@ class InMemoryChunkRepository:
                     raise ValueError(
                         f"{path}:{no} {corpus} 표에 맞지 않는 판본 상태 {chunk.edition.status!r}"
                     )
+                if corpus == "law":
+                    chunk = fill_law_defaults(chunk)
                 if chunk.chunk_id in seen:
                     raise ValueError(f"{path}:{no} chunk_id가 겹친다: {chunk.chunk_id}")
                 seen.add(chunk.chunk_id)
@@ -163,6 +175,15 @@ _TABLES: dict[str, type[LawChunk] | type[CiteChunk]] = {"law": LawChunk, "cite":
 def chunk_to_row(corpus: Corpus, chunk: Chunk) -> LawChunk | CiteChunk:
     """Chunk를 그 말뭉치 표의 행으로 바꾼다 (location -> loc_*, edition -> edition_*)."""
     loc, ed = chunk.location, chunk.edition
+    # 새 칸 넷은 법령 표에만 있다 (인용문헌 표에는 칸이 없다)
+    extra: dict[str, Any] = {}
+    if corpus == "law":
+        extra = {
+            "source_kind": chunk.source_kind,
+            "decided_on": chunk.decided_on,
+            "speaker": chunk.speaker,
+            "attrs": chunk.attrs,
+        }
     return _TABLES[corpus](
         chunk_id=chunk.chunk_id,
         index_version=chunk.index_version,
@@ -180,6 +201,7 @@ def chunk_to_row(corpus: Corpus, chunk: Chunk) -> LawChunk | CiteChunk:
         edition_label=ed.label,
         text=chunk.text,
         embedding=chunk.embedding,
+        **extra,
     )
 
 
@@ -208,6 +230,11 @@ def row_to_chunk(row: LawChunk | CiteChunk) -> Chunk:
         text=row.text,
         # pgvector는 numpy 배열로 돌려줄 수 있어 파이썬 list로 바꾼다
         embedding=None if emb is None else [float(x) for x in emb],
+        # 인용문헌 행에는 새 칸이 없어 None
+        source_kind=getattr(row, "source_kind", None),
+        decided_on=getattr(row, "decided_on", None),
+        speaker=getattr(row, "speaker", None),
+        attrs=getattr(row, "attrs", None),
     )
 
 

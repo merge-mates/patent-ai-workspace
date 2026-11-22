@@ -8,6 +8,7 @@ from datetime import date, datetime
 
 from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import ARRAY, CheckConstraint, DateTime, Index, Integer, Text, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from patent_ai.db.base import Base
@@ -44,12 +45,22 @@ class ChunkColumns:
 
 class LawChunk(ChunkColumns, Base):
     __tablename__ = "law_chunks"
+    # 법령 표에만 있는 칸 (design 5-1). 인용문헌 표는 그대로
+    source_kind: Mapped[str] = mapped_column(Text)
+    decided_on: Mapped[date | None]
+    speaker: Mapped[str | None] = mapped_column(Text)
+    attrs: Mapped[dict | None] = mapped_column(JSONB)
     __table_args__ = (
         CheckConstraint("index_version ~ '^law-idx-v[0-9]+$'", name="ck_law_chunks_index_version"),
         CheckConstraint(
             "edition_status IN ('confirmed', 'unverified', 'not_applicable')",
             name="ck_law_chunks_edition_status",
         ),
+        CheckConstraint(
+            "source_kind IN ('statute', 'guideline', 'precedent', 'trial')",
+            name="ck_law_chunks_source_kind",
+        ),
+        CheckConstraint("speaker IN ('court', 'party', 'unknown')", name="ck_law_chunks_speaker"),
         Index("ix_law_chunks_index_version_doc_id", "index_version", "doc_id"),
         # 기준일로 판본을 거를 때 쓴다 (법령 표만)
         Index(

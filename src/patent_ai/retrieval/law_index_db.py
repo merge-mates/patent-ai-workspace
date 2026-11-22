@@ -30,7 +30,12 @@ from sqlalchemy.orm import Session
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
 from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.errors import RetrievalError
-from patent_ai.retrieval.repository import InMemoryChunkRepository, chunk_to_row, row_to_chunk
+from patent_ai.retrieval.repository import (
+    InMemoryChunkRepository,
+    chunk_to_row,
+    fill_law_defaults,
+    row_to_chunk,
+)
 from patent_ai.retrieval.schemas import Chunk, Corpus
 from patent_ai.settings import get_settings
 
@@ -124,7 +129,9 @@ def read_chunks_jsonl(path: str | Path, corpus: Corpus) -> list[Chunk]:
     # 저장소 검사(chunk_id 겹침·말뭉치 판 앞말·판본 상태)를 먼저 거친다
     InMemoryChunkRepository.from_jsonl(corpus, path)
     lines = Path(path).read_text(encoding="utf-8").splitlines()
-    return [Chunk.model_validate_json(line) for line in lines if line.strip()]
+    chunks = [Chunk.model_validate_json(line) for line in lines if line.strip()]
+    # 옛 JSONL은 source_kind가 없다: statute로 채워 DB 행과 내용 지문을 맞춘다
+    return [fill_law_defaults(c) for c in chunks] if corpus == "law" else chunks
 
 
 def main(argv: list[str] | None = None) -> int:
