@@ -74,9 +74,10 @@ const httpApi: typeof mockApi = {
   getCase: (caseId) => getJson<CaseDetail>(`/cases/${caseId}`),
   getOA: (oaId) => getJson<OADetail>(`/oas/${oaId}`),
   getOAResult: (oaId) => getJson<OAResultResponse>(`/oas/${oaId}/oa-result`),
-  getMaterials: (caseId) => getJson<CaseMaterials>(`/cases/${caseId}/materials`),
-  // API v0에는 검토할 사항 목록 엔드포인트가 없다 (개수만 materials.review_items_count).
-  // 목록을 지어내지 않고 알린다. 화면은 개수만 보인다.
+  // 서버 응답은 {case_id, run_id, result} 봉투다 (src/patent_ai/api/cases.py CaseMaterialsOut). 결과 스키마 ⑥은 result에 있다
+  getMaterials: async (caseId) =>
+    (await getJson<{ case_id: string; run_id: string | null; result: CaseMaterials }>(`/cases/${caseId}/materials`)).result,
+  // 검토할 사항 목록만 따로 주는 엔드포인트는 없다 (목록은 사건 자료 ⑥의 review_items에 있다). 목록을 지어내지 않고 알린다
   getReviewItems: async (): Promise<ReviewItem[]> => {
     throw new ApiError('not_in_api_v0', '검토할 사항 목록은 API v0에 아직 없음', 0)
   },
