@@ -119,7 +119,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // 고른 후보의 칸들: 데이터에 있는 것만 (없는 칸은 그리지 않는다)
 function Fields({ c }: { c: DirectionCandidate }) {
-  const claims = [...new Set(c.amendment_core.map((a) => a.claim))]
+  // 보정하는 청구항: 그대로(unchanged)인 청구항은 빼고 센다 (argue_only는 칸이 안 그려짐. F4 opinion.py has_amendment와 같은 기준)
+  const claims = [...new Set(c.amendment_core.filter((a) => a.kind !== 'unchanged').map((a) => a.claim))]
   return (
     <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
       <Field label="보정 핵심">
@@ -132,7 +133,7 @@ function Fields({ c }: { c: DirectionCandidate }) {
               </div>
             ))}
       </Field>
-      {claims.length > 0 && <Field label="함께 바뀌는 청구항">청구항 {claimRange(claims)}</Field>}
+      {claims.length > 0 && <Field label="보정하는 청구항">청구항 {claimRange(claims)}</Field>}
       {c.per_rejection.length > 0 && (
         <Field label="거절이유별 대응">
           {c.per_rejection.map((r) => (

@@ -3,7 +3,7 @@
 // - 화면은 useSyncExternalStore(subscribeRun(id), 스냅숏)으로 구독한다 (hook은 useRunSnapshot.ts).
 // - 첫 구독자가 붙고 끝난 상태가 아니면 2.5초 뒤 한 번 GET /runs/{id}만 부르고, 마지막 구독자가 떠나면 멈춘다.
 import { api } from './api'
-import type { LatestRun, RunState } from './types/provisional/case'
+import type { LatestRun, RunState, SkippedStep } from './types/provisional/case'
 
 const POLL_MS = 2500 // 폴링 간격 (판단)
 
@@ -15,6 +15,9 @@ export interface RunSnapshot {
   reason: string | null
   // 사람 기다림의 이유 (GET /runs/{id}의 waiting_for). latest_run에는 없어서 waiting_for_human을 처음 보면 한 번 받아 온다
   waitingFor: string | null
+  // 넘긴 단계 (GET /runs/{id}의 skipped_steps). latest_run에는 없어서 succeeded를 처음 보면 한 번 받아 온다.
+  // 넘김을 "끝남"으로 보이지 않으려고 쓴다 (이슈 #260)
+  skipped: SkippedStep[]
 }
 
 // 더 이상 바뀌지 않는 상태 (waiting_for_human은 사람이 고를 때까지 멈춘 것으로 본다)
@@ -38,6 +41,8 @@ export function setRevalidate(fn: () => void) {
 }
 
 const sameRun = (a: LatestRun, b: LatestRun) => a.state === b.state && a.current_step === b.current_step
+const sameSkipped = (a: SkippedStep[], b: SkippedStep[]) =>
+  a.length === b.length && a.every((s, i) => s.step === b[i].step && s.reason === b[i].reason)
 
 function notify(e: Entry) {
   e.listeners.forEach((l) => l())
@@ -48,7 +53,7 @@ export function seedRun(run: LatestRun) {
   const e = entries.get(run.run_id)
   if (!e) {
     entries.set(run.run_id, {
-      snap: { run, error: null, reason: null, waitingFor: null },
+      snap: { run, error: null, reason: null, waitingFor: null, skipped: [] },
       listeners: new Set(),
       timer: null,
       reasonAsked: false,
@@ -66,6 +71,7 @@ export function seedRun(run: LatestRun) {
       error: null,
       reason: run.state === 'failed' ? e.snap.reason : null,
       waitingFor: run.state === 'waiting_for_human' ? e.snap.waitingFor : null,
+      skipped: e.snap.skipped, // 넘긴 단계는 실행 하나에 쌓이기만 한다 (다시 돌리면 run_id가 새로 생김)
     }
     // 상태가 바뀌면(예: 사람 기다림 → 실패) 이유를 다시 받는다
     if (stateChanged || hadError || !needsDetail(run.state)) e.reasonAsked = false
@@ -75,9 +81,9 @@ export function seedRun(run: LatestRun) {
   schedule(run.run_id)
 }
 
-// failed·waiting_for_human인 실행은 latest_run에 이유(error·waiting_for)가 없어서 GET /runs/{id}를 한 번 불러 받는다
-// (둘 다 끝난 상태로 보아 폴링하지 않으니, 여기서 안 받으면 이유를 영영 모른다)
-const needsDetail = (state: RunState) => state === 'failed' || state === 'waiting_for_human'
+// failed·waiting_for_human·succeeded인 실행은 latest_run에 이유(error·waiting_for·skipped_steps)가 없어서 GET /runs/{id}를 한 번 불러 받는다
+// (모두 끝난 상태로 보아 폴링하지 않으니, 여기서 안 받으면 이유·넘긴 단계를 영영 모른다)
+const needsDetail = (state: RunState) => state === 'failed' || state === 'waiting_for_human' || state === 'succeeded'
 function askReason(runId: string) {
   const e = entries.get(runId)
   if (!e || !needsDetail(e.snap.run.state) || e.reasonAsked) return
@@ -139,10 +145,19 @@ async function refresh(runId: string, force: boolean) {
     const justEnded = isRunEnded(run.state) && !isRunEnded(prev.state)
     const reason = next.error?.message ?? null
     const waitingFor = next.waiting_for ?? null
-    if (!sameRun(prev, run) || e.snap.error !== null || e.snap.reason !== reason || e.snap.waitingFor !== waitingFor) {
-      e.snap = { run, error: null, reason, waitingFor }
+    const skipped = next.skipped_steps ?? []
+    if (
+      !sameRun(prev, run) ||
+      e.snap.error !== null ||
+      e.snap.reason !== reason ||
+      e.snap.waitingFor !== waitingFor ||
+      !sameSkipped(e.snap.skipped, skipped)
+    ) {
+      e.snap = { run, error: null, reason, waitingFor, skipped }
       notify(e)
     }
+    // 이유·넘긴 단계를 방금 받았다: 끝난 상태면 뒤따르는 seedRun(revalidate)이 같은 것을 또 묻지 않게 한다
+    if (needsDetail(run.state)) e.reasonAsked = true
     if (force || stepChanged || justEnded) revalidate()
   } catch (err) {
     // 조용히 넘기지 않는다: 오류 글을 스냅숏에 넣어 화면이 "상태를 받지 못했어요"를 보이게 한다

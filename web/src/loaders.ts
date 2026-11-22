@@ -50,12 +50,16 @@ export interface OALoaderData {
   oaResult: OAResultResponse | null
   // 사건 자료 목록이 아직 없거나 서버에 엔드포인트가 아직 없으면 null
   materials: CaseMaterials | null
-  // API v0에 목록이 없거나 아직 없으면 null (개수만, 또는 모름)
+  // 검토할 사항 목록. 따로 받은 목록이 없으면 사건 자료 ⑥의 review_items. 그것도 None이면 null (개수와 상관없이 모름)
   reviewItems: ReviewItem[] | null
   // 원문 쪽 글자를 못 받으면 null (원문 보기에서 알린다)
   document: PageText | null
   // 대응 방향 묶음 (직접 할 일의 방향 고르기를 세려고). 결과가 아직 없으면 null (모름)
   directions: DirectionCandidates[] | null
+  // 판단 단위 (직접 할 일 "묶음 N" 번호). 결과가 아직 없거나 모르면 null
+  units: JudgmentUnit[] | null
+  // 대비표 (단계 막대 "차이점 후보 N"을 세려고). 결과가 아직 없거나 모르면 null
+  comparisons: ComparisonTable[] | null
   // 이 OA의 법률 근거 묶음 (거절이유마다 "이 거절이유의 법리"). 아직 안 찾았으면 [] (지어내지 않고 그 줄을 뺀다)
   legal: LegalEvidenceBundle[]
   // 단계마다 결과가 있는지 (D5). 404 result_not_ready였으면 false. 그 밖의 오류로 알 수 없으면 null (모름)
@@ -81,7 +85,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
   let draftCheckMissing = false
-  const [oaResult, materialsP, reviewItems, document, directionsP, legalP, unitsP, draftsP] = await Promise.all([
+  const [oaResult, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(missingAsNull),
     // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
     probe(api.getMaterials(oa.case_id), true),
@@ -111,6 +115,8 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
         },
       ),
     ),
+    // 단계 막대 "차이점 후보 N": 대비표를 받아 센다 (결과가 아직 없으면 null)
+    probe(api.getComparisons(oa.oa_id).then(itemsOf)),
   ])
   // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
   const warnings: string[] = []
@@ -119,10 +125,13 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     return p.value
   }
   const materials = known(materialsP, '사건 자료')
+  // 목록 엔드포인트가 없으면(서버) ⑥의 review_items를 쓴다. None(모름)은 개수가 있어도 null로 둔다 (0건으로 그리지 않음)
+  const reviewItems = reviewList ?? materials?.review_items ?? null
   const directions = known(directionsP, '대응 방향')
   const legal = known(legalP, '법률 근거') ?? []
   const units = known(unitsP, '인용발명 대비')
   const drafts = known(draftsP, '초안')
+  const comparisons = known(comparisonsP, '대비표')
   if (draftCheckMissing) warnings.push('초안 검사 결과가 없어요: 누락 검사·번호 불일치를 보일 수 없어요')
   const ready = {
     summary: oaResult !== null,
@@ -130,7 +139,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     directions: directionsP.unknown ? null : directions !== null,
     drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, materials, reviewItems, document, directions, legal, ready, warnings }
+  return { oa, oaResult, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings }
 }
 
 // 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)

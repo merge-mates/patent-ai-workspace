@@ -163,7 +163,7 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
     from patent_ai.core.runs.step_log_pg import PostgresCallRecorder
     from tests.core.agents.test_fixed_order_f3_f4 import _responses
     from tests.core.run_case_fakes import CHECKED_ON, real_config, wire
-    from tests.core.runs.test_run_case_executor import _Cases, _Inputs
+    from tests.core.runs.test_run_case_executor import _CaseFill, _Cases, _Inputs
 
     wire(monkeypatch)
     oa_id, rid = _new_run(factory, "db_steplog_" + "c" * 20)
@@ -174,6 +174,7 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
         registry=CancelRegistry(),
         oa_results=_Saved(),
         step_results=_Saved(),
+        case_fill=_CaseFill(),
         inputs=_Inputs(tmp_path),
         cases=_Cases(),
         config_path=real_config(tmp_path),

@@ -47,6 +47,10 @@ class _Parsed:
     deleted: set[int] = field(default_factory=set)
     problem: Status | None = None
 
+    def last_number(self) -> int:
+        """이 묶음에서 쓰인 가장 큰 번호 ('삭제'로 남은 번호도 센다). 비면 0."""
+        return max(self.claims.keys() | self.deleted, default=0)
+
 
 def _unverified(reason: UnverifiedReason) -> Status:
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
@@ -135,15 +139,23 @@ def _parse_full_set(text: str) -> _Parsed:
     return parsed
 
 
-def _apply_amendment(prev: dict[int, str], text: str) -> tuple[dict[int, str], Status | None]:
-    """보정서 하나를 앞 판에 적용한다. 돌려주는 것은 (새 판, 문제 상태 또는 None)."""
+def _apply_amendment(
+    prev: dict[int, str], last: int, text: str
+) -> tuple[dict[int, str], int, Status | None]:
+    """보정서 하나를 앞 판에 적용한다. 돌려주는 것은 (새 판, 새 최대 번호, 문제 상태 또는 None).
+
+    last는 앞 판까지 쓰인 가장 큰 청구항 번호다. 삭제된 청구항도 번호는 남으므로
+    청구항 글이 없어진 뒤에도 last는 줄지 않는다 (추가 번호는 last + 1부터 이어져야 한다).
+    """
     items = _claim_items(text)
     if not items:
         # 보정대상항목이 없으면 따로 올린 보정 청구항(청구항 묶음 전체)으로 본다
         whole = _parse_full_set(text)
-        return whole.claims, whole.problem
+        return whole.claims, whole.last_number(), whole.problem
 
     claims = dict(prev)
+    base = last  # 이 보정서의 추가 번호가 이어 붙을 앞 번호
+    added: list[int] = []  # 이 보정서가 추가한 청구항 번호
     touched = 0  # 청구항을 건드린 항목 수 (0이면 이 판의 청구항을 읽지 못한 것)
     bad = _unverified(UnverifiedReason.NOT_EXTRACTED)
     for start, end, target in items:
@@ -153,7 +165,7 @@ def _apply_amendment(prev: dict[int, str], text: str) -> tuple[dict[int, str], S
             continue  # 표지("별지와 같음")·식별번호·도면 같은 다른 항목
         if method_m is None:
             logger.warning("claim_texts: 보정방법이 없는 항목 (%s)", target)
-            return claims, bad
+            return claims, last, bad
         content_m = _CONTENT.search(block, method_m.end())
         method = block[method_m.end() : content_m.start() if content_m else len(block)].strip()
         content = block[content_m.end() :] if content_m else ""
@@ -162,46 +174,56 @@ def _apply_amendment(prev: dict[int, str], text: str) -> tuple[dict[int, str], S
         if target == "청구범위":
             if method != "정정":
                 logger.warning("claim_texts: 청구범위 보정방법을 모름 (%s)", method)
-                return claims, bad
+                return claims, last, bad
             whole = _parse_full_set(content)
             if whole.problem:
-                return claims, whole.problem
+                return claims, last, whole.problem
             claims = whole.claims
+            # 청구범위를 통째로 바꾸면 번호도 새로 센다
+            base, added = whole.last_number(), []
             continue
 
         number_m = _TARGET_CLAIM.match(target)
         if number_m is None:
             logger.warning("claim_texts: 보정대상항목을 알아볼 수 없음 (%s)", target)
-            return claims, bad
+            return claims, last, bad
         number = int(number_m.group(1))
         # 삭제·정정은 앞 판에 있는 번호만, 추가는 없는 번호만 (덮어쓰거나 번호가 비지 않게)
         if method in ("삭제", "정정") and number not in claims:
             logger.warning("claim_texts: 앞 판에 없는 청구항 %d을 %s함", number, method)
-            return claims, bad
+            return claims, last, bad
         if method == "추가" and number in claims:
             logger.warning("claim_texts: 앞 판에 이미 있는 청구항 %d을 추가함", number)
-            return claims, bad
+            return claims, last, bad
         if method == "삭제":
             del claims[number]
         elif method in ("정정", "추가"):
             parsed = _split_claims(content)
             if parsed.problem:
-                return claims, parsed.problem
+                return claims, last, parsed.problem
             if number in parsed.deleted and not parsed.claims:
                 claims.pop(number, None)  # 정정 내용이 '삭제'라고만 적힘
                 continue
             if set(parsed.claims) != {number}:
                 logger.warning("claim_texts: 청구항 %d 보정내용 번호가 다름", number)
-                return claims, bad
+                return claims, last, bad
             claims[number] = parsed.claims[number]
+            if method == "추가":
+                added.append(number)
         else:
             logger.warning("claim_texts: 보정방법을 모름 (%s)", method)
-            return claims, bad
+            return claims, last, bad
 
     if touched == 0:
         logger.warning("claim_texts: 보정서에 청구항 항목이 없음")
-        return claims, bad
-    return claims, None
+        return claims, last, bad
+    # 추가 번호는 앞 최대 번호 + 1부터 빈틈없이 (예: 앞 판 1~2면 3, 4…).
+    # 건너뛰면 번호를 잘못 읽은 것으로 보고 확정하지 않는다
+    expected = list(range(base + 1, base + 1 + len(added)))
+    if sorted(added) != expected:
+        logger.warning("claim_texts: 추가 청구항 번호 %s가 %d 다음부터 이어지지 않음", added, base)
+        return claims, last, bad
+    return claims, base + len(added), None
 
 
 def claims_at_version(documents: list[str]) -> ClaimTexts:
@@ -217,8 +239,9 @@ def claims_at_version(documents: list[str]) -> ClaimTexts:
     if first.problem:
         return ClaimTexts(first.claims, first.problem)
     claims = first.claims
+    last = first.last_number()
     for text in documents[1:]:
-        claims, problem = _apply_amendment(claims, text)
+        claims, last, problem = _apply_amendment(claims, last, text)
         if problem:
             return ClaimTexts(claims, problem)
     if not claims:

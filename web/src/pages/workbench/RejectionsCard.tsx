@@ -26,6 +26,17 @@ function TypeTag({ rej }: { rej: Rejection }) {
 const sameAsText = (s: string) =>
   s.replace(/^claim:(\d+)$/, '청구항 $1').replace(/^rejection:(\d+)$/, '거절이유 $1')
 
+// 거절이유 줄 한 줄 설명: 청구항 · 조문. 명확성은 조문 대신 OA가 짚은 문구(claim_rows.clarity_terms, 디자인 B)
+// 문구가 하나도 없으면 조문을 그대로 둔다 (지어내지 않음)
+function rejectionSub(rej: Rejection, rows: ClaimRow[]): string {
+  if (rej.kind === 'clarity') {
+    const terms = [...new Set(rows.filter((x) => x.rejection === rej.no).flatMap((x) => x.clarity_terms))]
+    if (terms.length > 0)
+      return `${claimsText(rej.claims)} · “${terms[0]}”${terms.length > 1 ? ` 외 ${terms.length - 1}개` : ''}`
+  }
+  return `${claimsText(rej.claims)} · 특허법 ${articleLabel(rej.article.value)}`
+}
+
 function locationText(row: ClaimRow): string {
   if (row.no_location) return row.no_location
   const parts = Object.entries(row.locations).map(([label, locs]) => `${label} ${locs.join(', ')}`)
@@ -290,7 +301,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                 key={rej.no}
                 id={`rejection-${rej.no}`}
                 title={`${rej.no} ${rejectionKindLabel[rej.kind]}`}
-                sub={`${claimsText(rej.claims)} · 특허법 ${articleLabel(rej.article.value)}`}
+                sub={rejectionSub(rej, r.claim_rows)}
                 tags={
                   <>
                     {!rej.supported && (
