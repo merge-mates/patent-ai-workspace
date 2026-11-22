@@ -12,7 +12,12 @@ from typing import Any, Protocol
 from sqlalchemy import and_, create_engine, func, or_, select
 from sqlalchemy.orm import Session
 
-from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.db.models.chunks import (
+    CiteChunk,
+    LawChunk,
+    check_cite_chunk_meta,
+    check_law_chunk,
+)
 from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.schemas import Chunk, Corpus, Edition, Location
 from patent_ai.settings import get_settings
@@ -50,6 +55,19 @@ def fill_law_defaults(chunk: Chunk) -> Chunk:
     if chunk.source_kind is None:
         return chunk.model_copy(update={"source_kind": "statute"})
     return chunk
+
+
+def _chunk_problem(corpus: Corpus, chunk: Chunk) -> str | None:
+    """표에 맞지 않는 조각이면 이유 한 줄 (db의 검사 함수를 부른다. 넣기·덤프도 같은 함수)."""
+    if corpus == "law":
+        return check_law_chunk(
+            chunk.chunk_kind,
+            chunk.edition.status,
+            chunk.source_kind,
+            chunk.decided_on,
+            chunk.speaker,
+        )
+    return check_cite_chunk_meta(chunk.source_kind, chunk.decided_on, chunk.speaker, chunk.attrs)
 
 
 def _check_doc_ids(doc_ids: list[str] | None) -> None:
@@ -106,12 +124,15 @@ class InMemoryChunkRepository:
                     )
                 # law는 판본이 있어야 하고 cite는 판본이 없어야 한다 (표가 섞이면 막는다)
                 na = chunk.edition.status == "not_applicable"
-                if (corpus == "law" and na) or (corpus == "cite" and not na):
+                if corpus == "cite" and not na:
                     raise ValueError(
                         f"{path}:{no} {corpus} 표에 맞지 않는 판본 상태 {chunk.edition.status!r}"
                     )
                 if corpus == "law":
                     chunk = fill_law_defaults(chunk)
+                reason = _chunk_problem(corpus, chunk)
+                if reason:
+                    raise ValueError(f"{path}:{no} {reason}")
                 if chunk.chunk_id in seen:
                     raise ValueError(f"{path}:{no} chunk_id가 겹친다: {chunk.chunk_id}")
                 seen.add(chunk.chunk_id)

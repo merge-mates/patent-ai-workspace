@@ -102,3 +102,72 @@ def test_v2_JSONL을_다시_넣어도_마이그레이션으로_채운_DB와_내�
     ]
     assert content_sha256(from_file) == content_sha256(db_like)
     assert {c.source_kind for c in from_file} == {"statute"}
+
+
+# ---- 판례·심결 not_applicable 허용과 거부 (세 곳이 같은 검사 함수를 쓴다, #24 24a) ----
+def _na_precedent(**over):
+    return _precedent_chunk(edition={"status": "not_applicable"}, **over)
+
+
+def test_판례_조각_not_applicable은_세_곳_모두_통과한다(tmp_path):
+    from patent_ai.retrieval.law_index_db import _check
+
+    path = _write(tmp_path, _na_precedent())
+    chunks = InMemoryChunkRepository.from_jsonl("law", path)._tables["law"]  # 저장소
+    _check(chunks, "law", "law-idx-v3")  # 넣기
+    assert fixture_rows("law", path.read_text(encoding="utf-8"))  # 덤프
+    assert chunks[0].edition.status == "not_applicable"
+    assert chunks[0].chunk_kind == "judgment_summary"
+
+
+@pytest.mark.parametrize("kind", ["judgment", "judgment_summary"])
+def test_심결_judgment도_not_applicable을_넣을_수_있다(tmp_path, kind):
+    path = _write(tmp_path, _na_precedent(chunk_kind=kind, source_kind="trial"))
+    assert InMemoryChunkRepository.from_jsonl("law", path)._tables["law"]
+
+
+@pytest.mark.parametrize("kind", ["article", "guideline"])
+def test_조문_심사기준_조각_not_applicable은_세_곳_모두_거부한다(tmp_path, kind):
+    from patent_ai.db.index_dump import IndexDumpError
+    from patent_ai.retrieval.law_index_db import IndexDbError, _check
+    from patent_ai.retrieval.schemas import Chunk
+
+    bad = _na_precedent(chunk_kind=kind, source_kind="statute", decided_on=None, speaker=None)
+    path = _write(tmp_path, bad)
+    with pytest.raises(ValueError, match=r"v3\.jsonl:1"):  # 저장소
+        InMemoryChunkRepository.from_jsonl("law", path)
+    with pytest.raises(IndexDbError):  # 넣기
+        _check([Chunk.model_validate(bad)], "law", "law-idx-v3")
+    with pytest.raises(IndexDumpError):  # 덤프
+        fixture_rows("law", path.read_text(encoding="utf-8"))
+
+
+def test_선고일은_판례_심결_조각만_가진다(tmp_path):
+    from patent_ai.db.index_dump import IndexDumpError
+
+    for field, value in (("decided_on", "2020-01-01"), ("speaker", "court")):
+        bad = _precedent_chunk(source_kind="statute", decided_on=None, speaker=None)
+        bad[field] = value
+        path = _write(tmp_path, bad)
+        with pytest.raises(ValueError):
+            InMemoryChunkRepository.from_jsonl("law", path)
+        with pytest.raises(IndexDumpError):
+            fixture_rows("law", path.read_text(encoding="utf-8"))
+
+
+def test_인용문헌_조각에_새_칸을_넣으면_세_곳_모두_거부한다(tmp_path):
+    import json
+
+    from patent_ai.db.index_dump import IndexDumpError
+    from patent_ai.retrieval.law_index_db import IndexDbError, _check
+    from patent_ai.retrieval.schemas import Chunk
+
+    line = json.loads((FIXTURES / "chunks_cite.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    line["source_kind"] = "statute"
+    path = _write(tmp_path, line)
+    with pytest.raises(ValueError):
+        InMemoryChunkRepository.from_jsonl("cite", path)
+    with pytest.raises(IndexDbError):
+        _check([Chunk.model_validate(line)], "cite", "cite-idx-v1")
+    with pytest.raises(IndexDumpError):
+        fixture_rows("cite", path.read_text(encoding="utf-8"))

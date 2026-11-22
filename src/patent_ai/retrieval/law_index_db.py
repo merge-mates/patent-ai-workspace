@@ -32,6 +32,7 @@ from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.errors import RetrievalError
 from patent_ai.retrieval.repository import (
     InMemoryChunkRepository,
+    _chunk_problem,
     chunk_to_row,
     fill_law_defaults,
     row_to_chunk,
@@ -70,14 +71,18 @@ def _check(chunks: Sequence[Chunk], corpus: Corpus, index_version: str) -> None:
     other = sum(c.index_version != index_version for c in chunks)
     if other:
         raise IndexDbError(f"{index_version}이 아닌 조각 {other}개가 섞였다")
-    # 법령은 판본이 있어야 하고, 인용문헌은 판본이 없어야(not_applicable) 한다
-    na = sum(c.edition.status == "not_applicable" for c in chunks)
-    if corpus == "law" and na:
-        raise IndexDbError(f"판본 not_applicable 조각 {na}개는 법령 표에 못 넣는다")
-    if corpus == "cite" and na != len(chunks):
-        raise IndexDbError(
-            f"인용문헌 표에는 판본 not_applicable만 넣는다 ({len(chunks) - na}개 아님)"
-        )
+    # 법령 표: 판본 not_applicable은 판례·심결만, 선고일·발언 주체는 판례·심결만 (db 검사 함수)
+    for c in chunks:
+        reason = _chunk_problem(corpus, c)
+        if reason:
+            raise IndexDbError(f"{c.chunk_id}: {reason}")
+    # 인용문헌 표에는 판본 not_applicable만 넣는다
+    if corpus == "cite":
+        na = sum(c.edition.status == "not_applicable" for c in chunks)
+        if na != len(chunks):
+            raise IndexDbError(
+                f"인용문헌 표에는 판본 not_applicable만 넣는다 ({len(chunks) - na}개 아님)"
+            )
 
 
 def _as_float32(chunk: Chunk) -> Chunk:

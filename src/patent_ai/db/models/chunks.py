@@ -81,3 +81,42 @@ class CiteChunk(ChunkColumns, Base):
         ),
         Index("ix_cite_chunks_index_version_doc_id", "index_version", "doc_id"),
     )
+
+
+# ---- 넣기 전 검사 ----
+# retrieval 넣기·저장소와 db 덤프가 같이 부른다. db는 retrieval을 import 못 해 문자열만 받는다.
+_JUDGMENT_KINDS = {"judgment", "judgment_summary"}
+_DATED_SOURCES = {"precedent", "trial"}
+
+
+def check_law_chunk(
+    chunk_kind: str,
+    edition_status: str,
+    source_kind: str | None,
+    decided_on: object | None = None,
+    speaker: str | None = None,
+) -> str | None:
+    """법령 표(law_chunks)에 넣을 수 있는 조각인가. 안 되면 이유 한 줄, 되면 None.
+
+    - 판본 not_applicable은 판례·심결 조각(chunk_kind가 judgment·judgment_summary)만.
+    - 선고일·발언 주체는 source_kind가 precedent·trial일 때만 값이 있을 수 있다.
+    """
+    if edition_status == "not_applicable" and chunk_kind not in _JUDGMENT_KINDS:
+        return (
+            f"판본 not_applicable은 판례·심결 조각만 법령 표에 넣는다 (chunk_kind {chunk_kind!r})"
+        )
+    if (decided_on is not None or speaker is not None) and source_kind not in _DATED_SOURCES:
+        return f"decided_on·speaker는 판례·심결 조각만 가진다 (source_kind {source_kind!r})"
+    return None
+
+
+def check_cite_chunk_meta(
+    source_kind: str | None,
+    decided_on: object | None,
+    speaker: str | None,
+    attrs: dict | None,
+) -> str | None:
+    """인용문헌 조각은 법령 표 새 칸(source_kind·decided_on·speaker·attrs)이 모두 비어야 한다."""
+    if any(v is not None for v in (source_kind, decided_on, speaker, attrs)):
+        return "인용문헌 조각에는 source_kind·decided_on·speaker·attrs를 넣지 않는다"
+    return None

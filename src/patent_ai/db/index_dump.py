@@ -25,7 +25,12 @@ from pathlib import Path
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.db.models.chunks import (
+    CiteChunk,
+    LawChunk,
+    check_cite_chunk_meta,
+    check_law_chunk,
+)
 from patent_ai.index_version import corpus_of, is_index_version, version_number
 from patent_ai.settings import get_settings
 
@@ -179,10 +184,25 @@ def fixture_rows(corpus: str, text: str) -> list[LawChunk | CiteChunk]:
                 f"{no}번째 줄 색인 판 {d['index_version']!r}이 {corpus}와 안 맞는다"
             )
         not_applicable = ed["status"] == "not_applicable"
-        if (corpus == "law" and not_applicable) or (corpus == "cite" and not not_applicable):
+        if corpus == "cite" and not not_applicable:
             raise IndexDumpError(
                 f"{no}번째 줄 판본 상태 {ed['status']!r}이 {corpus} 표와 안 맞는다"
             )
+        # 법령 표 규칙(not_applicable은 판례·심결만 등)은 넣기·저장소와 같은 함수 하나로 본다
+        if corpus == "law":
+            reason = check_law_chunk(
+                d["chunk_kind"],
+                ed["status"],
+                d.get("source_kind") or "statute",
+                d.get("decided_on"),
+                d.get("speaker"),
+            )
+        else:
+            reason = check_cite_chunk_meta(
+                d.get("source_kind"), d.get("decided_on"), d.get("speaker"), d.get("attrs")
+            )
+        if reason:
+            raise IndexDumpError(f"{no}번째 줄 {reason}")
         # law 표 새 칸 넷 (retrieval.chunk_to_row·fill_law_defaults와 같은 규칙: 없으면 statute)
         extra = {}
         if corpus == "law":
