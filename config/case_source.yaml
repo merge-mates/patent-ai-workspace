@@ -1,0 +1,6 @@
+# 사건 자료 조회 (#54). F1이 출원번호·발송번호를 읽은 뒤, F3 앞에서 사건을 채울 때 쓴다.
+# impl: local_folder = 받아 둔 폴더 (평가 사건, 1단계). KIPRIS는 2단계에서 더한다.
+impl: local_folder
+# <root>/<출원번호>/<발송번호>/ 에 OA 시점까지 자른 자료 (scripts/split_cases_at_oa.py가 만든 꼴).
+# 상대 경로는 저장소 뿌리 기준
+root: data/processed/cases
