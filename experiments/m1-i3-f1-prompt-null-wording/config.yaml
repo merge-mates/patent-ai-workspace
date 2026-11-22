@@ -1,0 +1,21 @@
+# F1 read_oa 프롬프트: null·문자열 예외 문구 맞추기 (이슈 #193 task 1). 프롬프트 문구 하나만 바꿈
+experiment: m1-i3-f1-prompt-null-wording
+feature: f1
+baseline: m1-i3-f1-read-oa-prompt-shape
+goldset: tune
+goldset_version: 2
+gold: f1
+impl: fix/193 9d99d3b     # main 9eb8237 + 프롬프트 문구 (코드·설정 그대로)
+settings:                 # config/f1.yaml read_oa
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f1/read_oa.md   # changed (sha256 앞 12자 d680efd54818 → a2d095469fda)
+  max_model_calls: 2
+  max_retries: 2
+  model_input: raw
+runs: 2                   # scores.json은 1회차. 2회차는 git 밖 work/overnight_1121/runs/score_f1_193_run2/scores.json, 둘 다 card에
+runner: work/overnight_1120/f1_run.py work/overnight_1121/runs/f1_193_run<N>   # git 밖, 캐시 끔
+budget:
+  max_usd: 0.30
+  max_external_calls: 40

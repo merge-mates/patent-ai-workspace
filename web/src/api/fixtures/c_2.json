@@ -791,6 +791,7 @@
           "checked": "출원번호 대조",
           "searched_scope": null
         },
+        "text_status": null,
         "citation_key": null
       }
     ],
@@ -798,7 +799,7 @@
       {
         "what": "D2 JP2099000001A 본문",
         "depends_on_tasks": [
-          "F3 대비: D2 JP2099000001A"
+          "f3_compare:oa_2:D2"
         ],
         "lookup_result": "unsupported_country",
         "ask_upload": false,
@@ -807,30 +808,50 @@
     ],
     "held_tasks": [
       {
-        "task": "F3 대비: D2 JP2099000001A",
+        "task": "f3_compare:oa_2:D2",
         "waiting_for": "D2 JP2099000001A 본문"
       }
     ],
-    "review_items_count": 3
+    "review_items_count": 3,
+    "review_items": [
+      {
+        "kind": "missing_material",
+        "target": "materials.missing[0]",
+        "label": "D2 JP2099000001A 본문",
+        "reason": "unsupported_country"
+      },
+      {
+        "kind": "needs_human_review",
+        "target": "oa_result[oa_2].rejections[0].citations[1]",
+        "label": "JP2099000001A",
+        "reason": "지원 안 하는 나라 JP"
+      },
+      {
+        "kind": "needs_human_review",
+        "target": "oa_result[oa_2].rejections[1]",
+        "label": "42-3",
+        "reason": "지원 안 하는 거절이유 42-3"
+      }
+    ]
   },
   "review_items": [
-    {
-      "kind": "needs_human_review",
-      "target": "oa_result[0].rejections[0].citations[1]",
-      "label": "JP2099000001A",
-      "reason": "지원 안 하는 나라 JP"
-    },
-    {
-      "kind": "needs_human_review",
-      "target": "oa_result[0].rejections[1]",
-      "label": "42-3",
-      "reason": "지원 안 하는 거절이유 42-3"
-    },
     {
       "kind": "missing_material",
       "target": "materials.missing[0]",
       "label": "D2 JP2099000001A 본문",
       "reason": "unsupported_country"
+    },
+    {
+      "kind": "needs_human_review",
+      "target": "oa_result[oa_2].rejections[0].citations[1]",
+      "label": "JP2099000001A",
+      "reason": "지원 안 하는 나라 JP"
+    },
+    {
+      "kind": "needs_human_review",
+      "target": "oa_result[oa_2].rejections[1]",
+      "label": "42-3",
+      "reason": "지원 안 하는 거절이유 42-3"
     }
   ],
   "document": {
