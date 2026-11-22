@@ -18,7 +18,7 @@ S, F, C = RunState.SUCCEEDED, RunState.FAILED, RunState.CANCELLED
 
 # 이슈의 허용 전이 표
 ALLOWED = {
-    Q: {R, C, F},
+    Q: {R, C, F, W},  # W: 번호 기록 저장이 실패하면 다시 사람 기다림으로 되돌림 (#287)
     R: {S, F, W, C},
     W: {Q, R, C, F},  # Q: 사람이 번호를 넣으면 다시 대기 (#70)
     S: set(),
