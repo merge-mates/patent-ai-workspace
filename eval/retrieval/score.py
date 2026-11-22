@@ -79,6 +79,8 @@ class RowResult:
     # 노이즈 범위(#178)에서만 쓴다: 순위마다 정답 문헌 조각인가, 범위 안 정답 문헌 조각 수
     gold_doc_by_rank: list[bool] = field(default_factory=list)
     gold_doc_size: int = 0
+    # 결과 상태 이유. 모델 출력을 못 읽은 줄은 "not_extracted" (못 찾음과 나눠 세려는 표시)
+    status_reason: str | None = None
 
 
 @dataclass
@@ -225,7 +227,8 @@ def score(
         if not_extracted:
             # 모델 출력을 못 읽은 줄: 점수에서 빼지 않고 결과 0개(못 맞힌 줄)로 n에 남긴다.
             # 빼면 출력 실패가 많을수록 점수가 오른다. 건수는 failures에 따로 센다
-            failures["not_extracted"] += 1
+            # 건수는 아래 results에 넣을 때 센다 (범위 밖 제외로 빠지는 줄은 두 번 세지 않게)
+            pass
         elif result.status == "unverified":  # 본문 미확보는 여기서만 정한다
             failures["excluded_body_missing"] += 1
             continue
@@ -272,6 +275,8 @@ def score(
                 }
             )
             match_sizes = [m for m in match_sizes if m > 0]
+        if not_extracted:
+            failures["not_extracted"] += 1
         results.append(
             RowResult(
                 row=row,
@@ -287,7 +292,17 @@ def score(
                 ),
                 gold_doc_by_rank=[h.doc_id in (row.doc_ids or []) for h in result.hits],
                 gold_doc_size=sum(1 for c in scope if c.doc_id in (row.doc_ids or [])),
+                status_reason="not_extracted" if not_extracted else None,
             )
+        )
+
+    if llm and cfg.budget is not None:
+        # 마지막 줄이 상한을 넘겨 쓴 경우는 줄 앞 검사가 못 본다: 끝에서 한 번 더 (점수를 안 남김)
+        check_budget(
+            run_context.recorder.records,
+            cfg.budget.max_usd,
+            cfg.budget.max_external_calls,
+            final=True,
         )
 
     # 5. 남은 줄이 0개면 빈 평균으로 성공하지 않는다
@@ -385,6 +400,8 @@ def write_rows(report: ScoreReport, path: Path) -> None:
                 # 채점 때 검색한 가장 큰 k. 이보다 큰 k로 비교하면 틀린 값이라 compare가 막는다
                 "k_max": report.k_max,
             }
+            if r.status_reason is not None:  # 출력을 못 읽은 줄만 표시 (다른 줄엔 키 없음)
+                line["status_reason"] = r.status_reason
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 

@@ -2,13 +2,16 @@
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from eval.common.config import BaseEvalConfig, load_yaml_config
 from patent_ai.retrieval.schemas import Corpus, Mode
 
 
 class Budget(BaseModel):
+    # 칸 이름 오타로 상한이 조용히 빠지지 않게 모르는 칸은 막는다
+    model_config = ConfigDict(extra="forbid")
+
     # 실험 config의 budget 칸 (틀: experiments/_template/config.yaml). 없는 칸은 상한 없음
     max_usd: float | None = None
     max_external_calls: int | None = None

@@ -10,10 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from eval.common.errors import EvalError
 from eval.retrieval import score as score_mod
 from eval.retrieval.config import load_config
+from eval.retrieval.cq import write_cq
 from eval.retrieval.errors import RetrievalEvalError
-from eval.retrieval.score import first_hit_rank, main, score
+from eval.retrieval.score import first_hit_rank, main, score, write_rows
 from patent_ai.core.llm.cache import MemoryCache
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
@@ -226,3 +228,42 @@ def test_다른_impl_채점은_core를_안_쓰고_cost는_그대로_0이다(tmp_
     assert scores["cost"]["external_calls"] == 0
     assert "not_extracted" not in scores["failures"]
     assert "model_calls" not in scores["cost"]
+
+
+def test_출력_실패_줄은_CQ_후보와_rows에_표시가_붙고_빠지지_않는다(tmp_path, goldsets_root):
+    ctx = make_ctx([ranked(2), answer("x"), answer("y")])
+    report = run_score(tmp_path, goldsets_root, ctx)
+    cq = tmp_path / "cq" / "cq_candidates.jsonl"
+    assert write_cq(report, cq) == 1  # 못 맞힌 줄(출력 실패)은 CQ 후보에서 빼지 않는다
+    cq_lines = [json.loads(x) for x in cq.read_text(encoding="utf-8").splitlines()]
+    assert [x.get("status_reason") for x in cq_lines] == ["not_extracted"]
+    rows = tmp_path / "rows.jsonl"
+    write_rows(report, rows)
+    row_lines = [json.loads(x) for x in rows.read_text(encoding="utf-8").splitlines()]
+    assert [x.get("status_reason") for x in row_lines] == [None, "not_extracted"]
+
+
+def test_budget에_모르는_칸이_있으면_설정_오류로_멈춘다(tmp_path):
+    cfg = make_cfg(tmp_path, "budget:\n  max_external_call: 1\n")  # s가 빠진 오타
+    with pytest.raises(EvalError, match="budget"):
+        load_config(cfg)
+
+
+def test_마지막_줄에서_상한을_넘으면_끝에서_멈춘다(tmp_path, goldsets_root):
+    # 둘째 줄을 시작할 때는 1번 써서 상한 2 아래지만, 그 줄이 2번 불러 합 3번이 된다
+    ctx = make_ctx([ranked(1), answer("x"), answer("y")])
+    with pytest.raises(RetrievalEvalError, match="max_external_calls"):
+        run_score(tmp_path, goldsets_root, ctx, extra="budget:\n  max_external_calls: 2\n")
+
+
+def test_범위_밖_정답이라_제외된_줄은_not_extracted로_또_세지_않는다(tmp_path, goldsets_root):
+    # 둘째 줄의 정답 위치를 범위에 없는 문단(0090)으로 바꾼다 -> 정답 범위 밖으로 줄째 제외
+    gold = goldsets_root / "tune" / "retrieval" / "gold_two_lines.jsonl"
+    lines = gold.read_text(encoding="utf-8").splitlines()
+    row2 = json.loads(lines[1])
+    row2["items"] = [{"kind": "paragraph", "start": 90, "end": 90, "label": "[0090]"}]
+    gold.write_text(lines[0] + "\n" + json.dumps(row2, ensure_ascii=False) + "\n", encoding="utf-8")
+    ctx = make_ctx([ranked(2), answer("x"), answer("y")])
+    f = run_score(tmp_path, goldsets_root, ctx).scores["failures"]
+    assert f["excluded_gold_not_in_scope"] == 1
+    assert f["not_extracted"] == 0

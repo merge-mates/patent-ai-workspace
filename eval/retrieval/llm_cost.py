@@ -51,13 +51,23 @@ def invalid_attempts(records: Sequence) -> int:
     return sum(1 for r in records if r.outcome in INVALID_OUTCOMES)
 
 
-def check_budget(records: Sequence, max_usd: float | None, max_external_calls: int | None) -> None:
+def check_budget(
+    records: Sequence,
+    max_usd: float | None,
+    max_external_calls: int | None,
+    *,
+    final: bool = False,
+) -> None:
     """줄을 검색하기 전에 부른다. 지금까지 쓴 양이 상한 이상이면 멈춘다.
+
+    final=True는 줄 루프가 끝난 뒤 부른다: 상한을 "넘었을" 때만 멈춘다 (같으면 통과).
 
     멈추면 scores.json을 쓰지 않는다 (반쯤 채점한 점수를 남기지 않게).
     """
     calls, usd = spent(records)
-    if max_external_calls is not None and calls >= max_external_calls:
+    if max_external_calls is not None and (
+        calls > max_external_calls if final else calls >= max_external_calls
+    ):
         raise RetrievalEvalError(
             f"budget.max_external_calls 상한에 닿아 멈춤 (쓴 호출 {calls}/{max_external_calls})"
         )
@@ -65,7 +75,7 @@ def check_budget(records: Sequence, max_usd: float | None, max_external_calls: i
         if usd is None:
             # 비용을 모르는 호출이 있으면 USD 상한은 지킬 수 없다: 소리 내서 알린다
             logger.warning("호출 비용을 모르는 기록이 있어 max_usd를 확인할 수 없음")
-        elif usd >= max_usd:
+        elif (usd > max_usd) if final else (usd >= max_usd):
             raise RetrievalEvalError(
                 f"budget.max_usd 상한에 닿아 멈춤 (쓴 ${usd:.6f} / ${max_usd})"
             )

@@ -43,7 +43,7 @@ flowchart LR
    - 하나라도 걸리면 `RetrievalEvalError`로 끝나고 종료 코드는 1이다.
 3. 검색 전에 뺄 줄: `exclude` 칸이 있는 줄, 법령 정답 판본이 `unverified`인 줄. 뺀 줄은 이유별로 센다. 정답 변환(`law_gold.py`)은 사람이 고른 판의 시행 시작일이 발송일 뒤면 그 항목을 `unverified`로 두고 경고한다 (#129). 그래서 이 경우는 `excluded_edition_unverified`로 빠지고 경고에 이유가 남는다.
 4. 줄마다 `search(query, corpus, mode, k=max(k 목록), doc_ids, as_of)`를 한 번 부른다. 작은 k는 같은 결과의 앞부분을 잘라 쓴다.
-   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_body_missing`에 센다.
+   - 본문 미확보는 여기서만 정한다: 결과 `status`가 `unverified`(`body_missing`)면 그 줄을 빼고 `excluded_body_missing`에 센다. whole_doc_llm(#248)은 모델 출력을 두 번 다 못 읽으면 `unverified(not_extracted)`를 돌려주는데, 이 줄은 빼지 않고 못 맞힌 줄로 n에 남긴다 (본문 미확보와 다르다).
    - 기준일 범위 내 판본 없음: 문헌 조각은 있는데 `as_of`로 거르고 나면 검색 범위 조각이 0개인 줄(N = 0)은 무작위 기준선을 정할 수 없으므로 채점 전체를 멈추지 않고 그 줄만 빼고 `excluded_no_edition_in_scope`에 센다 (11/19 결정). 법령 판본 모름 조각만 있거나, OA 발송일이 색인의 가장 이른 법령 판본보다 앞서는 경우다.
    - 범위 안에 정답 조각 없음 (#129): 범위 조각은 있는데 맞는 조각이 0개(Mᵢ = 0)인 정답 항목은 검색기가 어떻게 해도 못 맞힌다. 법령은 정답 판이 그날 범위에 없는 경우(받은 판 사이 빠진 개정, 판 하나가 통째로 없음), 인용문헌은 공보 조각은 있는데 정답 문단·도면이 어느 조각에도 없는 경우(청킹·정답 문제)다. 데이터 문제가 "검색이 못 찾은 질문"처럼 Hit·Recall을 내리고 CQ 후보에 섞이지 않게 한다.
      - 항목이 모두 Mᵢ = 0이면 줄째 빼고 `excluded_gold_not_in_scope`에 센다.
@@ -56,7 +56,7 @@ flowchart LR
 8. 결과 저장: `<scores 폴더>/scores.json`(모은 숫자, 기본 `experiments/<실험>/`), `<cq 폴더>/cq_candidates.jsonl`(CQ 후보, 기본 `work/retrieval/<실험>/`).
 - 실패하면: 실행 전 검사가 막는다. 줄 하나의 검색이 예외를 내면 그 줄에서 멈추고 실패로 끝난다 (조용히 건너뛰지 않음).
 - 메시지 규칙 (requirements "실패할 때"): 터미널 실패·경고 메시지에는 `row_id`와 건수를 쓸 수 있다. 질의·청구항·정답 원문 글자는 쓰지 않는다. git에 들어가는 `scores.json`에는 `row_id`도 쓰지 않는다.
-- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다 (정답 조각이 범위에 있을 때만. 없으면 위 4번 범위 밖 정답 규칙). 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다.
+- 비면: 검색 범위 조각은 있는데 검색 결과가 0개면 `not_found_in_scope`이고, 그 줄은 Hit 0이며 CQ 후보가 된다 (정답 조각이 범위에 있을 때만. 없으면 위 4번 범위 밖 정답 규칙). 범위 조각 자체가 0개면 위 4번처럼 뺀다. 거른 문헌 조각이 0개면 `unverified(body_missing)`이고 점수에서 뺀다. CQ 후보 0건이면 경고한다. whole_doc_llm(#248)의 `not_extracted` 줄도 Hit 0으로 세고 CQ 후보에 남기며, CQ 후보와 줄별 결과(`--rows-out`)에 `status_reason: "not_extracted"`를 붙여 못 찾음과 나눠 센다.
 - 느리면: 가짜 구현만 있는 이 이슈에는 해당 없음. 진짜 구현의 상한은 #66·#67 설정에 둔다.
 
 ### 2-1. 흐름 방식
@@ -225,10 +225,10 @@ noise_scope: retrieval/cite_noise_b.jsonl  # 인용문헌만. 둘째 점수(#178
 - `noise_scope` (#178 둘째 점수): 줄마다 검색 범위 doc_id 목록 파일 `{"row_id", "scope_doc_ids"}` (git 밖, `gold`와 같은 기준). 있으면 `search`의 `doc_ids`와 N을 그 범위로 바꾸고, 맞음 판정은 그대로 정답 줄 `doc_ids` 안만 본다 (노이즈 조각은 늘 틀림). 범위에 줄이 없거나 정답 문헌이 빠지면 멈춘다. 정답 문헌 조각이 0개면 노이즈가 있어도 `excluded_body_missing`. `metrics`에 `doc_hit@k`(상위 k'에 정답 문헌 조각이 있나)와 `random_doc_hit@k`(정답 문헌 조각 수로 위 무작위 Hit 식)를 더하고, `scores.json`에 `scope: {kind: "noise", file, sha256, docs_per_row_mean}`을 남긴다. 범위 파일은 `eval/retrieval/noise_scope.py`가 풀 표 `cite_pool.yaml`에서 만든다. 풀 표 문헌에 `only_oas: [발송번호…]`가 있으면(C안) 그 OA의 줄에만 후보로 넣는다. C안 문헌은 `scripts/fetch_noise_c_candidates.py`(KIPRIS Plus 공보 검색, 응답은 `work/kipris_c/`)로 받고 `eval/retrieval/noise_c.py`가 걸러 새 풀 표 `cite_pool_bc.yaml`에 더한다 (원래 풀 표는 덮지 않음) (규칙은 [search-gold.md](../../evaluation/search-gold.md) 5절).
 - `scores.json`: 기존 `experiments/_template/scores.schema.json` 모양을 따른다.
   - `metrics`: `hit@k`, `recall@k`, `random_hit@k`, `random_recall@k`, `recall_ratio@k`(k마다).
-  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `excluded_gold_items_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`.
+  - `failures`: 정해진 이름만 쓴다. `excluded_no_location`, `excluded_clarity`, `excluded_same_as_other`, `excluded_body_missing`, `excluded_edition_unverified`, `excluded_no_edition_in_scope`, `excluded_gold_not_in_scope`, `excluded_gold_items_not_in_scope`, `cq_candidates`, `recall_ratio_undefined`. whole_doc_llm(#248)은 여기에 `llm_output_invalid`(출력 검사에 떨어진 시도 수)와 `not_extracted`(출력을 못 읽은 줄 수)를 더한다.
   - 위 표에 더하는 칸: `corpus`, `index_version`, `index_fingerprint`, `mode`, `impl`, `metric_name: "심사관 지정 위치 회수율"`, `gold_sha256`.
   - `index_fingerprint`: 그 색인 판 조각 전체의 `{"chunks": 조각 수, "chunk_ids_sha256": …}`. `make index-dump`의 `.fingerprint.json`과 같은 계산이다 (5-2). **지문이 다른 실험끼리는 점수를 비교하지 않는다** (색인 판 이름이 같아도 내용이 다르다).
-  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0.
+  - 필수 칸 채우는 법: `experiment` = 설정 `experiment`, `commit` = `main`의 `commit` 인자 (위 함수 모양), `n` = 점수에 넣은 줄 수, `cost` = 이 채점기는 모델 호출이 없어 `seconds`만 채우고 나머지는 0. whole_doc_llm(#248)은 호출 기록의 합으로 `external_calls`(캐시 적중 제외 실제 호출)·`input_tokens`·`output_tokens`·`usd`와 `model_calls`·`cache_hits`를 채우고, 모르는 값이 있으면 0이 아니라 null로 둔다.
   - 줄 ID·질의·정답 위치는 넣지 않는다.
 - **E (정답 파일 버전 기록)**: `scores.json`의 `goldset_version`(`data/goldsets/VERSION` 정수)과 `gold_sha256`(정답 파일 해시)으로 남긴다. CQ 후보 줄마다 같은 두 값을 넣는다. 버전이 같아도 해시가 다르면 다른 정답으로 보고, CQ 모으기는 멈춘다.
 
