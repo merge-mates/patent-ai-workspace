@@ -22,7 +22,7 @@
 ```json
 {"kind": "real", "gold_version": 2, "case_id": "real:900000000000001:r1",
  "reviewed": {"by": null, "date": null},
- "oa_id": "9-9-9999-000001", "rejection": 1,
+ "oa_id": "900000000000001", "rejection": 1,
  "question": {"text": "가짜 질문: 가짜 요건은 무엇인가", "source": "oa_rejection",
               "as_of": "2020-01-01", "as_of_source": "oa_dispatch_date",
               "source_kinds": ["statute"], "article_refs": []},
@@ -57,10 +57,12 @@
 
 ## 4. 만드는 법
 - 외부 모델 호출 없이 `eval/f2/make_cases.py`가 tune 세트의 `law_gold`와 법령·판례 원문에서 만든다. 같은 입력이면 같은 바이트가 나온다.
-- 실제 질문: `law_gold`의 거절이유 줄 중 판본이 확인된 조문 줄만.
-- 오류 주입 5종: 실제 질문의 맞는 근거를 코드로 망가뜨린다. 종류마다 4개.
+- 실제 질문: `law_gold`의 거절이유 줄 중 판본이 확인된 조문 줄이고, 정답 판이 OA 발송일에 시행 중인 줄만. 뺀 줄은 경고로 남긴다.
+- 오류 주입 5종: 실제 질문의 맞는 근거를 코드로 망가뜨린다. 종류마다 4개. 없는 출처·주장 불일치·다른 판은 실제 질문이 넉넉하면 종류마다 다른 바탕 4개를 쓴다.
+  - 없는 출처: 그 법의 어느 판에도 없던 가지 조 번호 (지워진 조문 번호도 피함).
+  - 다른 판: 같은 위치가 있는 판 중 발송일에 시행 중이 아닌 판만 고른다.
 - 기한 정답(`old_deadline_as_current`)은 공식 법령 원문의 판별 글에서만 뽑는다. 글에서 판별되지 않으면 그 사례를 빼지 않고 스크립트 전체가 멈춘다 (종류마다 정확히 4개).
-- VERSION이 오르면 스크립트로 다시 만든다. 사람 검수(`reviewed`)는 은진이 일부 줄에 남긴다.
+- VERSION이 오르면 스크립트로 다시 만든다. 사람 검수(`reviewed`)는 사람이 본 줄에만 남긴다 (11/22 판은 Claude가 원문과 자동 대조만 했고 `reviewed`는 비어 있다).
 
 ## 5. 채점 정의 (채점기는 #29)
 실제 질문 사례마다:
@@ -72,7 +74,14 @@
 주입 사례마다:
 - 잡음: target 주장의 `review.verdict`가 `supported`가 아니다, 또는 target 근거 status가 `confirmed`가 아니다, 또는 target 근거가 빠졌다, 또는 주장 status가 `confirmed`가 아니다. 넷 중 하나면 잡은 것이다.
 - 고침: 잡았고, `fix`가 있고, 그 주장에 `fix`의 null 아닌 칸이 모두 맞는 `confirmed` 근거가 있다. `fix`가 null인 사례는 고친 비율 분모에서 뺀다.
-- 종류별 탐지율·고친 비율을 따로 낸다. 지킬 선: `nonexistent_source` 탐지율 1.0.
+- 종류별 탐지율·고친 비율을 따로 낸다.
+- `review`가 null인 채로 나온 주장(검토를 안 함)은 그것만으로 잡은 것이 아니다. 위 넷 중 다른 하나에 걸릴 때만 잡은 것이다.
+
+글자 비교: `identifier`·`location`은 공백을 모두 지운 뒤 비교한다 ("제29조 제2항" = "제29조제2항"). 조문 표기의 그 밖의 차이(예: "29조2항")는 다른 것으로 본다.
+
+지킬 선 (requirements 합격 기준 10, design 7-1). 실제 질문·주입 사례 모두의 결과 묶음에서 `status`가 `confirmed`인 근거를 하나씩 센다. `unverified`·`not_found_in_scope` 근거는 확인 못 했다고 드러낸 것이라 세지 않는다. 세트 전체 합이 둘 다 0이어야 한다.
+- **없는 출처 0건:** 법령 근거는 `evidence.chunk_id`가 그 `index_version` 색인에 있고, 그 조각의 `doc_id`가 `evidence.document_id`와 같아야 한다. 판례·심결 근거는 `document_id`가 받은 원문(판례 일련번호·심판번호)에 있어야 한다. 아니면 1건. 주입 `nonexistent_source`의 target 근거가 `confirmed`로 남으면 여기서도 1건이라, 이 선은 그 종류 탐지율 1.0을 포함한다. 6절 2번처럼 새로 붙은 틀린 근거도 여기서 센다.
+- **확인하지 않은 원문 위치 0건:** 위 조각(판례면 원문)이 있는 근거 가운데, `evidence.raw_text`가 그 조각 글 안에 그대로(공백 정리 뒤) 들어 있지 않거나, `evidence.location`이 그 조각 위치 표기와 다르면 1건. 판례·심결은 `text_kind`에 맞는 칸(요지 = 판결요지, 전문 = 판례내용)에 `raw_text`가 있어야 한다. 그래서 주입 `summary_as_full`의 target 근거가 `confirmed`로 남으면 여기서 1건이다.
 
 세트 크기 기준: 사례 합계 20개 이상, 오류 종류마다 1개 이상 (`check_set_size`).
 

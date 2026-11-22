@@ -72,6 +72,20 @@ _LABEL = re.compile(r"^(?P<law>\D*?)\s*제(?P<jo>\d+)조(?:의(?P<gaji>\d+))?(?P
 _TAG = re.compile(r"<[^>]*>")
 
 
+def _units(data: dict) -> list[dict]:
+    u = data.get("법령", {}).get("조문", {}).get("조문단위", [])
+    return u if isinstance(u, list) else [u]
+
+
+def _covers(ed, day: date) -> bool:
+    """그 판이 그날 시행 중인가."""
+    return (
+        ed.effective_from is not None
+        and ed.effective_from <= day
+        and (ed.effective_to is None or day <= ed.effective_to)
+    )
+
+
 class _Law:
     """법 하나(예: 특허법)의 판본들과 그 조각. 필요할 때 읽는다."""
 
@@ -86,6 +100,14 @@ class _Law:
                 for d, r in raw.items()
             }
         )
+        # 원문에 한 번이라도 나온 (조, 가지) 번호. "제N조의M 삭제"처럼 지워진 조문도 넣는다
+        # (색인 조각은 지워진 조문을 건너뛰어, 조각만 보면 지워진 번호를 "없는 번호"로 고를 수 있다)
+        self.article_nos: set[int] = set()
+        for data in raw.values():
+            for art in _units(data):
+                if art.get("조문여부") == "조문":
+                    jo, gaji = int(art["조문번호"]), int(art.get("조문가지번호") or 0)
+                    self.article_nos.add(jo * 100 + gaji)
         self.chunks: dict[str, dict[int, Chunk]] = {}
         for doc_id, data in raw.items():
             chunks = chunk_law(data, doc_id, self.editions[doc_id], index_version)
@@ -211,11 +233,16 @@ def _real_cases(law_gold: Path, corpus: _Corpus, gold_version: int) -> list[Real
             )
             continue
         expects = []
+        off_date = False
         for i in row.items:
             doc_id = i.gold_edition.label
             if doc_id is None or i.start is None:
                 raise EvalError(f"{row.row_id}: 정답 항목에 판 ID나 위치가 없다")
             corpus.chunk(doc_id, i.start)  # 원문에 조각이 있는지 확인 (없으면 멈춤)
+            # 정답 판이 발송일에 시행 중이 아니면 (예: 출원일 기준 판) 이 세트의 정답으로 안 쓴다:
+            # 주장 글 "발송일 시행판"이 거짓이 되고, 다른 판 주입이 오히려 맞는 판이 될 수 있다
+            if not _covers(corpus.law_of(doc_id).editions[doc_id], row.as_of):
+                off_date = True
             expects.append(
                 ExpectedSource(
                     source_kind=LegalSourceKind.STATUTE,
@@ -225,6 +252,9 @@ def _real_cases(law_gold: Path, corpus: _Corpus, gold_version: int) -> list[Real
                     edition_status="confirmed",
                 )
             )
+        if off_date:
+            logger.warning("법령 정답 줄 %s는 정답 판이 발송일에 시행 중이 아니라 뺐다", row.row_id)
+            continue
         oa_id, rej = row.row_id.split(":")
         cases.append(
             RealCase(
@@ -280,15 +310,18 @@ def _base_bundle(real, case_id, claim_text, source, checked_on) -> LegalEvidence
     )
 
 
-def _need(reals: list[RealCase]) -> list[RealCase]:
-    if len(reals) < PER_KIND:
-        raise EvalError(f"실제 질문이 {len(reals)}개다 (주입 바탕으로 {PER_KIND}개 필요)")
-    return reals[:PER_KIND]
+def _need(reals: list[RealCase], slot: int) -> list[RealCase]:
+    """주입 종류(slot 0·1·2)마다 바탕 실제 질문 4개. 실제 질문이 넉넉하면 종류마다 겹치지 않게
+    다른 4개를 쓰고(주입 사례가 서로 비슷해지지 않게), 모자라면 앞에서부터 돌려 쓴다."""
+    n = len(reals)
+    if n < PER_KIND:
+        raise EvalError(f"실제 질문이 {n}개다 (주입 바탕으로 {PER_KIND}개 필요)")
+    return [reals[(slot * PER_KIND + i) % n] for i in range(PER_KIND)]
 
 
 def _nonexistent(reals, corpus, checked_on, gv) -> list[InjectedCase]:
     out = []
-    for n, real in enumerate(_need(reals), start=1):
+    for n, real in enumerate(_need(reals, 0), start=1):
         chunk, _, claim_text = _base(real, corpus, checked_on)
         es = real.expect_sources[0]
         m = _LABEL.match(es.identifier)
@@ -296,7 +329,7 @@ def _nonexistent(reals, corpus, checked_on, gv) -> list[InjectedCase]:
         jo, hang = loc // 10000, loc % 100
         # 그 법의 모든 판을 본다: 다른 판(예: 현행)에 있는 조문을 "없는 출처"로 내면 안 된다
         law = corpus.law_of(chunk.doc_id)
-        have = {k // 100 for doc in law.chunks.values() for k in doc}
+        have = {k // 100 for doc in law.chunks.values() for k in doc} | law.article_nos
         # 같은 조의 가지 번호를 2부터 올려 어느 판에도 없는 첫 번호를 고른다
         g = next((g for g in range(2, 100) if jo * 100 + g not in have), None)
         if m is None or g is None:
@@ -315,7 +348,7 @@ def _nonexistent(reals, corpus, checked_on, gv) -> list[InjectedCase]:
 
 def _claim_mismatch(reals, corpus, checked_on, gv) -> list[InjectedCase]:
     out = []
-    for n, real in enumerate(_need(reals), start=1):
+    for n, real in enumerate(_need(reals, 1), start=1):
         chunk, src, _ = _base(real, corpus, checked_on)
         es = real.expect_sources[0]
         chunks = corpus.law_of(chunk.doc_id).chunks[chunk.doc_id]
@@ -340,14 +373,19 @@ def _claim_mismatch(reals, corpus, checked_on, gv) -> list[InjectedCase]:
 
 def _other_edition(reals, corpus, checked_on, gv) -> list[InjectedCase]:
     out = []
-    for n, real in enumerate(_need(reals), start=1):
+    for n, real in enumerate(_need(reals, 2), start=1):
         chunk, _, claim_text = _base(real, corpus, checked_on)
         es = real.expect_sources[0]
         law = corpus.law_of(chunk.doc_id)
         has = [d for d in law.confirmed_docs() if chunk.location.start in law.chunks[d]]
-        others = [d for d in has if d != es.document_id]
+        # 기준일(발송일)에 시행 중인 판은 "다른 시점 판본"이 아니다: 그날 밖의 판만 고른다
+        others = [
+            d
+            for d in has
+            if d != es.document_id and not _covers(law.editions[d], real.question.as_of)
+        ]
         if not others:
-            raise EvalError(f"{real.case_id}: 같은 위치가 있는 다른 판이 없다")
+            raise EvalError(f"{real.case_id}: 같은 위치가 있는 기준일 밖의 다른 판이 없다")
         # 가장 늦은 판. 그게 정답 판이면 가장 이른 다른 판
         pick = others[0] if has[-1] == es.document_id else others[-1]
         other = law.chunks[pick][chunk.location.start]
@@ -371,9 +409,11 @@ def _clean_summary(s) -> str:
 
 def _precs(prec_raw: Path) -> list[dict]:
     found = []
+    skipped = 0
     for p in sorted(prec_raw.glob("body_*.json")):
         stem = p.stem.removeprefix("body_")
         if "_" not in stem:
+            skipped += 1  # 이름에 일련번호가 없음
             continue
         try:
             d = json.loads(p.read_text(encoding="utf-8"))["PrecService"]
@@ -381,6 +421,7 @@ def _precs(prec_raw: Path) -> list[dict]:
             no, court = str(d["사건번호"]).strip(), str(d["법원명"]).strip()
         except KeyError, TypeError, ValueError, json.JSONDecodeError:
             logger.warning("판례 원문 %s를 읽을 수 없어 뺐다", p.name)
+            skipped += 1
             continue
         summary = _clean_summary(d.get("판결요지"))
         if no and court and summary:
@@ -388,6 +429,10 @@ def _precs(prec_raw: Path) -> list[dict]:
                 {"no": no, "serial": stem.rsplit("_", 1)[1], "court": court, "date": decided,
                  "summary": summary}
             )  # fmt: skip
+        else:
+            skipped += 1  # 사건번호·법원명이 비거나 태그를 지우면 요지가 빔
+    if skipped:
+        logger.warning("판례 원문 %d개는 이름·사건번호·요지가 없어 뺐다", skipped)
     found.sort(key=lambda x: (x["no"], x["serial"]))
     return found
 

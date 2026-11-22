@@ -72,10 +72,11 @@ def _row(row_id, doc_id, start, label, status="confirmed", as_of="2019-05-05"):
 
 ROWS = [
     _row("o1:r1", D2, 290002, "특허법 제29조제2항"),
-    _row("o2:r2", D1, 290001, "특허법 제29조제1항"),
-    _row("o3:r1", D3, 290002, "특허법 제29조제2항"),
+    _row("o2:r2", D1, 290001, "특허법 제29조제1항", as_of="2016-05-05"),
+    _row("o3:r1", D3, 290002, "특허법 제29조제2항", as_of="2022-01-05"),
     _row("o4:r1", D2, 520001, "특허법 제52조제1항"),
     _row("o5:r1", D2, 290002, "특허법 제29조제2항", status="unverified"),  # 뺀다
+    _row("o6:r1", D1, 290002, "특허법 제29조제2항"),  # 정답 판 D1이 발송일(2019)을 안 품음: 뺀다
 ]
 
 PRECS = [  # (사건번호, 일련번호, 판결요지)
@@ -163,7 +164,7 @@ def test_make_cases_실제_질문_모양(mats):
     assert isinstance(r, RealCase)
     assert (r.oa_id, r.rejection) == ("o2", 2)
     assert r.question.text == "가짜 질의 o2:r2"
-    assert r.question.as_of == date(2019, 5, 5)
+    assert r.question.as_of == date(2016, 5, 5)
     assert r.question.article_refs == ["특허법 제29조제1항"]
     es = r.expect_sources[0]
     assert (es.identifier, es.document_id, es.loc) == ("특허법 제29조제1항", D1, 290001)
@@ -213,6 +214,20 @@ def test_make_cases_뺀_줄은_경고한다(mats, caplog):
     assert any("o5:r1" in r.getMessage() for r in caplog.records)
 
 
+def test_make_cases_정답_판이_발송일을_안_품으면_경고하고_뺀다(mats, caplog):
+    with caplog.at_level(logging.WARNING):
+        cases = _run(mats)
+    assert "real:o6:r1" not in {c.case_id for c in cases}
+    assert any("o6:r1" in r.getMessage() and "발송일" in r.getMessage() for r in caplog.records)
+
+
+def test_make_cases_판례를_뺀_수를_경고한다(mats, caplog):
+    with caplog.at_level(logging.WARNING):
+        _run(mats)
+    # 2002후200은 태그를 지우면 요지가 빈다
+    assert any("판례 원문 1개" in r.getMessage() for r in caplog.records)
+
+
 def test_make_cases_주입_묶음은_F2_모양이다(mats):
     cases = _run(mats)
     inj = _inj(cases, "other_edition_asserted")[0]
@@ -246,6 +261,22 @@ def test_make_cases_없는_출처는_없는_가지_번호를_고른다(mats):
     assert all(c.target_claim == 1 and c.target_source == 0 for c in by_base.values())
 
 
+def test_make_cases_없는_출처는_지워진_가지_조문도_건너뛴다(mats):
+    # 옛 판 D1에 "제29조의3 삭제"가 있으면 29조의3은 있던 번호다 → 29조의4를 고른다
+    data = _law("20150101", "30일", "10일", "1년", "6개월")
+    deleted = {
+        "조문여부": "조문",
+        "조문번호": "29",
+        "조문가지번호": "3",
+        "조문내용": "제29조의3 삭제",
+    }
+    data["법령"]["조문"]["조문단위"].append(deleted)
+    _write_json(mats.law_raw / f"body_{D1}.json", data)
+    cases = _run(mats)
+    by_base = {c.base_case_id: c for c in _inj(cases, "nonexistent_source")}
+    assert by_base["real:o1:r1"].bundle.claims[0].sources[0].identifier == "특허법 제29조의4제2항"
+
+
 def test_make_cases_없는_출처는_다른_판에만_있는_가지도_건너뛴다(mats):
     # 현행 판 D3에만 52조의2가 생겼다 → 바탕 판(52조 바탕)에 없어도 "없는 출처"로 쓰면 안 된다
     data = _law("20210101", "3개월", "3개월", "2년", "3개월")
@@ -276,6 +307,34 @@ def test_make_cases_다른_판본은_가장_늦은_다른_판(mats):
     # o3: 정답이 D3(가장 늦은 판)이면 가장 이른 다른 판 D1
     assert c["real:o3:r1"].bundle.claims[0].sources[0].evidence.document_id == D1
     assert c["real:o3:r1"].fix.document_id == D3
+
+
+def test_make_cases_다른_판본은_기준일에_시행_중인_판을_고르지_않는다(mats):
+    # 정답 판이 기준일을 안 품는 줄(o6)은 빠지고, 남은 줄의 주입 판은 모두 기준일 밖이어야 한다
+    cases = _run(mats)
+    by_id = {c.case_id: c for c in cases if isinstance(c, RealCase)}
+    for c in _inj(cases, "other_edition_asserted"):
+        doc = c.bundle.claims[0].sources[0].evidence.document_id
+        as_of = by_id[c.base_case_id].question.as_of
+        assert doc != c.fix.document_id
+        # 고른 판은 기준일 밖, 고칠 정답 판은 기준일 안
+        ed_from = {D1: date(2015, 1, 1), D2: date(2018, 1, 1), D3: date(2021, 1, 1)}
+        ed_to = {D1: date(2017, 12, 31), D2: date(2020, 12, 31), D3: None}
+        assert not (ed_from[doc] <= as_of and (ed_to[doc] is None or as_of <= ed_to[doc]))
+
+
+def test_make_cases_주입_종류마다_바탕_질문이_겹치지_않는다(mats):
+    # 실제 질문이 넉넉하면(12개 이상) 없는 출처·불일치·다른 판이 서로 다른 바탕을 쓴다
+    rows = [json.loads(x) for x in mats.gold.read_text(encoding="utf-8").splitlines()]
+    rows += [_row(f"p{i:02d}:r1", D2, 290002, "특허법 제29조제2항") for i in range(10)]
+    mats.gold.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), "utf-8")
+    cases = _run(mats)
+    bases = [
+        {c.base_case_id for c in _inj(cases, e)}
+        for e in ("nonexistent_source", "claim_text_mismatch", "other_edition_asserted")
+    ]
+    assert all(len(b) == 4 for b in bases)
+    assert not (bases[0] & bases[1]) and not (bases[1] & bases[2]) and not (bases[0] & bases[2])
 
 
 def test_make_cases_요지만_본_판례(mats):
