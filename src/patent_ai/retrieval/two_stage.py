@@ -2,7 +2,7 @@
 
 1단계 BM25가 범위 안에서 위 N개 후보를 고르고, 2단계에서 그 후보만 벡터 유사도로 다시 줄세운다.
 안쪽 검색기는 get_searcher로 만든다 (계약 검사 래퍼를 그대로 거침).
-core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나 녹화 파일).
+core를 import하지 않는다. 모델 호출 없음 (질의 벡터는 부르는 쪽 embed나 기록된 질의 벡터 파일).
 """
 
 from datetime import date
