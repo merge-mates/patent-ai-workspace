@@ -5,7 +5,7 @@ import { Link, useLoaderData, useNavigate, useRevalidator, useRouteLoaderData } 
 import { api } from '../../api'
 import { AmendmentLimitAlert } from '../../components/CaseAlerts'
 import { OriginTag } from '../../components/DirectionTags'
-import { HumanCheckTag } from '../../components/Marks'
+import { HumanCheckTag, HumanTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusLine } from '../../components/StatusLine'
 import { StatusTag } from '../../components/StatusTag'
@@ -177,13 +177,17 @@ export function DirectionsPage() {
   const { message } = App.useApp()
   const revalidator = useRevalidator()
   const navigate = useNavigate()
-  // 방금 고른 선택(PUT 응답 값). 서버는 작은 실행이 끝날 때까지 GET의 selection을 옛 값으로 두므로
-  // 화면의 선택(d.selection)은 loader 값이고, 이 값은 실행이 도는 동안만 "방금 고름 · 반영 중"으로 따로 보인다.
-  // 끝나면 loader가 새 선택을 주니 따로 지우지 않는다 (묶음별로 들고 있어 다른 묶음 값이 섞이지 않는다)
-  const [justChosen, setJustChosen] = useState<Record<string, DirectionSelection>>({})
+  // 방금 고른 선택(PUT 응답 값)과 그 선택이 묶인 작은 실행의 run_id. 서버는 작은 실행이 끝날 때까지 GET의 selection을 옛 값으로 두므로
+  // 화면의 선택(d.selection)은 loader 값이고, 이 값은 "그 실행이 지금 도는 동안만" "방금 고름 · 반영 중"으로 따로 보인다.
+  // 그 실행이 succeeded면 loader가 새 선택을 주니 loader 값만 보이고, failed·cancelled면 서버는 선택을 버리므로 다시 고르라고 알린다.
+  // 묶음별로 들고 있어 다른 묶음 값이 섞이지 않고, run_id가 달라진 실행에는 다시 보이지 않는다 (지우는 것은 다음 고르기가 덮을 때)
+  const [justChosen, setJustChosen] = useState<Record<string, { selection: DirectionSelection; runId: string }>>({})
   // 그 OA의 최근 실행이 도는 동안은 못 고른다 (서버는 409 run_in_progress)
-  const runState = useRunSnapshot(oa.latest_run)?.run.state
+  const runSnap = useRunSnapshot(oa.latest_run)
+  const runState = runSnap?.run.state
   const rebuilding = runState === 'queued' || runState === 'running'
+  // 지금 실행이 이 화면에서 고른 작은 실행인가 (그 밖의 실행: 다시 돌리기 등)
+  const ownRun = Object.values(justChosen).some((j) => j.runId === runSnap?.run.run_id)
   // 저장 중인 묶음들 (여러 묶음을 빨리 골라도 서로 덮지 않게 묶음마다 따로)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [checkOpen, setCheckOpen] = useState(false)
@@ -203,7 +207,7 @@ export function DirectionsPage() {
     try {
       const saved = await api.selectDirection(d.unit_id, body)
       // 응답이 늦게 와도 다른 묶음의 값을 덮지 않게 그때의 최신 값에 더한다 (응답 값만, 지어내지 않음)
-      setJustChosen((prev) => ({ ...prev, [d.unit_id]: saved.selection }))
+      setJustChosen((prev) => ({ ...prev, [d.unit_id]: { selection: saved.selection, runId: saved.run_id } }))
       // 응답의 run_id는 초안만 다시 만드는 새 작은 실행: 폴링에 넣고 화면 데이터를 다시 받는다.
       // 다시 받은 OA의 latest_run이 그 실행이라 사건 틀이 구독하고, 끝나면 runPoll이 방향·초안을 다시 받게 한다
       // (사건 틀의 "직접 할 일" 개수는 실행이 끝나 loader가 새 선택을 받아야 줄어든다)
@@ -243,7 +247,13 @@ export function DirectionsPage() {
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {/* 서버는 작은 실행이 끝날 때까지 옛 선택을 돌려준다: 끝나면 고른 선택이 여기에 보인다 */}
       {rebuilding && (
-        <Alert type="info" showIcon message="고른 방향으로 초안을 만드는 중이에요 · 끝나면 선택이 여기에 보여요" />
+        <Alert
+          type="info"
+          showIcon
+          message={
+            ownRun ? '고른 방향으로 초안을 만드는 중이에요 · 끝나면 선택이 여기에 보여요' : '실행 중이라 지금은 고를 수 없어요 · 끝난 뒤 골라 주세요'
+          }
+        />
       )}
       {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
       {directions.length === 0 &&
@@ -254,7 +264,10 @@ export function DirectionsPage() {
         ))}
       {directions.map((d, idx) => {
         const sel = d.selection
-        const just = rebuilding ? justChosen[d.unit_id] : undefined
+        const mine = justChosen[d.unit_id]
+        const live = mine !== undefined && mine.runId === runSnap?.run.run_id // 그 선택이 묶인 실행이 지금 실행일 때만
+        const just = live && rebuilding ? mine.selection : undefined
+        const dropped = live && (runState === 'failed' || runState === 'cancelled') // 서버가 선택을 버린 경우
         const justName = d.candidates.find((c) => c.candidate_id === just?.candidate_id)?.name
         const picked = d.candidates.find((c) => c.candidate_id === sel?.candidate_id)
         return (
@@ -268,10 +281,11 @@ export function DirectionsPage() {
                 )}
               </span>
               {just && (
-                <HumanCheckTag>
+                <HumanTag>
                   {just.written_direction !== null ? '방금 씀 · 반영 중' : `방금 고름 · 반영 중${justName ? `: ${justName}` : ''}`}
-                </HumanCheckTag>
+                </HumanTag>
               )}
+              {dropped && <span className="label2" style={{ color: 'var(--fg-negative-text)' }}>고른 방향이 반영되지 않았어요 · 다시 골라 주세요</span>}
               {sel ? (
                 <OriginTag origin={sel.origin} />
               ) : d.candidates.length === 0 ? (
@@ -417,9 +431,9 @@ export function DirectionsPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* 초안 만들기 API는 v0에 없어서 지금은 초안 단계로 이동만 한다 */}
+        {/* 방향을 고르면 서버가 바로 초안을 다시 만든다: 이 버튼은 초안 단계로 이동만 한다 */}
         <Button type="primary" size="large" onClick={() => navigate(`/oas/${oa.oa_id}/drafts`)}>
-          고른 방향으로 초안 만들기
+          초안 보기
         </Button>
         <Link to={`/oas/${oa.oa_id}/compare`} className="label1">
           인용발명 대비로 돌아가기
