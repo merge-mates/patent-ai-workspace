@@ -18,6 +18,7 @@
 
 import argparse
 import hashlib
+import json
 import logging
 import struct
 import sys
@@ -30,7 +31,13 @@ from sqlalchemy.orm import Session
 from patent_ai.db.models.chunks import CiteChunk, LawChunk
 from patent_ai.index_version import is_index_version
 from patent_ai.retrieval.errors import RetrievalError
-from patent_ai.retrieval.repository import InMemoryChunkRepository, chunk_to_row, row_to_chunk
+from patent_ai.retrieval.repository import (
+    InMemoryChunkRepository,
+    chunk_problem,
+    chunk_to_row,
+    fill_law_defaults,
+    row_to_chunk,
+)
 from patent_ai.retrieval.schemas import Chunk, Corpus
 from patent_ai.settings import get_settings
 
@@ -65,14 +72,18 @@ def _check(chunks: Sequence[Chunk], corpus: Corpus, index_version: str) -> None:
     other = sum(c.index_version != index_version for c in chunks)
     if other:
         raise IndexDbError(f"{index_version}이 아닌 조각 {other}개가 섞였다")
-    # 법령은 판본이 있어야 하고, 인용문헌은 판본이 없어야(not_applicable) 한다
-    na = sum(c.edition.status == "not_applicable" for c in chunks)
-    if corpus == "law" and na:
-        raise IndexDbError(f"판본 not_applicable 조각 {na}개는 법령 표에 못 넣는다")
-    if corpus == "cite" and na != len(chunks):
-        raise IndexDbError(
-            f"인용문헌 표에는 판본 not_applicable만 넣는다 ({len(chunks) - na}개 아님)"
-        )
+    # 법령 표: 판본 not_applicable은 판례·심결만, 선고일·발언 주체는 판례·심결만 (db 검사 함수)
+    for c in chunks:
+        reason = chunk_problem(corpus, c)
+        if reason:
+            raise IndexDbError(f"{c.chunk_id}: {reason}")
+    # 인용문헌 표에는 판본 not_applicable만 넣는다
+    if corpus == "cite":
+        na = sum(c.edition.status == "not_applicable" for c in chunks)
+        if na != len(chunks):
+            raise IndexDbError(
+                f"인용문헌 표에는 판본 not_applicable만 넣는다 ({len(chunks) - na}개 아님)"
+            )
 
 
 def _as_float32(chunk: Chunk) -> Chunk:
@@ -88,7 +99,11 @@ def content_sha256(chunks: Sequence[Chunk]) -> str:
 
     JSONL(float64)과 DB에서 다시 읽은 값(float32)이 같은 해시가 되도록 벡터를 먼저 float32로 맞춘다.
     """
-    lines = sorted(_as_float32(c).model_dump_json() for c in chunks)
+    # attrs 같은 dict는 키 순서를 정렬해 해시한다 (JSONB가 키를 다시 정렬해 돌려준다)
+    lines = sorted(
+        json.dumps(_as_float32(c).model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+        for c in chunks
+    )
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
@@ -98,6 +113,8 @@ def replace_index(
     """그 판 줄을 지우고 chunks를 넣는다. 넣은 뒤 DB에서 센 수를 돌려준다."""
     # 1) DB를 건드리기 전에 다 검사한다
     _check(chunks, corpus, index_version)
+    if corpus == "law":
+        chunks = [fill_law_defaults(c) for c in chunks]  # DB에서 읽은 행과 같은 모양으로
     # 2) 한 트랜잭션: 중간에 실패하거나 수가 다르면 예전 줄이 그대로 남는다
     with session.begin():
         # 같은 판 이름에 다른 내용을 덮어쓰지 않는다 (덤프를 받은 쪽과 지문이 어긋남)
@@ -124,7 +141,9 @@ def read_chunks_jsonl(path: str | Path, corpus: Corpus) -> list[Chunk]:
     # 저장소 검사(chunk_id 겹침·말뭉치 판 앞말·판본 상태)를 먼저 거친다
     InMemoryChunkRepository.from_jsonl(corpus, path)
     lines = Path(path).read_text(encoding="utf-8").splitlines()
-    return [Chunk.model_validate_json(line) for line in lines if line.strip()]
+    chunks = [Chunk.model_validate_json(line) for line in lines if line.strip()]
+    # 옛 JSONL은 source_kind가 없다: statute로 채워 DB 행과 내용 지문을 맞춘다
+    return [fill_law_defaults(c) for c in chunks] if corpus == "law" else chunks
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -16,7 +16,13 @@ from patent_ai.retrieval.errors import (
     UnknownIndexVersionError,
 )
 from patent_ai.retrieval.repository import ChunkRepository
-from patent_ai.retrieval.schemas import Corpus, Mode, SearchResult
+from patent_ai.retrieval.schemas import (
+    ChunkKind,
+    Corpus,
+    Mode,
+    SearchResult,
+    SourceKind,
+)
 
 
 class Searcher(Protocol):
@@ -28,6 +34,10 @@ class Searcher(Protocol):
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult: ...
 
 
@@ -74,6 +84,10 @@ class CheckedSearcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
         # --- 부르기 전 검사 ---
         if corpus not in get_args(Corpus):
@@ -85,10 +99,35 @@ class CheckedSearcher:
         # None만 "전체"다. 빈 목록은 실수로 보고 막는다
         if doc_ids is not None and len(doc_ids) == 0:
             raise ValueError("doc_ids가 빈 목록이다 (전체는 None)")
+        # 자료 유형 거르기도 doc_ids처럼: 빈 목록은 실수, 모르는 값은 오타
+        for name, values, allowed in (
+            ("chunk_kinds", chunk_kinds, get_args(ChunkKind)),
+            ("source_kinds", source_kinds, get_args(SourceKind)),
+        ):
+            if values is None:
+                continue
+            if len(values) == 0:
+                raise ValueError(f"{name}가 빈 목록이다 (전체는 None)")
+            unknown = [v for v in values if v not in allowed]
+            if unknown:
+                raise ValueError(f"{name}에 모르는 값 {unknown}. 쓸 수 있는 값: {list(allowed)}")
+        # 판례·심결 거르기는 법령 표에만 있다
+        if corpus == "cite" and (source_kinds is not None or decided_on_or_before is not None):
+            raise ValueError("source_kinds·decided_on_or_before는 corpus='law'에만 쓴다")
         if not self._repo.has_index_version(corpus, self._index_version):
             raise UnknownIndexVersionError(f"{corpus} 표에 색인 판 {self._index_version!r}이 없다")
 
-        result = self._inner.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of)
+        result = self._inner.search(
+            query,
+            corpus,
+            mode,
+            k,
+            doc_ids=doc_ids,
+            as_of=as_of,
+            chunk_kinds=chunk_kinds,
+            source_kinds=source_kinds,
+            decided_on_or_before=decided_on_or_before,
+        )
 
         # --- 받은 뒤 검사 ---
         # 부른 말뭉치·방식·k와 다른 결과면 구현이 엉뚱한 것을 돌려준 것이다

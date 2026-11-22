@@ -146,7 +146,8 @@ def get_article(pool: LawPool, ref: ArticleRef, as_of: date) -> ArticleLookup:
 
 def search_article(searcher: Searcher, query: str, as_of: date | None, k: int) -> SearchResult:
     """조문 번호 없이 찾을 때: 질의(심사관 논리 글)로 법령 조각을 BM25 검색한다."""
-    return searcher.search(query, CORPUS, "bm25", k, as_of=as_of)
+    # 조문만 찾는다 (v3 색인에는 심사기준·판례 조각도 같은 표에 있다)
+    return searcher.search(query, CORPUS, "bm25", k, as_of=as_of, chunk_kinds=["article"])
 
 
 # 자료 유형 -> 그 유형의 조각 종류 (판례·심결은 law-idx-v3에서 source_kind로 가른다, F2 design 5-1)

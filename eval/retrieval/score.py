@@ -195,6 +195,7 @@ def score(
             failures["excluded_no_location"] += 1
             continue
 
+        kinds = row.search_chunk_kinds()  # 줄의 검색 범위 조각 종류 (law 기본 [article])
         search_docs = row.doc_ids
         if noise is not None:
             search_docs = noise.get(row.row_id)
@@ -203,7 +204,10 @@ def score(
             if not set(row.doc_ids or []) <= set(search_docs):
                 raise RetrievalEvalError(f"노이즈 범위에 정답 문헌이 빠졌다: {row.row_id}")
             # 노이즈 조각이 있어도 정답 문헌 본문이 없으면 맞힐 수 없다: 주 점수와 같이 뺀다
-            if repo.count_chunks(cfg.corpus, cfg.index_version, row.doc_ids) == 0:
+            if (
+                repo.count_chunks(cfg.corpus, cfg.index_version, row.doc_ids, chunk_kinds=kinds)
+                == 0
+            ):
                 failures["excluded_body_missing"] += 1
                 continue
 
@@ -218,7 +222,13 @@ def score(
         # 4. 줄마다 search를 한 번 (k는 가장 큰 값, 작은 k는 앞부분을 자른다)
         try:
             result = searcher.search(
-                row.query, cfg.corpus, cfg.mode, k_max, doc_ids=search_docs, as_of=row.as_of
+                row.query,
+                cfg.corpus,
+                cfg.mode,
+                k_max,
+                doc_ids=search_docs,
+                as_of=row.as_of,
+                chunk_kinds=kinds,
             )
         except Exception as e:  # 줄 하나의 검색 예외는 조용히 넘기지 않는다
             # 메시지에 질의 글자가 섞일 수 있어 예외 종류만 적는다
@@ -237,7 +247,9 @@ def score(
             raise RetrievalEvalError(f"줄 {row.row_id}: 결과에 다른 색인 판 조각이 섞였다")
 
         # 7. 검색 범위 N과 항목별 맞는 조각 수 Mi
-        scope = repo.chunks(cfg.corpus, cfg.index_version, search_docs, row.as_of)
+        scope = repo.chunks(
+            cfg.corpus, cfg.index_version, search_docs, row.as_of, chunk_kinds=kinds
+        )
         if not scope:
             # 기준일로 걸러 범위가 0개: 무작위 기준선을 못 정하므로
             # 이 줄만 빼고 센다 (design 2절 4번)

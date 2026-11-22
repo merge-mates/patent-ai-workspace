@@ -266,10 +266,43 @@ class _CachedSearcher:
         self.inner = inner
         self.done: dict[tuple, SearchResult] = {}
 
-    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
-        key = (query, corpus, mode, k, tuple(doc_ids or ()), as_of)
+    def search(
+        self,
+        query,
+        corpus,
+        mode,
+        k,
+        doc_ids=None,
+        as_of=None,
+        *,
+        chunk_kinds=None,
+        source_kinds=None,
+        decided_on_or_before=None,
+    ):
+        # 새 거르기 인자도 키에 넣는다 (다른 범위 결과를 잘못 다시 쓰지 않게)
+        key = (
+            query,
+            corpus,
+            mode,
+            k,
+            tuple(doc_ids or ()),
+            as_of,
+            tuple(chunk_kinds or ()),
+            tuple(source_kinds or ()),
+            decided_on_or_before,
+        )
         if key not in self.done:
-            self.done[key] = self.inner.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of)
+            self.done[key] = self.inner.search(
+                query,
+                corpus,
+                mode,
+                k,
+                doc_ids=doc_ids,
+                as_of=as_of,
+                chunk_kinds=chunk_kinds,
+                source_kinds=source_kinds,
+                decided_on_or_before=decided_on_or_before,
+            )
         return self.done[key]
 
 

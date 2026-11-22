@@ -75,14 +75,35 @@ class WholeDocLLMSearcher:
         k: int,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[str] | None = None,
+        source_kinds: list[str] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> SearchResult:
+        # 자료 유형·선고일 거르기는 검색 계약 그대로 받아 저장소에 넘긴다 (#24).
+        # 이 검색기는 인용문헌 말뭉치용이라 source_kinds·decided_on_or_before는 보통 None이다
         base = {
             "corpus": corpus,
             "index_version": self._index_version,
             "mode": mode,
-            "scope": SearchScope(doc_ids=doc_ids, as_of=as_of, k=k),
+            "scope": SearchScope(
+                doc_ids=doc_ids,
+                as_of=as_of,
+                k=k,
+                chunk_kinds=chunk_kinds,
+                source_kinds=source_kinds,
+                decided_on_or_before=decided_on_or_before,
+            ),
         }
-        chunks = self._repo.chunks(corpus, self._index_version, doc_ids, as_of)
+        chunks = self._repo.chunks(
+            corpus,
+            self._index_version,
+            doc_ids,
+            as_of,
+            chunk_kinds=chunk_kinds,
+            source_kinds=source_kinds,
+            decided_on_or_before=decided_on_or_before,
+        )
         if not chunks:
             # 본문이 없으면 못 찾음이 아니라 확인되지 않음
             return SearchResult(**base, status="unverified", status_reason="body_missing")

@@ -28,7 +28,7 @@ class NoGold(EvalError):
 class GoldSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    opinion: str  # 의견서 접수번호
+    opinion: str | None  # 의견서 접수번호. 의견서 없이 보정서만 내면 null (칸은 빼지 않는다)
     amendment: str | None  # 보정서 접수번호. 보정서가 없으면 null
 
 

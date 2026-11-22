@@ -9,17 +9,33 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Protocol
 
-from sqlalchemy import and_, create_engine, func, or_, select
+from sqlalchemy import and_, create_engine, false, func, or_, select
 from sqlalchemy.orm import Session
 
-from patent_ai.db.models.chunks import CiteChunk, LawChunk
+from patent_ai.db.models.chunks import (
+    DATED_SOURCE_KINDS,
+    CiteChunk,
+    LawChunk,
+    check_cite_chunk_meta,
+    check_law_chunk,
+)
 from patent_ai.index_version import is_index_version
-from patent_ai.retrieval.schemas import Chunk, Corpus, Edition, Location
+from patent_ai.retrieval.schemas import (
+    Chunk,
+    ChunkKind,
+    Corpus,
+    Edition,
+    Location,
+    SourceKind,
+)
 from patent_ai.settings import get_settings
 
 
 class ChunkRepository(Protocol):
-    """조각을 읽고 센다. 색인 판·문헌·기준일 거르기는 구현이 같게 한다."""
+    """조각을 읽고 센다. 색인 판·문헌·기준일·자료 유형·선고일 거르기는 구현이 같게 한다.
+
+    chunk_kinds·source_kinds·decided_on_or_before는 키워드 전용이고 None이면 안 건다.
+    """
 
     def chunks(
         self,
@@ -27,6 +43,10 @@ class ChunkRepository(Protocol):
         index_version: str,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> list[Chunk]:
         """조건에 맞는 조각. 결과 순서는 보장하지 않는다."""
         ...
@@ -34,18 +54,102 @@ class ChunkRepository(Protocol):
     def has_index_version(self, corpus: Corpus, index_version: str) -> bool: ...
 
     def count_chunks(
-        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> int: ...
 
     def count_unverified_edition(
-        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> int: ...
 
+    def count_unknown_date(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+    ) -> int:
+        """선고일을 몰라(decided_on null) 날짜 거르기에서 빠질 판례·심결 조각 수."""
+        ...
 
-def _check_doc_ids(doc_ids: list[str] | None) -> None:
+    def earliest_effective_from(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        chunk_kinds: list[ChunkKind],
+        source_kinds: list[SourceKind] | None = None,
+    ) -> date | None:
+        """그 유형 조각 중 가장 이른 판의 시행 시작일. 판본이 확인된(시작일 있는) 조각만 본다.
+
+        없으면 None (유형 조각 0개, 판본 모름만, 판례·심결). 기준일이 이보다 앞서면
+        '그 시점 판이 색인에 없다'는 재료다.
+        """
+        ...
+
+
+def fill_law_defaults(chunk: Chunk) -> Chunk:
+    """law 조각의 source_kind가 없으면 statute로 채운다 (v1·v2 JSONL은 조문뿐).
+
+    마이그레이션이 옛 DB 행을 statute로 채운 것과 같아서, 옛 JSONL을 다시 넣어도 내용 지문이 같다.
+    """
+    if chunk.source_kind is None:
+        return chunk.model_copy(update={"source_kind": "statute"})
+    return chunk
+
+
+def chunk_problem(corpus: Corpus, chunk: Chunk) -> str | None:
+    """표에 맞지 않는 조각이면 이유 한 줄 (db의 검사 함수를 부른다. 넣기·덤프도 같은 함수)."""
+    if corpus == "law":
+        chunk = fill_law_defaults(chunk)  # source_kind 빈 조각은 채운 값(statute)으로 판단한다
+        return check_law_chunk(
+            chunk.chunk_kind,
+            chunk.edition.status,
+            chunk.source_kind,
+            chunk.decided_on,
+            chunk.speaker,
+        )
+    return check_cite_chunk_meta(chunk.source_kind, chunk.decided_on, chunk.speaker, chunk.attrs)
+
+
+def _check_lists(
+    doc_ids: list[str] | None,
+    chunk_kinds: list[ChunkKind] | None = None,
+    source_kinds: list[SourceKind] | None = None,
+) -> None:
     # None만 "전체"다. 빈 목록은 실수일 가능성이 커서 조용히 0건을 돌려주지 않고 막는다
-    if doc_ids is not None and len(doc_ids) == 0:
-        raise ValueError("doc_ids가 빈 목록이다. 전체는 None으로 표현한다")
+    for name, value in (
+        ("doc_ids", doc_ids),
+        ("chunk_kinds", chunk_kinds),
+        ("source_kinds", source_kinds),
+    ):
+        if value is not None and len(value) == 0:
+            raise ValueError(f"{name}가 빈 목록이다. 전체는 None으로 표현한다")
+
+
+def _date_unknown(chunk: Chunk) -> bool:
+    """판례·심결인데 선고일을 모르는 조각 (날짜 거르기에서 빠지고 skipped_unknown_date로 센다)."""
+    return chunk.source_kind in DATED_SOURCE_KINDS and chunk.decided_on is None
+
+
+def _passes_date(chunk: Chunk, cutoff: date) -> bool:
+    """선고일 거르기: 조문·심사기준은 통과, 판례·심결은 선고일 <= cutoff만 (날짜 모름은 뺀다)."""
+    if chunk.source_kind not in DATED_SOURCE_KINDS:
+        return True
+    return chunk.decided_on is not None and chunk.decided_on <= cutoff
 
 
 def _edition_unknown(chunk: Chunk) -> bool:
@@ -72,7 +176,11 @@ def _in_force(chunk: Chunk, as_of: date) -> bool:
 
 class InMemoryChunkRepository:
     def __init__(self, tables: dict[Corpus, list[Chunk]]):
-        self._tables = tables
+        # law 조각의 source_kind 빈 칸은 statute로 채운다 (Postgres 행은 NOT NULL statute와 같게)
+        self._tables = {
+            corpus: [fill_law_defaults(c) for c in rows] if corpus == "law" else rows
+            for corpus, rows in tables.items()
+        }
 
     @classmethod
     def from_jsonl(cls, corpus: Corpus, *paths: str | Path) -> InMemoryChunkRepository:
@@ -96,10 +204,15 @@ class InMemoryChunkRepository:
                     )
                 # law는 판본이 있어야 하고 cite는 판본이 없어야 한다 (표가 섞이면 막는다)
                 na = chunk.edition.status == "not_applicable"
-                if (corpus == "law" and na) or (corpus == "cite" and not na):
+                if corpus == "cite" and not na:
                     raise ValueError(
                         f"{path}:{no} {corpus} 표에 맞지 않는 판본 상태 {chunk.edition.status!r}"
                     )
+                if corpus == "law":
+                    chunk = fill_law_defaults(chunk)
+                reason = chunk_problem(corpus, chunk)
+                if reason:
+                    raise ValueError(f"{path}:{no} {reason}")
                 if chunk.chunk_id in seen:
                     raise ValueError(f"{path}:{no} chunk_id가 겹친다: {chunk.chunk_id}")
                 seen.add(chunk.chunk_id)
@@ -119,14 +232,28 @@ class InMemoryChunkRepository:
                 raise ValueError(f"{corpus} 표에 chunk_id가 겹친다")
         return cls(tables)
 
-    def _scope(self, corpus: Corpus, index_version: str, doc_ids: list[str] | None) -> list[Chunk]:
-        _check_doc_ids(doc_ids)
+    def _scope(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
+    ) -> list[Chunk]:
+        _check_lists(doc_ids, chunk_kinds, source_kinds)
         allowed = None if doc_ids is None else set(doc_ids)
-        return [
+        rows = [
             c
             for c in self._tables.get(corpus, [])
-            if c.index_version == index_version and (allowed is None or c.doc_id in allowed)
+            if c.index_version == index_version
+            and (allowed is None or c.doc_id in allowed)
+            and (chunk_kinds is None or c.chunk_kind in chunk_kinds)
+            and (source_kinds is None or c.source_kind in source_kinds)
         ]
+        if decided_on_or_before is not None:
+            rows = [c for c in rows if _passes_date(c, decided_on_or_before)]
+        return rows
 
     def chunks(
         self,
@@ -134,8 +261,14 @@ class InMemoryChunkRepository:
         index_version: str,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> list[Chunk]:
-        rows = self._scope(corpus, index_version, doc_ids)
+        rows = self._scope(
+            corpus, index_version, doc_ids, chunk_kinds, source_kinds, decided_on_or_before
+        )
         if as_of is not None:
             rows = [c for c in rows if _in_force(c, as_of)]
         return rows
@@ -144,15 +277,60 @@ class InMemoryChunkRepository:
         return any(c.index_version == index_version for c in self._tables.get(corpus, []))
 
     def count_chunks(
-        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> int:
-        return len(self._scope(corpus, index_version, doc_ids))
+        rows = self._scope(
+            corpus, index_version, doc_ids, chunk_kinds, source_kinds, decided_on_or_before
+        )
+        return len(rows)
 
     def count_unverified_edition(
-        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> int:
-        rows = self._scope(corpus, index_version, doc_ids)
+        rows = self._scope(
+            corpus, index_version, doc_ids, chunk_kinds, source_kinds, decided_on_or_before
+        )
         return sum(1 for c in rows if _edition_unknown(c))
+
+    def count_unknown_date(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+    ) -> int:
+        rows = self._scope(corpus, index_version, doc_ids, chunk_kinds, source_kinds)
+        return sum(1 for c in rows if _date_unknown(c))
+
+    def earliest_effective_from(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        chunk_kinds: list[ChunkKind],
+        source_kinds: list[SourceKind] | None = None,
+    ) -> date | None:
+        rows = self._scope(corpus, index_version, None, chunk_kinds, source_kinds)
+        starts = [
+            c.edition.effective_from
+            for c in rows
+            if c.edition.status == "confirmed" and c.edition.effective_from is not None
+        ]
+        return min(starts, default=None)
 
 
 # ---- Postgres 저장소 ----
@@ -163,6 +341,16 @@ _TABLES: dict[str, type[LawChunk] | type[CiteChunk]] = {"law": LawChunk, "cite":
 def chunk_to_row(corpus: Corpus, chunk: Chunk) -> LawChunk | CiteChunk:
     """Chunk를 그 말뭉치 표의 행으로 바꾼다 (location -> loc_*, edition -> edition_*)."""
     loc, ed = chunk.location, chunk.edition
+    # 새 칸 넷은 법령 표에만 있다 (인용문헌 표에는 칸이 없다)
+    extra: dict[str, Any] = {}
+    if corpus == "law":
+        chunk = fill_law_defaults(chunk)  # source_kind 빈 조각은 statute (NOT NULL)
+        extra = {
+            "source_kind": chunk.source_kind,
+            "decided_on": chunk.decided_on,
+            "speaker": chunk.speaker,
+            "attrs": chunk.attrs,
+        }
     return _TABLES[corpus](
         chunk_id=chunk.chunk_id,
         index_version=chunk.index_version,
@@ -180,6 +368,7 @@ def chunk_to_row(corpus: Corpus, chunk: Chunk) -> LawChunk | CiteChunk:
         edition_label=ed.label,
         text=chunk.text,
         embedding=chunk.embedding,
+        **extra,
     )
 
 
@@ -208,6 +397,11 @@ def row_to_chunk(row: LawChunk | CiteChunk) -> Chunk:
         text=row.text,
         # pgvector는 numpy 배열로 돌려줄 수 있어 파이썬 list로 바꾼다
         embedding=None if emb is None else [float(x) for x in emb],
+        # 인용문헌 행에는 새 칸이 없어 None
+        source_kind=getattr(row, "source_kind", None),
+        decided_on=getattr(row, "decided_on", None),
+        speaker=getattr(row, "speaker", None),
+        attrs=getattr(row, "attrs", None),
     )
 
 
@@ -223,12 +417,36 @@ class PostgresChunkRepository:
         engine = create_engine(url or get_settings().database_url)
         return cls(Session(engine))
 
-    def _where(self, corpus: Corpus, index_version: str, doc_ids: list[str] | None):
-        _check_doc_ids(doc_ids)
+    def _where(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
+    ):
+        _check_lists(doc_ids, chunk_kinds, source_kinds)
         t = _TABLES[corpus]
         conds = [t.index_version == index_version]
         if doc_ids is not None:
             conds.append(t.doc_id.in_(doc_ids))
+        if chunk_kinds is not None:
+            conds.append(t.chunk_kind.in_(chunk_kinds))
+        # 새 칸(source_kind·decided_on)은 법령 표에만 있다. 인용문헌 조각은 source_kind가 없다
+        if corpus == "law":
+            if source_kinds is not None:
+                conds.append(t.source_kind.in_(source_kinds))
+            if decided_on_or_before is not None:
+                # 조문·심사기준은 통과, 판례·심결은 선고일 <= 기준일만 (날짜 모름은 뺀다)
+                conds.append(
+                    or_(
+                        t.source_kind.not_in(DATED_SOURCE_KINDS),
+                        and_(t.decided_on.is_not(None), t.decided_on <= decided_on_or_before),
+                    )
+                )
+        elif source_kinds is not None:
+            conds.append(false())
         return t, conds
 
     @staticmethod
@@ -257,8 +475,14 @@ class PostgresChunkRepository:
         index_version: str,
         doc_ids: list[str] | None = None,
         as_of: date | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> list[Chunk]:
-        t, conds = self._where(corpus, index_version, doc_ids)
+        t, conds = self._where(
+            corpus, index_version, doc_ids, chunk_kinds, source_kinds, decided_on_or_before
+        )
         if as_of is not None:
             conds.append(self._in_force(t, as_of))
         rows = self._session.scalars(select(t).where(*conds)).all()
@@ -272,14 +496,58 @@ class PostgresChunkRepository:
         )
 
     def count_chunks(
-        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> int:
-        t, conds = self._where(corpus, index_version, doc_ids)
+        t, conds = self._where(
+            corpus, index_version, doc_ids, chunk_kinds, source_kinds, decided_on_or_before
+        )
         return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0
 
     def count_unverified_edition(
-        self, corpus: Corpus, index_version: str, doc_ids: list[str] | None = None
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        *,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+        decided_on_or_before: date | None = None,
     ) -> int:
-        t, conds = self._where(corpus, index_version, doc_ids)
+        t, conds = self._where(
+            corpus, index_version, doc_ids, chunk_kinds, source_kinds, decided_on_or_before
+        )
         conds.append(self._unknown(t))
         return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0
+
+    def count_unknown_date(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        doc_ids: list[str] | None = None,
+        chunk_kinds: list[ChunkKind] | None = None,
+        source_kinds: list[SourceKind] | None = None,
+    ) -> int:
+        t, conds = self._where(corpus, index_version, doc_ids, chunk_kinds, source_kinds)
+        if corpus != "law":
+            return 0  # 인용문헌 조각은 선고일 개념이 없다
+        conds.append(and_(t.source_kind.in_(DATED_SOURCE_KINDS), t.decided_on.is_(None)))
+        return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0
+
+    def earliest_effective_from(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        chunk_kinds: list[ChunkKind],
+        source_kinds: list[SourceKind] | None = None,
+    ) -> date | None:
+        t, conds = self._where(corpus, index_version, None, chunk_kinds, source_kinds)
+        # 메모리 저장소와 같게: 판본이 확인되고 시작일이 있는 조각만
+        conds.append(t.edition_status == "confirmed")
+        return self._session.scalar(select(func.min(t.edition_effective_from)).where(*conds))

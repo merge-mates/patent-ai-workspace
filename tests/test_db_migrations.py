@@ -32,3 +32,53 @@ def test_default_user_is_exactly_one_after_upgrade():
     engine.dispose()
 
     assert rows == ["u_default"]
+
+
+def _alembic(*args: str) -> None:
+    subprocess.run([sys.executable, "-m", "alembic", *args], check=True)
+
+
+@pytest.mark.db
+def test_law_chunks_새_칸_upgrade는_옛_행을_statute로_채우고_downgrade로_되돌아간다():
+    # 이슈 #24 24a: 옛 행(v1·v2) 보호. 앞 revision에서 행을 넣고 올린다
+    from sqlalchemy import create_engine, inspect, text
+
+    from patent_ai.settings import get_settings
+
+    prev, rev = "e2b7d5c9a184", "c7e2a5d9f103"
+    # CI는 테스트 전에 head까지 올려 두므로 앞 revision으로 내려가서 시작한다
+    _alembic("upgrade", "head")
+    _alembic("downgrade", prev)
+    engine = create_engine(get_settings().database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM law_chunks WHERE chunk_id = 'law-idx-v2:mig:1'"))
+            conn.execute(
+                text(
+                    "INSERT INTO law_chunks (chunk_id, index_version, doc_id, chunk_kind, loc_kind,"
+                    " loc_label, edition_status, text) VALUES ('law-idx-v2:mig:1', 'law-idx-v2',"
+                    " 'mig', 'article', 'article', '제1조', 'unverified', '가짜')"
+                )
+            )
+        _alembic("upgrade", rev)
+        with engine.connect() as conn:
+            kinds = (
+                conn.execute(
+                    text("SELECT source_kind FROM law_chunks WHERE chunk_id = 'law-idx-v2:mig:1'")
+                )
+                .scalars()
+                .all()
+            )
+        assert kinds == ["statute"]
+        cols = {c["name"]: c for c in inspect(engine).get_columns("law_chunks")}
+        assert cols["source_kind"]["nullable"] is False
+        assert {"decided_on", "speaker", "attrs"} <= set(cols)
+
+        _alembic("downgrade", prev)
+        cols = {c["name"] for c in inspect(engine).get_columns("law_chunks")}
+        assert not ({"source_kind", "decided_on", "speaker", "attrs"} & cols)
+    finally:
+        _alembic("upgrade", "head")
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM law_chunks WHERE chunk_id = 'law-idx-v2:mig:1'"))
+        engine.dispose()

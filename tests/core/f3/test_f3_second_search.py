@@ -56,9 +56,9 @@ class _Recorder:
     def __init__(self):
         self.calls: list[dict] = []
 
-    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None):
+    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None, **kw):
         self.calls.append({"query": query, "k": k, "doc_ids": doc_ids})
-        return _inner().search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of)
+        return _inner().search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of, **kw)
 
 
 def _answer(*rows) -> TransportResponse:

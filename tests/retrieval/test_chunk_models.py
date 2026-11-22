@@ -52,10 +52,15 @@ def _create_table(sql: str, table: str) -> str:
     return m.group(1)
 
 
-def test_두_표의_ORM_칸이_같고_설계_표와_맞다():
+# 법령 표에만 있는 칸 (#24, design 5-1)
+LAW_ONLY_COLUMNS = {"source_kind", "decided_on", "speaker", "attrs"}
+
+
+def test_두_표의_ORM_칸이_설계_표와_맞고_새_칸_넷은_법령_표에만_있다():
     law = {c.name for c in LawChunk.__table__.columns}
     cite = {c.name for c in CiteChunk.__table__.columns}
-    assert law == cite == EXPECTED_COLUMNS
+    assert cite == EXPECTED_COLUMNS
+    assert law == EXPECTED_COLUMNS | LAW_ONLY_COLUMNS
     assert LawChunk.__tablename__ == "law_chunks"
     assert CiteChunk.__tablename__ == "cite_chunks"
 
@@ -92,3 +97,14 @@ def test_인덱스가_있다(offline_sql):
     assert "ON law_chunks (index_version, doc_id)" in offline_sql
     assert "ON cite_chunks (index_version, doc_id)" in offline_sql
     assert "ON law_chunks (index_version, edition_effective_from)" in offline_sql
+
+
+def test_법령_표_새_칸_NOT_NULL과_CHECK(offline_sql):
+    cite = _create_table(offline_sql, "cite_chunks")
+    # 새 칸은 ALTER로 더해지고 source_kind는 채운 뒤 NOT NULL로 바뀐다 (기존 행 보호)
+    assert "ALTER TABLE law_chunks ADD COLUMN source_kind TEXT" in offline_sql
+    assert "UPDATE law_chunks SET source_kind = 'statute'" in offline_sql
+    assert "ALTER TABLE law_chunks ALTER COLUMN source_kind SET NOT NULL" in offline_sql
+    assert "ck_law_chunks_source_kind CHECK (source_kind IN ('statute', 'guideline'" in offline_sql
+    assert "ck_law_chunks_speaker CHECK (speaker IN ('court', 'party', 'unknown')" in offline_sql
+    assert "source_kind" not in cite  # 인용문헌 표는 그대로

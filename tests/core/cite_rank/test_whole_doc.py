@@ -84,6 +84,24 @@ def test_번호가_정렬된_조각에_대응하고_모델이_준_순서가_순�
     assert "[4] (문헌2 [0001]) 둘째 문헌 첫째" in prompt
 
 
+def test_chunk_kinds로_거른_조각만_모델에_넣는다():
+    # 검색 계약의 자료 유형 거르기(#24)를 받아 저장소에 넘긴다: 청구항 조각은 프롬프트에 없다
+    claim = Chunk(
+        chunk_id="KR1-claim1",
+        index_version=IV,
+        doc_id="KR1",
+        chunk_kind="claim",
+        location=Location(kind="claim", label="청구항 1", claims=[1]),
+        edition=Edition(status="not_applicable"),
+        text="청구항 글",
+    )
+    s, transport, _ = make([ranked(1)], chunks=[*CHUNKS, claim])
+    r = s.search("질의", "cite", "hybrid", 10, chunk_kinds=["body"])
+    assert r.scope.chunk_kinds == ["body"]
+    assert "청구항 글" not in transport.calls[0]["prompt"]
+    assert [h.chunk_id for h in r.hits] == ["KR1-10"]
+
+
 def test_build_variables는_순서와_번호를_정한다():
     variables, scope = build_variables("질의", CHUNKS)
     assert [c.chunk_id for c in scope] == EXPECTED_ORDER
