@@ -17,11 +17,13 @@ from patent_ai.core.llm.errors import ModelConfigError
 _SETTING_KEYS = (
     "impl",
     "second_search",
+    "compare_variant",
     "second_search_depth",
     "use_examiner_paragraphs",
     "min_quote_chars",
     "search",
     "clarity_search",
+    "effect_search",
 )
 
 

@@ -51,12 +51,11 @@ export const runStateLabel: Record<RunState, string> = {
 }
 
 // 사람 기다림 단계 글자 (waiting_for 값마다).
-// 방향 고르기만 "고르기 기다림". 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
+// 출원번호·발송번호 두 값만 글자가 있다 (방향 고르기는 실행을 멈추지 않는다). 아직 못 받았거나(null) 모르는 값은 뜻을 지어내지 않고 "사람 기다림"
 // (서버는 waiting_for 없이 waiting_for_human이 되지 않는다: core/runs/state.py)
 export function waitingForLabel(w: string | null): string {
   if (w === 'application_number') return '출원번호 입력 기다림'
   if (w === 'dispatch_number') return '발송번호 확인 기다림'
-  if (w === 'direction_selection') return '고르기 기다림'
   return '사람 기다림'
 }
 
@@ -157,3 +156,7 @@ export const coarseLabel: Record<CoarseDirection, string> = {
 // 대응 방향·초안(F4)의 확신 낮음 보류는 "직접 판단 필요". 둘을 같은 "보류"로 쓰지 않는다
 export const COMPARE_UNVERIFIED_TEXT = '원문 확인 필요'
 export const LOW_CONFIDENCE_TEXT = '직접 판단 필요'
+
+// 사람이 넣은 번호 칸의 확인 글 (서버 core/cases/human_answers.py HUMAN_CHECKED와 같은 글자, #70).
+// 화면은 이 글자로 "직접 입력" 꼬리표를 단다. 서버와 같은지는 tests/web/test_web_human_checked.py가 본다
+export const HUMAN_ENTERED_CHECKED = '사람이 직접 입력함 (원문 대조 아님)'

@@ -1,0 +1,38 @@
+{
+  "experiment": "m3-i1-f4-rank-first",
+  "commit": "53843207f2a0e2009500dd5dffd499ce8b511005",
+  "goldset": "tune",
+  "goldset_version": 2,
+  "gold_sha256": "1db0bf96b2df2bc002a300a1eb06122552cc58aac390b7e875d75be8fd6fe2f7",
+  "impl": "skeleton",
+  "metric_name": "AI 기본 선택 거친 방향 일치율",
+  "n": 10,
+  "metrics": {
+    "direction_top1": 0.4174603174603175,
+    "direction_top1_with_inherited": 0.4736714975845411,
+    "direction_top1_list_first": 0.4174603174603175,
+    "direction_top1_ranked_only": 0.44940476190476186,
+    "needs_human_judgment_rate": 0.030917874396135265,
+    "direction_top1_conf_medium": 0.5617559523809523,
+    "direction_top1_conf_low": 0.25,
+    "direction_top1_list_first_conf_medium": 0.5617559523809523,
+    "direction_top1_list_first_conf_low": 0.25
+  },
+  "failures": {
+    "missing_prediction": 2,
+    "uncovered_pairs": 0,
+    "excluded_not_handled": 0,
+    "no_candidate": 0,
+    "excluded_ranked_only_conflict": 0,
+    "excluded_ranked_only_abstain": 4,
+    "excluded_branch_conflict": 0,
+    "excluded_list_first_conflict": 0
+  },
+  "cost": {
+    "usd": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "external_calls": 0,
+    "seconds": 0.001
+  }
+}

@@ -193,17 +193,28 @@ class DirectionCandidate(ResultBase):
 
 
 class DirectionSelection(BaseModel):
-    """묶음에서 고른 후보. AI 기본값과 사람 선택을 origin으로 구분한다."""
+    """묶음에서 고른 방향. 후보 id 또는 사람이 쓴 글 중 정확히 하나.
+
+    AI 기본값·사람 선택·사람이 직접 쓴 글을 origin으로 구분한다.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    candidate_id: str
+    candidate_id: str | None = None
+    written_direction: str | None = None  # 후보 밖 방향을 사람이 쓴 글
     origin: Origin
 
     @model_validator(mode="after")
-    def _선택의_출처만(self) -> DirectionSelection:
-        if self.origin not in (Origin.AI_DEFAULT, Origin.HUMAN_SELECTED):
-            raise ValueError("selection.origin은 ai_default·human_selected만")
+    def _선택의_모양(self) -> DirectionSelection:
+        if (self.candidate_id is None) == (self.written_direction is None):
+            raise ValueError("candidate_id와 written_direction 중 정확히 하나만 있어야 함")
+        if self.written_direction is not None:
+            if not self.written_direction.strip():
+                raise ValueError("written_direction이 비어 있음")
+            if self.origin != Origin.HUMAN_WRITTEN:
+                raise ValueError("selection.origin은 written_direction 선택이면 human_written만")
+        elif self.origin not in (Origin.AI_DEFAULT, Origin.HUMAN_SELECTED):
+            raise ValueError("selection.origin은 candidate_id 선택이면 ai_default·human_selected만")
         return self
 
 
@@ -244,7 +255,8 @@ class DirectionCandidates(ResultBase):
         if ranks != list(range(1, len(ranks) + 1)):
             raise ValueError("rank는 1부터 빠짐·중복 없이 이어져야 함")
         sel = self.selection
-        if sel is not None:
+        if sel is not None and sel.candidate_id is not None:
+            # 직접 쓴 글(written_direction)은 후보와 상관없어 이 검사를 건너뛴다
             chosen = next((c for c in self.candidates if c.candidate_id == sel.candidate_id), None)
             if chosen is None:
                 raise ValueError("selection.candidate_id가 후보 안에 없음")

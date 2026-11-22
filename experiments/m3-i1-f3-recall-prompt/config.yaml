@@ -1,0 +1,23 @@
+# F3 대비 프롬프트 비교 (이슈 #30): 구성요소마다 맞는 문단을 모두 고르게 하는 프롬프트로 selected_recall을 올릴 수 있나.
+# 기준선과 다른 줄은 하나만: compare_variant. 바꾼 줄 옆에 # changed
+experiment: m3-i1-f3-recall-prompt
+feature: f3
+baseline: m3-i1-f3-independent-first   # 기준선 판 f65f910 (#252 (나), 종속항 검색은 함)
+goldset: tune
+goldset_version: 2
+impl: split_search        # config/f3.yaml impl (기준선과 같음)
+index_version: cite-idx-v2
+k: 10
+settings:                 # config/f3.yaml (실행은 그 파일을 읽는다)
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  search: hybrid (RRF)    # 기준선과 같음
+  use_examiner_paragraphs: false   # 채점 실행: 심사관 지정 번호를 입력에 주지 않음 (저장소 기본값은 true)
+  second_search: true     # 기준선과 같음
+  compare_variant: recall # changed (기준선 standard: prompts/f3/compare.md → prompts/f3/compare_recall.md, 단계 f3.compare_recall)
+runs: 3                   # 11/22 새 판(30937d2): 켬·끔 각 3회. scores.json은 켬 1회차. 옛 판(64d82fc)은 2회
+runner: F3_COMPARE_VARIANT=recall|standard work/overnight_1121/scripts/f3_run.py work/overnight_1121/runs/f3c_<variant>_run<N> --workers 4 --cache-dir work/overnight_1121/runs/cache_f3c_<variant>_run<N>   # git 밖. 회차마다 새 캐시. F1 결과 work/overnight_1120/f1/a3_run2_pred. config/f3.yaml은 standard 그대로
+budget:
+  max_usd: 2.0
+  max_external_calls: 800

@@ -4,6 +4,8 @@
 OA 당시 청구항 판을 고르는 일은 부르는 쪽이 한다 (F3는 받은 글자만 읽는다).
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.schemas.common import Status
@@ -47,6 +49,14 @@ class ClaritySearchSettings(BaseModel):
     skip_headings: list[str]
 
 
+class EffectSearchSettings(BaseModel):
+    """효과 후보: 차이점마다 모델에 보여 줄 최초 명세서 조각 수 (config/f3.yaml effect_search)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    k: int = Field(ge=1)
+
+
 class F3Settings(BaseModel):
     """config/f3.yaml에서 읽는 값. 단계별 모델 설정(model·effort 등)은 core/llm이 따로 읽는다."""
 
@@ -54,12 +64,17 @@ class F3Settings(BaseModel):
 
     impl: str  # 대비 방식 이름 (B8 전략 패턴)
     second_search: bool  # 못 찾은 구성요소를 한 번 더 찾을지 (B7)
+    # 대비 프롬프트 스위치: standard = 지금 프롬프트(f3.compare 단계),
+    # recall = 구성요소마다 맞는 문단을 모두 고르게 하는 새 프롬프트(f3.compare_recall 단계).
+    # 출력 모양·검사는 같다
+    compare_variant: Literal["standard", "recall"]
     second_search_depth: int = Field(ge=2)  # 한 번 더 찾을 때 받는 상위 조각 수 (1차 k보다 커야 함)
     use_examiner_paragraphs: bool  # 심사관 지정 위치를 쓸지 (false = 평가 누출 막기)
     # 모델이 근거로 옮긴 글자(공백 뺀 뒤)의 길이 하한. 한두 글자는 아무 조각에나 맞아 받지 않는다
     min_quote_chars: int = Field(ge=1)
     search: SearchSettings
     clarity_search: ClaritySearchSettings
+    effect_search: EffectSearchSettings
 
     @model_validator(mode="after")
     def _두_번째_검색은_더_깊어야_함(self) -> F3Settings:

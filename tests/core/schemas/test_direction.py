@@ -363,3 +363,49 @@ def test_후보와_묶음의_origin은_ai_generated만():
             group(origin=bad)
     assert cand().origin == "ai_generated"
     assert group().origin == "ai_generated"
+
+
+# ---------- 직접 쓰기 선택 (이슈 #70) ----------
+
+
+def written(text="청구항 1을 삭제하고 반박한다", origin="human_written"):
+    return {"written_direction": text, "origin": origin}
+
+
+def test_직접_쓰기_선택_받음():
+    g = low_group(selection=written())
+    assert g.selection.written_direction == "청구항 1을 삭제하고 반박한다"
+    assert g.selection.candidate_id is None
+    assert g.selection.origin == "human_written"
+
+
+def test_직접_쓰기는_후보_안에_있는지_보지_않음():
+    g = group(selection=written())  # 후보는 c1뿐, 글은 후보와 무관
+    assert g.selection.candidate_id is None
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\n\t"])
+def test_빈_글_거부(text):
+    with pytest.raises(ValidationError, match="written_direction"):
+        DirectionSelection(written_direction=text, origin="human_written")
+
+
+def test_candidate_id와_글_둘_다_거부():
+    with pytest.raises(ValidationError, match="정확히 하나"):
+        DirectionSelection(candidate_id="c1", written_direction="글", origin="human_written")
+
+
+def test_candidate_id도_글도_없으면_거부():
+    with pytest.raises(ValidationError, match="정확히 하나"):
+        DirectionSelection(origin="human_selected")
+
+
+@pytest.mark.parametrize("origin", ["ai_default", "human_selected"])
+def test_글_선택에_후보_origin_거부(origin):
+    with pytest.raises(ValidationError, match="human_written"):
+        DirectionSelection(written_direction="글", origin=origin)
+
+
+def test_후보_선택에_human_written_거부():
+    with pytest.raises(ValidationError, match="ai_default"):
+        DirectionSelection(candidate_id="c1", origin="human_written")
