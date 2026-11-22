@@ -37,6 +37,7 @@ import demoFiles from 'virtual:demo-results'
 import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
 import { directTodos } from '../todos'
 import { ApiError } from './errors'
+import type { ResultList } from './resultList'
 
 // fixture 한 묶음 = 사건 하나 + OA 하나
 interface Bundle {
@@ -113,6 +114,10 @@ function summaryOf(b: Bundle): CaseSummary {
   }
 }
 
+// 결과 목록 + 빈 이유. mock 예시에는 빈 이유가 없어서, 비면 서버가 이유를 모를 때 쓰는 글자를 그대로 쓴다 (지어내지 않음)
+const MOCK_EMPTY_REASON = '확인되지 않음: 이 실행에 결과가 없음'
+const listOf = <T,>(items: T[]): ResultList<T> => ({ items, emptyReason: items.length === 0 ? MOCK_EMPTY_REASON : null })
+
 // 이번 화면 세션에서 올린 파일 (이름:크기). 409 흉내용
 const uploadedKeys = new Set<string>()
 
@@ -180,30 +185,30 @@ export const mockApi = {
     return found.document
   },
   // ②③④는 스키마가 아직 없어 예시 데이터 (types/provisional/examples.ts)
-  async getUnits(oaId: string): Promise<JudgmentUnit[]> {
+  async getUnits(oaId: string): Promise<ResultList<JudgmentUnit>> {
     gateResult(await byOA(oaId))
-    return exampleUnits[oaId] ?? []
+    return listOf(exampleUnits[oaId] ?? [])
   },
-  async getComparisons(oaId: string): Promise<ComparisonTable[]> {
+  async getComparisons(oaId: string): Promise<ResultList<ComparisonTable>> {
     gateResult(await byOA(oaId))
-    return ofOA(exampleComparisons, oaId)
+    return listOf(ofOA(exampleComparisons, oaId))
   },
-  async getClarityReviews(oaId: string): Promise<ClarityReview[]> {
+  async getClarityReviews(oaId: string): Promise<ResultList<ClarityReview>> {
     gateResult(await byOA(oaId))
-    return ofOA(exampleClarity, oaId)
+    return listOf(ofOA(exampleClarity, oaId))
   },
-  async getLegalEvidence(oaId: string): Promise<LegalEvidenceBundle[]> {
+  async getLegalEvidence(oaId: string): Promise<ResultList<LegalEvidenceBundle>> {
     gateResult(await byOA(oaId))
-    return ofOA(exampleLegal, oaId)
+    return listOf(ofOA(exampleLegal, oaId))
   },
   // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
   async askLegal(q: LegalQuestion, chatId?: string): Promise<LegalAnswer> {
     return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q) }
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
-  async getDirections(oaId: string): Promise<DirectionCandidates[]> {
+  async getDirections(oaId: string): Promise<ResultList<DirectionCandidates>> {
     gateResult(await byOA(oaId))
-    return directions[oaId] ?? []
+    return listOf(directions[oaId] ?? [])
   },
   async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
     const list = Object.values(directions).flat()

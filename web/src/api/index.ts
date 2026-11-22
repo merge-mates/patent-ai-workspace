@@ -26,6 +26,7 @@ import type {
 } from '../types/provisional/case'
 import { requireDraftCheck } from './draftCheck'
 import { ApiError } from './errors'
+import type { ResultList } from './resultList'
 import { getJson, postForm, postJson, sendJson } from './http'
 import { clearMockKeys, mockApi } from './mock'
 
@@ -46,14 +47,21 @@ interface ResultEnvelope<T> {
   empty_reason: string | null
 }
 
-// 결과 목록 받기: 화면은 지금처럼 목록만 쓴다. 빈 이유는 서버 응답에 남아 있다 (화면 표시는 다음 이슈)
-const getResult = async <T>(path: string): Promise<T> => (await getJson<ResultEnvelope<T>>(path)).result
+// 결과 목록 받기: 목록과 빈 이유를 같이 돌려준다. 화면은 목록이 비면 이유를 보인다 ("0건"으로만 그리지 않음)
+const getResult = async <T>(path: string): Promise<ResultList<T>> => {
+  const body = await getJson<ResultEnvelope<T[]>>(path)
+  // 서버 계약 위반(빈 목록인데 이유 없음)은 조용히 넘기지 않고 경고를 남긴다
+  if (body.result.length === 0 && !body.empty_reason) console.warn(`[api] ${path}: 빈 목록인데 empty_reason이 없음`)
+  return { items: body.result, emptyReason: body.empty_reason }
+}
 
 // 초안 받기: 초안이 없으면(모든 묶음 보류·F4 넘김) 지어내지 않고 "아직 없음"으로 알리며 이유를 싣는다
 // 서버 Drafts에는 check 칸이 없으므로 형변환하지 않고 가드로 본다. 없으면 오류 화면 ("초안 검사 결과 없음")
 const getDraftsResult = async (oaId: string): Promise<DraftsWithCheck> => {
   const body = await getJson<ResultEnvelope<Drafts | null>>(`/oas/${oaId}/drafts`)
   if (body.result === null) {
+    // 서버 계약 위반(초안 없음인데 이유 없음)은 경고를 남긴다
+    if (!body.empty_reason) console.warn(`[api] /oas/${oaId}/drafts: 초안이 없는데 empty_reason이 없음`)
     throw new ApiError('result_not_ready', body.empty_reason ?? '초안이 없습니다', 200)
   }
   return requireDraftCheck(body.result)
@@ -73,10 +81,10 @@ const httpApi: typeof mockApi = {
     throw new ApiError('not_in_api_v0', '검토할 사항 목록은 API v0에 아직 없음', 0)
   },
   getDocument: (documentId) => getJson<PageText>(`/documents/${documentId}`),
-  getUnits: (oaId) => getResult<JudgmentUnit[]>(`/oas/${oaId}/units`),
-  getComparisons: (oaId) => getResult<ComparisonTable[]>(`/oas/${oaId}/comparisons`),
-  getClarityReviews: (oaId) => getResult<ClarityReview[]>(`/oas/${oaId}/clarity-reviews`),
-  getLegalEvidence: (oaId) => getResult<LegalEvidenceBundle[]>(`/oas/${oaId}/legal-evidence`),
+  getUnits: (oaId) => getResult<JudgmentUnit>(`/oas/${oaId}/units`),
+  getComparisons: (oaId) => getResult<ComparisonTable>(`/oas/${oaId}/comparisons`),
+  getClarityReviews: (oaId) => getResult<ClarityReview>(`/oas/${oaId}/clarity-reviews`),
+  getLegalEvidence: (oaId) => getResult<LegalEvidenceBundle>(`/oas/${oaId}/legal-evidence`),
   // 법률 질문 (필드는 F2 설계 때 바뀔 수 있음): chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
   // (질문마다 새 대화를 만들면 두 번째 질문부터 앞 맥락이 끊긴다)
   askLegal: async (q, chatId): Promise<LegalAnswer> => {
@@ -84,7 +92,7 @@ const httpApi: typeof mockApi = {
     const answer = await postJson<LegalEvidenceBundle>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
     return { chat_id: id, answer }
   },
-  getDirections: (oaId) => getResult<DirectionCandidates[]>(`/oas/${oaId}/directions`),
+  getDirections: (oaId) => getResult<DirectionCandidates>(`/oas/${oaId}/directions`),
   selectDirection: (unitId, candidateId) =>
     sendJson<DirectionCandidates>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, {
       candidate_id: candidateId,
