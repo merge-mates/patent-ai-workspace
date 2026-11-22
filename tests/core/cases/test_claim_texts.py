@@ -224,3 +224,20 @@ def test_claim_texts_출원서에_삭제로_적힌_마지막_번호도_센다():
     text = "【청구범위】\n【청구항 1】\n화분.\n【청구항 2】\n삭제"
     assert claims_at_version([text, _add(2)]).status.value == StatusValue.UNVERIFIED
     assert claims_at_version([text, _add(3)]).status.value == StatusValue.CONFIRMED
+
+
+def test_claim_texts_보정서마다_추가하면_앞_보정의_최대_번호를_이어받는다():
+    # 리뷰 #270: 다음 보정서로 넘기는 최대 번호
+    got = claims_at_version([TWO_CLAIMS, _add(3), _add(4)])
+    assert got.status.value == StatusValue.CONFIRMED
+    assert sorted(got.claims) == [1, 2, 3, 4]
+
+
+def test_claim_texts_한_보정서에서_청구범위_통째_정정_뒤_추가는_새_묶음_다음_번호부터():
+    # 리뷰 #270: 통째 정정이면 번호를 새로 센다 (앞 판 최대 3, 새 묶음 최대 4 → 5 추가)
+    whole = "【보정대상항목】 청구범위\n【보정방법】 정정\n【보정내용】\n【청구범위】\n" + "".join(
+        f"【청구항 {n}】\n화분 {n}.\n" for n in range(1, 5)
+    )
+    got = claims_at_version([APPLICATION, whole + _add(5)])
+    assert got.status.value == StatusValue.CONFIRMED
+    assert sorted(got.claims) == [1, 2, 3, 4, 5]
