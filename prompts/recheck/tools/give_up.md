@@ -1,0 +1,1 @@
+더 찾아도 대응하는 기재가 나오지 않을 때 바로 부르고 끝낸다. 상한까지 버티지 않는다. reason: not_in_document(찾아본 범위에 없음) / ambiguous_element(구성요소 뜻이 모호해 질의를 못 정함) / need_figure(도면을 봐야 알 수 있음) / other. tried에는 찾아본 질의와 방향을 300자 이하로 짧게 적는다.
