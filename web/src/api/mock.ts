@@ -217,7 +217,7 @@ export const mockApi = {
     if (!found.candidates.some((c) => c.candidate_id === candidateId))
       throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
-    found.selection = { candidate_id: candidateId, origin: 'human_selected' }
+    found.selection = { candidate_id: candidateId, written_direction: null, origin: 'human_selected' }
     saveSelection(unitId, candidateId)
     // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
     return found
@@ -412,12 +412,8 @@ function runOf(b: Bundle): RunStatusLike {
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
-  const waiting = (directions[b.oa_id] ?? []).some(
-    (d) => d.flags.includes('needs_human_judgment') && d.selection === null,
-  )
-  return waiting
-    ? { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'direction_selection' }
-    : { run_id, state: 'succeeded', current_step: null }
+  // 방향 고르기는 실행을 멈추지 않는다 (확신 낮은 묶음은 선택 null + 초안 보류, 실행은 succeeded)
+  return { run_id, state: 'succeeded', current_step: null }
 }
 // latest_run(getOA)에는 waiting_for가 없고 GET /runs/{id}에만 있다 (서버 oas.py LatestRun과 같게)
 type RunStatusLike = LatestRun & { waiting_for?: string | null }
@@ -474,7 +470,7 @@ function storeWrite(key: string, value: string | null) {
 }
 
 function saveSelection(unitId: string, candidateId: string) {
-  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, origin: 'human_selected' }))
+  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, written_direction: null, origin: 'human_selected' }))
 }
 
 // 예시와 human_text가 달라진 칸(= 사람이 바꾼 칸)만 모아 저장. 하나도 없으면 키를 지운다
@@ -532,7 +528,7 @@ function applySaved() {
       if (!unit) drop(key, '판단 단위가 예시에 없음')
       else if (!saved || typeof saved.candidate_id !== 'string') drop(key, '저장된 값을 읽을 수 없음')
       else if (!unit.candidates.some((c) => c.candidate_id === saved.candidate_id)) drop(key, '후보가 예시에 없음')
-      else unit.selection = { candidate_id: saved.candidate_id, origin: 'human_selected' }
+      else unit.selection = { candidate_id: saved.candidate_id, written_direction: null, origin: 'human_selected' }
     } else if (key.startsWith(`${STORE_PREFIX}draft:`)) {
       const draftId = key.slice(`${STORE_PREFIX}draft:`.length)
       const saved = readJson(key) as Partial<SavedDraft> | null | undefined

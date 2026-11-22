@@ -184,7 +184,10 @@ def test_oa_results_body_is_jsonb_with_status_origin_columns():
     for col in ("oa_id", "run_id", "status", "origin"):
         assert not t.c[col].nullable
     assert _check_values("oa_results", "ck_oa_results_status") == {s.value for s in StatusValue}
-    assert _check_values("oa_results", "ck_oa_results_origin") == {o.value for o in Origin}
+    # human_written은 방향 선택(selection.origin)에만 쓰고 결과 맨 위 origin에는 오지 않는다
+    assert _check_values("oa_results", "ck_oa_results_origin") == {
+        o.value for o in Origin if o != Origin.HUMAN_WRITTEN
+    }
 
 
 def test_oa_results_has_index_for_latest_per_oa():

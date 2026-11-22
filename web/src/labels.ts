@@ -56,7 +56,6 @@ export const runStateLabel: Record<RunState, string> = {
 export function waitingForLabel(w: string | null): string {
   if (w === 'application_number') return '출원번호 입력 기다림'
   if (w === 'dispatch_number') return '발송번호 확인 기다림'
-  if (w === 'direction_selection') return '고르기 기다림'
   return '사람 기다림'
 }
 

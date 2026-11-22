@@ -1458,17 +1458,26 @@ components:
     DirectionSelection:
       properties:
         candidate_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Candidate Id
+        written_direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Written Direction
         origin:
           $ref: '#/components/schemas/Origin'
       additionalProperties: false
       type: object
       required:
-      - candidate_id
       - origin
       title: DirectionSelection
-      description: 묶음에서 고른 후보. AI 기본값과 사람 선택을 origin으로 구분한다.
+      description: '묶음에서 고른 방향. 후보 id 또는 사람이 쓴 글 중 정확히 하나.
+
+
+        AI 기본값·사람 선택·사람이 직접 쓴 글을 origin으로 구분한다.'
     DirectionsOut:
       properties:
         oa_id:
@@ -2475,6 +2484,7 @@ components:
       - ai_default
       - human_selected
       - human_edited
+      - human_written
       title: Origin
     ParagraphSource:
       type: string

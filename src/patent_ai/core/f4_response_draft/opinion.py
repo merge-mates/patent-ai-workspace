@@ -82,8 +82,11 @@ def has_amendment(candidate: DirectionCandidate) -> bool:
 
 
 def selected_candidate(result: DirectionCandidates) -> DirectionCandidate | None:
-    """묶음에서 고른 후보 (AI 기본값이든 사람 선택이든). 고르지 않았으면 None."""
-    if result.selection is None:
+    """묶음에서 고른 후보 (AI 기본값이든 사람 선택이든).
+
+    고르지 않았거나 사람이 직접 쓴 방향이면 None (그 묶음 초안은 보류).
+    """
+    if result.selection is None or result.selection.candidate_id is None:
         return None
     return next(c for c in result.candidates if c.candidate_id == result.selection.candidate_id)
 

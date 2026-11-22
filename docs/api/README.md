@@ -46,7 +46,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/runs/{id}` | 실행 상태 + "지금 하는 주요 작업" 한 줄 (세부 과정 중계 없음) |
 | POST | `/runs/{id}/cancel` | 실행 취소 |
 
-실행 상태 `state`: `queued`(대기) / `running`(실행 중) / `waiting_for_human`(사람 기다림: 확신 낮은 묶음에서 방향 고르기를 기다림) / `succeeded`(끝남) / `failed`(실패, 이유를 남김) / `cancelled`(취소). 실패를 succeeded로 돌려주지 않는다. 자동 조회의 진행·실패도 이 실행에 남는다. 화면은 `GET /runs/{id}`만 폴링한다. "사람 기다림"에서 방향을 고르면(`PUT /directions/{unit_id}/selection`) 기다리던 실행이 이어서 돈다. 이어 가는 방식은 지휘 에이전트 호출 이슈에서 정한다 (실행을 멈추지 않고 그 묶음만 보류하는 안도 그때 같이 본다).
+실행 상태 `state`: `queued`(대기) / `running`(실행 중) / `waiting_for_human`(사람 기다림: OA 번호(출원번호·발송번호)를 못 읽어 사람 입력을 기다림) / `succeeded`(끝남) / `failed`(실패, 이유를 남김) / `cancelled`(취소). 실패를 succeeded로 돌려주지 않는다. 자동 조회의 진행·실패도 이 실행에 남는다. 화면은 `GET /runs/{id}`만 폴링한다. `waiting_for` 값은 `application_number`·`dispatch_number` 둘뿐이다. 번호를 넣으면 같은 실행이 이어 돈다 (그 API `PATCH /cases/{id}`·`PATCH /oas/{id}`는 이슈 #70 계획 ②에서 명세한다). 방향 고르기는 실행을 멈추지 않는다: 실행은 `succeeded`로 끝나고 확신 낮은 묶음만 선택 `null` + 초안 보류이며, 사람이 고르면(`PUT /directions/{unit_id}/selection`) 그 OA에 작은 실행을 새로 만든다.
 
 ### 결과 (OA 아래)
 | 메서드 | 경로 | 결과 스키마 |
@@ -63,7 +63,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 ### 사람이 하는 것
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
-| PUT | `/directions/{unit_id}/selection` | `unit_id`는 내용으로 정한 ID ([데이터 모델](../data-model.md) 4절 ②). 대응 방향을 후보 중에서 고르기. 고르지 않으면 1등 후보(origin = AI 기본값). 확신 "낮음" 묶음은 선택이 비어 있고(`null`), 사람이 고를 때까지 그 묶음 초안은 만들지 않는다(서버 코드로 막음). 이 PUT으로 저장한 선택은 1등 후보와 같아도 origin = 사람이 고름 |
+| PUT | `/directions/{unit_id}/selection` | `unit_id`는 내용으로 정한 ID ([데이터 모델](../data-model.md) 4절 ②). 대응 방향을 후보 중에서 고르거나 직접 쓰기. 본문은 `{candidate_id}` 또는 `{written_direction}` 중 하나. 응답은 `{unit_id, run_id, selection}`이고 `run_id`는 새로 만든 작은 실행이다(화면은 그 `run_id`를 폴링). 작은 실행은 앞 실행의 OA 정리·F3·F2를 그대로 옮기고 F4 방향 후보도 그대로 둔 채 선택만 바꿔 의견서·보정 초안을 다시 만든다. 직접 쓴 묶음은 AI가 초안을 만들지 않고 보류한다("사람이 쓴 방향", origin = `human_written`). 오류: 404 `oa_not_found`·`unit_not_found`, 404 `result_not_ready`, 409 `run_in_progress`(그 OA에 진행 중 실행), 422 `candidate_not_found`·`invalid_selection`(빈 글 등). 고르지 않으면 1등 후보(origin = AI 기본값). 확신 "낮음" 묶음은 선택이 비어 있고(`null`), 사람이 고를 때까지 그 묶음 초안은 만들지 않는다(서버 코드로 막음). 이 PUT으로 저장한 선택은 1등 후보와 같아도 origin = 사람이 고름 |
 | PATCH | `/drafts/{draft_id}` | 사람이 초안을 고친다. AI 원본 값은 남긴다. 중간 결과(F1·F2·F3)는 고치지 않는다 |
 
 ### 법률 질문 (자리만, 필드와 여러 번 묻고 답하는 방식은 F2 설계 때)
