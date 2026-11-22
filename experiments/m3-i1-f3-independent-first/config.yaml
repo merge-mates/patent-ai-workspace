@@ -1,10 +1,10 @@
-# F3 진보성 대표 청구항 먼저 + 명세서 효과 반박 후보 (이슈 #30 남은 일 ②, 코드 세션 C). tune 같은 설정 2회. scores.json은 1회차
+# F3 진보성 대표 청구항 먼저(건너뛴 종속항도 검색은 함, 11/22 결정 1) + 명세서 효과 반박 후보 (이슈 #30 남은 일 ②). tune 같은 설정 2회. scores.json은 1회차
 experiment: m3-i1-f3-independent-first
 feature: f3
 baseline: m3-i1-f3-rescore   # 브랜치 chore/39-f4-first-score (main 9eb8237, 3회)
 goldset: tune
 goldset_version: 2
-impl: split_search        # config/f3.yaml impl. 코드는 feat/30-f3-independent-first 8382103 (#211 f499f2c 위)
+impl: split_search        # config/f3.yaml impl. 코드는 feat/30-f3-independent-first f65f910 (#211 f499f2c 위)
 index_version: cite-idx-v2
 k: 10
 settings:                 # config/f3.yaml 그대로 (실행은 그 파일을 읽는다)
@@ -15,7 +15,7 @@ settings:                 # config/f3.yaml 그대로 (실행은 그 파일을 �
   use_examiner_paragraphs: false   # 채점 실행: 심사관 지정 번호를 입력에 주지 않음
   second_search: true
 runs: 2
-runner: work/overnight_1121/scripts/f3_run.py work/overnight_1121/runs/f3_30_run<N> --workers 4 --cache-dir work/overnight_1121/runs/cache_f3_30_run<N>   # git 밖. F1 결과는 work/overnight_1120/f1/a3_run2_pred
+runner: work/overnight_1121/scripts/f3_run.py work/overnight_1121/runs/f3_30b_run<N> --workers 4 --cache-dir work/overnight_1121/runs/cache_f3_30b_run<N>   # git 밖. F1 결과는 work/overnight_1120/f1/a3_run2_pred
 budget:
   max_usd: 1.5
   max_external_calls: 800

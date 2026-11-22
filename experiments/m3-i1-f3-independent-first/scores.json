@@ -1,6 +1,6 @@
 {
   "experiment": "m3-i1-f3-independent-first",
-  "commit": "83821036d6cf453705e944b1436f06ceb212b66d",
+  "commit": "f65f910cc36328a47f273db8bc88fa25fe6f50fa",
   "goldset": "tune",
   "goldset_version": 2,
   "gold_sha256": "0fee10d368f3f97c15165576e7ab2d5d8555b10dfa9b7667459022777b90bf38",
@@ -9,26 +9,29 @@
   "metric_name": "심사관 지정 위치 회수율",
   "n": 10,
   "metrics": {
-    "search_hit": 0.40678800366300366,
-    "search_recall": 0.33691720812256526,
-    "selected_hit": 0.19057539682539681,
-    "selected_recall": 0.09686712648022172,
-    "random_search_recall": 0.1387051332675801,
-    "random_search_hit": 0.2359831467570053,
-    "search_recall_ratio": 2.4290175870608084,
+    "search_hit": 0.7747176434676435,
+    "search_recall": 0.6365337374265946,
+    "search_recall_round1": 0.5951950028586933,
+    "selected_recall_incl_skipped": 0.10057555429579239,
+    "selected_hit": 0.4023809523809524,
+    "selected_recall": 0.21633597883597883,
+    "random_search_recall": 0.28989148746674304,
+    "random_search_hit": 0.45154265337788624,
+    "search_recall_ratio": 2.1957655362323085,
     "novelty_tables": 3,
     "clarity_term_reviewed": 0.6944444444444445
   },
   "failures": {
     "missing_prediction": 1,
-    "not_searched_rows": 43,
+    "not_searched_rows": 6,
+    "skipped_dependent_rows": 42,
     "excluded_no_location": 3,
     "excluded_clarity": 0,
     "excluded_same_as_other": 33,
     "excluded_body_missing": 0,
     "excluded_gold_not_in_scope": 1,
     "excluded_gold_items_not_in_scope": 11,
-    "cq_candidates": 3,
+    "cq_candidates": 12,
     "novelty_multi_citation": 0,
     "clarity_no_claim_text": 0,
     "clarity_gold_term_not_in_claim": 2,
@@ -47,6 +50,6 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "external_calls": 0,
-    "seconds": 2.212
+    "seconds": 2.175
   }
 }
