@@ -206,9 +206,9 @@ graph LR
 - 재아 님께 알릴 것 (PR 본문 + 스레드): 새 마이그레이션 rev, 덤프 이름(`law-idx-v3`)·지문, 드라이브에서 바꿀 파일(law 셋, cite `.revision`), `index-load` 순서.
 
 ### 진행
-- [ ] 24a: [x] task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · [ ] task-a2 · [ ] task-a3 · [ ] task-a4
+- [x] 24a: task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · task-a2 (4a25c69·950e8ad) · task-a3 (dd7b1d4) · task-a4 (7cd0587). v2 실제 점수 비교는 24d task-d2로 (로컬 jsonl 없음, 공유 DB가 새 마이그레이션 전)
 - [ ] 24b: task-b1
 - [ ] 24c: task-c1 · task-c2
 - [ ] 24d: task-d1 · task-d2
-- 다음: 24a task-a2
+- 다음: 24a /check, PR (DB 테스트는 CI)
 - 막힌 것: 없음
