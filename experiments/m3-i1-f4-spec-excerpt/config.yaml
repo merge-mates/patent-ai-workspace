@@ -17,8 +17,8 @@ settings:                 # config/f4.yaml
   amendment_spec_excerpt:
     enabled: true         # changed (기준선 false)
     top_n: 5
-runs: 2                   # 켬 2회 (재아 계획). 끔은 기준선 first-score 3회
-runner: work/overnight_1121/scripts/f4_run.py <out> --workers 4   # git 밖. config/f4.yaml 값을 바꿔 돌린다
+runs: 3                   # 11/22 새 판(c4c9020): 켬·끔 각 3회 (끔도 같은 코드로 새로 잼). 옛 판(5fbb3ed)은 켬 2회
+runner: F4_SPEC_EXCERPT=on|off work/overnight_1121/scripts/f4_run.py work/overnight_1121/runs/f4x_<on|off>_run<N> --workers 4 --f3-dir work/overnight_1121/runs/f3_run1 --cache-dir work/overnight_1121/runs/cache_f4x_<on|off>_run<N>   # git 밖. config/f4.yaml은 끔 그대로, 켬은 스크립트가 그 실행에서만 켬
 budget:
   max_usd: 2.0
   max_external_calls: 300
