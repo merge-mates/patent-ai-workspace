@@ -373,7 +373,7 @@ def assemble_drafts(
     oa_id: str,
     opinion: OpinionPart,
     amendment: AmendmentPart,
-    direction_lead: list[Status] | None = None,
+    lead_statuses: list[Status] | None = None,
 ) -> Drafts | None:
     """의견서와 보정 청구항을 Drafts 하나로 묶는다. 의견서 칸이 없으면(모든 묶음 보류) None."""
     # 보류한 청구항의 상태는 초안 전체 status에 넣지 않는다 (보류는 flags와 held_reason으로 보임)
@@ -384,11 +384,7 @@ def assemble_drafts(
         claims=amendment.claims,
         more_statuses=made,
         more_flags=amendment.flags,
-        lead_statuses=[
-            *(direction_lead or []),
-            *opinion.failed_statuses,
-            *amendment.failed_statuses,
-        ],
+        lead_statuses=lead_statuses,
     )
 
 

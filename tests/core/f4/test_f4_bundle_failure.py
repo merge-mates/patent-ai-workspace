@@ -244,6 +244,9 @@ def test_묶음_수가_max_units를_넘으면_앞_묶음만_처리하고_나머�
     assert (
         out.status.reason == UnverifiedReason.LIMIT_REACHED
     )  # 이유가 다른 status에 가려지지 않는다
+    assert (
+        out.drafts.status.reason == UnverifiedReason.LIMIT_REACHED
+    )  # 초안 status에도 이유가 남는다
     assert out.uncovered == []
     assert "직접 판단" in held.held_reason
 
@@ -268,3 +271,4 @@ def test_둘째_묶음만_방향_호출이_실패하면_실행_이유는_not_ext
     )
     out = run_f4(_case(), ctx=ctx)
     assert out.status.reason == UnverifiedReason.NOT_EXTRACTED
+    assert out.drafts.status.reason == UnverifiedReason.NOT_EXTRACTED
