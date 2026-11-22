@@ -2,10 +2,16 @@
 
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from eval.common.config import BaseEvalConfig, load_yaml_config
 from patent_ai.retrieval.schemas import Corpus, Mode
+
+
+class Budget(BaseModel):
+    # 실험 config의 budget 칸 (틀: experiments/_template/config.yaml). 없는 칸은 상한 없음
+    max_usd: float | None = None
+    max_external_calls: int | None = None
 
 
 class RetrievalEvalConfig(BaseEvalConfig):
@@ -19,6 +25,8 @@ class RetrievalEvalConfig(BaseEvalConfig):
     # 둘째 점수(이슈 #178): 줄마다 검색 범위 doc_id 목록 파일 (gold와 같은 기준 상대 경로).
     # 없으면 주 점수(그 인용문헌 안에서만). 만드는 법은 eval/retrieval/noise_scope.py
     noise_scope: str | None = None
+    # 모델을 부르는 impl(whole_doc_llm)만 지킨다 (모델을 안 부르는 impl은 쓸 일이 없다)
+    budget: Budget | None = None
 
     @model_validator(mode="after")
     def _노이즈는_인용문헌만(self) -> RetrievalEvalConfig:

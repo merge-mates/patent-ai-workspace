@@ -96,7 +96,7 @@ flowchart LR
 }
 ```
 - `SearchHit` = 조각 `Chunk`의 칸(5-1 표에서 `embedding`·`created_at` 뺀 것) + `score` + `rank`다. `Chunk`도 `retrieval/schemas.py`에 둔다. 저장소는 `Chunk`를 돌려주고 `Matcher`는 `Chunk`를 받으므로(7-1), 검색 결과와 무작위 기준선 계산이 같은 판정을 쓴다.
-- `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "body_missing"`, 거른 문헌 조각이 0개). 이름은 결과 공통 칸 `core/schemas/common.py`(#103)의 `body_missing`과 같다.
+- `status`는 결과가 비었을 때만 값이 있다: `not_found_in_scope`(찾아본 범위는 `scope`) 또는 `unverified`(`status_reason: "body_missing"`, 거른 문헌 조각이 0개. `"not_extracted"`, 문헌 통째 LLM의 출력 검사 2회 실패 등, #248). 이름은 결과 공통 칸 `core/schemas/common.py`(#103)의 `body_missing`과 같다.
 - 결과가 있으면 `status`는 `null`이다. 조각은 근거 **후보**이고, "확인됨"은 뒤의 출처 확인 단계가 붙인다 ([architecture.md](../../architecture.md) 8절). 공통 속성은 [data-model.md](../../data-model.md) 3절 그대로 쓰고, 여기서 새로 정하는 값은 `edition.status: not_applicable`(인용문헌) 하나다 (`status_reason: body_missing`은 #103 공통 칸 이름을 그대로 씀).
 - 다시 확인 필요: 해당 없음 (검색은 저장하지 않는 도구 결과).
 - 인터페이스 변경: 있음 (새로 생김). F2·F3 설계가 이 모양을 받는다. 스키마는 `src/patent_ai/retrieval/schemas.py`에 둔다. `core/schemas/`에 두지 않는 이유는 부르는 방향이 `core → retrieval`이라 `retrieval`이 `core`를 import하면 안 되기 때문이다 ([ADR 0003](../../decisions/0003-tech-stack.md) 폴더). data-model 4절 표에 "도구 결과" 줄로 이름을 더하는 것은 스키마 코드를 만드는 구현 task에서 한다.

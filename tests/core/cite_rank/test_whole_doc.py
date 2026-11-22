@@ -154,3 +154,10 @@ def test_run_context가_없으면_분명한_오류로_멈춘다():
     repo = InMemoryChunkRepository({"cite": CHUNKS})
     with pytest.raises(ValueError, match="run_context"):
         WholeDocLLMSearcher(repo, {"index_version": IV})
+
+
+def test_모델이_빈_순위를_내면_not_found_in_scope():
+    # 관련 조각이 없다고 답한 것은 출력 실패가 아니라 "조회 범위 내 없음"
+    s, _, _ = make([ranked()])
+    r = search(s)
+    assert (r.status, r.status_reason, r.hits) == ("not_found_in_scope", None, [])
