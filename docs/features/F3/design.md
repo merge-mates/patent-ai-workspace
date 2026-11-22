@@ -143,6 +143,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 - 읽는 테이블: `cite_chunks` (색인 판 `cite-idx-v2`, 조각 1,998개, [`experiments/m2-i2-cite-search-hybrid-rrf/card.md:30`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md)). 명확성은 DB를 읽지 않는다(그 사건 출원서를 메모리 색인).
 - 쓰는 테이블: 없음. F3는 `F3Result`를 돌려주기만 한다. ②③ 결과 표(data-model 5절 "결과 스키마마다 표 하나")는 아직 마이그레이션이 없다. 질문: ②③ 결과 표와 `result_inputs` 마이그레이션을 언제 누가 (서버 이슈 #57과 같이)
 - 검색: 하이브리드(BM25 + 벡터, RRF `rrf_k`=60, 가중치 0.5/0.5), 질의 임베딩 `text-embedding-3-small` (색인과 같은 모델) (`config/f3.yaml:27-56`). 채택 근거는 [`experiments/m2-i2-cite-search-hybrid-rrf/`](../../../experiments/m2-i2-cite-search-hybrid-rrf/card.md) (모든 k에서 BM25·벡터 이상. 다만 상위 10에서 갈린 줄은 하이브리드 대 BM25가 8 대 2(부호 검정 p≈0.11), 하이브리드 대 벡터는 4 대 3(p=1.0)이라 tune에서 단정 못 함, 같은 카드 73줄). 질문: 하이브리드·벡터에서 "조회 범위 내 없음"을 점수 문턱으로도 정할지 (10절 6번)
+  - 문헌 통째 LLM과 비교 (이슈 #248, 11/22 재아·은진 정함): 기본은 하이브리드 RRF 그대로 둔다. 통째 LLM(`impl: whole_doc_llm`)은 Hit@1이 크게 낫지만(0.368·0.382 vs 0.162) Hit@10은 흔들림 안이고(0.750·0.765, 시제품 포함 3회 0.691~0.765 vs 0.706) 줄당 약 $0.003·3.4초가 든다 ([`experiments/m3-i1-cite-search-whole-doc/`](../../../experiments/m3-i1-cite-search-whole-doc/card.md), 검색 단독 점수). 두 방식이 서로 다른 줄을 맞혀 합집합 Hit@10이 0.88~0.93이라, 다음 실험은 "하이브리드 상위 N → LLM 재순위"다.
 - 외부 API에서 받는 자료: 인용문헌 PDF는 색인 스크립트가 미리 받아 둔 것만 쓴다 (실행 중 조회 없음). 질의 임베딩은 `core/llm`이 캐시·호출 상한을 거친다.
 - 외부 모델로 보내는 자료: 청구항 글자, 인용문헌 조각, 최초 명세서 조각, OA의 심사관 논리 (architecture.md 7절 "공보·인용문헌 원문", "통지서(OA) 원문" = 보냄). 평가 정답은 앱 실행에서 보내지 않는다 (`use_examiner_paragraphs=false` 채점 실행에서는 심사관 지정 위치도 보내지 않음).
 
@@ -181,7 +182,7 @@ F3가 돌려주는 묶음 `F3Result` (`f3/result.py:48-60`, 결과 스키마 폴
 | 한 번 더 찾기 켬/끔 | `second_search` | `config/f3.yaml:6` 주석 "M3에서 켬/끔 비교" |
 | 검색어를 모델이 바꾸는 루프 | `impl` | 10절 8번 |
 | 심사관 지정 조각을 후보에 넣음/안 넣음 | `use_examiner_paragraphs` (시연 동작과 채점 동작 차이 확인) | 판단 |
-| 검색 방식·가중치 | `search.impl`·`hybrid.weights` | cite-search 실험 카드 "다음" |
+| 검색 방식·가중치 | `search.impl`·`hybrid.weights` | cite-search 실험 카드 "다음". 다음은 하이브리드 상위 N → LLM 재순위 (5절, 이슈 #248) |
 - 임베딩 모델은 지금 `text-embedding-3-small` 하나다 (색인 `cite-idx-v2`와 같아야 함). 질문: F3 쪽 임베딩 모델 비교 목록을 둘지, 둔다면 무엇 (F2 requirements 열린 질문 1이 F3 PR로 넘긴 것)
 
 ### 7-4. CQ 모으기와 11/24 그래프 판단
