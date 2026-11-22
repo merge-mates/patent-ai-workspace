@@ -22,7 +22,7 @@ from patent_ai.core.f4_response_draft.directions import (
     build_directions,
 )
 from patent_ai.core.f4_response_draft.inputs import F4Input
-from patent_ai.core.llm.errors import ModelCallLimitExceeded, ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.common import Flag, Origin, StatusValue, UnverifiedReason
@@ -111,15 +111,19 @@ def test_판단_단위가_없으면_모델을_안_부르고_경고(caplog):
     assert "판단 단위" in caplog.text
 
 
-def test_판단_단위가_상한보다_많으면_모델을_부르기_전에_멈춘다():
+def test_판단_단위가_상한보다_많으면_앞_묶음만_부르고_넘는_묶음은_limit_reached로_보류(caplog):
     options = F4Options(final_rejection_limit=False, max_units=1, max_candidates=3)
-    transport = FakeTransport({STEP: []})
-    ctx = RunContext(
-        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
-    )
-    with pytest.raises(ModelCallLimitExceeded):
-        build_directions(_case(), ctx, options=options)
-    assert transport.calls == []
+    with caplog.at_level(logging.WARNING):
+        results, transport = _run([_text(_answer("direction_inventive"))], options=options)
+    assert len(transport.calls) == 1  # 앞 묶음 하나만 모델을 부른다 (예외 없음)
+    first, rest = results
+    assert first.unit_id == UNIT_INVENTIVE and first.candidates
+    assert rest.unit_id == UNIT_CLARITY and rest.candidates == []
+    assert rest.status.value == StatusValue.UNVERIFIED
+    assert rest.status.reason == UnverifiedReason.LIMIT_REACHED
+    assert Flag.NEEDS_HUMAN_JUDGMENT in rest.flags
+    assert "max_units" in (rest.recheck_reason or "") and "1" in rest.recheck_reason
+    assert "max_units" in caplog.text  # 넘는 묶음이 있으면 경고
 
 
 # ---- AI 기본값 / 사람 선택 구분 ----

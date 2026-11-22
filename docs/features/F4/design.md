@@ -33,7 +33,9 @@ flowchart LR
     C --> OUT["F4Output<br/>directions · drafts · held_units · uncovered · amendment_overlaps"]
     D -- "확신 낮음 (순위 있는 후보 없음)" --> H["그 묶음만 보류<br/>직접 판단 필요"]
     H --> C
-    D -- "출력 검사 두 번 실패 · 상한" --> F["예외 → 지휘가 실행 failed"]
+    D -- "묶음 하나 호출 실패 · 상한(max_units·호출 상한)" --> F["그 묶음만 보류<br/>limit_reached 또는 not_extracted"]
+    F --> C
+    D -- "시도한 묶음이 모두 실패" --> X["예외 → 지휘가 실행 failed"]
 ```
 1. **입력:** 지휘가 앞 단계 결과에서 `F4Input`을 만든다 (`src/patent_ai/core/agents/step_inputs.py:44-71`, 커밋 059429c). 3-1절.
 2. **처리** (`f4/run.py:57-68`, 호출 순서는 방향 → 의견서 → 보정):
@@ -43,10 +45,10 @@ flowchart LR
    - ④ 한데 묶기 (`f4/run.py:68-133`): 의견서와 보정 청구항을 `Drafts` 하나로, 보류 묶음·누락 쌍·지원 안 하는 거절이유·알림 문구를 `F4Output`에.
 3. **결과 저장:** `F4Output`은 저장 스키마가 아니다. 안의 `directions`(묶음마다)와 `drafts`(OA 하나)를 하나씩 저장한다 (`f4/result.py:1-5`). 5절.
 - **실패하면 (정함 #211, #166 (가)):** 묶음 하나의 모델 호출 실패(출력 검사 실패 재시도 뒤, 전송 오류)는 그 묶음만 보류 + 확인되지 않음 + 이유로 두고 나머지를 끝까지 한다. 의견서·보정 단계 실패는 늘 그 묶음 보류다. 방향 후보 호출이 (상한 말고) 모든 묶음에서 실패하면 run_f4가 아무것도 못 낸 것이라 마지막 원래 예외를 올리고 지휘가 실행을 `failed`로 끝낸다 (`core/bundle_errors.py`). 프로그래밍 오류(`TypeError` 등)는 잡지 않는다.
-  - 호출 상한(`max_model_calls`)에 닿은 묶음은 `unverified(limit_reached)` + 상한 숫자를 이유로 보류하고 끝까지 간다 (ADR 0003 110줄). F3가 상한으로 보류한 묶음도 F4 후보에서 `limit_reached`로 남는다. 남은 것: 묶음 밖 상한(`max_units` 앞 검사)은 그대로 예외로 실행 `failed`, 실행 state·단계 outcome에 `limit_reached`를 따로 둘지는 서버·DB 일이라 남김 (#57·#206).
+  - 호출 상한(`max_model_calls`)에 닿은 묶음은 `unverified(limit_reached)` + 상한 숫자를 이유로 보류하고 끝까지 간다 (ADR 0003 110줄). F3가 상한으로 보류한 묶음도 F4 후보에서 `limit_reached`로 남는다. 묶음 수 상한 `max_units`도 같다: 넘는 묶음은 호출 없이 `unverified(limit_reached)` 보류(이유 글에 상한 숫자와 다룬 범위, 원문 글자 없음)이고 실행은 `failed`가 아니다. 남은 것: 실행 state·단계 outcome에 `limit_reached`를 따로 둘지는 서버·DB 일이라 남김 (#57·#206). F1 읽기·지휘 모델·F3 청구항 나누기의 상한은 이슈 #241로 넘김.
   - 방향 후보 호출이 실패(호출 상한 포함)한 묶음은 후보 0개 + 확인되지 않음 + `needs_recheck=true` + `recheck_reason`(실패·상한 이유)으로 남긴다. `needs_recheck`를 "앞 입력이 바뀌어 다시 확인" 말고 "호출 실패로 다시 돌려야 함" 표시로도 쓴다 (#211).
 - **비면:** 판단 단위 0개 → 모델을 부르지 않고 경고, 빈 목록 (`directions.py:334-336`). 후보 0개 → 그 묶음 "확인되지 않음" + "직접 판단 필요" + 경고. 모든 묶음이 보류 → `drafts = null` + 경고.
-- **느리면:** 한 실행의 묶음 수 상한 `max_units`, 단계마다 호출 상한 `max_model_calls`(= 2 × `max_units` 이상, 설정을 읽을 때 검사: `f4/config.py:49-58`). 묶음이 상한보다 많으면 끊기지 않게 부르기 전에 예외로 멈춘다 (`directions.py:341-342`).
+- **느리면:** 한 실행의 묶음 수 상한 `max_units`, 단계마다 호출 상한 `max_model_calls`(= 2 × `max_units` 이상, 설정을 읽을 때 검사: `f4/config.py:49-58`). 묶음이 상한보다 많으면 order 앞 `max_units`개만 다루고, 넘는 묶음은 모델을 부르지 않고 `limit_reached`로 보류한다 (방향 후보 단계에서 한 번 자르고 의견서·보정은 그 결과를 따른다: `directions.py` `_over_limit_result`).
   - [ADR 0003](../../decisions/0003-tech-stack.md) 고정 단계 "상한"은 "도달하면 '확인되지 않음'과 찾아본 범위를 남기고 끝낸다"(110줄)이고 이유 코드 `limit_reached`가 있다. 묶음 안 상한은 위대로 맞췄다. 찾아본 범위(`searched_scope`)는 아직 채우지 않는다.
 
 ### 2-1. 흐름 방식
@@ -259,7 +261,7 @@ F4는 화면·API에 준다 (뒤 기능 없음). 결과 스키마 둘 + 도구 �
 - 아직 없는 것: 초안 검사(#40) 주입 오류 세트, 사건 전체 검사 남은 규칙(#39), F1 → F3 → F4를 한 사건으로 잇는 끝에서 끝까지 테스트(#166 T3).
 
 ## 열린 질문
-- 질문: 묶음 하나 실패 vs 실행 전체 `failed`, 상한 도달을 ADR 0003 110줄·`limit_reached`에 맞출지 (이슈 #166, PRD F5 3번과 부딪힘)
+- 정함 #211: 묶음 하나의 호출 실패는 그 묶음만 보류, 상한 도달(`max_units`·호출 상한)은 `limit_reached`로 보류하고 끝냄. 묶음 밖 상한(F1 읽기·지휘·F3 청구항 나누기)은 이슈 #241
 - 질문: 사람 승인 전 멈춤을 방향 후보 뒤에 둘지 F4 뒤에 둘지, ADR 0003 108줄 문장을 고칠지 (이슈 #70) [사람 판단]
 - 질문: `plan: agent`일 때 지휘가 F4를 언제 부르나
 - 질문: F3 결과에서 모델에 넣을 것, 보정 프롬프트의 명세서 전체 글자
