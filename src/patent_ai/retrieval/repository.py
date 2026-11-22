@@ -85,6 +85,20 @@ class ChunkRepository(Protocol):
         """선고일을 몰라(decided_on null) 날짜 거르기에서 빠질 판례·심결 조각 수."""
         ...
 
+    def earliest_effective_from(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        chunk_kinds: list[ChunkKind],
+        source_kinds: list[SourceKind] | None = None,
+    ) -> date | None:
+        """그 유형 조각 중 가장 이른 판의 시행 시작일. 판본이 확인된(시작일 있는) 조각만 본다.
+
+        없으면 None (유형 조각 0개, 판본 모름만, 판례·심결). 기준일이 이보다 앞서면
+        '그 시점 판이 색인에 없다'는 재료다.
+        """
+        ...
+
 
 def fill_law_defaults(chunk: Chunk) -> Chunk:
     """law 조각의 source_kind가 없으면 statute로 채운다 (v1·v2 JSONL은 조문뿐).
@@ -305,6 +319,21 @@ class InMemoryChunkRepository:
         rows = self._scope(corpus, index_version, doc_ids, chunk_kinds, source_kinds)
         return sum(1 for c in rows if _date_unknown(c))
 
+    def earliest_effective_from(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        chunk_kinds: list[ChunkKind],
+        source_kinds: list[SourceKind] | None = None,
+    ) -> date | None:
+        rows = self._scope(corpus, index_version, None, chunk_kinds, source_kinds)
+        starts = [
+            c.edition.effective_from
+            for c in rows
+            if c.edition.status == "confirmed" and c.edition.effective_from is not None
+        ]
+        return min(starts, default=None)
+
 
 # ---- Postgres 저장소 ----
 
@@ -512,3 +541,15 @@ class PostgresChunkRepository:
             return 0  # 인용문헌 조각은 선고일 개념이 없다
         conds.append(and_(t.source_kind.in_(_DATED), t.decided_on.is_(None)))
         return self._session.scalar(select(func.count()).select_from(t).where(*conds)) or 0
+
+    def earliest_effective_from(
+        self,
+        corpus: Corpus,
+        index_version: str,
+        chunk_kinds: list[ChunkKind],
+        source_kinds: list[SourceKind] | None = None,
+    ) -> date | None:
+        t, conds = self._where(corpus, index_version, None, chunk_kinds, source_kinds)
+        # 메모리 저장소와 같게: 판본이 확인되고 시작일이 있는 조각만
+        conds.append(t.edition_status == "confirmed")
+        return self._session.scalar(select(func.min(t.edition_effective_from)).where(*conds))

@@ -266,3 +266,26 @@ def test_자료유형_빈_목록은_오류(both):
             call("law", "law-idx-v1", chunk_kinds=[])
         with pytest.raises(ValueError):
             call("law", "law-idx-v1", source_kinds=[])
+
+
+def test_가장_이른_시행일이_메모리와_같다(both, session):
+    mem, pg = both
+    base = mem._tables["law"][0]
+    v = base.index_version
+    extra = _extra_law_rows(base)  # 판례·심결: not_applicable
+    mem._tables["law"].extend(extra)
+    session.add_all([chunk_to_row("law", c) for c in extra])
+    session.flush()
+    for kinds, src in (
+        (["article"], None),
+        (["judgment"], None),
+        (["article", "judgment"], ["trial"]),
+        (["guideline"], None),
+    ):
+        assert pg.earliest_effective_from("law", v, kinds, src) == mem.earliest_effective_from(
+            "law", v, kinds, src
+        )
+    assert pg.earliest_effective_from("law", v, ["judgment"]) is None
+    assert pg.earliest_effective_from("cite", "cite-idx-v1", ["body"]) is None
+    with pytest.raises(ValueError):
+        pg.earliest_effective_from("law", v, [])
