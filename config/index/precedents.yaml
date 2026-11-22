@@ -1,0 +1,10 @@
+# 판례·심결 조각 설정 (#24 24c). law-idx-v3의 판례·심결 몫. 설정을 바꾸면 새 판으로, 이 파일의 index_version은 v3 빌드와 같아야 한다.
+index_version: law-idx-v3
+precedent_dir: data/raw/prec
+# 받은 기록 셋 (순서 상관없음). 성공한 것 − v2의 `표시`(신규성 아님) − 사건명 (상)·(디)
+precedent_logs:
+  - _download_log_1116.json
+  - _download_log_1118.json
+  - _download_log_1118_v2.json
+expected_precedents: 74
+out: data/processed/law/precedent-v3.jsonl
