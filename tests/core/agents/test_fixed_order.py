@@ -95,7 +95,9 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
     # 넘긴 단계는 결과에도, 돈 순서에도 없다 (성공한 것처럼 보이지 않는다)
     assert "run_later" not in out.results
     assert list(out.skipped) == ["run_later"]
-    assert "tool_missing" in out.skipped["run_later"]
+    head, body = out.skipped["run_later"].split(": ", 1)
+    # 앞머리 코드 뒤 글은 화면에 그대로 보이므로 설정 이름 같은 코드 이름이 없다 (이슈 #294)
+    assert head == "tool_missing" and body and "skip_if_missing" not in body
     # 단계 기록 한 줄: ok가 아니고, 확인되지 않음이며, 넘긴 이유가 있다
     rec = steps.records[-1]
     assert rec.tool_name == "run_later"

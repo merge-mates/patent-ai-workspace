@@ -209,7 +209,7 @@ def test_F3를_넘기면_F2도_입력이_없어_넘기고_이유가_남는다(tm
     out, steps = _go(tmp_path, texts=None)  # 글자가 없어 F3를 넘긴다
     assert "run_f2" not in out.results
     assert "input_unverified" in out.skipped["run_f2"]
-    assert "run_f3" in out.skipped["run_f2"]
+    assert "청구항–인용발명 대비" in out.skipped["run_f2"]
     f2 = next(r for r in steps.records if r.tool_name == "run_f2")
     assert f2.result_status == "unverified" and f2.skipped_reason == out.skipped["run_f2"]
 
@@ -315,7 +315,7 @@ def test_확인_기준일이_없으면_F4만_넘긴다(tmp_path, wired):
     assert list(out.skipped) == ["run_f2", "run_f4"]
     assert (
         out.skipped["run_f4"].startswith("input_unverified")
-        and "checked_on" in (out.skipped["run_f4"])
+        and "확인 기준일" in (out.skipped["run_f4"])
     )
 
 

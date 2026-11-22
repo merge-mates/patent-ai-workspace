@@ -129,7 +129,7 @@ describe('이유 받기 (failed·waiting_for_human)', () => {
 })
 
 describe('넘긴 단계 받기 (succeeded, 이슈 #260)', () => {
-  const skippedSteps = [{ step: 'run_f3', reason: 'input_unverified: 앞 단계 결과가 없음 (read_oa)' }]
+  const skippedSteps = [{ step: 'run_f3', reason: 'input_unverified: 앞 단계인 OA 거절이유 정리 결과가 없음' }]
 
   it('succeeded면 넘긴 단계를 한 번 받고 다시 안 묻는다', async () => {
     getRun.mockResolvedValue(status('succeeded', { skipped_steps: skippedSteps }))
