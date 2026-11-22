@@ -125,7 +125,7 @@ def test_e2e_F1_결과가_원문_대조된_채_F3_F4로_이어진다(tmp_path, o
     ]
 
 
-def test_e2e_기록된_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
+def test_e2e_가짜_응답만_쓰고_모델_호출이_실행에_쌓인다(tmp_path, offline):
     out, _, recorder = _run(tmp_path, _all_responses())
     assert out.state == "succeeded"
     # 모든 호출이 이 실행 이름으로 기록되고, 실패·상한 초과가 없다
