@@ -6,7 +6,12 @@ def confirmed_legal(unit_id: str, rejection: int) -> dict:
     source = {
         "source_kind": "statute",
         "identifier": "만든 조문",
-        "evidence": {"document_id": "law_1", "raw_text": "만든 조문 글자", "edition": "2099-01-01"},
+        "evidence": {
+            "document_id": "law_1",
+            "location": "제1조",
+            "raw_text": "만든 조문 글자",
+            "edition": "2099-01-01",
+        },
         "status": {"value": "confirmed", "checked": "원문 대조"},
     }
     claim = {
