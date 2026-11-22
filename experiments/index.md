@@ -26,4 +26,4 @@
 | m2-i3-cite-search-bm25-noise-b | cite-search (이슈 #178 둘째 점수) | `noise_scope`: 없음(그 인용문헌 안) → `retrieval/cite_noise_b.jsonl` (B안: tune 인용문헌 전체 풀). 검색 설정·색인은 그대로 | hit@10 0.353 | -0.265 | $0.00 | [card](m2-i3-cite-search-bm25-noise-b/card.md) |
 | m3-f4-skeleton | F4 | 기준선 (F4 뼈대 첫 tune 실행, 바꾼 것 없음) | 점수 없음 | - | - | [card](m3-f4-skeleton/card.md) |
 | m3-i1-f3-independent-first | F3 | 코드 (이슈 #30 남은 일 ②, feat/30-f3-independent-first 8382103): 진보성은 대표 청구항(독립항) 먼저 대비하고 차이점이 있으면 종속항은 대비하지 않고 이유를 남김 + 명세서 효과 반박 후보. #211(f499f2c) 위 | search_recall 0.337 | - | $0.00 | [card](m3-i1-f3-independent-first/card.md) |
-| m3-i1-f3-recall-prompt | F3 | `compare_variant`: standard → recall (대비 프롬프트 prompts/f3/compare.md → prompts/f3/compare_recall.md) | selected_recall 0.145 | +0.048 | $0.00 | [card](m3-i1-f3-recall-prompt/card.md) |
+| m3-i1-f3-recall-prompt | F3 | `compare_variant`: standard → recall (대비 프롬프트 prompts/f3/compare.md → prompts/f3/compare_recall.md) | selected_recall 0.225 | +0.128 | $0.00 | [card](m3-i1-f3-recall-prompt/card.md) |

@@ -1,6 +1,6 @@
 {
   "experiment": "m3-i1-f3-recall-prompt",
-  "commit": "64d82fcf1c2a2655dc2eab171fa2bfdce0360348",
+  "commit": "30937d2e9efd3ddfbdaa06a78fdee06f5ae0e286",
   "goldset": "tune",
   "goldset_version": 2,
   "gold_sha256": "0fee10d368f3f97c15165576e7ab2d5d8555b10dfa9b7667459022777b90bf38",
@@ -9,26 +9,29 @@
   "metric_name": "심사관 지정 위치 회수율",
   "n": 10,
   "metrics": {
-    "search_hit": 0.5419184981684981,
-    "search_recall": 0.44435302076671124,
-    "selected_hit": 0.26654456654456654,
-    "selected_recall": 0.14501681904955713,
-    "random_search_recall": 0.22199671503423848,
-    "random_search_hit": 0.33629280318785326,
-    "search_recall_ratio": 2.0016198018884146,
+    "search_hit": 0.7484203296703297,
+    "search_recall": 0.6075093089229994,
+    "search_recall_round1": 0.5919421792933698,
+    "selected_recall_incl_skipped": 0.2154557798903037,
+    "selected_hit": 0.44072802197802197,
+    "selected_recall": 0.22452213791499506,
+    "random_search_recall": 0.28727672180569847,
+    "random_search_hit": 0.4391219613732287,
+    "search_recall_ratio": 2.1147181891538445,
     "novelty_tables": 3,
     "clarity_term_reviewed": 0.6944444444444445
   },
   "failures": {
     "missing_prediction": 1,
-    "not_searched_rows": 31,
+    "not_searched_rows": 6,
+    "skipped_dependent_rows": 21,
     "excluded_no_location": 3,
     "excluded_clarity": 0,
     "excluded_same_as_other": 33,
     "excluded_body_missing": 0,
     "excluded_gold_not_in_scope": 1,
     "excluded_gold_items_not_in_scope": 11,
-    "cq_candidates": 5,
+    "cq_candidates": 12,
     "novelty_multi_citation": 0,
     "clarity_no_claim_text": 0,
     "clarity_gold_term_not_in_claim": 2,
@@ -47,6 +50,6 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "external_calls": 0,
-    "seconds": 2.212
+    "seconds": 2.151
   }
 }
