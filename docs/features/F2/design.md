@@ -155,6 +155,7 @@ flowchart LR
 | 판례 전문 | `판례_<사건번호>` | 판례내용 "이유" 아래 번호 문단 | `judgment` | `paragraph`, `이유 2. 가.` | `not_applicable` |
 | 심결 (12건, PDF) | `심결_<심판번호>` | "이유" 아래 번호 문단 (요지 칸이 없어 전문만) | `judgment` | `paragraph`, `이유 3. 나.` | `not_applicable` |
 
+- 심사기준 조각 (24b): 제108·116·124호는 절 제목이 PDF에서 그림이라 글자로 안 뽑힌다. 이 3판은 쪽 하나 = 조각 하나이고 `loc_label`에 절 번호가 없다. 같은 절끼리 두 판을 견주는 것은 글자 절이 있는 5판(제101·104·113·117호, 지식재산처 제7호)끼리다. 판 표에 없는 판은 제102호(2018.4.24), 제131호(2023.3.22), 제140호(2025.2.25)다. 그래서 제101호는 2018.4.23까지, 제124호는 2023.3.21까지만 `confirmed`로 두고, 2018.4.24~7.31과 2023.3.22~2026.3.12 기준일에는 심사기준 조각이 없다 (검색은 0개, `edition_unknown`으로 바꾸는 것은 F2 도구 몫).
 - #24에서 바뀌는 것 (공유 자원: 검색 계약·마이그레이션·채점기라 PR로, 상대 리뷰). 큰 것은 아래 여섯이고, 칸이 늘면 따라 고칠 곳(`chunk_to_row`·`row_to_chunk` 변환, `index_dump` fixture 줄, 채점기가 쓰는 `ChunkRepository.chunks()` 거르기)도 같이 바뀐다.
   1. 조각 종류 값: `chunk_kind`에 `judgment_summary` 더하기 (검색 계약 5-1 "값을 더하면 이 문서를 고치는 PR").
   2. 판본 값: 판례·심결 조각의 판본 `not_applicable`을 법령 표에 허용하기. 지금 코드가 세 곳에서 막는다 (`retrieval/law_index_db.py` 넣기, `retrieval/repository.py` 저장소, `db/index_dump.py` 덤프). `chunk_kind`가 `judgment`·`judgment_summary`일 때만 허용하고, 검색 계약 design의 `not_applicable` 뜻을 "인용문헌·판례·심결"로 넓힌다. 판례에 선고일을 판본처럼 `confirmed`로 넣는 길은 버렸다 (8절).

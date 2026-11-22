@@ -17,6 +17,7 @@ from patent_ai.retrieval.guideline_index import (
     guideline_editions,
     main,
 )
+from patent_ai.retrieval.repository import InMemoryChunkRepository
 from patent_ai.retrieval.schemas import Edition
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "retrieval" / "guideline"
@@ -35,11 +36,16 @@ def load_pages(name: str) -> list[PageText]:
     ]
 
 
-def chapter_chunks(name: str, doc_id: str = "심사기준_1_20180101", converted: bool = False):
+def chapter_chunks(
+    name: str,
+    doc_id: str = "심사기준_1_20180101",
+    converted: bool = False,
+    edition: Edition = EDITION,
+):
     pages = load_pages(name)
     rng = chapter_pages(pages, CH)
     sub = [p for p in pages if p.page in rng]
-    return chunk_guideline(sub, doc_id, EDITION, "law-idx-v3", CH, converted)
+    return chunk_guideline(sub, doc_id, edition, "law-idx-v3", CH, converted)
 
 
 # ---- 장 범위 ----
@@ -129,11 +135,82 @@ def test_장_범위_밖_쪽은_조각에_안_들어간다():
         assert "목차" not in texts
 
 
-def test_같은_절_두_판은_chunk_id가_달라_둘_다_남는다():
-    a = chapter_chunks("edition_text.txt", doc_id="심사기준_1_20180101")
-    b = chapter_chunks("edition_text.txt", doc_id="심사기준_2_20190101")
+def test_같은_절_번호_다른_글_두_판은_둘_다_남고_기준일로_하나씩_나온다():
+    ed1 = Edition(
+        status="confirmed", effective_from=date(2018, 1, 1), effective_to=date(2018, 12, 31)
+    )
+    ed2 = Edition(status="confirmed", effective_from=date(2019, 1, 1), effective_to=None)
+    a = chapter_chunks("edition_text.txt", doc_id="심사기준_1_20180101", edition=ed1)
+    b = chapter_chunks("edition_text_v2.txt", doc_id="심사기준_2_20190101", edition=ed2)
     ids = [c.chunk_id for c in a + b]
-    assert len(ids) == len(set(ids)) == 10
+    assert len(ids) == len(set(ids))  # 같은 쪽·같은 절이어도 chunk_id가 겹치지 않는다
+    # 같은 절(2.1)이 두 판 모두에 있고 글은 다르다
+    sec_a = next(c for c in a if c.attrs.get("section") == "2.1")
+    sec_b = next(c for c in b if c.attrs.get("section") == "2.1")
+    assert sec_a.text != sec_b.text
+    repo = InMemoryChunkRepository({"law": a + b})
+    assert len(repo.chunks("law", "law-idx-v3")) == len(a) + len(b)  # 기준일 없이는 둘 다
+    in_2018 = repo.chunks("law", "law-idx-v3", as_of=date(2018, 6, 1))
+    assert {c.doc_id for c in in_2018} == {"심사기준_1_20180101"}
+    in_2019 = repo.chunks("law", "law-idx-v3", as_of=date(2019, 6, 1))
+    assert {c.doc_id for c in in_2019} == {"심사기준_2_20190101"}
+
+
+def test_글이_제목뿐인_조각은_다음_조각_앞에_붙는다():
+    chunks = chapter_chunks("edition_nested.txt")
+    assert [(c.location.start, c.attrs["section"]) for c in chunks] == [
+        (3301, "1.1"),
+        (3302, "2.1"),
+        (3302, "2.2"),
+    ]
+    # 같은 쪽: 부모 절 제목(1.) 바로 뒤에 자식 절 제목(1.1)이 오면 부모 제목이 자식 조각 앞에 붙는다
+    assert chunks[0].text == "1. 가짜 첫째 절\n1.1 가짜 첫째 하위 절\n하위 절 본문이다."
+    # 쪽 끝에 남은 제목(2., 2.1)은 다음 쪽 첫 조각 앞에 붙고 위치는 그 조각(3302쪽) 것이다
+    assert chunks[1].text == (
+        "2. 가짜 둘째 절\n2.1 가짜 둘째 하위 절\n둘째 하위 절 본문이 다음 쪽에서 이어진다."
+    )
+    assert chunks[1].location.label == "3302쪽 (제3부 제3장 2.1)"
+    assert chunks[2].text == "2.2 가짜 셋째 하위 절\n셋째 하위 절 본문이다."
+
+
+def test_모든_fixture_판에서_제목뿐인_조각이_없다():
+    for name in ("edition_text.txt", "edition_text_v2.txt", "edition_nested.txt"):
+        for c in chapter_chunks(name):
+            assert "\n" in c.text or c.attrs.get("section_title") != c.text
+
+
+def _page(n: int, body: list[str], number: str | None, header: str = "제3부 특허요건"):
+    lines = [header, "", "", *body, "", *([number] if number else [])]
+    return PageText(page=n, lines=lines)
+
+
+def test_쪽_번호가_1씩_늘지_않으면_오류():
+    pages = [
+        _page(1, ["본문 하나."], "3301", header="제3장 진보성"),
+        _page(2, ["본문 둘."], "3303"),
+    ]
+    with pytest.raises(GuidelineIndexError, match="1씩 늘지"):
+        chunk_guideline(pages, "심사기준_1_20180101", EDITION, "law-idx-v3", CH)
+
+
+def test_글이_있는_쪽의_번호를_못_읽으면_오류():
+    pages = [
+        _page(1, ["본문 하나."], "3301", header="제3장 진보성"),
+        _page(2, ["본문 둘."], None),
+    ]
+    with pytest.raises(GuidelineIndexError, match="쪽 번호를 못 읽음"):
+        chunk_guideline(pages, "심사기준_1_20180101", EDITION, "law-idx-v3", CH)
+
+
+def test_장은_찾았는데_글이_없어_조각이_0개면_명령은_종료_1(tmp_path, caplog):
+    cfg = _config(tmp_path, {"a.pdf": 1})
+
+    def extract(path):
+        return [_page(1, [], "3301", header="제3장 진보성")]
+
+    assert main(["--config", str(cfg)], extract=extract) == 1
+    assert "조각이 0개" in caplog.text
+    assert not (tmp_path / "out" / "guideline-v3.jsonl").exists()
 
 
 # ---- 판 표 ----
@@ -160,6 +237,63 @@ def test_시행_기간은_이어진다_앞_판_끝은_다음_판_시작_전날()
     # 마지막 판은 끝일이 없다 (현행)
     assert eds["심사기준_117_20201214"].effective_to is None
     assert all(e.status == "confirmed" for e in eds.values())
+
+
+def test_끝_날짜를_준_판은_그_날까지이고_표에_없는_기간은_비어_있다():
+    table = [
+        {
+            "file": "a.pdf",
+            "rule_no": 101,
+            "effective_from": date(2018, 1, 1),
+            "effective_to": date(2018, 4, 23),
+        },
+        {"file": "b.pdf", "rule_no": 104, "effective_from": date(2018, 8, 1)},
+    ]
+    eds = guideline_editions(table)
+    assert eds["심사기준_101_20180101"].effective_to == date(2018, 4, 23)  # 다음 판 전날 아님
+    assert eds["심사기준_104_20180801"].effective_to is None
+    # 빠진 기간(2018.4.24~7.31)을 기준일로 주면 두 판 조각 모두 안 나온다
+    ca = chapter_chunks(
+        "edition_text.txt", "심사기준_101_20180101", edition=eds["심사기준_101_20180101"]
+    )
+    cb = chapter_chunks(
+        "edition_text_v2.txt", "심사기준_104_20180801", edition=eds["심사기준_104_20180801"]
+    )
+    repo = InMemoryChunkRepository({"law": ca + cb})
+    assert repo.chunks("law", "law-idx-v3", as_of=date(2018, 6, 1)) == []
+    assert {c.doc_id for c in repo.chunks("law", "law-idx-v3", as_of=date(2018, 4, 23))} == {
+        "심사기준_101_20180101"
+    }
+    assert {c.doc_id for c in repo.chunks("law", "law-idx-v3", as_of=date(2018, 8, 1))} == {
+        "심사기준_104_20180801"
+    }
+
+
+def test_끝_날짜가_다음_판_시작_이상이면_겹쳐서_오류():
+    table = [
+        {
+            "file": "a.pdf",
+            "rule_no": 101,
+            "effective_from": date(2018, 1, 1),
+            "effective_to": date(2018, 8, 1),
+        },
+        {"file": "b.pdf", "rule_no": 104, "effective_from": date(2018, 8, 1)},
+    ]
+    with pytest.raises(GuidelineIndexError, match="겹친다"):
+        guideline_editions(table)
+
+
+def test_끝_날짜가_시행일보다_이르면_오류():
+    table = [
+        {
+            "file": "a.pdf",
+            "rule_no": 101,
+            "effective_from": date(2018, 1, 1),
+            "effective_to": date(2017, 12, 31),
+        },
+    ]
+    with pytest.raises(GuidelineIndexError, match="이르다"):
+        guideline_editions(table)
 
 
 def test_시행일이_같은_두_판은_오류():

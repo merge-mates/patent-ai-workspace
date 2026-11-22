@@ -194,10 +194,15 @@ def chunk_guideline(
     """한 장의 쪽들 → 조각. `pages`는 `chapter_pages`로 고른 그 장의 쪽만 준다.
 
     (쪽, 절) 하나가 조각 하나. 절 제목이 글자에 없는 판은 쪽 하나가 조각 하나다.
+    글이 절 제목 한 줄뿐인 조각(제목 바로 뒤에 제목이 올 때, 쪽 끝에 제목만 남을 때)은
+    만들지 않고 그 제목을 다음 조각 글 맨 앞에 붙인다 (위치·절은 다음 조각 것).
+    장 안에서 인쇄 쪽 번호가 1씩 늘지 않으면 오류 (쪽을 빠뜨렸거나 장을 잘못 잘랐다는 뜻).
     """
-    chunks: list[Chunk] = []
+    # 1단계: (쪽 번호, 절, 제목, 글, 제목뿐인가) 목록
+    raw: list[tuple[int, tuple[int, ...] | None, str | None, str, bool]] = []
     section: tuple[int, ...] | None = None
     section_title: str | None = None
+    prev_no: int | None = None
     for page in pages:
         f = _frame(page)
         if not any(ln.strip() for ln in f.body):
@@ -205,10 +210,13 @@ def chunk_guideline(
             continue
         if f.number is None:
             raise GuidelineIndexError(f"{doc_id}: 쪽 번호를 못 읽음 (PDF {page.page}쪽)")
-        # 쪽 본문을 절 제목 줄에서 끊는다. 끊은 조각마다 (절, 줄들)
-        segments: list[tuple[tuple[int, ...] | None, str | None, list[str]]] = [
-            (section, section_title, [])
-        ]
+        if prev_no is not None and f.number != prev_no + 1:
+            raise GuidelineIndexError(
+                f"{doc_id}: 쪽 번호가 1씩 늘지 않는다 ({prev_no} 다음 {f.number}, PDF {page.page})"
+            )
+        prev_no = f.number
+        # 쪽 본문을 절 제목 줄에서 끊는다. 끊은 조각마다 (절, 제목, 줄들, 제목으로 시작했나)
+        segments: list[list] = [[section, section_title, [], False]]
         for ln in f.body:
             if _is_chapter_header(ln.strip(), chapter):
                 continue  # 옛 판은 장 첫 쪽 본문 맨 앞에 장 제목이 한 번 더 있다
@@ -216,38 +224,59 @@ def chunk_guideline(
             if sec is not None and _follows(section, sec[0]):
                 section, section_title = sec[0], sec[1]
                 # 절 제목은 따로 한 문단으로 둔다 (아래 본문과 한 줄로 이어 붙지 않게)
-                segments.append((section, section_title, [ln, ""]))
+                segments.append([section, section_title, [ln, ""], True])
                 continue
             segments[-1][2].append(ln)
-        seq = 0
-        for sec_nums, sec_title, seg_lines in segments:
+        for sec_nums, sec_title, seg_lines, starts_heading in segments:
             text = _paragraphs(seg_lines)
-            if not text:
-                continue
-            seq += 1
-            sec_str = ".".join(str(n) for n in sec_nums) if sec_nums else None
-            attrs = {"chapter": chapter.title}
-            if sec_str:
-                attrs["section"] = sec_str
-                attrs["section_title"] = sec_title or ""
-            chunks.append(
-                Chunk(
-                    chunk_id=f"{index_version}:{doc_id}:{f.number:04d}-{seq}",
-                    index_version=index_version,
-                    doc_id=doc_id,
-                    chunk_kind="guideline",
-                    location=Location(
-                        kind="page",
-                        start=f.number,
-                        end=f.number,
-                        label=_loc_label(f.number, chapter, sec_str, converted),
-                    ),
-                    edition=edition,
-                    text=text,
-                    source_kind="guideline",
-                    attrs=attrs,
-                )
+            if text:
+                heading_only = starts_heading and text == seg_lines[0].strip()
+                raw.append((f.number, sec_nums, sec_title, text, heading_only))
+
+    # 2단계: 제목뿐인 조각은 다음 조각 앞에 붙인다
+    merged: list[tuple[int, tuple[int, ...] | None, str | None, str]] = []
+    pending: list[str] = []
+    for no, sec_nums, sec_title, text, heading_only in raw:
+        if heading_only:
+            pending.append(text)
+            continue
+        merged.append((no, sec_nums, sec_title, "\n".join([*pending, text])))
+        pending = []
+    for text in pending:
+        # 장의 맨 끝에 제목만 남은 드문 경우: 붙일 다음 조각이 없어 앞 조각 끝에 붙인다
+        if not merged:
+            raise GuidelineIndexError(f"{doc_id}: 장에 제목 말고 글이 없다")
+        no, sec_nums, sec_title, prev_text = merged[-1]
+        merged[-1] = (no, sec_nums, sec_title, prev_text + "\n" + text)
+
+    # 3단계: 조각 만들기. chunk_id의 순번은 쪽마다 1부터
+    chunks: list[Chunk] = []
+    seq_by_page: dict[int, int] = {}
+    for no, sec_nums, sec_title, text in merged:
+        seq = seq_by_page[no] = seq_by_page.get(no, 0) + 1
+        sec_str = ".".join(str(n) for n in sec_nums) if sec_nums else None
+        attrs = {"chapter": chapter.title}
+        if sec_str:
+            attrs["section"] = sec_str
+            attrs["section_title"] = sec_title or ""
+        chunks.append(
+            Chunk(
+                chunk_id=f"{index_version}:{doc_id}:{no:04d}-{seq}",
+                index_version=index_version,
+                doc_id=doc_id,
+                chunk_kind="guideline",
+                location=Location(
+                    kind="page",
+                    start=no,
+                    end=no,
+                    label=_loc_label(no, chapter, sec_str, converted),
+                ),
+                edition=edition,
+                text=text,
+                source_kind="guideline",
+                attrs=attrs,
             )
+        )
     return chunks
 
 
@@ -265,14 +294,29 @@ def edition_doc_id(row: dict) -> str:
 
 
 def guideline_editions(table: list[dict]) -> dict[str, Edition]:
-    """판 표 → {doc_id: 판본}. 끝 = 다음 판 시행일 전날, 마지막 판은 끝일 없음(현행)."""
+    """판 표 → {doc_id: 판본}. 끝 = 표의 `effective_to`, 없으면 다음 판 전날, 마지막 판은 현행.
+
+    표에 없는 판(받지 못한 중간 판)이 있으면 `effective_to`로 앞 판의 끝을 줄여야 한다.
+    그러면 빈 기간에는 조각이 없다 (검색은 0개, 판본 모름 처리는 F2 도구 몫).
+    `effective_to`가 시행일보다 이르거나 다음 판 시행일 이상이면(겹침) 오류.
+    """
     rows = sorted(table, key=lambda r: _as_date(r["effective_from"]))
     starts = [_as_date(r["effective_from"]) for r in rows]
     if len(set(starts)) != len(starts):
         raise GuidelineIndexError("판 표에 시행일이 같은 판이 둘 있다")
     out: dict[str, Edition] = {}
     for i, r in enumerate(rows):
-        end = starts[i + 1] - timedelta(days=1) if i + 1 < len(rows) else None
+        next_start = starts[i + 1] if i + 1 < len(rows) else None
+        if r.get("effective_to") is not None:
+            end = _as_date(r["effective_to"])
+            if end < starts[i]:
+                raise GuidelineIndexError(f"{edition_doc_id(r)}: effective_to가 시행일보다 이르다")
+            if next_start is not None and end >= next_start:
+                raise GuidelineIndexError(
+                    f"{edition_doc_id(r)}: effective_to({end})가 다음 판({next_start})과 겹친다"
+                )
+        else:
+            end = next_start - timedelta(days=1) if next_start else None
         out[edition_doc_id(r)] = Edition(
             status="confirmed",
             effective_from=starts[i],
