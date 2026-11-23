@@ -87,7 +87,9 @@ def _split_claims(
                 )
             )
             continue
-        tried += 1
+        if claims[claim].strip():
+            # 글자가 공백뿐이면 split_elements가 모델을 부르지 않으므로 분모에 넣지 않는다
+            tried += 1
         try:
             split = split_elements(claim, claims[claim], numbers, ctx=ctx)
         except BUNDLE_ERRORS as e:

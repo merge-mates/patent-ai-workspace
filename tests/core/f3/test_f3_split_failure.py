@@ -91,6 +91,20 @@ def test_모든_청구항_나누기가_실패하면_원래_예외를_그대로_�
         run_scenario(answers=answers)
 
 
+def test_글자가_공백뿐인_청구항은_분모에서_빼_모델을_부른_청구항이_모두_실패하면_예외를_올린다():
+    # 청구항 1은 공백뿐이라 모델을 부르지 않는다 (split_elements). 모델을 부른 청구항 2만
+    # 실패했으니 "모델을 부른 청구항이 모두 실패"다 (design.md: 부르기 전에 끝난 것은 분모에서 뺌)
+    config = scenario.config()
+    claims = {**config.inputs.claims_at_oa, 1: "   "}
+    config = config.model_copy(
+        update={"inputs": config.inputs.model_copy(update={"claims_at_oa": claims})}
+    )
+    answers = scenario.responses()
+    answers["f3.split_elements"] = [EMPTY, EMPTY]
+    with pytest.raises(ModelOutputInvalid):
+        run_scenario(config=config, answers=answers)
+
+
 def test_나누기_호출_상한에_닿으면_실패가_아니라_limit_reached로_보류한다():
     ctx, transport = scenario.context()
     cap = load_step_config("f3.split_elements").max_model_calls
