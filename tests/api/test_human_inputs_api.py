@@ -148,7 +148,9 @@ def test_human_inputs_api_둘_다_못_읽으면_하나씩_넣고_차례로_이�
     assert result["dispatch_number"]["value"] == "952099000000001"
 
 
-def test_human_inputs_api_맞아요는_지금_보이는_정리의_실행에_남는다(tmp_path, monkeypatch):
+def test_human_inputs_api_confirmation_맞아요는_지금_보이는_정리의_실행에_남는다(
+    tmp_path, monkeypatch
+):
     wire(monkeypatch)
     env = _env(tmp_path)
     created = env.upload()
@@ -156,7 +158,7 @@ def test_human_inputs_api_맞아요는_지금_보이는_정리의_실행에_남�
 
     before = env.client.get(url).json()
     assert before == {"oa_id": created["oa_id"], "run_id": created["run_id"], "confirmed_at": None}
-    put = env.client.put(url)
+    put = env.client.put(url, json={"run_id": created["run_id"]})
     assert put.status_code == 200 and put.json()["confirmed_at"] is not None
     assert env.client.get(url).json()["confirmed_at"] == put.json()["confirmed_at"]
 
@@ -166,13 +168,39 @@ def test_human_inputs_api_맞아요는_지금_보이는_정리의_실행에_남�
     assert after["run_id"] == rerun and after["confirmed_at"] is None
 
 
-def test_human_inputs_api_맞아요는_정리_전이면_404(tmp_path, monkeypatch):
+def test_human_inputs_api_confirmation_옛_정리를_보고_누른_맞아요는_409이고_확인이_안_남는다(
+    tmp_path, monkeypatch
+):
+    wire(monkeypatch)
+    env = _env(tmp_path)
+    created = env.upload()
+    url = f"/oas/{created['oa_id']}/oa-result/confirmation"
+    old_run = created["run_id"]
+
+    # 화면이 옛 정리를 보는 사이 다시 돌려 새 정리가 보이게 된다
+    rerun = env.client.post(f"/oas/{created['oa_id']}/runs").json()["run_id"]
+    stale = env.client.put(url, json={"run_id": old_run})
+    assert (stale.status_code, stale.json()["code"]) == (409, "stale_result")
+    assert env.client.get(url).json() == {
+        "oa_id": created["oa_id"],
+        "run_id": rerun,
+        "confirmed_at": None,
+    }
+    # 옛 정리의 실행에도 확인이 남지 않는다 (GET은 지금 보이는 실행만 본다)
+    assert env.human.confirmed_at(created["oa_id"], old_run) is None
+    # 본문이 없으면 422
+    assert env.client.put(url).status_code == 422
+    # 새 정리의 run_id로는 남는다
+    assert env.client.put(url, json={"run_id": rerun}).status_code == 200
+
+
+def test_human_inputs_api_confirmation_맞아요는_정리_전이면_404(tmp_path, monkeypatch):
     wire(monkeypatch)
     env = _env(tmp_path)
     env.launch_enabled = False
     created = env.upload()
     url = f"/oas/{created['oa_id']}/oa-result/confirmation"
-    assert env.client.put(url).json()["code"] == "result_not_ready"
+    assert env.client.put(url, json={"run_id": "run_x"}).json()["code"] == "result_not_ready"
     assert env.client.get("/oas/oa_없음/oa-result/confirmation").json()["code"] == "oa_not_found"
 
 
