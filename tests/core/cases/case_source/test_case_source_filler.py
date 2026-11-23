@@ -3,7 +3,9 @@
 from patent_ai.core.cases.case_source.base import Missing
 from patent_ai.core.cases.case_source.fill import FillOutcome
 from patent_ai.core.cases.case_source.filler import SourceCaseFiller, describe_fill
-from patent_ai.core.schemas.common import UnverifiedReason
+from patent_ai.core.f3_claim_compare.inputs import F3Inputs
+from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
+from patent_ai.core.schemas.document import PageText
 
 GONE = Missing("application_document", UnverifiedReason.LOOKUP_FAILED, "받아 둔 폴더에 출원서 없음")
 
@@ -40,6 +42,13 @@ class _Texts:
 
 def test_이미_채운_사건이어도_글자는_다시_만든다():
     fill = _Fill(FillOutcome(False, why="이미 채운 사건"))
-    got = SourceCaseFiller(fill, _Texts(None), "local_folder").fill("oa_1", "a", "d")
+    ok = Status(value=StatusValue.CONFIRMED, checked="가짜")
+    texts = F3Inputs(
+        claims_at_oa={1: "가 장치."},
+        claims_status=ok,
+        claims_document_id="doc_spec",
+        spec=PageText(document_id="doc_spec", pages=[], status=ok),
+    )
+    got = SourceCaseFiller(fill, _Texts(texts), "local_folder").fill("oa_1", "a", "d")
     assert fill.calls == [("oa_1", "a", "d")]
-    assert got.texts is None and got.reason.startswith("채우지 않음: 이미 채운 사건 / ")
+    assert got.texts == texts and got.reason == "채우지 않음: 이미 채운 사건"

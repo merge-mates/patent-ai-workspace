@@ -1,6 +1,7 @@
 """`¶`로 나눈 KIPRIS Plus 표 읽기 (행정처리 이력, 청구항 변동 이력). 모든 구현이 같이 쓴다.
 
-칸은 순서가 아니라 머리글 이름으로 읽는다. 꼭 쓰는 칸이 없으면 SourceFormatError.
+칸은 순서가 아니라 머리글 이름으로 읽는다. 꼭 쓰는 칸이 없거나 줄의 칸 수가
+머리글과 다르면 SourceFormatError (글자 속 줄바꿈·`¶`로 칸이 밀린 표를 조용히 읽지 않게).
 원문 글자(청구항)는 그대로 둔다 (<br /> 줄바꿈 포함). 오류 메시지에는 원문을 넣지 않는다.
 """
 
@@ -16,7 +17,7 @@ _CLAIM_COLUMNS = ("접수발송번호", "청구항번호", "변경구분명", "�
 
 
 class SourceFormatError(ValueError):
-    """표 꼴이 아니다 (머리글 없음, 꼭 쓰는 칸 없음)."""
+    """표 꼴이 아니다 (머리글 없음, 꼭 쓰는 칸 없음, 칸 수가 다른 줄)."""
 
 
 @dataclass(frozen=True)
@@ -47,10 +48,13 @@ def _table(text: str, columns: tuple[str, ...], what: str) -> list[dict[str, str
     if lacking:
         raise SourceFormatError(f"{what}: 칸이 없음 {lacking}")
     rows = []
-    for line in lines[1:]:
+    for no, line in enumerate(lines[1:], start=2):
         cells = [c.strip() for c in line.split(SEP)]
-        cells += [""] * (len(header) - len(cells))
-        rows.append(dict(zip(header, cells, strict=False)))
+        if len(cells) != len(header):
+            raise SourceFormatError(
+                f"{what}: {no}번째 줄 칸 수 {len(cells)}개가 머리글 {len(header)}개와 다름"
+            )
+        rows.append(dict(zip(header, cells, strict=True)))
     return rows
 
 

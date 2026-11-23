@@ -117,7 +117,7 @@ graph LR
 - 담당: 은진
 - 합격 기준: #54 "그 OA와 앞 이벤트만 저장", "청구항 판은 심사 대상 판까지만"
 - 고칠 파일: `src/patent_ai/core/cases/case_source/fill.py`, `tests/core/cases/case_source/test_case_source_fill.py`, `tests/core/cases/case_source/test_case_source_fill_db.py`
-- 만들 함수·인터페이스 모양: `PostgresCaseSourceFill.fill_before_f3(oa_id, application_number, dispatch_number) -> FillOutcome{filled: bool, missing: list[Missing], why: str | None}`. 조회 결과로 `CaseRecord`를 만들어 기존 `plan_case_rows`로 줄을 계산하고, 올린 임시 사건(#56)에 이력 줄·출원서 문서·청구항 판을 더한다. 올린 OA 이력 줄은 새로 만들지 않고 그 줄에 순서·발송번호를 넣고, 그 OA의 심사 대상 판을 잇는다. 앞 OA 이력 줄은 넣지 않는다 (그 OA를 뒤에 올리면 #303 합치기가 그 줄을 옮겨 와 겹침, 리뷰 고칠 것 1). 이미 판이 있는 사건(다시 실행, 평가 저장)은 건너뜀, 같은 출원번호 사건이 따로 있으면 건너뜀(#303 합치기와 겹치지 않게, 이유를 남김). 마이그레이션 없음.
+- 만들 함수·인터페이스 모양: `PostgresCaseSourceFill.fill_before_f3(oa_id, application_number, dispatch_number) -> FillOutcome{filled: bool, missing: list[Missing], why: str | None}`. 조회 결과로 `CaseRecord`를 만들어 기존 `plan_case_rows`로 줄을 계산하고, 올린 임시 사건(#56)에 이력 줄·출원서 문서·청구항 판을 더한다. 올린 OA 이력 줄은 새로 만들지 않고 그 줄에 순서·발송번호를 넣고, 그 OA의 심사 대상 판을 잇는다. 앞 OA 이력 줄은 넣지 않는다 (이 사건에 그 OA를 더하면 `store_pg._add_oa`가 만든 줄에 실행 끝 case_fill이 같은 발송번호를 넣어 `uq_case_events_case_kind_number`에 걸림. #303 합치기 길은 같은 발송번호 줄에 붙여 겹치지 않음). 앞 OA를 새 사건으로 뒤에 올리면 합친 이력에서 맨 뒤로 가는 순서 문제는 후속: add_oa도 같은 발송번호 줄에 붙이게 한 뒤 앞 OA 줄을 넣는다. 이미 판이 있는 사건(다시 실행, 평가 저장)은 건너뜀, 같은 출원번호 사건이 따로 있으면 건너뜀(#303 합치기와 겹치지 않게, 이유를 남김). 마이그레이션 없음.
 - 테스트할 경우: 평소(출원 때 판 사건 → 판 0 + 출원서 문서 + OA 심사 대상 판) / 빈 입력(조회가 전부 Missing → 아무것도 안 쓰고 이유) / 실패(이미 판 있음 → 건너뜀, 다른 사건이 같은 출원번호 → 건너뜀, 저장 중 오류 → 되돌림)
 - 확인: `uv run pytest tests/core/cases/case_source -q` (DB는 `-m db`, PR 전용 test DB에서)
 

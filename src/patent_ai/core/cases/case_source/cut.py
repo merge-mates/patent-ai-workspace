@@ -48,6 +48,11 @@ def _number(kind: NumberKind, text: str) -> str | None:
     return read_number(kind, text).value
 
 
+def _receipt(text: str) -> str:
+    """행정 이력·청구항 이력을 맞출 번호. 접수번호 꼴이면 숫자만, 아니면 글자 그대로."""
+    return _number("receipt", text) or text.strip()
+
+
 def _is_oa(row: AdminRow) -> bool:
     return row.name.strip() == OA_DOC_NAME
 
@@ -58,7 +63,7 @@ def _kind(row: AdminRow, claim_receipts: set[str] | None) -> HistoryKind:
     if _is_oa(row):
         return "oa"
     if "보정서" in name and "각하" not in name:
-        if claim_receipts is None or row.number in claim_receipts:
+        if claim_receipts is None or _receipt(row.number) in claim_receipts:
             return "amendment"
         return "other"  # 명세서·서식만 고친 보정: 청구항 판을 만들지 않는다
     if "의견서" in name and "통지" not in name:
@@ -89,14 +94,15 @@ def cut_at_oa(
     if len(positions) > 1:
         return Missing("admin_history", UnverifiedReason.AMBIGUOUS, "대상 OA가 행정 이력에 두 번")
     kept = admin[: positions[0] + 1]
-    numbers = {r.number for r in kept}
-    kept_claims = [c for c in claims if c.receipt_number in numbers] if claims is not None else []
+    # 두 표의 번호는 한쪽에만 하이픈이 있을 수 있어 같은 꼴로 맞춰 본다
+    numbers = {_receipt(r.number) for r in kept}
+    kept_claims = [c for c in claims or [] if _receipt(c.receipt_number) in numbers]
     if claims is not None and len(kept_claims) < len(claims):
         logger.info(
             "cut_at_oa: OA 뒤(또는 이력에 없는) 청구항 변경 %d줄을 뺌",
             len(claims) - len(kept_claims),
         )
-    receipts = {c.receipt_number for c in kept_claims} if claims is not None else None
+    receipts = {_receipt(c.receipt_number) for c in kept_claims} if claims is not None else None
     history = [HistoryEvent(kind=_kind(r, receipts), doc_number_text=r.number) for r in kept]
     return CaseAtOA(admin=kept, claim_changes=kept_claims, history=history)
 

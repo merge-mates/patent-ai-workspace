@@ -156,7 +156,7 @@ def test_뒤_OA를_채우면_앞_OA_이력_줄은_넣지_않는다(factory, tmp_
         created.oa_id, APP, oa2
     )
     assert out.filled
-    # 앞 OA(OA_NO) 줄이 없어야 그 OA를 뒤에 올려 합칠 때(#272) 줄이 겹치지 않는다
+    # 앞 OA(OA_NO) 줄이 없어야 이 사건에 그 OA를 더할 때(add_oa) 줄이 겹치지 않는다
     assert _events(factory, created.case_id) == [("oa", 3, oa2), ("other", 1, None)]
 
 

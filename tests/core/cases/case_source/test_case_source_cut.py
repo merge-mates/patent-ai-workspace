@@ -153,3 +153,31 @@ def test_이력을_못_가져오면_자른_것이_없다():
     gone = Missing("admin_history", UnverifiedReason.LOOKUP_FAILED, "없음")
     got = lookup_case(FakeSource(SourceFiles(gone, CLAIMS, Path("x.pdf"))), APP, OA1)
     assert got.cut is None and got.missing == [gone]
+
+
+@pytest.mark.parametrize("tail", ["", "¶수리¶넘침"])
+def test_칸_수가_머리글과_다른_줄은_꼴_오류(tail):
+    row = f"{APP}¶{FILING}¶20990101¶[특허출원]특허출원서{tail}"
+    with pytest.raises(SourceFormatError, match="2번째 줄"):
+        parse_admin_history(f"{ADMIN_HEAD}\n{row}")
+
+
+def test_청구항_글자에_표_구분자가_섞이면_꼴_오류():
+    with pytest.raises(SourceFormatError):
+        parse_claim_history(claim_text([(FILING, "1", "가¶나")]))
+
+
+def _dashed(n: str) -> str:
+    return f"{n[0]}-{n[1]}-{n[2:6]}-{n[6:13]}-{n[13:]}"
+
+
+@pytest.mark.parametrize("which", ["행정이력", "청구항이력"])
+def test_한쪽_번호에만_하이픈이_있어도_보정_판을_찾는다(which):
+    admin, claims = ADMIN, CLAIMS
+    if which == "행정이력":
+        admin = admin.replace(AMEND1, _dashed(AMEND1))
+    else:
+        claims = claims.replace(AMEND1, _dashed(AMEND1))
+    cut = _cut(admin=admin, claims=claims)
+    assert [e.kind for e in cut.history] == ["other", "amendment", "other", "oa"]
+    assert len(cut.claim_changes) == 3
