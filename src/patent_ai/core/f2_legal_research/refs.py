@@ -77,7 +77,19 @@ _REF_IN_TEXT = re.compile(
     r"\s*제?\s*(?P<hang>[1-9][0-9]*)\s*항(?:\s*제?\s*(?P<ho>[1-9][0-9]*)\s*호)?"
 )
 # 조문 바로 앞에 붙은 법 이름 (`특허법`, `실용신안법 시행령`, `시행규칙`)
-_LAW_BEFORE = re.compile(r"(?P<law>[가-힣]+법)?\s*(?P<sub>시행령|시행규칙)?\s*$")
+_LAW_BEFORE = re.compile(r"(?P<law>[가-힣]+법|[가-힣]*법률)?\s*(?P<sub>시행령|시행규칙)?\s*$")
+# 조문에 바로 붙지 않아도(토씨 등) 법 이름으로 보는 낱말.
+# 일반어("방법" 등)와 헷갈리지 않게 목록으로 둔다
+_NAMED_LAW = re.compile(
+    r"(?P<same>같은\s*법률?|(?<![가-힣])동\s*법률?)"
+    r"|(?P<law>(?<![가-힣])(?:특허법|실용신안법|디자인보호법|상표법|발명진흥법|저작권법"
+    r"|부정경쟁방지법|민법|형법|민사소송법|행정소송법|행정심판법|행정절차법))"
+)
+_SUB_AFTER = re.compile(r"\s*(?P<sub>시행령|시행규칙)")
+# 조문 바로 앞의 "같은 법"·"동법"·"법" (앞 법을 그대로 가리킴)
+_SAME_BEFORE = re.compile(
+    r"(?:같은\s*법률?|(?<![가-힣])동\s*법률?|(?<![가-힣])법)\s*(?P<sub>시행령|시행규칙)?\s*$"
+)
 # 법 이름처럼 보이지만 일반어인 끝말 (`진보성 판단 방법 29조 2항`의 "방법")
 _NOT_LAW_NAMES = {"처리법", "사용법", "제조법", "해석법", "계산법"}
 
@@ -89,16 +101,41 @@ def _is_other_law(law: str | None) -> bool:
     return not (law.endswith("방법") or law in _NOT_LAW_NAMES)
 
 
+def _law_at(between: str, law: str, sub: str | None) -> tuple[str, str | None]:
+    """앞 조문과 이 조문 사이 글을 보고 이 조문의 (법, 시행령·시행규칙)을 정한다.
+
+    새 법 이름이 없으면 앞 조문의 법을 그대로 쓴다. "같은 법"·"동법"은 앞 법(시행령이면 그 모법).
+    """
+    for m in _NAMED_LAW.finditer(between):
+        law = m["law"] or law
+        after = _SUB_AFTER.match(between, m.end())
+        sub = after["sub"] if after else None
+    same = _SAME_BEFORE.search(between)
+    if same:
+        return law, same["sub"]
+    before = _LAW_BEFORE.search(between)  # 조문 바로 앞에 붙은 이름은 목록에 없어도 본다
+    if before and _is_other_law(before["law"]):
+        return before["law"], before["sub"]
+    if before and before["sub"]:
+        sub = before["sub"]
+    return law, sub
+
+
 def article_refs_in_text(text: str) -> list[ArticleRef]:
     """질문 글 속 조문을 ArticleRef로. 법 이름이 없으면 특허법, 다른 법(시행령 포함)은 버린다.
+
+    법 이름은 다음 법 이름이 나올 때까지 이어진다.
+    예: `실용신안법 제4조제1항, 제5조제1항`은 둘 다 버린다.
 
     같은 조·가지·항은 처음 하나만 남긴다 (호만 다른 것도 같은 항 조각이라서).
     """
     refs: list[ArticleRef] = []
     seen: set[tuple[int, int, int]] = set()
+    law, sub, end = LAW, None, 0
     for m in _REF_IN_TEXT.finditer(text):
-        before = _LAW_BEFORE.search(text[: m.start()])
-        if before and (before["sub"] or _is_other_law(before["law"])):
+        law, sub = _law_at(text[end : m.start()], law, sub)
+        end = m.end()
+        if sub or law != LAW:
             logger.info("다른 법 조문은 건너뜀: %s", text[max(0, m.start() - 12) : m.end()])
             continue  # 특허법 시행령·실용신안법 등: 우리 색인의 특허법 조문이 아니다
         jo, gaji, hang = int(m["jo"]), int(m["gaji"] or 0), int(m["hang"])
