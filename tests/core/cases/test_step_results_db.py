@@ -55,3 +55,33 @@ def test_step_results_DB에_저장하고_다시_읽으면_같은_객체(factory,
     assert store.step_result(created.run_id, "f2") == f2
     with pytest.raises(DuplicateStepResult):
         store.save_step_result(created.oa_id, created.run_id, f3)
+
+
+def test_step_results_DB_update는_줄을_바꾸고_예외면_되돌린다(factory, tmp_path, monkeypatch):
+    # 사람이 초안을 고칠 때 (#304)
+    outcome = real_outcome(tmp_path, monkeypatch)
+    with factory() as s:
+        created = PostgresCaseAppStore(s).create_case(
+            NewDocument(
+                path="work/uploads/db_step_up.pdf",
+                sha256="db_step_up_" + "a" * 20,
+                received_at=datetime(2099, 1, 1, tzinfo=UTC),
+            )
+        )
+        s.commit()
+    store = PostgresStepResultStore(factory)
+    store.save_step_result(created.oa_id, created.run_id, outcome.results["run_f4"])
+
+    new = store.update_step_result(
+        created.run_id, "f4", lambda b: b.model_copy(update={"held_units": ["u_x"]})
+    )
+    assert new.held_units == ["u_x"]
+    assert store.step_result(created.run_id, "f4").held_units == ["u_x"]
+
+    def boom(b):
+        raise ValueError("안 됨")
+
+    with pytest.raises(ValueError):
+        store.update_step_result(created.run_id, "f4", boom)
+    assert store.step_result(created.run_id, "f4").held_units == ["u_x"]
+    assert store.update_step_result("run_없음", "f4", lambda b: b) is None
