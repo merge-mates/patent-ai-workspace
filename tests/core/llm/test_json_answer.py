@@ -87,7 +87,7 @@ def test_call_model은_꼬리_붙은_답을_통과시키고_경고를_남긴다(
 def test_call_model은_max_tokens로_잘린_답의_꼬리를_벗기지_않는다():
     with pytest.raises(ModelOutputInvalid) as e:
         _call('{"title": "가"}]}', stop_reason="max_tokens")
-    assert (e.value.stop_reason, e.value.invalid_kind) == ("max_tokens", "not_json")
+    assert (e.value.stop_reason, e.value.invalid_kind) == ("max_tokens", "not_json:broken")
 
 
 def test_벗긴_뒤에도_스키마_검사는_그대로다():
