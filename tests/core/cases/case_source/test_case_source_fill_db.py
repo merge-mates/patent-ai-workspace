@@ -4,24 +4,29 @@
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
+from patent_ai.core.cases.case_fill import PostgresCaseFill
 from patent_ai.core.cases.case_source.fill import PostgresCaseSourceFill
 from patent_ai.core.cases.case_source.local_folder import LocalFolderSource
+from patent_ai.core.cases.run_inputs import PostgresCaseLookup
 from patent_ai.core.cases.store import NewDocument
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
 from patent_ai.core.cases.texts_source import PostgresTextsSource
 from patent_ai.core.schemas.common import Status, StatusValue
 from patent_ai.core.schemas.document import Page, PageText
+from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.db.models import OA, Case, CaseEvent, ClaimVersion, Document
 from patent_ai.settings import get_settings
 
 pytestmark = pytest.mark.db
 
+FIXTURE = Path(__file__).resolve().parents[3] / "fixtures" / "case_missing_citation"
 APP = "1020990005401"
 FILING = "112099000540101"
 OA_NO = "952099000540101"
@@ -140,24 +145,127 @@ def test_받아_둔_폴더에_없으면_아무것도_안_쓰고_이유(factory, 
 def _events(factory, case_id):
     with factory() as s:
         rows = s.scalars(select(CaseEvent).where(CaseEvent.case_id == case_id)).all()
-        return sorted((e.kind, e.seq, e.doc_number) for e in rows)
+        return sorted(((e.kind, e.seq, e.doc_number) for e in rows), key=str)
 
 
-def test_뒤_OA를_채우면_앞_OA_이력_줄은_넣지_않는다(factory, tmp_path):
-    oa2 = "952099000540102"
-    folder = tmp_path / APP / oa2
+OA2_NO = "952099000540102"
+
+
+@pytest.fixture
+def source2(tmp_path):
+    """OA 두 번 사건의 둘째 OA(OA2_NO) 폴더."""
+    folder = tmp_path / "oa2" / APP / OA2_NO
     folder.mkdir(parents=True)
-    admin = ADMIN + f"{APP}¶{oa2}¶20990901¶의견제출통지서\n"
+    admin = ADMIN + f"{APP}¶{OA2_NO}¶20990901¶의견제출통지서\n"
     (folder / f"{APP}_행정이력.txt").write_text(admin, encoding="utf-8")
     (folder / f"{APP}_청구항이력.txt").write_text(CLAIMS, encoding="utf-8")
     (folder / f"{APP}_출원서_{FILING}.pdf").write_bytes(b"%PDF- fill 54 oa2")
-    created = _upload(factory, "fill54_oa2")
-    out = PostgresCaseSourceFill(factory, LocalFolderSource(tmp_path)).fill_before_f3(
-        created.oa_id, APP, oa2
+    return LocalFolderSource(tmp_path / "oa2")
+
+
+ORDERED = [("oa", 2, OA_NO), ("oa", 3, OA2_NO), ("other", 1, None)]
+
+
+def _result(oa_id: str, dispatch: str) -> OAResult:
+    """출원번호 APP·발송번호 dispatch를 읽은 OA 정리."""
+    oa = OAResult.model_validate_json((FIXTURE / "oa_result.json").read_text("utf-8"))
+    return oa.model_copy(
+        update={
+            "oa_id": oa_id,
+            "application_number": oa.application_number.model_copy(update={"value": APP}),
+            "dispatch_number": oa.dispatch_number.model_copy(update={"value": dispatch}),
+        }
     )
+
+
+def _run(factory, source, created, dispatch):
+    """실행 한 번에서 사건을 바꾸는 두 단계: F3 앞 채우기 → 실행 끝 번호 채우기."""
+    PostgresCaseSourceFill(factory, source).fill_before_f3(created.oa_id, APP, dispatch)
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        created.oa_id, created.run_id, _result(created.oa_id, dispatch), None
+    )
+
+
+def _add(factory, case_id, tag):
+    with factory() as s:
+        added = PostgresCaseAppStore(s).add_oa(
+            case_id,
+            NewDocument(f"work/uploads/{tag}.pdf", f"{tag}_" + "c" * 20, datetime.now(UTC)),
+        )
+        s.commit()
+    return added
+
+
+def _seq_of(factory, oa_id):
+    """그 OA가 붙은 이력 줄의 (순서, 발송번호). 원문 문서도 같은 줄을 가리켜야 한다."""
+    with factory() as s:
+        oa = s.get(OA, oa_id)
+        event = s.get(CaseEvent, oa.case_event_id)
+        assert s.get(Document, oa.document_id).case_event_id == event.id
+        return event.seq, event.doc_number
+
+
+def test_뒤_OA를_채우면_앞_OA_이력_줄도_순서대로_들어간다(factory, source2):
+    created = _upload(factory, "fill326")
+    out = PostgresCaseSourceFill(factory, source2).fill_before_f3(created.oa_id, APP, OA2_NO)
     assert out.filled
-    # 앞 OA(OA_NO) 줄이 없어야 이 사건에 그 OA를 더할 때(add_oa) 줄이 겹치지 않는다
-    assert _events(factory, created.case_id) == [("oa", 3, oa2), ("other", 1, None)]
+    assert _events(factory, created.case_id) == ORDERED
+    with factory() as s:  # 앞 OA는 이력 줄만: 올리지 않은 OA를 만들지 않는다
+        assert len(s.scalars(select(OA).where(OA.case_id == created.case_id)).all()) == 1
+
+
+def test_뒤_OA로_채운_사건에_앞_OA를_새_사건으로_올리면_제자리에_붙는다(factory, source, source2):
+    second = _upload(factory, "fill326_m2")
+    _run(factory, source2, second, OA2_NO)
+    first = _upload(factory, "fill326_m1")
+    _run(factory, source, first, OA_NO)
+    assert _events(factory, second.case_id) == ORDERED
+    assert _seq_of(factory, first.oa_id) == (2, OA_NO)
+    assert _seq_of(factory, second.oa_id) == (3, OA2_NO)
+    with factory() as s:
+        assert s.get(OA, first.oa_id).case_id == second.case_id
+
+
+def test_뒤_OA로_채운_사건에_앞_OA를_더하면_제자리에_붙는다(factory, source, source2):
+    second = _upload(factory, "fill326_a2")
+    _run(factory, source2, second, OA2_NO)
+    first = _add(factory, second.case_id, "fill326_a1")
+    _run(factory, source, first, OA_NO)
+    # 올릴 때 만든 번호 빈 줄은 남지 않는다 (같은 OA가 이력에 두 줄로 보이지 않게)
+    assert _events(factory, second.case_id) == ORDERED
+    assert _seq_of(factory, first.oa_id) == (2, OA_NO)
+    # 다시 실행해도 그대로
+    _run(factory, source, first, OA_NO)
+    assert _events(factory, second.case_id) == ORDERED
+
+
+def test_앞_OA를_먼저_올렸지만_못_채운_사건도_뒤_OA를_채우면_순서가_맞다(
+    factory, source2, tmp_path
+):
+    # 앞 OA 줄이 순서 없이 이미 있다: 새로 넣으면 unique에 걸리니 그 줄에 순서만 넣는다
+    first = _upload(factory, "fill326_p1")
+    _run(factory, LocalFolderSource(tmp_path / "none"), first, OA_NO)
+    second = _add(factory, first.case_id, "fill326_p2")
+    _run(factory, source2, second, OA2_NO)
+    assert _events(factory, first.case_id) == ORDERED
+    assert _seq_of(factory, first.oa_id) == (2, OA_NO)
+    assert _seq_of(factory, second.oa_id) == (3, OA2_NO)
+
+
+def test_같은_OA를_사건에_다시_더하면_지금처럼_막는다(factory, source2):
+    second = _upload(factory, "fill326_d2")
+    _run(factory, source2, second, OA2_NO)
+    # 지휘의 check_oa가 먼저 찾는다
+    assert PostgresCaseLookup(factory).find_oa(APP, OA2_NO) == (second.case_id, second.oa_id)
+    # 앞 OA는 이력 줄만 있고 올린 적이 없어 막지 않는다
+    assert PostgresCaseLookup(factory).find_oa(APP, OA_NO) is None
+    again = _add(factory, second.case_id, "fill326_d2_again")
+    with pytest.raises(IntegrityError):  # 검사를 지나쳐도 이미 OA가 있는 줄에는 못 붙는다
+        PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+            again.oa_id, again.run_id, _result(again.oa_id, OA2_NO), None
+        )
+    assert _seq_of(factory, second.oa_id) == (3, OA2_NO)
+    assert _seq_of(factory, again.oa_id) == (None, None)
 
 
 def test_쓰다_실패하면_아무것도_남지_않는다(factory, source, monkeypatch):

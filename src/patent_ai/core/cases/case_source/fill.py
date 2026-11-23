@@ -4,12 +4,9 @@
   사건 저장과 같은 `plan_case_rows`로 계산한다 (저장 규칙이 둘로 갈라지지 않게).
 - 올린 임시 사건(#56)에 더한다: 이력 줄, 출원서 문서, 청구항 판. 올린 OA 이력 줄은 새로 만들지
   않고 그 줄에 순서(seq)·발송번호를 넣고, 그 OA에 심사 대상 판을 잇는다.
-  다른 OA 이력 줄(앞 OA)은 넣지 않는다: 이 사건에 그 OA를 더하면 `store_pg._add_oa`가
-  번호 빈 OA 줄을 새로 만들고 실행 끝 case_fill이 발송번호를 넣어, 앞 OA 줄이 이미 있으면
-  `uq_case_events_case_kind_number`에 걸린다. (같은 출원번호 합치기 #303은 같은 발송번호 줄에
-  붙이므로 겹치지 않는다.) 심사 대상 판은 이미 이력 전체로 골랐으니 빠져도 판은 같다.
-  한계: 앞 OA를 새 사건으로 뒤에 올리면 합치기가 맨 뒤(seq = max+1)에 둬 이력 순서가 뒤바뀐다.
-  add_oa도 같은 발송번호 줄에 붙이게 한 뒤 앞 OA 줄을 넣는 것은 후속.
+  앞 OA 이력 줄도 순서대로 넣는다 (OA는 만들지 않는다). 그 OA를 나중에 올리면 실행 끝 case_fill이
+  같은 발송번호 줄에 붙인다 (합치기 #303, 사건에 OA 더하기 #326). 앞 OA를 먼저 올려 줄이 이미
+  있으면 새로 넣지 않고 그 줄에 순서만 넣는다.
 - 사건 출원번호·사건 자료(⑥)는 여기서 쓰지 않는다. 실행 끝의 case_fill(#261)이 쓴다.
 - 건너뛰는 경우 (이유를 돌려준다, 조용히 넘기지 않음):
   이미 판이 있는 사건(다시 실행·평가 저장·같은 사건 둘째 OA), 같은 출원번호 사건이 따로 있음
@@ -187,11 +184,27 @@ class PostgresCaseSourceFill:
             # plan 안 OA 이력 줄 id → 올린 OA 이력 줄 id (판·문서가 그 줄을 가리키면 바꿔 단다)
             remap = {plan.target_event_id: event.id}
             event.seq, event.doc_number = plan.target_seq, dispatch_number
-            s.add_all(
-                CaseEvent(**vars(e))
-                for e in rows.events
-                if e.id != plan.target_event_id and e.kind != "oa"  # 앞 OA 줄은 안 넣음 (add_oa)
-            )
+            # 먼저 올린 앞 OA의 줄 (발송번호 → 줄). 순서를 모르던 줄이라 순서만 넣는다
+            own_oas = {
+                e.doc_number: e
+                for e in s.scalars(
+                    select(CaseEvent).where(
+                        CaseEvent.case_id == oa.case_id,
+                        CaseEvent.kind == "oa",
+                        CaseEvent.doc_number.is_not(None),
+                        CaseEvent.id != event.id,
+                    )
+                )
+            }
+            for e in rows.events:
+                if e.id == plan.target_event_id:
+                    continue
+                known = own_oas.get(e.doc_number) if e.kind == "oa" else None
+                if known is not None:
+                    known.seq = e.seq
+                    remap[e.id] = known.id
+                else:
+                    s.add(CaseEvent(**vars(e)))
             s.flush()
             for d in rows.documents:
                 s.add(
