@@ -47,3 +47,9 @@ export function textKindText(s: LegalSource): string | null {
 export function sentence(s: string): string {
   return /[.!?요다]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`
 }
+
+// 확인 시각 (서버가 준 ISO 글자 → "2026. 11. 23. 오후 3:05"). 읽을 수 없으면 받은 글자 그대로 (지어내지 않음)
+export function confirmedAtText(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+}

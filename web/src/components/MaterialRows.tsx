@@ -3,6 +3,7 @@ import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
 import { UploadMaterialButton } from './UploadMaterialButton'
 import { lookupResultLabel, materialKindLabel, sourceLabel } from '../labels'
+import { showDispatchNumber } from '../numberShapes'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { OAResult } from '../types/generated/OAResult'
 
@@ -39,7 +40,7 @@ export function MaterialRows({
             </span>
             <span className="label1 t3">
               {/* 통지서는 어느 판인지 발송번호로 (날짜만으로 합치지 않음) */}
-              {d.kind === 'oa' && r ? `발송번호 ${r.dispatch_number.raw_text ?? r.dispatch_number.value ?? '모름'} · ` : ''}
+              {d.kind === 'oa' && r ? `발송번호 ${showDispatchNumber(r.dispatch_number.raw_text ?? r.dispatch_number.value ?? '모름')} · ` : ''}
               {sourceLabel[d.source] ?? d.source}
             </span>
           </div>
