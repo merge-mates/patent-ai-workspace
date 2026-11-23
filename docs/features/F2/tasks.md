@@ -103,7 +103,7 @@ graph LR
 - 심사기준 장 범위: 제3부 제2장 신규성, 제3부 제3장 진보성, 제2부 제4장 청구범위 기재요건(명확성, 42조 4항). 판마다 장 첫 쪽·끝 쪽은 장 제목으로 찾고, 못 찾으면 그 판에서 멈추고 알린다 (빈 판으로 넘어가지 않음).
 - 이름: 날짜 거르기 인자는 `decided_on_or_before` (그날 포함).
 - 판례 요지 조각의 `speaker`는 `court` (판시사항·판결요지는 법원이 쓴 글).
-- 임베딩: v2와 같은 모델(`law_search.embed`). 조문 조각은 v2 벡터를 다시 쓰고 새 글만 보낸다. [가정] 고유 글 1만 개 안쪽, $0.05 안쪽. 유료 호출이라 24d에서 돌리기 전에 은진 OK.
+- 임베딩: v3에는 채우지 않는다 (11/23 정함: F2 검색은 BM25). 유료 호출·`embed_missing`·`index_embed.py`도 이 계획에서 뺀다. vector가 필요해지면 새 판에서 채운다.
 
 ```mermaid
 graph LR
@@ -117,7 +117,8 @@ graph LR
     a4 --> d1
     b1 --> d1
     c2 --> d1
-    d1 --> d2[24d task-d2 돌리기·덤프·카드]
+    d1 --> d3[24d task-d3 F2 검색 연결]
+    d3 --> d2[24d task-d2 돌리기·덤프·점수·카드]
 ```
 
 ### 24a: 검색 계약 넓히기 (공유 자원: 마이그레이션·검색 계약·채점기, 재아 리뷰)  주인: 은진
@@ -193,15 +194,27 @@ graph LR
 ### 24d: `law-idx-v3` 만들기와 덤프 (Closes #24)  주인: 은진
 #### task-d1: v3 빌드 명령 + 설정
 - 합격 기준: #24 1·2·3 (실제 데이터 모양에서)
-- 고칠 파일: `src/patent_ai/retrieval/law_v3.py`(새: 조문 v2 JSONL + `guideline-v3.jsonl` + `precedent-v3.jsonl`을 `law-idx-v3` 판으로 모으고 조문 `chunk_id` 앞머리를 바꿈, 조문 벡터는 v2 것을 그대로 둠), `src/patent_ai/core/index_embed.py`(`embed_missing(chunks, step, ctx) -> list[Chunk]`: `embedding is None`인 조각의 고유 글만 모델 호출 모듈로 임베딩. 같은 판 안에서 채움), `config/index/law-idx-v3.yaml`, `tests/retrieval/test_law_v3.py`, `tests/core/test_index_embed.py`
-- 명령: `uv run python -m patent_ai.retrieval.law_v3 --config config/index/law-idx-v3.yaml` → `data/processed/law/law-idx-v3.unembedded.jsonl`, 그 뒤 `uv run --env-file <.env> python -m patent_ai.core.index_embed missing --config config/index/law-idx-v3.yaml` → `data/processed/law/law-idx-v3.jsonl`. 입력 파일이 없거나 유형 하나가 0개면 종료 1 + 이유 한 줄.
-- 테스트할 경우: 세 유형이 한 판으로 / 조문 조각 수·글·벡터가 v2와 같음 / 유형별 0개면 멈춤 (빈 판 안 냄) / 같은 입력 같은 바이트 / `embed_missing`: 가짜 embed 호출 글 수 = 새 고유 글 수, 이미 벡터가 있는 조각은 안 보냄, 벡터 없는 조각 0개면 호출 0번
-- 확인 방법: `uv run pytest tests/retrieval/test_law_v3.py tests/core/test_index_embed.py`
+- 고칠 파일: `src/patent_ai/retrieval/law_v3.py`(새: 조문(원본에서 다시) + `guideline-v3.jsonl` + `precedent-v3.jsonl`을 `law-idx-v3` 판으로 모음, 임베딩 없음), `config/index/law-idx-v3.yaml`, `tests/retrieval/test_law_v3.py`
+- 명령: `uv run python -m patent_ai.retrieval.law_v3 --config config/index/law-idx-v3.yaml` → `data/processed/law/law-idx-v3.jsonl` (임베딩 없음). 입력 파일이 없거나 유형 하나가 0개면 종료 1 + 이유 한 줄.
+- 테스트할 경우: 세 유형이 한 판으로 / 유형별 0개면 멈춤 (빈 판 안 냄) / 같은 입력 같은 바이트 / 받지 못한 법령 판 앞 판 끝 날짜 끊기
+- 확인 방법: `uv run pytest tests/retrieval/test_law_v3.py`
 - 먼저: 24a 전체, 24b, 24c
 
+#### task-d3: F2 심사기준·판례·심결 검색 연결 (11/23 추가, 임베딩 없이 BM25)
+- 합격 기준: #24 1·2, F2 requirements 3·4·5 (요지/전문, 판단/당사자 구분)
+- 고칠 파일: `src/patent_ai/core/f2_legal_research/source_search.py`(새), `config/f2_search.yaml`(새: BM25 값. `config/f2.yaml`·`F2Settings`는 안 건드림: #29 브랜치 02570121의 `bm25` 칸과 겹치지 않게), `run.py`(`search_not_indexed` 부르던 한 줄만 바꿈), `tests/core/f2/test_f2_source_search.py`
+- 규칙:
+  - BM25는 `unique_query_terms: true`, 낱말 자르기 `char_bigram` (기준선 `m2-i2-law-bm25-char-bigram`과 같게).
+  - 심사기준: `chunk_kinds=[guideline]`, 기준일 판만. 기준일에 시행 중인 판이 없는데 조각은 있으면(가장 이른 판 앞, 판 사이 빈 기간 2018.4.24~7.31·2023.3.22~2026.3.12) `unverified(edition_unknown)`. 0개면 `body_missing`.
+  - 판례·심결: `source_kinds`로 가르고 `decided_on_or_before=기준일`. 기준일을 모르면 검색하지 않고 `unverified(input_unverified)`. 요지(`judgment_summary`)와 전문(`judgment`)은 `text_kind`로, 법원·당사자·모름은 `speaker`로 근거 후보에 남긴다.
+  - 걸린 조각은 근거 후보일 뿐이다. 주장으로 올리는 것은 근거 검토(#29) 몫이라 묶음에는 `further_review`(`not_used_candidate`)로만 둔다.
+- 테스트할 경우: 같은 절 두 판 중 기준일 판만 / 빈 기간 → `edition_unknown` / 가장 이른 판 앞 → `edition_unknown` / 심사기준 0개 → `body_missing` / 선고일이 기준일 뒤인 판례 빠짐 + 날짜 모름 건수 / 요지·전문 `text_kind` / `speaker` 그대로 / 기준일 없음 → 검색 안 함 / 반복 낱말 질의가 `unique_query_terms`로 한 번만 세어짐 / `f2.yaml` 안 바뀜
+- 확인 방법: `uv run pytest tests/core/f2 tests/retrieval`
+- 먼저: task-d1
+
 #### task-d2: 돌리기 (사람 OK가 필요한 단계) + 데이터 카드
-- 할 일: 24b·24c 명령 → `law_v3` 빌드 → `embed_missing` (유료, 돌리기 전 은진 OK, 비용 한 줄 기록) → 공유 DB `alembic current` 확인 뒤 `uv run alembic upgrade head` → `law_index_db --index-version law-idx-v3` → `make index-dump CORPUS=law` → 지문·`.revision` 확인. 마이그레이션 판이 바뀌므로 cite 덤프의 `.revision`도 새 rev로 바꿔야 한다 (표는 안 바뀌고 `.revision`만, 재아 님 몫).
-- 고칠 파일: `docs/data/law-go-kr.md`(4절 `law-idx-v3`: 유형별 조각 수, 판본 모름·날짜 모름 수, 심사기준 글자 뽑는 도구·판, 판례 고른 규칙, 심결 날짜 분포, 임베딩 비용), `docs/data/trials-kipris.md`(색인 위치), `experiments/m3-i1-law-bm25-v3/`(`card.md`·`config.yaml`·`scores.json`), `experiments/index.md`(`uv run python eval/make_index.py`로 다시 만듦)
+- 할 일: 24b·24c 명령 → `law_v3` 빌드 → 공유 DB `alembic current` 확인 뒤 `uv run alembic upgrade head` → `law_index_db --index-version law-idx-v3` → `make index-dump CORPUS=law` → 지문·`.revision` 확인. 마이그레이션 판이 바뀌므로 cite 덤프의 `.revision`도 새 rev로 바꿔야 한다 (표는 안 바뀌고 `.revision`만, 재아 님 몫).
+- 고칠 파일: `docs/data/law-go-kr.md`(4절 `law-idx-v3`: 유형별 조각 수, 판본 모름·날짜 모름 수, 심사기준 글자 뽑는 도구·판, 판례 고른 규칙, 심결 날짜 분포, 임베딩 없음 기록), `docs/data/trials-kipris.md`(색인 위치), `experiments/m3-i1-law-bm25-v3/`(`card.md`·`config.yaml`·`scores.json`), `experiments/index.md`(`uv run python eval/make_index.py`로 다시 만듦)
 - 확인 방법: `uv run python eval/run_eval.py --config experiments/m3-i1-law-bm25-v3/config.yaml` (`m2-i2-law-bm25-v2` 설정에서 `index_version`만 v3) → 조문 Hit@1·Recall@5가 v2와 같음 (같아야 a4가 맞음). 점수 한 줄을 PR 본문에.
 - 재아 님께 알릴 것 (PR 본문 + 스레드): 새 마이그레이션 rev, 덤프 이름(`law-idx-v3`)·지문, 드라이브에서 바꿀 파일(law 셋, cite `.revision`), `index-load` 순서.
 
@@ -209,6 +222,6 @@ graph LR
 - [x] 24a: task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · task-a2 (4a25c69·950e8ad) · task-a3 (dd7b1d4) · task-a4 (7cd0587). v2 실제 점수 비교는 24d task-d2로 (로컬 jsonl 없음, 공유 DB가 새 마이그레이션 전)
 - [x] 24b: task-b1 (ab4345c·5764db2·4625199, 8판 1,076조각. 빠진 판 제102·131·140호 → 101·124호에 끝 날짜) — PR #277 머지
 - [x] 24c: task-c1 (2cc940a) · task-c2 (7fd601c) · 리뷰 반영 a0379c5·5faf52c. 판례 74건·심결 12건 1,116조각 (max_chars 3000) — PR #291
-- [ ] 24d: task-d1 · task-d2
+- [ ] 24d: task-d1 (4a36dac·90d6239, 임베딩 뺌) · task-d3 · task-d2
 - 다음: #291 리뷰·머지, 24d
 - 막힌 것: 없음
