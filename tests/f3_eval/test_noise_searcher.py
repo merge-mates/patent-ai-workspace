@@ -107,3 +107,33 @@ def test_정답_줄이_범위_파일에_없으면_오류로_멈춘다(tmp_path):
     p = _write(tmp_path, [{"row_id": "A1:r1:c1:D1", "scope_doc_ids": ["D1", "N1"]}])
     with pytest.raises(RetrievalEvalError):
         load_doc_noise_scope(p, [_gold("A1:r1:c1:D1", ["D1"]), _gold("A1:r1:c2:D1", ["D1"])])
+
+
+def test_scope에_없는_인용문헌은_경고하고_넓히지_못한_수를_센다(caplog):
+    spy = _Spy()
+    s = NoiseScopedSearcher(spy, {"D1": ["N1"]})
+    s.search("q", "cite", "hybrid", 5, doc_ids=["D9"])
+    s.search("q", "cite", "hybrid", 5, doc_ids=["D9"])
+    assert spy.calls[0]["doc_ids"] == ["D9"]
+    assert s.unwidened == {"D9": 2}  # 실험 카드에 적을 수
+    assert "D9" not in caplog.text  # 문헌 ID는 로그에 찍지 않는다
+    assert "노이즈 범위" in caplog.text
+
+
+def test_정답_줄이_0개면_오류로_멈춘다(tmp_path):
+    p = _write(tmp_path, [{"row_id": "A1:r1:c1:D1", "scope_doc_ids": ["D1", "N1"]}])
+    with pytest.raises(RetrievalEvalError):
+        load_doc_noise_scope(p, [])
+
+
+def test_한_인용문헌이_OA_둘에_걸치면_오류로_멈춘다(tmp_path):
+    # search-gold 5절: 노이즈는 그 OA 줄 범위에만. OA마다 따로 감싸야 한다
+    p = _write(
+        tmp_path,
+        [
+            {"row_id": "A1:r1:c1:D1", "scope_doc_ids": ["D1", "N1"]},
+            {"row_id": "A2:r1:c1:D1", "scope_doc_ids": ["D1", "N2"]},
+        ],
+    )
+    with pytest.raises(RetrievalEvalError):
+        load_doc_noise_scope(p, [_gold("A1:r1:c1:D1", ["D1"]), _gold("A2:r1:c1:D1", ["D1"])])
