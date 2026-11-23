@@ -353,6 +353,10 @@ export const mockApi = {
     // 서버와 같게: 사람이 본 정리가 지금 정리와 다르면 확인을 남기지 않는다 (#311)
     if (seenRunId !== runId)
       throw new ApiError('stale_result', '보던 정리가 바뀌었습니다. 새 정리를 보고 다시 확인해 주세요', 409)
+    // 서버와 같게: 번호를 기다리는 동안은 막는다 (#325)
+    const waitingFor = runOf(b).waiting_for
+    if (waitingFor === 'application_number' || waitingFor === 'dispatch_number')
+      throw new ApiError('waiting_for_number', '번호를 넣으면 정리가 바뀝니다. 번호를 넣은 뒤 확인해 주세요', 409)
     const at = new Date().toISOString()
     saveConfirmedAt(b.oa_id, runId, at)
     return { oa_id: b.oa_id, run_id: runId, confirmed_at: at }

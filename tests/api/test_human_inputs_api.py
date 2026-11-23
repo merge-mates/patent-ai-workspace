@@ -8,6 +8,7 @@ import pytest
 
 import patent_ai.core.f1_oa_reader.read_oa as read_oa_mod
 from patent_ai.core.cases.human_answers import HUMAN_CHECKED
+from patent_ai.core.runs.state import RunState
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
 from tests.api.test_results_api import _env
 from tests.core.run_case_fakes import wire
@@ -190,6 +191,50 @@ def test_human_inputs_api_confirmation_옛_정리를_보고_누른_맞아요는_
     assert env.client.put(url).status_code == 422
     # 새 정리의 run_id로는 남는다
     assert env.client.put(url, json={"run_id": rerun}).status_code == 200
+
+
+@pytest.mark.parametrize("field", ["application_number", "dispatch_number"])
+def test_human_inputs_api_confirmation_번호를_기다리는_동안_맞아요는_409이고_넣은_뒤에는_남는다(
+    tmp_path, monkeypatch, field
+):
+    _unread(monkeypatch, field)
+    env = _env(tmp_path)
+    created = env.upload()
+    run_id, oa_id = created["run_id"], created["oa_id"]
+    url = f"/oas/{oa_id}/oa-result/confirmation"
+    assert env.client.get(f"/runs/{run_id}").json()["waiting_for"] == field
+
+    res = env.client.put(url, json={"run_id": run_id})
+
+    assert (res.status_code, res.json()["code"]) == (409, "waiting_for_number")
+    # 번호를 넣으면 같은 run_id로 정리가 바뀐다: 앞에서 누른 확인이 새 정리에 붙지 않는다
+    path = f"/cases/{created['case_id']}" if field == "application_number" else f"/oas/{oa_id}"
+    number = "1020990000001" if field == "application_number" else "952099000000001"
+    assert env.client.patch(path, json={field: number}).status_code == 200
+    assert env.client.get(f"/runs/{run_id}").json()["state"] == "succeeded"
+    assert env.client.get(url).json() == {"oa_id": oa_id, "run_id": run_id, "confirmed_at": None}
+    # 바뀐 정리를 보고 누르면 남는다
+    assert env.client.put(url, json={"run_id": run_id}).json()["confirmed_at"] is not None
+
+
+def test_human_inputs_api_confirmation_번호가_아닌_사람_기다림에서는_맞아요가_남는다(
+    tmp_path, monkeypatch
+):
+    _unread(monkeypatch, "application_number")
+    env = _env(tmp_path)
+    created = env.upload()
+    url = f"/oas/{created['oa_id']}/oa-result/confirmation"
+    # 같은 실행이 번호 대신 방향 고르기를 기다리게 한다
+    runs = env.runs
+    runs.transition(created["run_id"], RunState.QUEUED)
+    runs.transition(created["run_id"], RunState.RUNNING)
+    runs.transition(
+        created["run_id"], RunState.WAITING_FOR_HUMAN, waiting_for="direction_selection"
+    )
+
+    res = env.client.put(url, json={"run_id": created["run_id"]})
+
+    assert res.status_code == 200, res.text
 
 
 def test_human_inputs_api_confirmation_맞아요는_정리_전이면_404(tmp_path, monkeypatch):

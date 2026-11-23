@@ -31,6 +31,7 @@ from patent_ai.core.cases.human_answers import (
     NotWaitingError,
     ResultNotReadyError,
     StaleResultError,
+    WaitingForNumberError,
     confirm_oa_result,
     enter_application_number,
     enter_dispatch_number,
@@ -140,13 +141,19 @@ def _confirmation(
         raise AppError(
             409, "stale_result", "보던 정리가 바뀌었습니다. 새 정리를 보고 다시 확인해 주세요"
         ) from None
+    except WaitingForNumberError:
+        raise AppError(
+            409, "waiting_for_number", "번호를 넣으면 정리가 바뀝니다. 번호를 넣은 뒤 확인해 주세요"
+        ) from None
 
 
 @router.put("/oas/{oa_id}/oa-result/confirmation", response_model=ConfirmationOut)
 def put_confirmation(
-    oa_id: str, body: ConfirmationIn, unit: Unit, results: Results, human: Human
+    oa_id: str, body: ConfirmationIn, unit: Unit, results: Results, runs: Runs, human: Human
 ) -> ConfirmationOut:
-    c = _confirmation(confirm_oa_result, oa_id, unit, results, human, seen_run_id=body.run_id)
+    c = _confirmation(
+        confirm_oa_result, oa_id, unit, results, human, seen_run_id=body.run_id, runs=runs
+    )
     return ConfirmationOut(oa_id=c.oa_id, run_id=c.run_id, confirmed_at=c.confirmed_at)
 
 
