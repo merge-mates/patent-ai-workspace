@@ -37,6 +37,8 @@ services:
       - ./config:/app/config:ro
       - ./prompts:/app/prompts:ro
       - ./work:/app/work
+      # 받아 둔 사건 자료 (사건 채우기 local_folder, #54). 읽기만
+      - ./data/processed/cases:/app/data/processed/cases:ro
     depends_on:
       db:
         condition: service_healthy

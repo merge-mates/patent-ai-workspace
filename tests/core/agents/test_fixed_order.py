@@ -16,6 +16,7 @@ from patent_ai.core.agents.steps import MemoryStepRecorder
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.document import PageText
+from tests.core.agents.code_names import CODE_NAME
 
 ROOT = Path(__file__).resolve().parents[3]
 F1 = ROOT / "tests" / "fixtures" / "f1"
@@ -97,7 +98,7 @@ def test_도구가_없는_단계는_확인되지_않음으로_넘기고_이유�
     assert list(out.skipped) == ["run_later"]
     head, body = out.skipped["run_later"].split(": ", 1)
     # 앞머리 코드 뒤 글은 화면에 그대로 보이므로 설정 이름 같은 코드 이름이 없다 (이슈 #294)
-    assert head == "tool_missing" and body and "skip_if_missing" not in body
+    assert head == "tool_missing" and body and not CODE_NAME.search(body), body
     # 단계 기록 한 줄: ok가 아니고, 확인되지 않음이며, 넘긴 이유가 있다
     rec = steps.records[-1]
     assert rec.tool_name == "run_later"

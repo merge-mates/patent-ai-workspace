@@ -24,9 +24,9 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
-from patent_ai.core.agents.orchestrator import CaseStore, RunOutcome, run_case
+from patent_ai.core.agents.orchestrator import CaseFiller, CaseStore, RunOutcome, run_case
 from patent_ai.core.agents.step_inputs import InputMissing, f4_input
-from patent_ai.core.agents.steps import StepLog, StepRecord, StepRecorder
+from patent_ai.core.agents.steps import LIMIT_PREFIX, StepLog, StepRecord, StepRecorder
 from patent_ai.core.cases.case_fill import CaseFillSink
 from patent_ai.core.cases.human_answers import apply_human_numbers
 from patent_ai.core.cases.human_inputs import HumanInputStore
@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 _NEXT_STEP = {
     "extract_pages": "OA 정리 중",
     "read_oa": "OA 시점까지 자료 자르는 중",
+    "fill_case": "OA 시점까지 자료 자르는 중",  # 사건 채우기(#54) 뒤에도 자르기가 이어진다
     "cut_to_oa": "청구항–인용문헌 대비 중",
     "run_f3": "법률 근거 조사 중",
     "run_f2": "대응 방향·초안 만드는 중",
@@ -142,6 +143,7 @@ class RunCaseExecutor:
         human: HumanInputStore,
         lock: threading.Lock | None = None,
         step_log: StepLog | None = None,
+        fill_case: CaseFiller | None = None,
     ) -> None:
         self._store = store
         self._step_log = step_log or _SkippedOnlySink(store)
@@ -157,6 +159,7 @@ class RunCaseExecutor:
         self._lock = lock or threading.Lock()
         self._selections = selections  # 사람 방향 선택 기록 (초안만 다시 만드는 실행이 읽는다)
         self._human = human  # 사람이 넣은 번호 (기다리던 실행이 이어 돌 때 읽는다)
+        self._fill_case = fill_case  # F1 뒤·F3 앞 사건 채우기 (#54). 없으면 건너뛴다
 
     def execute(self, run_id: str, oa_id: str) -> None:
         with self._lock:  # 한 번에 하나만 돈다
@@ -221,6 +224,7 @@ class RunCaseExecutor:
                 self._config_path,
                 ctx=self._make_ctx(run_id),
                 steps=steps,
+                fill_case=self._fill_case,
             )
         except _Cancelled:
             self._finish(run_id, RunState.CANCELLED)
@@ -363,6 +367,10 @@ def _outcome_error(outcome: RunOutcome, steps: _LiveSteps) -> tuple[str, str]:
     """지휘 실패를 (code, message)로. 메시지는 코드 표에서 만들고 예외 원문을 쓰지 않는다."""
     err = outcome.error or {}
     code = str(err.get("code") or "")
+    if code == "limit_reached":
+        # 이유 글은 지휘가 단계·상한 이름·숫자만으로 만든 것이라 그대로 내보낸다 (#241)
+        message = str(err.get("message") or "호출 상한에 닿아 멈췄습니다")
+        return code, message.removeprefix(LIMIT_PREFIX)
     if code in _OUTCOME_MESSAGES:
         message = _OUTCOME_MESSAGES[code]
         if code == "oa_already_exists" and err.get("oa_id"):

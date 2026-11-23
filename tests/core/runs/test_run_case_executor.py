@@ -10,12 +10,13 @@ from datetime import timedelta
 
 import pytest
 
-from patent_ai.core.agents.orchestrator import CaseInput
+from patent_ai.core.agents.orchestrator import CaseInput, FilledTexts
 from patent_ai.core.cases.human_inputs import InMemoryHumanInputStore
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputNotFound
 from patent_ai.core.cases.selections import InMemorySelectionStore
 from patent_ai.core.cases.step_results import InMemoryStepResultStore
+from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.runs.cancel import CancelRegistry, request_cancel
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
 from patent_ai.core.runs.state import RunState
@@ -79,7 +80,9 @@ class _CaseFill:
 
 
 class Env:
-    def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None, step_log=None):
+    def __init__(
+        self, tmp_path, *, with_texts=True, cases=None, store=None, step_log=None, fill_case=None
+    ):
         self.store = store or MemoryStatusStore()
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.store)
@@ -104,6 +107,7 @@ class Env:
             human=self.human,
             lock=self.lock,
             step_log=step_log,
+            fill_case=fill_case,
         )
 
     def run(self, run_id=RID, oa_id=OID):
@@ -165,6 +169,29 @@ def test_run_case_청구항_글자가_없으면_F3_F4는_넘긴_이유가_남고
     assert skipped["run_f4"].startswith("input_unverified")
 
 
+class _FillCase:
+    """F1 뒤·F3 앞 사건 채우기 (#54). 채우는 규칙은 tests/core/cases/case_source가 본다."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def fill(self, oa_id, application_number, dispatch_number):
+        self.calls.append((oa_id, application_number, dispatch_number))
+        return FilledTexts(texts=texts(), reason="local_folder로 채움")
+
+
+def test_run_case_실행_입력에_글자가_없어도_사건을_채우면_F3_F4까지_돈다(tmp_path, monkeypatch):
+    wire(monkeypatch)
+    fill = _FillCase()
+    env = Env(tmp_path, with_texts=False, fill_case=fill)
+    st = env.run()
+    assert st.state == RunState.SUCCEEDED
+    assert [c[0] for c in fill.calls] == [OID]
+    assert env.step_results.step_result(RID, "f3") is not None
+    assert env.step_results.step_result(RID, "f4") is not None
+    assert env.store.skipped_steps(RID) == []
+
+
 def test_run_case_단계가_실패하면_failed이고_예외_원문은_이유에_없다(tmp_path, monkeypatch):
     wire(monkeypatch)
     wire_broken_pdf(monkeypatch, secret="비밀 원문 문장")
@@ -176,6 +203,28 @@ def test_run_case_단계가_실패하면_failed이고_예외_원문은_이유에
     assert "비밀 원문 문장" not in st.error["message"]
     assert env.oa_results.saved == []
     assert env.step_results.step_result(RID, "f3") is None
+
+
+def test_run_case_F1_읽기가_호출_상한에_닿으면_failed_limit_reached이고_원문은_이유에_없다(
+    tmp_path, monkeypatch
+):
+    wire(monkeypatch)
+    secret = "비밀 원문 문장" * 20
+
+    def over(*a, **k):
+        e = ModelCallLimitExceeded("max_model_calls", 3, 2)
+        e.args = (secret,)  # str(e)에 원문이 섞여도 이유에는 없어야 한다
+        raise e
+
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", over)
+    env = Env(tmp_path)
+    st = env.run()
+    assert st.state == RunState.FAILED
+    assert st.error["code"] == "limit_reached"
+    assert not st.error["message"].startswith("limit_reached")  # 코드는 error.code에만
+    assert "read_oa" in st.error["message"] and "max_model_calls" in st.error["message"]
+    assert "2" in st.error["message"] and secret[:10] not in st.error["message"]
+    assert env.oa_results.saved == []
 
 
 def test_run_case_이미_있는_OA면_failed_oa_already_exists(tmp_path, monkeypatch):

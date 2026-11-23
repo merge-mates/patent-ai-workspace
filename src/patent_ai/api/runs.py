@@ -20,7 +20,7 @@ from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
 from patent_ai.core.runs.launcher import LaunchFailedError, RunLauncher, launch_or_fail
 from patent_ai.core.runs.store import RunNotFound, RunStatus, RunStatusStore
-from patent_ai.core.runs.warnings import skipped_step_warnings
+from patent_ai.core.runs.warnings import is_limit_reason, skipped_step_warnings
 
 router = APIRouter()
 
@@ -54,11 +54,16 @@ class RunStatusOut(BaseModel):
     waiting_for: str | None = None  # 사람을 기다릴 때만
     error: RunErrorOut | None  # 실패했을 때만 {code, message}
     skipped_steps: list[SkippedStepOut] = []  # 자료·도구가 없어 넘긴 단계
-    warnings: list[RunWarningOut] = []  # 넘긴 단계마다 step_skipped 하나
+    warnings: list[
+        RunWarningOut
+    ] = []  # 넘긴 단계마다 step_skipped 하나 (호출 상한 이유면 limit_reached)
 
 
 def _out(s: RunStatus, store: RunStatusStore, cases: CaseAppStore) -> RunStatusOut:
     skipped = store.skipped_steps(s.run_id)
+    if s.state.value == "failed":
+        # failed 실행의 상한 이유는 error에 있다: 넘기고 계속했다는 뜻과 겹치지 않게 뺀다
+        skipped = [k for k in skipped if not is_limit_reason(k.reason)]
     oa = cases.get_oa(s.oa_id)
     return RunStatusOut(
         run_id=s.run_id,
