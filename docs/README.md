@@ -38,6 +38,7 @@
 | F3 청구항–인용문헌 대비 | 재아 | M2 | 문서 초안 | [requirements](features/F3/requirements.md) | [design](features/F3/design.md) | |
 | F4 대응 방향 후보와 초안 | 재아 | M3 | 문서 초안 | [requirements](features/F4/requirements.md) | [design](features/F4/design.md) | |
 | F5 근거·상태 표시와 진행·보류 | 은진 | M1 | 문서 초안, 구현 계획 초안 | [requirements](features/F5/requirements.md) | [design](features/F5/design.md) | [tasks](features/F5/tasks.md) |
+| 근거 다시 찾기 (F3 다시 찾기 + F4 보정 근거, 이슈 #309) | 재아 | M3 | requirements·design 초안, ADR 0004 제안 (A/B/C 비교 중) | [requirements](features/recheck/requirements.md) | [design](features/recheck/design.md) | [tasks](features/recheck/tasks.md) |
 | F2·F3 공통 검색 계약 (이슈 #65) | 재아 | M2 | requirements·design 초안 | [requirements](features/retrieval/requirements.md) | [design](features/retrieval/design.md) | |
 | F3 인용문헌 문단 검색 기준선 (이슈 #67) | 재아 | M2 | 하이브리드 RRF 기본으로 정함 (BM25·벡터·문헌 통째 LLM과 비교, 11/22 이슈 #248) | [requirements](features/cite-search/requirements.md) | [design](features/cite-search/design.md) | [tasks](features/cite-search/tasks.md) |
 
@@ -49,3 +50,4 @@
 | [0001](decisions/0001-ai-amended-claim-draft.md) | AI 대응 방향 제안·검토용 보정 청구항 초안 | 확정 (11/13 B안, 11/16 순위·이유·확신도 보완, 11/17 단위·기본 선택·확신도 3단계 보완) | 11/13 |
 | [0002](decisions/0002-first-build-scope.md) | 3주 첫 구현 범위 | 확정 (11/16 보완, 11/18 보완: 그래프는 M3 조건부·범위 안 줄임, 11/22 보완: CQ 보고 그래프는 `cite`부터 M3 켬/끔, `law`에는 안 넣음) | 11/13 |
 | [0003](decisions/0003-tech-stack.md) | 기술 구조 (앱·AI 코어·DB·에이전트·모델) | 확정 (11/23 보완: 묶음 밖 호출 상한 예외, #241) | 11/17 |
+| [0004](decisions/0004-code-flow-agent-recheck.md) | 진행은 코드, 근거 다시 찾기만 에이전트 | 제안(비교 중, 이슈 #309) | 11/23 |

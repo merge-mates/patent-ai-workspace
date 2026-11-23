@@ -80,9 +80,13 @@ def test_지휘_모델이_read_oa_뒤에_상한이면_succeeded와_넘긴_이유
     out, steps = _run(tmp_path, "agent")
     assert out.state == "succeeded" and out.error is None
     assert "read_oa" in out.results and "cut_to_oa" in out.results
-    # 아직 결과도 넘김도 없는 F3·F2·F4가 같은 이유로 넘어간다 (decide는 넘긴 목록에 없다)
-    assert list(out.skipped) == ["run_f3", "run_f2", "run_f4"]
-    for why in out.skipped.values():
+    # F3 앞 고정 단계(prepare_units, #309)는 decide 전에 돈다. 이 사건엔 청구항 글자가 없어
+    # 자기 이유로 넘어가고, 아직 결과도 넘김도 없는 F3·F2·F4는 상한 이유로 넘어간다
+    # (decide는 넘긴 목록에 없다)
+    assert list(out.skipped) == ["prepare_units", "run_f3", "run_f2", "run_f4"]
+    assert out.skipped["prepare_units"].startswith("input_unverified")
+    for tool in ("run_f3", "run_f2", "run_f4"):
+        why = out.skipped[tool]
         assert why == limit_reason("decide", ModelCallLimitExceeded("max_model_calls", 3, 2))
         _no_leak(why)
     limited = [(r.step_kind, r.tool_name) for r in steps.records if r.outcome == "limit_reached"]
@@ -94,6 +98,7 @@ def test_지휘_모델이_read_oa_뒤에_상한이면_succeeded와_넘긴_이유
     ]
     # 넘긴 줄만 skipped_reason을 가진다 (decide 줄은 목록에 안 나온다)
     assert [r.tool_name for r in steps.records if r.skipped_reason] == [
+        "prepare_units",
         "run_f3",
         "run_f2",
         "run_f4",

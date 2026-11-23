@@ -189,11 +189,20 @@ def test_고정_순서_한_바퀴가_F1_F3_F2_F4로_돈다(tmp_path, wired):
     out, steps = _go(tmp_path)
     assert out.state == "succeeded" and out.error is None
     # F1 → (자르기) → F3 → F2 → F4
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f2", "run_f4"]
+    assert out.trace == [
+        "extract_pages",
+        "read_oa",
+        "cut_to_oa",
+        "prepare_units",
+        "run_f3",
+        "run_f2",
+        "run_f4",
+    ]
     assert [(r.tool_name, r.outcome) for r in steps.records] == [
         ("extract_pages", "ok"),
         ("read_oa", "ok"),
         ("cut_to_oa", "ok"),
+        ("prepare_units", "ok"),
         ("run_f3", "ok"),
         ("run_f2", "ok"),
         ("run_f4", "ok"),
@@ -202,7 +211,7 @@ def test_고정_순서_한_바퀴가_F1_F3_F2_F4로_돈다(tmp_path, wired):
     f2 = out.results["run_f2"]
     assert isinstance(f2, F2Result) and f2.status.value == "confirmed"
     # 모델을 부른 단계는 F3·F4뿐 (F2 걷는 뼈대는 모델 없음)
-    assert [r.model_call_count for r in steps.records] == [0, 0, 0, 5, 0, 6]
+    assert [r.model_call_count for r in steps.records] == [0, 0, 0, 2, 3, 0, 6]
 
 
 def test_F3를_넘기면_F2도_입력이_없어_넘기고_이유가_남는다(tmp_path, wired):
@@ -267,7 +276,7 @@ def test_F3_모든_묶음의_출력_검사가_두_번_실패하면_failed로_끝
     assert out.error["code"] == "ModelOutputInvalid" and out.error["message"]
     # 실패한 단계와 그 뒤 단계의 결과는 없다
     assert "run_f3" not in out.results and "run_f4" not in out.results
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
+    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "prepare_units"]
     last = steps.records[-1]
     assert (last.tool_name, last.outcome, last.result_status) == ("run_f3", "failed", None)
 
@@ -298,11 +307,11 @@ def test_청구항_글자_입력이_없으면_F3_F4를_input_unverified로_넘�
         out, steps = _go(tmp_path, responses={}, texts=None)
     # 모델을 부르지 않고, 결과도 없다. 넘긴 이유는 단계마다 남는다
     assert "run_f3" not in out.results and "run_f4" not in out.results
-    assert list(out.skipped) == ["run_f3", "run_f2", "run_f4"]
+    assert list(out.skipped) == ["prepare_units", "run_f3", "run_f2", "run_f4"]
     assert out.skipped["run_f3"].startswith("input_unverified")
     assert out.skipped["run_f4"].startswith("input_unverified")
     recs = {r.tool_name: r for r in steps.records}
-    for name in ("run_f3", "run_f4"):
+    for name in ("prepare_units", "run_f3", "run_f4"):
         assert recs[name].outcome == "skipped" and recs[name].result_status == "unverified"
         assert recs[name].skipped_reason == out.skipped[name]
         assert any(name in r.getMessage() for r in caplog.records)
@@ -333,7 +342,14 @@ def test_agent_모드에서도_지휘가_F3_F4를_골라_부를_수_있다(tmp_p
     responses["agents.orchestrator"] = [pick(n) for n in ("read_oa", "run_f3", "run_f4", "stop")]
     out, _ = _go(tmp_path, responses, plan="agent")
     assert out.state == "succeeded"
-    assert out.trace == ["extract_pages", "read_oa", "cut_to_oa", "run_f3", "run_f4"]
+    assert out.trace == [
+        "extract_pages",
+        "read_oa",
+        "cut_to_oa",
+        "prepare_units",
+        "run_f3",
+        "run_f4",
+    ]
     assert out.skipped == {}
 
 

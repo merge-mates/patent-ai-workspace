@@ -212,8 +212,11 @@ def test_step_recorder_call_recorder_실행_한_번이_단계와_모델_호출�
     assert calls, "모델 호출 줄이 없다"
     # 단계 기록의 호출 수(model_call_count)가 셈할 수 있게 채워지고, 합이 전송 줄 수와 같다
     sent = {"ok", "invalid_output", "output_truncated", "transport_error"}
+    # 판단 단위 나누기(prepare_units, 고정 단계)도 모델을 부르므로 고정 단계 줄도 같이 센다 (#309)
     counted = [
-        r.model_call_count for r in steps if r.outcome == "ok" and r.step_kind == "code_tool"
+        r.model_call_count
+        for r in steps
+        if r.outcome == "ok" and r.step_kind in ("code_tool", "fixed_stage")
     ]
     assert all(c is not None for c in counted)
     assert sum(counted) == sum(1 for c in calls if c.outcome in sent)

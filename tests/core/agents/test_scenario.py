@@ -84,12 +84,13 @@ def test_사건_1건을_끝까지_돌고_도구마다_기록_한_줄(tmp_path, n
         ("code_tool", "extract_pages"),
         ("code_tool", "read_oa"),
         ("fixed_stage", "cut_to_oa"),
+        ("fixed_stage", "prepare_units"),  # 글자가 없어 넘긴 고정 단계 줄
     ]
-    assert [r.reason for r in steps.records] == ["고정 단계", "고정 순서", "고정 단계"]
+    assert [r.reason for r in steps.records][:3] == ["고정 단계", "고정 순서", "고정 단계"]
     assert all(isinstance(r, StepRecord) and r.run_id == "r_1" for r in steps.records)
-    assert all(r.outcome == "ok" for r in steps.records)
+    assert [r.outcome for r in steps.records] == ["ok", "ok", "ok", "skipped"]
     # read_oa 안에서 모델을 한 번 불렀다
-    assert [r.model_call_count for r in steps.records] == [0, 1, 0]
+    assert [r.model_call_count for r in steps.records] == [0, 1, 0, None]
 
 
 def test_잘린_답으로_다시_부른_호출도_모델_호출_수에_센다(tmp_path, notice_pages):
@@ -97,7 +98,7 @@ def test_잘린_답으로_다시_부른_호출도_모델_호출_수에_센다(tm
     cut = TransportResponse('{"application_number": ', 100, 50, "max_tokens")
     out, steps = _go(tmp_path, responses={"f1.read_oa": [cut, _basic()]})
     assert out.state == "succeeded"
-    assert [r.model_call_count for r in steps.records] == [0, 2, 0]
+    assert [r.model_call_count for r in steps.records] == [0, 2, 0, None]
 
 
 def test_agent_모드는_지휘_판단_이유를_기록한다(tmp_path, notice_pages):
@@ -231,7 +232,7 @@ def test_셀_수_없는_기록기면_모델_호출_수는_None(tmp_path, notice_
             pass
 
     _, steps = _go(tmp_path, recorder=Opaque())
-    assert [r.model_call_count for r in steps.records] == [None, None, None]
+    assert [r.model_call_count for r in steps.records] == [None, None, None, None]
 
 
 def test_StepRecord는_result_id_칸이_있고_기본은_None(tmp_path, notice_pages):

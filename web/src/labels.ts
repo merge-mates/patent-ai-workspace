@@ -64,6 +64,7 @@ export function waitingForLabel(w: string | null): string {
 // 여기 없는 이름은 목록 아래 한 줄로 따로 보인다 (숨기지 않는다)
 export const skippedStepRow: Record<string, number> = {
   read_oa: 2,
+  prepare_units: 3,
   run_f3: 3,
   run_f2: 3,
   run_f4: 4,
@@ -71,6 +72,7 @@ export const skippedStepRow: Record<string, number> = {
 
 export const skippedStepLabel: Record<string, string> = {
   read_oa: '거절이유별 정리',
+  prepare_units: '판단 단위 나누기',
   run_f3: '인용발명 대비',
   run_f2: '법률 근거',
   run_f4: '대응 방향 후보',

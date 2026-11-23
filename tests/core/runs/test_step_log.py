@@ -57,7 +57,12 @@ def test_step_recorder를_주면_ok와_skipped가_모두_기록기로_가고_저
 def test_step_recorder를_안_주면_skipped가_저장소에_남는다(tmp_path, monkeypatch):
     wire(monkeypatch)
     store = _run(tmp_path, with_texts=False)  # 글자가 없어 F3·F2·F4를 넘긴다
-    assert [s.step for s in store.skipped_steps(RID)] == ["run_f3", "run_f2", "run_f4"]
+    assert [s.step for s in store.skipped_steps(RID)] == [
+        "prepare_units",
+        "run_f3",
+        "run_f2",
+        "run_f4",
+    ]
 
 
 def test_step_recorder_쓰기가_실패하면_record_failed로_끝나고_원문은_안_보인다(

@@ -1,14 +1,17 @@
 """지휘 그래프 뼈대와 run_case(). 서버는 run_case 하나만 부른다.
 
-그래프: extract_pages(늘 처음) -> decide -> read_oa -> check_oa -> cut_to_oa -> decide
-        -> run_f3 -> decide -> run_f2 -> decide -> run_f4
+그래프: extract_pages(늘 처음) -> decide -> read_oa -> check_oa -> fill_case -> cut_to_oa
+        -> prepare_units
+        -> decide -> run_f3 -> decide -> run_f2 -> decide -> run_f4
         -> decide -> 끝
 - decide: plan=agent면 모델이 다음 code_tool을 고르고, plan=fixed_order면 설정 순서대로.
 - fixed_order 단계의 도구가 아직 없으면: 설정 skip_if_missing에 있는 이름만 "확인되지 않음"으로
   넘기고(경고 + 단계 기록에 이유), 없는 이름은 설정 오류로 failed (오타를 조용히 넘기지 않는다).
-- cut_to_oa(fixed_stage)는 decide가 stop을 낼 때 그래프 간선으로 늘 지난다 (지휘가 고르지 못함).
+- cut_to_oa·prepare_units(fixed_stage)는 그래프 간선으로 늘 지난다 (지휘가 고르지 못함).
+  prepare_units는 판단 단위 나누기(F3 앞 공통 단계)라 run_f3가 그 결과를 이어 받는다.
 - 사건 채우기(fill_case, #54): cut_to_oa 바로 앞에서 읽은 출원번호·발송번호로 사건을 OA 시점까지
   채우고, 채운 사건에서 F3·F4 글자를 다시 만든다. 부르는 쪽이 fill_case를 주지 않으면 건너뛴다.
+  prepare_units도 그 글자(state["texts"])로 청구항을 나눈다.
 - run_f3·run_f2·run_f4 입력은 앞 단계 결과와 실행 입력(CaseInput)으로 만든다 (step_inputs.py).
   입력을 못 만들면 그 단계를 "확인되지 않음(input_unverified)"으로 넘기고 이유를 남긴다.
 - 사건 상태는 따로 없다: 단계 결과를 results(도구 이름 -> 결과 스키마 객체)에 쌓아 돌려준다.
@@ -25,7 +28,13 @@ import yaml
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
-from patent_ai.core.agents.step_inputs import InputMissing, f2_input, f3_input, f4_input
+from patent_ai.core.agents.step_inputs import (
+    InputMissing,
+    f2_input,
+    f3_input,
+    f4_input,
+    prepare_input,
+)
 from patent_ai.core.agents.steps import LIMIT_PREFIX, StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
 from patent_ai.core.agents.tools_f2 import register_f2_tools
@@ -201,11 +210,14 @@ def run_case(
             )
         )
 
-    def skip(name: str, skipped: dict[str, str], why: str) -> dict[str, str]:
+    def skip(
+        name: str, skipped: dict[str, str], why: str, kind: str = "code_tool"
+    ) -> dict[str, str]:
         """단계를 돌리지 않고 넘긴다: 경고 + 단계 기록(확인되지 않음 + 이유). ok로 적지 않는다."""
         logger.warning("run_case %s: %s 단계를 넘김 (확인되지 않음): %s", run_id, name, why)
         # outcome skipped + 넘긴 이유. 서버 실행기는 이 줄을 보고 실행 상태에 넘긴 단계를 남긴다
-        note("code_tool", name, why, "skipped", StatusValue.UNVERIFIED.value)
+        # 고정 단계(prepare_units)를 넘길 때도 단계 종류를 그대로 남긴다 (agent_steps.step_kind)
+        note(kind, name, why, "skipped", StatusValue.UNVERIFIED.value)
         return {**skipped, name: why}
 
     def model_calls() -> int | None:
@@ -425,6 +437,16 @@ def run_case(
         note("fixed_stage", "fill_case", out.reason, "ok", out.texts.claims_status.value.value)
         return {"texts": out.texts, "fill_why": None}
 
+    def prepare_units_node(state: _State) -> dict:
+        """판단 단위 나누기: 고정 단계라 max_steps에 안 센다. 입력이 없으면 넘기고 이유를 남긴다."""
+        # 글자는 사건 채우기(fill_case, #54) 뒤의 state["texts"]를 읽는다 (run_f3·run_f4와 같은 곳)
+        payload = with_fill_why(
+            state, prepare_input(state["results"], state["case_id"], state["texts"])
+        )
+        if isinstance(payload, InputMissing):
+            return {"skipped": skip("prepare_units", state["skipped"], payload.why, "fixed_stage")}
+        return call_tool("prepare_units", state, payload, "고정 단계")
+
     def cut_node(state: _State) -> dict:
         return call_tool("cut_to_oa", state, {"materials": case_input.materials}, "고정 단계")
 
@@ -444,6 +466,7 @@ def run_case(
     g.add_node("check_oa", check_oa_node)
     g.add_node("fill_case", fill_case_node)
     g.add_node("cut_to_oa", cut_node)
+    g.add_node("prepare_units", prepare_units_node)
     g.add_edge(START, "extract_pages")
     g.add_conditional_edges(
         "extract_pages", lambda s: END if s["error"] else "decide", ["decide", END]
@@ -462,7 +485,13 @@ def run_case(
     # read_oa → check_oa → fill_case → cut_to_oa 는 고정 간선: 지휘가 건너뛸 수 없다
     g.add_conditional_edges("check_oa", after_check, ["fill_case", END])
     g.add_edge("fill_case", "cut_to_oa")
-    g.add_conditional_edges("cut_to_oa", lambda s: END if s["error"] else "decide", ["decide", END])
+    g.add_conditional_edges(
+        "cut_to_oa", lambda s: END if s["error"] else "prepare_units", ["prepare_units", END]
+    )
+    # cut_to_oa → prepare_units → decide 도 고정 간선 (판단 단위 나누기, #309)
+    g.add_conditional_edges(
+        "prepare_units", lambda s: END if s["error"] else "decide", ["decide", END]
+    )
 
     try:
         final = g.compile().invoke(

@@ -1,5 +1,6 @@
 """전송층. 모델 SDK(anthropic·openai)는 이 파일 안에서만 import한다."""
 
+import copy
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -12,6 +13,17 @@ class TransportResponse:
     input_tokens: int
     output_tokens: int
     # 모델이 답을 끝낸 이유 (end_turn·max_tokens 등, API 값 그대로). 모르면 None (옛 캐시·기록 파일)
+    stop_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class ConverseResponse:
+    """tool use 한 차례의 답. content는 API 답 블록(text·tool_use·thinking)을 JSON dict로
+    그대로 담는다. 다음 차례 messages에 이 블록을 고치지 않고 돌려줘야 한다."""
+
+    content: list[dict]
+    input_tokens: int
+    output_tokens: int
     stop_reason: str | None = None
 
 
@@ -56,6 +68,18 @@ class Transport(Protocol):
         self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
     ) -> TransportResponse: ...
 
+    def converse(
+        self,
+        *,
+        step: str,
+        model: str,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+        effort: str,
+        max_tokens: int,
+    ) -> ConverseResponse: ...
+
 
 def parse_anthropic_message(message) -> TransportResponse:
     """SDK 응답에서 text 블록을 이어 붙이고 토큰 수와 답을 끝낸 이유(stop_reason)를 읽는다."""
@@ -76,6 +100,45 @@ class AnthropicTransport:
     def complete(
         self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
     ) -> TransportResponse:
+        message = self._stream_message(
+            model=model,
+            max_tokens=max_tokens,
+            output_config={"effort": effort},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return parse_anthropic_message(message)
+
+    def converse(
+        self,
+        *,
+        step: str,
+        model: str,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+        effort: str,
+        max_tokens: int,
+    ) -> ConverseResponse:
+        # tool use 한 차례. 병렬 도구 호출은 끈다(한 차례에 도구 하나). 도구를 강제로 고르게 하는
+        # tool_choice(any/tool)는 쓰지 않는다: 모델이 스스로 도구를 쓸지 끝낼지 정한다.
+        message = self._stream_message(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            tools=tools,
+            tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+            output_config={"effort": effort},
+        )
+        return ConverseResponse(
+            # 블록을 JSON dict로 바꿔 다음 차례에 그대로 돌려줄 수 있게 한다
+            [b.model_dump(mode="json", exclude_none=True) for b in message.content],
+            message.usage.input_tokens,
+            message.usage.output_tokens,
+            message.stop_reason,
+        )
+
+    def _stream_message(self, **kwargs):
         import anthropic
         import httpx2  # anthropic SDK가 쓰는 HTTP 라이브러리 (스트림 중 연결 오류가 이 예외로 온다)
 
@@ -89,13 +152,8 @@ class AnthropicTransport:
         # message_start에서 오고, 출력 토큰은 답 끝 message_delta를 받아야 안다 (_partial_usage).
         stream = None  # with에 들어가기 전에 실패하면 None으로 남는다
         try:
-            with self._client.messages.stream(
-                model=model,
-                max_tokens=max_tokens,
-                output_config={"effort": effort},
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
-                message = stream.get_final_message()
+            with self._client.messages.stream(**kwargs) as stream:
+                return stream.get_final_message()
         except anthropic.APIStatusError as e:
             # 상태 200 = 스트림 중 오류 이벤트 (모델이 돌던 중). 그 밖은 서버가 요청을 거절함
             usage = _partial_usage(stream) if e.status_code == 200 else NOT_BILLED
@@ -107,7 +165,6 @@ class AnthropicTransport:
             raise TransportError(
                 f"스트림 중 연결 오류: {type(e).__name__}: {e}", True, _partial_usage(stream)
             ) from e
-        return parse_anthropic_message(message)
 
 
 def _partial_usage(stream) -> TransportUsage | None:
@@ -164,6 +221,42 @@ class FakeTransport:
                 step=step,
                 model=model,
                 prompt=prompt,
+                effort=effort,
+                max_tokens=max_tokens,
+            )
+        )
+        if step not in self.responses:
+            raise ModelConfigError(f"FakeTransport에 {step!r}의 답이 없음")
+        item = self.responses[step]
+        if isinstance(item, list):
+            i = self._used.get(step, 0)
+            if i >= len(item):
+                raise ModelConfigError(f"FakeTransport의 {step!r} 답 목록을 다 씀 ({len(item)}개)")
+            self._used[step] = i + 1
+            item = item[i]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def converse(
+        self,
+        *,
+        step: str,
+        model: str,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+        effort: str,
+        max_tokens: int,
+    ) -> ConverseResponse:
+        # messages는 사본을 쌓는다 (부른 쪽이 나중에 목록을 늘려도 그때 받은 모양이 남게)
+        self.calls.append(
+            dict(
+                step=step,
+                model=model,
+                system=system,
+                messages=copy.deepcopy(messages),
+                tools=copy.deepcopy(tools),
                 effort=effort,
                 max_tokens=max_tokens,
             )
