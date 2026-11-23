@@ -222,6 +222,6 @@ graph LR
 - [x] 24a: task-a1 (30919ab·14c059c·9f79dfe, 마이그레이션 c7e2a5d9f103) · task-a2 (4a25c69·950e8ad) · task-a3 (dd7b1d4) · task-a4 (7cd0587). v2 실제 점수 비교는 24d task-d2로 (로컬 jsonl 없음, 공유 DB가 새 마이그레이션 전)
 - [x] 24b: task-b1 (ab4345c·5764db2·4625199, 8판 1,076조각. 빠진 판 제102·131·140호 → 101·124호에 끝 날짜) — PR #277 머지
 - [x] 24c: task-c1 (2cc940a) · task-c2 (7fd601c) · 리뷰 반영 a0379c5·5faf52c. 판례 74건·심결 12건 1,116조각 (max_chars 3000) — PR #291
-- [ ] 24d: task-d1 (4a36dac·90d6239, 임베딩 뺌) · task-d3 · task-d2
+- [ ] 24d: task-d1 (4a36dac·90d6239, 임베딩 뺌) · task-d3 (bafcd70) · task-d2 일부 (공유 DB에 v3 넣고 점수·카드 씀. 남음: `make index-dump CORPUS=law`·`.revision`·재아 님께 알림)
 - 다음: #291 리뷰·머지, 24d
 - 막힌 것: 없음
