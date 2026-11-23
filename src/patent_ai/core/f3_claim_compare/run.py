@@ -4,6 +4,8 @@
 (청구항 판이 확인되지 않았으면) 단위 낮추기 -> 대비 방식(설정 impl)으로 진보성·신규성 대비 ->
 명확성 검토 -> 한 결과로 모으기. 대비 방식만 갈아 끼우고 나머지는 어느 방식이든 같다.
 묶음(판단 단위) 하나의 모델 호출 실패는 그 묶음만 보류한다 (확인되지 않음 + 이유, #166 (가)).
+청구항 나누기도 같다: 청구항 하나가 실패하면 그 청구항만 보류한다
+(`f3_split:<oa_id>:claim<N>:call_failed`·`:limit_reached`, #317).
 모든 묶음이 실패하면 단계 전체가 못 돈 것이라 예외로 올린다 (지휘가 실행 failed로 남긴다).
 호출 상한에 닿은 묶음은 실패가 아니라 limit_reached로 보류하고 끝낸다 (ADR 0003 상한).
 프로그래밍·설정 오류는 잡지 않는다.
@@ -12,8 +14,11 @@
 import logging
 
 from patent_ai.core.bundle_errors import (
+    BUNDLE_ERRORS,
     held_error_status,
+    hold_for_error,
     is_dependent_skip,
+    is_limit,
     raise_if_all_failed,
 )
 from patent_ai.core.f3_claim_compare.clarity import review_clarity_units
@@ -67,6 +72,8 @@ def _split_claims(
     splits: dict[int, SplitClaim] = {}
     held: list[HeldTask] = []
     seen: set[int] = set()
+    tried = 0  # 모델을 부르러 간 청구항 수 (글자가 없어 보류한 것은 세지 않는다)
+    errors: list[Exception] = []  # 상한이 아닌 호출 실패
     while todo:
         claim = min(todo)  # 번호 순서대로 (같은 입력 -> 같은 호출 순서)
         todo.discard(claim)
@@ -80,10 +87,22 @@ def _split_claims(
                 )
             )
             continue
-        split = split_elements(claim, claims[claim], numbers, ctx=ctx)
+        tried += 1
+        try:
+            split = split_elements(claim, claims[claim], numbers, ctx=ctx)
+        except BUNDLE_ERRORS as e:
+            # 청구항 하나의 호출 실패(다시 부른 답도 JSON·스키마가 틀림 / 전송 오류)는
+            # 그 청구항만 보류한다 (#317, 묶음 규칙 #166 (가)와 같음). 그 청구항을 인용하는
+            # 청구항은 인용 관계를 몰라 단위에 들어가지 않는다 (build_units가 보류로 남김).
+            # 호출 상한은 실패가 아니라 limit_reached 보류다 (ADR 0003, 대비·명확성과 같음)
+            held.append(hold_for_error("f3_split", f"{oa.oa_id}:claim{claim}", e))
+            if not is_limit(e):
+                errors.append(e)
+            continue
         splits[claim] = split
         # 인용되는 앞 청구항도 나눠야 독립항 묶음과 함께 읽을 청구항을 알 수 있다
         todo |= set(split.depends_on or []) - seen
+    raise_if_all_failed("run_f3 청구항 나누기", tried, errors)
     return splits, held
 
 
