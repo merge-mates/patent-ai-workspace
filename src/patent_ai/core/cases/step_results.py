@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 from patent_ai.core.f2_legal_research.run import F2Result
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
+from patent_ai.db.ids import new_id
 
 StepKind = Literal["f2", "f3", "f4"]
 StepBody = F2Result | F3Result | F4Output
@@ -38,8 +39,8 @@ def parse_body(kind: StepKind, data: dict) -> StepBody:
 
 
 class StepResultStore(Protocol):
-    def save_step_result(self, oa_id: str, run_id: str, body: StepBody) -> None:
-        """같은 실행·같은 단계를 두 번 저장하면 예외 (한 실행은 단계마다 결과 하나)."""
+    def save_step_result(self, oa_id: str, run_id: str, body: StepBody) -> str:
+        """저장한 줄의 ID를 돌려준다. 같은 실행·같은 단계를 두 번 저장하면 예외 (단계마다 하나)."""
         ...
 
     def step_result(self, run_id: str, kind: StepKind) -> StepBody | None:
@@ -58,12 +59,13 @@ class InMemoryStepResultStore:
         self._lock = threading.Lock()
         self._rows: dict[tuple[str, str], tuple[str, dict]] = {}  # (run, kind) -> (oa, 본문)
 
-    def save_step_result(self, oa_id: str, run_id: str, body: StepBody) -> None:
+    def save_step_result(self, oa_id: str, run_id: str, body: StepBody) -> str:
         kind = kind_of(body)
         with self._lock:
             if (run_id, kind) in self._rows:
                 raise DuplicateStepResult(f"{run_id}/{kind}")
             self._rows[(run_id, kind)] = (oa_id, body.model_dump(mode="json"))
+        return new_id("sres")  # Postgres 표와 같은 모양의 ID
 
     def step_result(self, run_id: str, kind: StepKind) -> StepBody | None:
         with self._lock:
