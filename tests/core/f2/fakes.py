@@ -1,11 +1,17 @@
-"""F2 테스트용 지어낸 법령 조각 (진짜 법령 글이 아니다). 색인 판은 law-idx-v2 꼴."""
+"""F2 테스트용 지어낸 법령 조각 (진짜 법령 글이 아니다). 색인 판은 config/f2.yaml과 같다."""
 
 from datetime import date
 
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 
-IV = "law-idx-v2"
+IV = "law-idx-v3"
+# F2Settings에서 빠지면 안 되는 칸 (config/f2.yaml과 같은 값)
+SEARCH = {
+    "source_search_k": 3,
+    "tokenizer": "char_bigram",
+    "bm25": {"method": "lucene", "k1": 1.5, "b": 0.75, "unique_query_terms": True},
+}
 OLD_DOC, NEW_DOC = "특허법_1001_20150101", "특허법_1002_20200101"
 DECREE_DOC = "특허법_시행령_2001_20200101"  # 같은 위치 번호라도 시행령은 다른 법
 OLD = Edition(

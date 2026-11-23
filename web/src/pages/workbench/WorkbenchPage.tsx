@@ -28,6 +28,9 @@ export function WorkbenchPage() {
   const snap = useRunSnapshot(oa.latest_run)
   const run = snap?.run ?? null
   const running = run !== null && !isRunEnded(run.state)
+  // 출원번호·발송번호를 기다리는 중: 번호를 넣으면 같은 run_id로 정리가 바뀌므로 정리 확인을 막는다 (#325)
+  const waitingNumber =
+    run?.state === 'waiting_for_human' && (snap?.waitingFor === 'application_number' || snap?.waitingFor === 'dispatch_number')
   // 검토할 사항 펼침: "전체 보기"로 #review-items 주소로 왔으면 펼쳐 있고, 직접 누른 것이 그 뒤면 그게 이긴다.
   // 눌렀을 때의 주소 key를 같이 적어 두어, 같은 주소로 다시 와도(새 key) 주소 쪽을 따른다 (effect 없이 계산)
   const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
@@ -124,7 +127,14 @@ export function WorkbenchPage() {
       </div>
 
       {/* 정리 단계 머리: 사람이 지금 보이는 정리 결과를 확인했다고 남기는 줄 */}
-      <OAResultConfirm key={oa.oa_id} oaId={oa.oa_id} runId={oaResult.run_id} confirmation={data.confirmation} running={running} />
+      <OAResultConfirm
+        key={oa.oa_id}
+        oaId={oa.oa_id}
+        runId={oaResult.run_id}
+        confirmation={data.confirmation}
+        running={running}
+        waitingNumber={waitingNumber}
+      />
       <RejectionsCard r={r} legal={data.legal} />
       {materials ? (
         <MaterialsCard m={materials} r={r} caseId={oa.case_id} />

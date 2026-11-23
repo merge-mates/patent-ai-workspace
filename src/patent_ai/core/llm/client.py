@@ -23,6 +23,7 @@ from patent_ai.core.llm.errors import (
     ModelOutputInvalid,
     RecordingMissing,
 )
+from patent_ai.core.llm.json_answer import parse_answer
 from patent_ai.core.llm.limits import CallBudget, CallRecord, CallRecorder, RunContext
 from patent_ai.core.llm.prompts import render_prompt
 from patent_ai.core.llm.transport import (
@@ -55,6 +56,22 @@ def _input_tokens_upper_bound(prompt: str) -> int:
 _INVALID_KIND_ORDER = ("not_json", "unknown_key", "missing_key", "bad_value")
 # Pydantic 오류 type -> 짧은 코드. 여기 없는 type(타입·값·모양 틀림)은 모두 bad_value
 _PYDANTIC_KIND = {"extra_forbidden": "unknown_key", "missing": "missing_key"}
+
+
+def _not_json_kind(text: str) -> str:
+    """JSON이 아닌 답의 모양만 짧은 코드로 (#317). 답 글자는 남기지 않는다.
+
+    empty = 빈 답(공백뿐) / fence = 코드 블록(```)으로 시작 / broken = `{`·`[`로 시작했지만
+    JSON이 깨짐(잘림 포함) / text = 그 밖의 글(설명 글 등)로 시작.
+    """
+    head = text.lstrip()
+    if not head:
+        return "not_json:empty"
+    if head.startswith("```"):
+        return "not_json:fence"
+    if head[0] in "{[":
+        return "not_json:broken"
+    return "not_json:text"
 
 
 def _model_in(annotation) -> type[BaseModel] | None:
@@ -316,9 +333,9 @@ def call_model(
         truncated = resp.stop_reason == TRUNCATED_STOP_REASON
         failed = "output_truncated" if truncated else "invalid_output"
         try:
-            parsed = output_schema.model_validate(json.loads(resp.text))
+            parsed = output_schema.model_validate(parse_answer(resp.text, truncated=truncated))
         except json.JSONDecodeError as e:
-            kind = "not_json"
+            kind = _not_json_kind(resp.text)
             record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
             raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason, kind) from e
         except ValidationError as e:

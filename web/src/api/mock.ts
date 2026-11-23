@@ -210,7 +210,7 @@ export const mockApi = {
   },
   // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
   async askLegal(q: LegalQuestion, chatId?: string): Promise<LegalAnswer> {
-    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q) }
+    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q), scope_changed: false }
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<ResultList<DirectionCandidates>> {
@@ -347,9 +347,16 @@ export const mockApi = {
     const runId = gateResult(b)
     return { oa_id: b.oa_id, run_id: runId, confirmed_at: loadConfirmedAt(b.oa_id, runId) }
   },
-  async confirmOAResult(oaId: string): Promise<ConfirmationOut> {
+  async confirmOAResult(oaId: string, seenRunId: string): Promise<ConfirmationOut> {
     const b = await byOA(oaId)
     const runId = gateResult(b)
+    // 서버와 같게: 사람이 본 정리가 지금 정리와 다르면 확인을 남기지 않는다 (#311)
+    if (seenRunId !== runId)
+      throw new ApiError('stale_result', '보던 정리가 바뀌었습니다. 새 정리를 보고 다시 확인해 주세요', 409)
+    // 서버와 같게: 번호를 기다리는 동안은 막는다 (#325)
+    const waitingFor = runOf(b).waiting_for
+    if (waitingFor === 'application_number' || waitingFor === 'dispatch_number')
+      throw new ApiError('waiting_for_number', '번호를 넣으면 정리가 바뀝니다. 번호를 넣은 뒤 확인해 주세요', 409)
     const at = new Date().toISOString()
     saveConfirmedAt(b.oa_id, runId, at)
     return { oa_id: b.oa_id, run_id: runId, confirmed_at: at }

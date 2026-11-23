@@ -366,7 +366,13 @@ class Nested(BaseModel):
 @pytest.mark.parametrize(
     ("text", "kind"),
     [
-        ("그냥 글", "not_json"),
+        # JSON이 아닌 답은 첫 글자 모양으로 나눈다 (#317). 답 글자는 남기지 않는다
+        ("그냥 글", "not_json:text"),
+        ("", "not_json:empty"),
+        ("  \n", "not_json:empty"),
+        # 코드 블록 안 JSON이 온전하면 벗겨서 읽으므로 (#338) 닫히지 않은 것으로 본다
+        ('```json\n{"title": "가", "count": 1\n```', "not_json:fence"),
+        ('{"title": "가", "count": 1', "not_json:broken"),
         # 모르는 키의 이름은 모델이 쓴 글자라 남기지 않는다 (위 칸이 없으면 코드만)
         ('{"title": "가", "count": 1, "몰래": "비밀 글"}', "unknown_key"),
         ('{"title": "가"}', "missing_key:count"),
@@ -425,7 +431,9 @@ def test_잘린_답도_오류_종류를_남긴다(tmp_path):
     t = scripted(TransportResponse('{"title": "진보', 10, 256, "max_tokens"))
     with pytest.raises(ModelOutputInvalid):
         run(t, cfg, CallBudget(), rec, schema=Shaped)
-    assert [(r.outcome, r.invalid_kind) for r in rec.records] == [("output_truncated", "not_json")]
+    assert [(r.outcome, r.invalid_kind) for r in rec.records] == [
+        ("output_truncated", "not_json:broken")
+    ]
 
 
 def test_검사를_통과하거나_검사_전에_끝난_호출은_오류_종류가_None(tmp_path):
