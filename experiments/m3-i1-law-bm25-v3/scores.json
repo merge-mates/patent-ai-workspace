@@ -1,0 +1,58 @@
+{
+  "experiment": "m3-i1-law-bm25-v3",
+  "commit": "bafcd70bdd2e2d8cc19bfa7b6bbc33d1b9764ae8",
+  "goldset": "tune",
+  "goldset_version": 2,
+  "gold_sha256": "969d6f8e4ad97125b40c08e6a054119b43277fbd7b53e6f7b51665beab56e862",
+  "corpus": "law",
+  "index_version": "law-idx-v3",
+  "index_fingerprint": {
+    "chunks": 12841,
+    "chunk_ids_sha256": "d014935633989e65d8abd93f3991b499a75872aa1b5df7c1424fcae54795446c"
+  },
+  "mode": "bm25",
+  "impl": "bm25",
+  "metric_name": "심사관 지정 위치 회수율",
+  "n": 19,
+  "metrics": {
+    "hit@1": 0.631578947368421,
+    "recall@1": 0.631578947368421,
+    "random_hit@1": 0.001305859338089968,
+    "random_recall@1": 0.001305859338089968,
+    "recall_ratio@1": 483.65006011459707,
+    "hit@3": 1.0,
+    "recall@3": 1.0,
+    "random_hit@3": 0.003917578014269981,
+    "random_recall@3": 0.003917578014269981,
+    "recall_ratio@3": 255.25975394936572,
+    "hit@5": 1.0,
+    "recall@5": 1.0,
+    "random_hit@5": 0.006529296690449958,
+    "random_recall@5": 0.006529296690449958,
+    "recall_ratio@5": 153.15585236961965,
+    "hit@10": 1.0,
+    "recall@10": 1.0,
+    "random_hit@10": 0.013058593380899921,
+    "random_recall@10": 0.013058593380899921,
+    "recall_ratio@10": 76.5779261848098
+  },
+  "failures": {
+    "excluded_no_location": 0,
+    "excluded_clarity": 0,
+    "excluded_same_as_other": 0,
+    "excluded_body_missing": 0,
+    "excluded_edition_unverified": 0,
+    "excluded_no_edition_in_scope": 0,
+    "excluded_gold_not_in_scope": 0,
+    "excluded_gold_items_not_in_scope": 1,
+    "cq_candidates": 0,
+    "recall_ratio_undefined": 0
+  },
+  "cost": {
+    "usd": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "external_calls": 0,
+    "seconds": 1.909
+  }
+}

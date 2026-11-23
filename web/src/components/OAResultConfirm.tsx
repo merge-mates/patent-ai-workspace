@@ -21,8 +21,8 @@ export function OAResultConfirm({
   runId: string
   // loader가 받은 확인 상태 (모르면 null)
   confirmation: ConfirmationOut | null
-  // 그 OA의 최근 실행이 아직 도는 중(queued·running). PUT은 누른 순간 서버에서 보이는 정리에 확인을 남기므로,
-  // 새 정리가 막 나온 순간에 사람이 본 적 없는 정리에 확인이 붙지 않게 도는 동안은 막는다
+  // 그 OA의 최근 실행이 아직 도는 중(queued·running). 도는 동안은 새 정리가 곧 나오니 버튼을 막는다.
+  // (막지 못한 틈에 정리가 바뀌어도 서버가 본 run_id와 비교해 409로 막는다, #311)
   running: boolean
 }) {
   const { message } = App.useApp()
@@ -37,20 +37,24 @@ export function OAResultConfirm({
   const confirmedAt = own?.confirmed_at ?? null
   // 확인 여부를 못 받았다(GET 실패 등): "확인 전"으로 그리지 않고 모름으로 보인다
   const unknown = pressed === null && confirmation === null
-  // 실행이 막 끝나 화면이 새 정리를 다시 받는 중(revalidate)일 때도 막는다: 그 사이엔 옛 정리가 보이는데 PUT은 새 정리에 남는다
+  // 실행이 막 끝나 화면이 새 정리를 다시 받는 중(revalidate)일 때도 막는다: 그 사이엔 옛 정리가 보여 누르면 409가 난다
   const busy = running || revalidator.state !== 'idle'
 
   const confirm = async () => {
     setSaving(true)
     setError(null)
     try {
-      const out = await api.confirmOAResult(oaId)
+      // 화면에 보이는 정리(runId)를 함께 보낸다. 서버는 지금 정리와 다르면 확인을 남기지 않는다 (#311)
+      const out = await api.confirmOAResult(oaId, runId)
       setPressed(out)
-      // 그래도 그 사이 새 정리가 나왔으면(응답 run_id가 화면과 다름) 사람이 본 정리가 아니라고 알린다
-      if (out.run_id !== runId)
-        message.warning('새 정리가 나와 그 정리에 확인이 남았어요. 새 정리를 보고 다시 확인해 주세요')
       await revalidator.revalidate()
     } catch (e) {
+      // 그 사이 새 정리가 나왔다(409 stale_result): 확인은 안 남았다. 새 정리를 받아 다시 보게 한다
+      if (e instanceof ApiError && e.code === 'stale_result') {
+        message.warning('그 사이 새 정리가 나와 확인을 남기지 않았어요. 새 정리를 보고 다시 확인해 주세요')
+        await revalidator.revalidate()
+        return
+      }
       setError(e instanceof ApiError ? `${e.message} (${e.code})` : e instanceof Error ? e.message : String(e))
       message.error('정리 확인을 남기지 못했어요')
     } finally {

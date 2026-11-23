@@ -74,6 +74,12 @@ F2 법률 근거 조사에 쓰는 특허법·하위 법령, 특허·실용신안
 - 법령 색인 `law-idx-v2` (#66, 11/19): `law-idx-v1.jsonl` → `uv run --env-file <.env> python -m patent_ai.core.index_embed chunks --config config/index/law-idx-v2.yaml` → `data/processed/law/law-idx-v2.jsonl` (약 320MB).
   - v1과 조각·글·위치·판본이 같고 `embedding`(text-embedding-3-small, 1536차원)만 더함. 고유 글 1,142개만 보냄 (입력 토큰 201,250, $0.0040).
   - 덤프 `law-idx-v2.dump`(약 73MB)에는 v1·v2가 같이 들어간다 (`.fingerprint.json`에 판마다 지문).
+- 법령 색인 `law-idx-v3` (#24 24d, 11/23): 조문(원본에서 v1과 같은 청커로 다시) + `guideline-v3.jsonl` + `precedent-v3.jsonl` → `uv run python -m patent_ai.retrieval.law_v3 --config config/index/law-idx-v3.yaml` → `data/processed/law/law-idx-v3.jsonl`. DB: `law_index_db --index-version law-idx-v3`.
+  - 조각 12,841개: 조문 10,649, 심사기준 1,076, 판례 968(요지 208·전문 760), 심결 148. 판본 모름 0개, 선고일·심결일 모름 0개.
+  - 임베딩 없음 (F2 검색은 BM25, 11/23). vector가 필요해지면 새 판에서 채운다. 비용 0.
+  - 받지 못한 법령 판은 설정 `missing_editions`로 앞 판 끝 날짜를 끊는다 (특허법 8곳·시행령 9곳). 안 끊으면 앞 판이 다음에 받은 판 전날까지 "확인됨"으로 늘어난다.
+  - 날짜 분포: 판례 선고일 2022년 이전 769조각·이후 199, 심결 2022년 이전 52·이후 96. 심결은 OA 발송일(2019~2022) 기준 검색에서 절반 넘게 선고일 거르기로 빠진다.
+  - 점수: `experiments/m3-i1-law-bm25-v3/` (조문 hit@1 v2와 같음, recall은 정답 항목 1개가 범위 밖이 돼 올랐음).
 
 ## 5. 쓰면 안 되는 곳
 - 저장소에 원문(조문·판결문·심사기준 본문)을 넣지 않는다. 이 카드에는 건수와 필드 이름만 둔다.

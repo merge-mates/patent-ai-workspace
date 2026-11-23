@@ -31,7 +31,7 @@ import type {
 import { requireDraftCheck } from './draftCheck'
 import { ApiError } from './errors'
 import type { ResultList } from './resultList'
-import { getJson, postForm, postJson, putNoBody, sendJson } from './http'
+import { getJson, postForm, postJson, sendJson } from './http'
 import { clearMockKeys, mockApi } from './mock'
 
 // 화면은 api 한 곳만 쓰게 mock 저장 지우기도 여기서 내보낸다
@@ -136,9 +136,11 @@ const httpApi: typeof mockApi = {
   // 발송번호 입력 (PATCH /oas/{id}, #70): 기다리던 같은 실행이 이어 돈다. 응답 run_id를 폴링에 넣는다
   setDispatchNumber: (oaId, dispatchNumber) =>
     sendJson<NumberEnteredOut>('PATCH', `/oas/${encodeURIComponent(oaId)}`, { dispatch_number: dispatchNumber }),
-  // 정리 결과 "맞아요" (#70): GET은 지금 보이는 정리의 확인 상태(없으면 confirmed_at null), PUT은 확인 남기기(본문 없음, 다시 보내면 시각만 새로)
+  // 정리 결과 "맞아요" (#70): GET은 지금 보이는 정리의 확인 상태(없으면 confirmed_at null), PUT은 확인 남기기(다시 보내면 시각만 새로)
   getOAResultConfirmation: (oaId) => getJson<ConfirmationOut>(`/oas/${encodeURIComponent(oaId)}/oa-result/confirmation`),
-  confirmOAResult: (oaId) => putNoBody<ConfirmationOut>(`/oas/${encodeURIComponent(oaId)}/oa-result/confirmation`),
+  // PUT 본문에 사람이 본 정리의 run_id를 보낸다. 그 사이 정리가 바뀌었으면 서버가 409 stale_result로 막는다 (#311)
+  confirmOAResult: (oaId, runId) =>
+    sendJson<ConfirmationOut>('PUT', `/oas/${encodeURIComponent(oaId)}/oa-result/confirmation`, { run_id: runId }),
   // GET /legal-chats/{id}: 대화 보기
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }

@@ -1,0 +1,23 @@
+# 법령 BM25를 law-idx-v3에서 (#24 24d). 조문 정답 줄은 chunk_kinds=[article]로만 찾으므로 v2와 점수가 같아야 한다 (심사기준·판례가 섞여도 안 걸림)
+experiment: m3-i1-law-bm25-v3
+feature: retrieval
+baseline: m2-i2-law-bm25-char-bigram   # 같은 설정, 색인만 v2 → v3
+goldset: tune
+goldset_version: 2
+corpus: law
+index_version: law-idx-v3
+mode: bm25
+impl: bm25
+k: [1, 3, 5, 10]
+gold: retrieval/law_gold.jsonl
+law_location_rule: overlap_or_label
+settings:
+  tokenizer: char_bigram
+  bm25:                  # bm25s 0.3.16
+    method: lucene
+    k1: 1.5
+    b: 0.75
+    unique_query_terms: true   # 긴 질의의 흔한 낱말이 여러 번 세지지 않게 (law_bm25와 같은 셈)
+budget:
+  max_usd: 0
+  max_external_calls: 0
