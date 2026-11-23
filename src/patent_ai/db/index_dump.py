@@ -31,7 +31,7 @@ from patent_ai.db.models.chunks import (
     check_cite_chunk_meta,
     check_law_chunk,
 )
-from patent_ai.index_version import corpus_of, is_index_version, version_number
+from patent_ai.index_version import corpus_of, is_db_index_version, version_number
 from patent_ai.settings import get_settings
 
 _TABLES: dict[str, type[LawChunk] | type[CiteChunk]] = {"law": LawChunk, "cite": CiteChunk}
@@ -113,9 +113,13 @@ def sibling_paths(dump: Path) -> tuple[Path, Path]:
 
 
 def _corpus_of_dump(dump: Path) -> str:
-    corpus = corpus_of(dump.name.removesuffix(".dump")) if dump.name.endswith(".dump") else None
-    if corpus is None:
-        raise IndexDumpError(f"덤프 이름이 <말뭉치>-idx-v<n>.dump 꼴이 아니다: {dump.name}")
+    name = dump.name.removesuffix(".dump") if dump.name.endswith(".dump") else ""
+    corpus = corpus_of(name)
+    # 덤프는 DB 표에서 뜨므로 v 줄만 (us 줄은 DB에 없다)
+    if corpus is None or not is_db_index_version(corpus, name):
+        raise IndexDumpError(
+            f"덤프 이름이 <말뭉치>-idx-v<n>.dump 꼴만 받는다 (us 줄 불가): {dump.name}"
+        )
     return corpus
 
 
@@ -179,7 +183,7 @@ def fixture_rows(corpus: str, text: str) -> list[LawChunk | CiteChunk]:
         d = json.loads(line)
         loc, ed = d["location"], d["edition"]
         # 말뭉치와 색인 판 앞말, 판본 상태가 그 표와 맞는지 (표가 섞이면 막는다)
-        if not is_index_version(corpus, d["index_version"]):
+        if not is_db_index_version(corpus, d["index_version"]):
             raise IndexDumpError(
                 f"{no}번째 줄 색인 판 {d['index_version']!r}이 {corpus}와 안 맞는다"
             )

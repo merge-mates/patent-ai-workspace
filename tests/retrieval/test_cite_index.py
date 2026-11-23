@@ -211,3 +211,51 @@ def test_보고에_뺀_줄_수와_경고_문구가_남는다(env):
     warns = r["docs"]["KR100A"]["warnings"]
     assert isinstance(warns, list)
     assert any("식별번호 없음" in w for w in warns)
+
+
+def test_미국_공개공보_파일_이름은_그대로_doc_id이고_두_단_추출기로_읽는다(env):
+    cfg, _, ext, tmp, _ = env
+    (tmp / "raw" / "c1" / "US20130000001A1.pdf").write_bytes(b"%PDF fake us")
+    us_pages = [
+        PageText(page=1, lines=["[0001] First part.", "1. An apparatus.", "2. The apparatus."])
+    ]
+
+    class Col:
+        calls = 0
+
+        def extract(self, pdf_path):
+            Col.calls += 1
+            return us_pages
+
+    chunks, report = build_index(cfg, ext, Col())
+    r = report.to_dict()
+    assert Col.calls == 1  # 미국 문헌만 두 단 추출기
+    assert "US20130000001A1" in r["docs"]
+    d = r["docs"]["US20130000001A1"]
+    assert d["chunks"] == {"body": 1, "claim": 2}
+    assert d["paragraph_check"] == {
+        "last": 1,
+        "accepted": 1,
+        "missing": 0,
+        "out_of_order": 0,
+        "skipped_before_first": 0,
+        "after_last": 0,
+        "dropped_lines": 0,
+    }
+    assert "paragraph_check" not in r["docs"]["KR100A"]
+    assert {c.doc_id for c in chunks} >= {"US20130000001A1", "KR100A"}
+
+
+def test_등록공보에_칼럼_추출기를_안_주면_쪽_조각과_경고로_끝난다(env):
+    # 가짜 추출기 하나(쪽 줄만 돌려줌)로 등록공보가 와도 색인 전체가 멈추지 않는다
+    cfg, _, ext, tmp, _ = env
+    (tmp / "raw" / "c1" / "US7000001B2.pdf").write_bytes(b"%PDF fake granted")
+    ext.by_name["US7000001B2.pdf"] = [
+        PageText(page=1, lines=["Made up granted page one."]),
+        PageText(page=2, lines=["Made up granted page two."]),
+    ]
+    chunks, report = build_index(cfg, ext)
+    d = report.to_dict()["docs"]["US7000001B2"]
+    assert d["chunks"] == {"body": 2}
+    assert any("칼럼·줄 못 셈" in w for w in d["warnings"])
+    assert {c.location.kind for c in chunks if c.doc_id == "US7000001B2"} == {"page"}

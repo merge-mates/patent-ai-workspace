@@ -39,7 +39,7 @@ flowchart LR
     I --> K
     B -- 글자 못 읽음 --> X[경고 + 건너뜀]
 ```
-1. 글자 추출: `PageExtractor` Protocol `extract(pdf_path) -> list[PageText]`(쪽 번호, 줄 목록) 뒤에 `PdfplumberExtractor` 하나. 이슈 #17(F1, PR #109로 main에 머지됨)의 `core/f1_oa_reader/pages.py` `extract_pages`와 같은 도구(pdfplumber)다. 다만 retrieval은 core를 import하지 않아(ADR 0003 부르는 방향) 따로 둔다. 이름이 같은 `PageText`도 모양이 다르다: 여기는 쪽 하나 `{page, lines}`, core는 문서 한 건 `{document_id, pages, status}`. 도구를 바꿀 때는 두 곳을 같이 바꾼다.
+1. 글자 추출: `PageExtractor` Protocol `extract(pdf_path) -> list[PageText]`(쪽 번호, 줄 목록) 뒤에 `PdfplumberExtractor` 하나. 미국 공보는 두 칼럼이라 단어 좌표로 칼럼을 나누는 `PdfplumberColumnExtractor`(공개공보)·`PdfplumberGrantedExtractor`(등록공보, 여백 줄 번호까지)를 쓴다 (3-2, 이슈 #308). 이슈 #17(F1, PR #109로 main에 머지됨)의 `core/f1_oa_reader/pages.py` `extract_pages`와 같은 도구(pdfplumber)다. 다만 retrieval은 core를 import하지 않아(ADR 0003 부르는 방향) 따로 둔다. 이름이 같은 `PageText`도 모양이 다르다: 여기는 쪽 하나 `{page, lines}`, core는 문서 한 건 `{document_id, pages, status}`. 도구를 바꿀 때는 두 곳을 같이 바꾼다.
 2. 머리말·꼬리말 빼기: 쪽마다 맨 위 `header_footer.scan_lines`줄·맨 아래 같은 수의 줄에서, 숫자를 `#`로 바꾼 글자가 그 문헌 쪽의 `header_footer.min_page_ratio` 이상에서 되풀이되면 뺀다(공보 번호, 쪽 번호 `- 3 -` 등). 본문 줄은 쪽마다 글자가 달라 안 빠진다. 문헌별 뺀 줄 수를 색인 보고에 남긴다.
 3. 청킹: 머리말을 뺀 줄을 쪽 순서대로 이은 뒤 나눈다 (쪽을 넘어가는 문단은 이어 붙는다). 3-2 표.
 4. 색인: 조각을 `cite_chunks`에 쓴다(계약 `chunk_to_row`). 같은 판을 다시 쓰면 그 판을 지우고 다시 넣는다. 색인 보고(git 밖 `work/cite_search/<index_version>/index_report.json`): 문헌별 쪽 수, 조각 종류별 수, 뺀 줄 수, 건너뛴 문헌과 이유.
@@ -69,11 +69,32 @@ flowchart LR
 | 요약 | `abstract` | `abstract` | `abs` | 대표도가 적혀 있으면 `figures` |
 | 도면의 간단한 설명 중 도면 하나 | `figure_desc` | `figure` | `fig3` | `figures=[3]` |
 | 논문 쪽 하나 (학회판만) | `body` | `page` (start=end=쪽) | `pg4` | |
+| 미국 공개공보(`A1`·`A2`·`A9`) 문단 번호 `0025 …`·`[0025]` 하나 | `body` | `paragraph` (start=end=25) | `p0025` | 본문에 `FIG. N`·`FIGS. N-M`이 있으면 `figures`에. label `[0025]` |
+| 미국 공개공보 청구항 하나 | `claim` | `claim` | `claim1` | `claims=[1]`. `What is claimed is:` 머리나 마지막 문단 뒤 `1. A …` 줄부터 |
+| 미국 공보 요약 (`(57) ABSTRACT`) | `abstract` | `abstract` | `abs` | 등록공보는 1쪽에서만, 공개공보는 처음 나오는 요약 머리 |
+| 미국 등록공보(`B1`·`B2`, 2001년 전 `A`) 한 칼럼의 15줄 창 | `body` | `column_line` (start=칼럼×10000+첫 줄, end=칼럼×10000+끝 줄) | `3:16-30` | label `3:16-30`. 창은 1~15, 16~30, …줄, 키는 창 안 실제 첫·끝 줄 |
+| 미국 등록공보 중 줄을 못 세는 쪽 | `body` | `page` (start=end=쪽) | `pg12` | 경고 "본문 쪽 줄 못 셈"·"칼럼·줄 못 셈" |
 - 글자층에 식별번호가 하나도 없는 한국 공보(11/19 tune에 2007년 공개공보 1건): 청구항·요약·도면 설명 조각만 만들고 본문은 조각으로 만들지 않는다. 번호를 지어내지 않는다. 경고 "식별번호 없음: 본문 조각 안 만듦"과 색인 보고에 남긴다 (재아 11/19). 그 문헌의 식별번호 정답 항목은 못 맞힘으로 남아 CQ에 보인다.
 - 문맥(발명의 명칭·소제목)은 붙이지 않는다.
-- 미국·그 밖 나라 공보: "지원 안 함" 경고로 건너뜀.
+- 미국 공보 (이슈 #308, 11/23 재아): doc_id는 파일 이름 그대로(`US20190087532A1`, `US7176960B1`). 두 칼럼이라 단어 좌표로 칼럼을 나눠 읽는다(`cite_index/columns.py`, 칼럼 경계는 쪽 가운데). 조각 글자는 영어 원문 그대로다 (F3 대비는 근거 글자를 후보 글에서 그대로 옮기므로 번역하지 않는다, 아래 3-3 1번).
+  - 공개공보 문단 번호: OCR이 `[0025]`를 `10025 ]`·`[0 025 ]`·`I0025.`·`(0025`로도 읽어 모두 받는다 (tune 미국 공개공보 6건 확정 번호 467개에 모두 나오는 꼴). 앞쪽 서지 숫자·본문 숫자(`1102 is coupled`)는 번호 후보에서 거른다: 후보 가운데 한 번에 `us_chunking.max_number_jump`(50) 넘게 뛰지 않는 가장 긴 증가 수열만 문단 번호로 본다. 50은 한 쪽 10~15문단 × 글자층 빠짐 3~4쪽까지 받는 안전값이다 (판단). tune 6건은 실제 간격 최대 3이고 상한을 5~100 어느 값으로 둬도 결과가 같아, 값을 tune에 맞추지 않았다.
+  - 문헌마다 문단 번호가 1부터 빠짐·역순 없이 이어지는지 검사해 색인 보고 `docs[doc_id].paragraph_check`(`last`, `accepted`, `missing`, `out_of_order`, `after_last`, `skipped_before_first`, `dropped_lines`)와 경고에 남긴다. 색인 전체(공개공보 46건): 빠짐 284 (번호가 글자층에 아예 없는 OCR 빠짐, 그 문단 글자는 앞 문단에 남는다. 번호를 지어내지 않는다), 역순·튐 무시 100.
+  - 대문자만 있는 줄(`BACKGROUND`)은 바로 다음 줄이 문단 번호나 청구항 시작일 때만 제목으로 버린다. 그 밖은 본문 글자다 (표 머리·약어 줄이 조용히 빠지지 않게). 어느 조각에도 못 든 줄은 `dropped_lines`와 경고.
+  - 등록공보 줄 세기: 가운데 여백의 줄 번호(5, 10, …, 65)를 쪽 좌표에 직선으로 맞춰(튀는 점은 버리고 다시 맞춤) 줄 = a·top + b. 칼럼 번호는 머리줄 아래 인쇄 번호를 먼저 쓰고, 못 읽으면 앞 쪽 + 2. 여백 숫자가 적은 짧은 쪽(청구항 끝)은 앞 쪽 맞춤을 다시 쓴다. 문헌별 `column_check`(`text_pages`, `skipped_pages`, `reused_fit_pages`, `uncounted_text_pages`, `column_number_mismatch`, `max_residual`)를 색인 보고에 남긴다. 색인 전체(등록공보 4건) 칼럼 번호 불일치 0. tune 등록공보 1건은 칼럼 1~22 빈틈 없음, 맞춤 오차 최대 0.022줄.
+  - 등록공보는 청구항 조각을 따로 만들지 않는다 (칼럼:줄 조각 안에 있다).
+- 그 밖 나라 공보: "지원 안 함" 경고로 건너뜀.
 
-### 3-3. 다음 기능에 주는 것
+### 3-3. 미국 공보에서 고려했지만 쓰지 않은 대안 (이슈 #308)
+| 번호 | 대안 | 숫자 | 안 쓴 이유 |
+|---|---|---|---|
+| 1 | 조각을 한국어로 번역해 색인 | 출력 약 90만 토큰 (판단: Haiku로 $0.5 안팎) | F3는 근거 글자를 원문과 대조한다. 번역문은 원문 글자·위치 보장이 깨진다 |
+| 2 | 질의를 영어로 번역해 BM25 | 질의마다 모델 호출 1회 더 | 먼저 번역 없이 BM25·벡터를 따로 잰다. BM25가 0에 가까우면 그때 변형으로 비교 |
+| 3 | 미국 문헌만 문헌 통째 LLM | 통째 LLM Hit@10 0.757 vs RRF 0.706 (n=68), 회당 232초·입력 192만 토큰 | F3 기본은 RRF로 정함 (#248). 문헌 종류마다 impl이 다르면 경로가 둘 |
+| 4 | USPTO full-text XML(공개 2001~, 등록 1976~)로 문단 받기 | 받은 PDF 50개 모두 글자층에 번호 있음 | 정규식 + 번호 연속 검사로 충분하고 XML은 PDF와 짝 맞추기가 따로 필요. 검사 경고가 많으면 바꾼다 |
+| 5 | 한국 문헌만 하고 미국은 미룸 | tune 정답 17%가 미국 문헌 | PRD 3.2 범위(한국·미국)와 어긋난다 |
+- 숫자·근거는 이슈 #308 본문 (11/23, main 1e08dc4 기준).
+
+### 3-4. 다음 기능에 주는 것
 - 계약 `SearchResult` 그대로. 인터페이스 변경 없음.
 
 ## 4. 판과 근거
@@ -83,7 +104,7 @@ flowchart LR
 
 ## 5. 저장
 - 쓰는 테이블: `cite_chunks` (색인 스크립트). 읽는 테이블: 같은 것 (bm25 impl, 채점기).
-- 색인 판: `cite-idx-v1`(BM25). `cite-idx-v2` = v1 조각 그대로 + `embedding`(text-embedding-3-small). 하이브리드는 v2 하나로 두 점수를 다 낸다 (BM25는 `embedding`을 안 봄). 조각 ID `<index_version>:<doc_id>:<위치 키>` (계약).
+- 색인 판: `cite-idx-v1`(BM25). `cite-idx-v2` = v1 조각 그대로 + `embedding`(text-embedding-3-small). 하이브리드는 v2 하나로 두 점수를 다 낸다 (BM25는 `embedding`을 안 봄). `cite-idx-us1` (이슈 #308) = `config/cite_search.yaml` 청킹(한국 v1 규칙 그대로 + 미국 공보)으로 `cited_v2` PDF 전부를 다시 자른 조각 + `embedding`(같은 모델). 설정 `config/index/cite-idx-us1.yaml`. 이 PR부터 `config/cite_search.yaml`에 미국 청킹이 들어가므로 v4 조각을 다시 만들려면 main 1e08dc4의 `config/cite_search.yaml`로 돌린다. 11/23 만든 판: 문헌 254, 조각 31798(미국 6430), 임베딩 호출 307번·입력 466만 토큰·$0.09. 은진 님 `v` 줄(v4·v5) 번호와 겹치지 않게 `us` 줄로 따로 센다 (`src/patent_ai/index_version.py`). DB 표 CHECK는 아직 `v` 줄만 받아 us1은 jsonl(`--chunks`)로만 쓴다 (DB에 넣으려면 마이그레이션, 사람 판단). 조각 ID `<index_version>:<doc_id>:<위치 키>` (계약).
 - `doc_id`: 한국은 [f1-oa-gold.md](../../evaluation/f1-oa-gold.md) 2.3 키 꼴(`KR20XX0000000A`, `KR10XXXXXXXB1`). 정답 파일·PDF 파일 이름이 이미 이 꼴이다. 논문은 2.3 꼴(`NPL: …`)에 `:`·공백이 있어 `row_id`·`chunk_id` 규칙과 부딪히므로 `NPL-<제목 줄임>-<학회 연도>`(구분자 `-`, 공백·`:` 없음)로 쓴다. 정답 표기 → `doc_id` 표는 채점기 쪽 `data/goldsets/tune/retrieval/cite_doc_ids.yaml`, PDF 파일 이름 → `doc_id` 표는 앱 쪽 `data/processed/cite_search/file_doc_ids.yaml`에 따로 둔다. 앱 코드가 정답에서 나온 내용을 읽지 않게, 그리고 tune 인용문헌 목록이 git에 들어가지 않게 둘 다 git 밖이다 (설정 파일에는 경로만). 한국 공보는 표기가 곧 `doc_id`라 표에는 논문 한 줄씩만 있다.
 - 검색: 키워드(BM25), 벡터(코사인), 하이브리드(둘의 RRF).
 - 외부 API·모델: OpenAI 임베딩 `text-embedding-3-small` (**유료**, 11/20 재아). 조각 글은 색인 때 한 번, 질의는 채점 전에 `embed_queries`로 한 번. 둘 다 `core/llm` `embed()`(캐시·호출 상한)를 거친다. 앱 검색 때 질의 임베딩은 부르는 쪽이 `embed`를 넘긴다 (계약 design 4절).
@@ -138,7 +159,7 @@ flowchart LR
 - 같은 지문에서 비교: 채점기는 "지문이 다른 실험끼리는 점수를 비교하지 않는다"(`eval/retrieval/score.py` 지문 주석). v1과 v2는 `chunk_id` 앞말이 달라 지문이 다르므로, BM25도 `cite-idx-v2`로 다시 채점한다 (법령 `m2-i2-law-bm25-v2`와 같은 방식). v2 BM25 점수가 v1 기준선과 같은지도 카드에 한 줄.
 - 실험 폴더 셋: `experiments/m2-i2-cite-search-bm25-v2/`(기준선), `experiments/m2-i2-cite-search-vector/`, `experiments/m2-i2-cite-search-hybrid-rrf/`.
 - 줄별 결과: `eval.retrieval.score`에 `--rows-out <git 밖 경로>`를 더해 줄마다 `row_id`·`doc_ids`·처음 맞힌 순위 `first_hit_rank`(1부터, 없으면 null)·채점 때 가장 큰 k `k_max`를 JSONL로 쓴다. `compare.py`는 `k_max`가 없거나 `--k`가 `k_max`보다 크면 종료 1 (조용히 틀린 Hit@k를 막음, 구현 중 리뷰 11/20) (`RowResult`는 지금 메모리에만 있음). scores.json 모양은 안 바꾼다. 경로가 git에 들어갈 수 있으면 종료 1 (`cite_index --jsonl`과 같은 검사).
-- 비교 도구: 새 `eval/retrieval/compare.py --rows bm25=<p> vector=<p> hybrid=<p> --k 10` → 표(마크다운): 방식별 Hit@1·3·5·10 전체 / 한국 공보(`doc_id`가 `KR`로 시작) / 논문(`NPL-`로 시작), 방식별 CQ 수(상위 10에 없음), "상위 10 안에서 한 방식만 찾은 줄" 수. 세 파일의 `row_id` 집합이 다르면 종료 1 (같은 정답 줄인지 검사). 표는 하이브리드 카드에 붙인다.
+- 비교 도구: 새 `eval/retrieval/compare.py --rows bm25=<p> vector=<p> hybrid=<p> --k 10` → 표(마크다운): 방식별 Hit@1·3·5·10 전체 / 한국 공보(`doc_id`가 `KR`로 시작) / 논문(`NPL-`로 시작) / 미국 공보(`US`로 시작, 줄이 있을 때만, #308) / 그 밖(줄이 있을 때만, 경고), 방식별 CQ 수(상위 10에 없음), "상위 10 안에서 한 방식만 찾은 줄" 수. 세 파일의 `row_id` 집합이 다르면 종료 1 (같은 정답 줄인지 검사). 표는 하이브리드 카드에 붙인다.
 - 다음 칸에 남길 것: 다른 섞는 법(점수 맞춘 가중합, 가중치, 상위 N개만) 조사는 결과를 본 뒤 (11/20 재아).
 
 ### 7-6. 2단계·가중합 (이슈 #212, 11/22 밤 실험용)
@@ -168,6 +189,10 @@ flowchart LR
 | `law_index_db`를 말뭉치 인자로 넓힘 | `cite_index --from-jsonl` | 공유 DB에 같은 안전 검사 | doc-review (11/20) | |
 | 줄별 결과 `score --rows-out` + `compare.py` | scores.json에 묶음별 칸 | scores.json 모양(공유)을 안 바꿈. 한국/논문 나눔은 cite에만 필요 | doc-review (11/20) | |
 | 채택은 문턱 없이 세 방식 표를 보고 재아가 | 주 지표 문턱 | 기준선 단계라 문턱 근거가 없음 | 11/20 인터뷰 기본값 | |
+| 미국 공보도 같은 색인에 영어 원문 조각으로 (번역 없음) | 3-3 표 1~5 | F3 근거 글자 원문 대조, PRD 3.2 범위 | 이슈 #308 (11/23 재아) | 이슈 #308 본문 |
+| 미국 문단 번호는 뛰는 폭 50 이하의 가장 긴 증가 수열로 고름, 빠짐·튐은 경고·숫자 | 정규식만 / USPTO XML | 앞쪽 서지 숫자·본문 숫자가 후보에 섞임. 50은 일반 안전값(tune 6건 실제 간격 최대 3, 값에 안 민감) | 구현 중 리뷰 (11/23) | 색인 보고 `paragraph_check` |
+| 등록공보는 여백 줄 번호로 칼럼마다 15줄 창 | 칼럼 통째 / 문단(들여쓰기) 단위 | 심사관이 `칼럼 3, 10~25줄`처럼 짚고 채점은 정렬 키 겹침으로 맞춤. 창 폭은 설정 `us_granted.lines_per_chunk` | 11/23 재아 (밤 작업) | 계약 `column_line` 정렬 키 |
+| 새 판 이름 `cite-idx-us1` (`us` 줄), DB에는 아직 안 넣음 | `cite-idx-v6` | 은진 님 `v` 줄 번호와 겹치지 않게. DB CHECK를 넓히는 마이그레이션은 따로 정함 | 11/23 재아 (이름), 판 이름 규칙 넓힘은 밤 작업 기본값 | `src/patent_ai/index_version.py` |
 
 ## 9. 테스트 방법
 - 경계: `PageExtractor.extract` 뒤(줄 목록 → 조각)와 정답 변환(JSON → gold 줄), bm25 impl(메모리 저장소 → `SearchResult`).

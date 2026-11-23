@@ -2,7 +2,8 @@
 
 명령: uv run python -m eval.retrieval.compare --rows bm25=<p> vector=<p> --k 10 [--out <md>]
 입력은 `score --rows-out`이 쓴 줄별 JSONL (row_id, doc_ids, first_hit_rank, k_max).
-방식마다 Hit@1·3·5·10을 전체 / 한국 공보 / 논문으로 나누고, CQ 수와 "이 방식만 찾은 줄" 수를 센다.
+방식마다 Hit@1·3·5·10을 전체 / 한국 공보 / 논문 / 미국 공보로 나누고,
+CQ 수와 "이 방식만 찾은 줄" 수를 센다.
 """
 
 import argparse
@@ -15,8 +16,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 HIT_KS = (1, 3, 5, 10)
-# 묶음 이름. 앞의 셋은 늘 표에 나오고, "그 밖"은 줄이 있을 때만 나온다
-GROUPS = ("전체", "한국 공보", "논문", "그 밖")
+# 묶음 이름. 앞의 셋은 늘 표에 나오고, "미국 공보"·"그 밖"은 줄이 있을 때만 나온다
+GROUPS = ("전체", "한국 공보", "논문", "미국 공보", "그 밖")
+OPTIONAL_GROUPS = ("미국 공보", "그 밖")
 
 
 class CompareError(Exception):
@@ -44,11 +46,13 @@ class CompareTable:
 
 
 def group_of(doc_ids: list[str]) -> str:
-    """첫 doc_id 앞말로 묶음을 정한다. KR이면 한국 공보, NPL-이면 논문, 나머지는 그 밖."""
+    """첫 doc_id 앞말로 묶음을 정한다. KR 한국 공보, NPL- 논문, US 미국 공보, 나머지는 그 밖."""
     if doc_ids and doc_ids[0].startswith("KR"):
         return "한국 공보"
     if doc_ids and doc_ids[0].startswith("NPL-"):
         return "논문"
+    if doc_ids and doc_ids[0].startswith("US"):
+        return "미국 공보"
     return "그 밖"
 
 
@@ -89,7 +93,7 @@ def compare(rows: dict[str, list[RowHit]], k: int) -> CompareTable:
         members[group_of(base[rid].doc_ids)].append(rid)
     n = {g: len(v) for g, v in members.items()}
     if n["그 밖"]:
-        warnings.append(f"KR·NPL-로 시작하지 않는 doc_id 줄 {n['그 밖']}개를 '그 밖'으로 센다")
+        warnings.append(f"KR·NPL-·US로 시작하지 않는 doc_id 줄 {n['그 밖']}개를 '그 밖'으로 센다")
     for g in ("한국 공보", "논문"):
         if n[g] == 0:
             warnings.append(f"{g} 줄이 없다 (그 칸은 '줄 없음')")
@@ -120,7 +124,7 @@ def render(t: CompareTable) -> str:
     """마크다운 표. 줄 없는 묶음은 '줄 없음'."""
     out: list[str] = []
     for g in GROUPS:
-        if g == "그 밖" and t.n[g] == 0:
+        if g in OPTIONAL_GROUPS and t.n[g] == 0:
             continue
         out.append(f"### {g} (줄 {t.n[g]}개)")
         out.append("| 방식 | " + " | ".join(f"Hit@{kk}" for kk in t.hit_ks) + " |")

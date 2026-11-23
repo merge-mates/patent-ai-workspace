@@ -49,6 +49,12 @@ def test_다른_말뭉치_색인_판이_섞이면_오류():
         dump_name("law", ["law-idx-v1", "cite-idx-v1"])
 
 
+def test_us_줄_색인_판은_덤프_이름을_못_짓고_오류():
+    # us 판은 DB에 아직 못 들어가므로(CHECK) 덤프 이름 규칙에도 없다 (#308)
+    with pytest.raises(IndexDumpError):
+        dump_name("cite", ["cite-idx-v4", "cite-idx-us1"])
+
+
 # ---- alembic current ----
 def test_head_표시를_뗀다():
     assert parse_alembic_current("abc123 (head)\n") == "abc123"
@@ -187,6 +193,22 @@ def test_덤프_이름이_규칙에_안_맞으면_멈춤(tmp_path):
     bad = tmp_path / "idx-v1.dump"
     bad.write_bytes(b"x")
     assert main(["check-before-load", str(bad)]) == 1
+
+
+def test_us_줄_덤프_이름은_멈춤(tmp_path, capsys):
+    bad = tmp_path / "cite-idx-us1.dump"
+    bad.write_bytes(b"x")
+    assert main(["check-before-load", str(bad)]) == 1
+    assert "v<n>.dump 꼴만" in capsys.readouterr().err
+
+
+def test_fixture에_us_줄_판이_있으면_오류():
+    line = json.dumps(
+        {"index_version": "cite-idx-us1", "location": {}, "edition": {"status": "not_applicable"}}
+    )
+    # 판 이름 검사에서 멈춰야 한다 (뒤의 다른 검사 오류로 통과하지 않게 문구까지 본다)
+    with pytest.raises(IndexDumpError, match="색인 판 'cite-idx-us1'"):
+        fixture_rows("cite", line)
 
 
 def test_넣은_뒤_다시_센_지문이_같으면_성공(tmp_path, monkeypatch, capsys):

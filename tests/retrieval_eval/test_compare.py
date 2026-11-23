@@ -20,7 +20,7 @@ HYB = rows([("a", "KR1", 1), ("b", "KR2", 3), ("c", "NPL-x-1", None)])
 
 def test_묶음별_Hit가_손_계산과_같다():
     t = compare({"bm25": BM25, "vector": VEC, "hybrid": HYB}, k=10)
-    assert t.n == {"전체": 3, "한국 공보": 2, "논문": 1, "그 밖": 0}
+    assert t.n == {"전체": 3, "한국 공보": 2, "논문": 1, "미국 공보": 0, "그 밖": 0}
     # bm25: a=1, b=없음, c=12 -> Hit@1 전체 1/3, Hit@10 전체 1/3 (c는 12위라 밖)
     assert t.hit["bm25"]["전체"][1] == pytest.approx(1 / 3)
     assert t.hit["bm25"]["전체"][10] == pytest.approx(1 / 3)
@@ -82,12 +82,74 @@ def test_row_id_집합이_다르면_오류와_다른_줄_수():
 
 
 def test_그_밖_doc_id는_그_밖으로_세고_경고(caplog):
-    assert group_of(["US1"]) == "그 밖"
+    assert group_of(["JP1"]) == "그 밖"
     assert group_of([]) == "그 밖"
-    t = compare({"x": rows([("a", "US1", 1)]), "y": rows([("a", "US1", 1)])}, 10)
+    t = compare({"x": rows([("a", "JP1", 1)]), "y": rows([("a", "JP1", 1)])}, 10)
     assert t.n["그 밖"] == 1
     assert any("그 밖" in w for w in t.warnings)
     assert "### 그 밖" in render(t)
+
+
+def test_US_doc_id는_미국_공보로_세고_그_밖_경고는_없다():
+    assert group_of(["US1"]) == "미국 공보"
+    x = rows([("a", "KR1", 1), ("b", "US1", 2), ("c", "US2", None)])
+    y = rows([("a", "KR1", 3), ("b", "US1", None), ("c", "US2", 1)])
+    t = compare({"x": x, "y": y}, 10)
+    assert t.n["미국 공보"] == 2
+    assert t.n["그 밖"] == 0
+    assert t.hit["x"]["미국 공보"][1] == 0
+    assert t.hit["x"]["미국 공보"][3] == pytest.approx(1 / 2)
+    assert t.hit["y"]["미국 공보"][1] == pytest.approx(1 / 2)
+    assert not any("그 밖" in w for w in t.warnings)
+    assert "### 미국 공보 (줄 2개)" in render(t)
+
+
+def _표(g, a, b, c):
+    """묶음 하나의 표 조각 (줄 모양은 m2-i2 카드의 비교 표와 같다)."""
+    return (
+        f"### {g}\n| 방식 | Hit@1 | Hit@3 | Hit@5 | Hit@10 |\n|---|---|---|---|---|\n"
+        + "".join(
+            f"| {m} | {' | '.join(v)} |\n"
+            for m, v in zip(("bm25", "vector", "hybrid"), (a, b, c), strict=True)
+        )
+        + "\n"
+    )
+
+
+def test_한국과_논문만_있으면_표_전체가_손으로_쓴_글과_같다():
+    # 손 계산: 순위 bm25 1/없음/12, vector 4/2/3, hybrid 1/3/없음 (a·b는 KR, c는 논문)
+    expected = (
+        _표(
+            "전체 (줄 3개)",
+            ["0.333"] * 4,
+            ["0.000", "0.667", "1.000", "1.000"],
+            ["0.333", "0.667", "0.667", "0.667"],
+        )
+        + _표(
+            "한국 공보 (줄 2개)",
+            ["0.500"] * 4,
+            ["0.000", "0.500", "1.000", "1.000"],
+            ["0.500", "1.000", "1.000", "1.000"],
+        )
+        + _표("논문 (줄 1개)", ["0.000"] * 4, ["0.000", "1.000", "1.000", "1.000"], ["0.000"] * 4)
+        + "### CQ와 한 방식만 찾은 줄 (상위 10 기준)\n"
+        "| 방식 | CQ (상위 10에 없음) | 이 방식만 찾은 줄 |\n|---|---|---|\n"
+        "| bm25 | 2 | 0 |\n| vector | 0 | 1 |\n| hybrid | 1 | 0 |\n"
+    )
+    assert render(compare({"bm25": BM25, "vector": VEC, "hybrid": HYB}, k=10)) == expected
+
+
+def test_묶음_제목_순서는_논문_미국_공보_그_밖():
+    x = rows([("a", "KR1", 1), ("c", "NPL-x-1", 1), ("d", "US1", 1), ("e", "JP1", 1)])
+    text = render(compare({"x": x, "y": x}, k=10))
+    heads = [line for line in text.splitlines() if line.startswith("### ")]
+    assert [h.split(" (")[0] for h in heads[:5]] == [
+        "### 전체",
+        "### 한국 공보",
+        "### 논문",
+        "### 미국 공보",
+        "### 그 밖",
+    ]
 
 
 def write(path, rs):
