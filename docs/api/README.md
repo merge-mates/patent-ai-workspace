@@ -99,9 +99,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 
 실행 상태 (`GET /runs/{id}`):
 ```json
-{"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "run_f3", "reason": "input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}], "warnings": [{"code": "step_skipped", "message": "run_f3 단계를 건너뜀: input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}]}
+{"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "결과 저장 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "run_f3", "reason": "input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}, {"step": "run_f2", "reason": "input_unverified: 앞 단계인 청구항–인용발명 대비 결과가 없음"}, {"step": "run_f4", "reason": "input_unverified: 앞 단계인 청구항–인용발명 대비 결과가 없음"}], "warnings": [{"code": "step_skipped", "message": "run_f3 단계를 건너뜀: input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}, {"code": "step_skipped", "message": "run_f2 단계를 건너뜀: input_unverified: 앞 단계인 청구항–인용발명 대비 결과가 없음"}, {"code": "step_skipped", "message": "run_f4 단계를 건너뜀: input_unverified: 앞 단계인 청구항–인용발명 대비 결과가 없음"}]}
 ```
-`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
+`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. 끝난 실행의 `current_step`은 마지막으로 기록된 단계 글(F4 뒤면 "결과 저장 중")이 남는다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
 
 결과 (`GET /oas/{oa_id}/oa-result`): 결과 스키마를 `result`에 그대로 담는다.
 ```json
