@@ -370,7 +370,8 @@ class Nested(BaseModel):
         ("그냥 글", "not_json:text"),
         ("", "not_json:empty"),
         ("  \n", "not_json:empty"),
-        ('```json\n{"title": "가", "count": 1}\n```', "not_json:fence"),
+        # 코드 블록 안 JSON이 온전하면 벗겨서 읽으므로 (#338) 닫히지 않은 것으로 본다
+        ('```json\n{"title": "가", "count": 1\n```', "not_json:fence"),
         ('{"title": "가", "count": 1', "not_json:broken"),
         # 모르는 키의 이름은 모델이 쓴 글자라 남기지 않는다 (위 칸이 없으면 코드만)
         ('{"title": "가", "count": 1, "몰래": "비밀 글"}', "unknown_key"),

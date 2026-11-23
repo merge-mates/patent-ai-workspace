@@ -15,8 +15,8 @@ from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from tests.core.f3 import scenario
 from tests.core.f3.run_helpers import run_scenario
 
-# 검사 오류를 붙여 다시 부른 답이 코드 블록으로 감싸여 첫 글자부터 JSON이 아님
-FENCED = TransportResponse('```json\n{"claim": 2}\n```', 100, 20)
+# 검사 오류를 붙여 다시 부른 답이 코드 블록 안에서 닫히지 않음 (온전하면 벗겨 읽음, #338)
+FENCED = TransportResponse('```json\n{"claim": 2\n```', 100, 20)
 EMPTY = TransportResponse("", 100, 0)
 # 원문은 "제1항에 있어서"로 시작하는데 독립항으로 답함 -> 원문 대조에 떨어짐 (JSON은 맞음)
 WRONG_DEPENDS = scenario._split(2, [scenario.MODULE])
