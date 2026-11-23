@@ -530,3 +530,28 @@ def test_FurtherReview는_index_version_칸이_있다():
     f = FurtherReview(chunk_id="c#1", why="other_edition", index_version="law-idx-v2")
     assert f.index_version == "law-idx-v2"
     assert FurtherReview(chunk_id="c#1", why="other_edition").index_version is None
+
+
+# ---------- 더 볼 조각의 출처 (#28 28a) ----------
+
+
+def _further(**kw):
+    data = {"chunk_id": "law_patent#12", "why": "not_used_candidate", "index_version": "law-idx-v2"}
+    return FurtherReview(**{**data, **kw})
+
+
+def test_FurtherReview_source는_비울_수_있고_옛_결과도_열린다():
+    old = {"chunk_id": "c#1", "why": "other_edition", "note": None, "index_version": None}
+    assert FurtherReview.model_validate(old).source is None
+
+
+def test_FurtherReview_source는_원문_위치_판례_칸까지_왕복한다():
+    src = source(kind="precedent", edition=None, decided_on=date(2015, 3, 12), court="대법원")
+    back = FurtherReview.model_validate_json(_further(source=src).model_dump_json())
+    assert back.source == src
+
+
+@pytest.mark.parametrize("wrong", [{"chunk_id": "other#1"}, {"index_version": "law-idx-v3"}])
+def test_FurtherReview_source가_다른_조각이면_거부한다(wrong):
+    with pytest.raises(ValidationError, match="source"):
+        _further(source=source(), **wrong)

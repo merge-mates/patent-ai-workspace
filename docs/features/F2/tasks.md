@@ -278,5 +278,26 @@ graph LR
 - 다음: PR #316 머지 (/check 통과. task별·이슈 리뷰를 합쳐 막음 2·고칠 것 8 반영, 이 중 이슈 전체 리뷰는 막음 1·고칠 것 3: 6db2177·ee3ad79·4d38f38, 재리뷰 통과. 재아 리뷰 고칠 것 2 반영)
 - 막힌 것: 없음
 
+## m3-i2-28a  (11/23)  상태: 승인 (11/23 은진 "추천대로 가자")  (이슈 #28, 계획 둘 = PR 둘. 28a는 Refs, 28b가 Closes #28)
+**목표** (한 줄): F2가 찾은 심사기준·판례·심결의 원문·위치·판본·선고일을 묶음에 남기고, 출처 확인을 거쳐 화면에 보이며, 법률 질문 탭도 세 자료를 찾는다 (모델 호출·마이그레이션 없음).
+**맡은 합격 기준**: #28 본문 1(모든 결과에 출처·판본·원문 위치), 2(없는 출처 0건)
+**끝나면 보여 줄 것**: `uv run pytest tests/core/schemas tests/core/f2 tests/api` + 근거 화면·법률 질문 탭 스크린샷
+**공유 자원**: 결과 스키마 `FurtherReview.source` (비울 수 있음, 저장된 옛 결과는 그대로 열림)
+**미룬 것**: 시행령 빠진 판, 심결 더 받기, 심사기준 정답 1줄, 출원일판 비교·법령 API·판례 번호 조회. 후보를 F4 프롬프트에 넣는 일은 28b.
+
+- task-1 `FurtherReview.source`(`LegalSource | None`): 조각 ID·색인 판이 `source.evidence`와 다르면 거부. 후보에 `source`를 채운다. 옛 JSON(칸 없음)도 열린다. `openapi.yaml`·화면 타입 다시 만들기.
+- task-2 출처 확인: `check_source`가 판례·심결은 선고일 ≤ 기준일도 본다 (날짜 모름은 통과 못 함). 세 유형 후보도 `check_source`를 지난 것만 남기고, 걸린 것이 모두 빠지면 `unverified(evidence_rejected)`.
+- task-3 법률 질문 탭: 고른 유형만 `search_sources`로 찾아 `further_review`에. 기준일 = 질문 시점, 없으면 확인 기준일. 주장 0개인데 후보가 있으면 "없음"이 아니라 `unverified(not_extracted)`. `search_not_indexed`는 쓰는 곳이 없어 지운다.
+- task-4 화면: `LegalBundleView`·`RejectionLaw`에서 추가 검토할 자료의 위치·판본(판례·심결은 선고일·전문/요지·화자)을 보인다.
+- 확인 방법: `uv run pytest`, `npm run lint && npm run build`(web), 스크린샷
+
+### 진행
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- 다음: push·PR (은진 OK 뒤), 재아 리뷰. 실제 `law-idx-v3` 조각 파일로 질문 둘을 검색해 네 유형이 다 찾아지는 것 확인 (DB·모델 없음)
+- 막힌 것: 없음
+
 ## m3-i2-29b  (뒤에)  상태: 계획 전  (이슈 #29, Closes)
 - 답 쓰기(모델) + 근거 검토 에이전트(`split`/`code_only`, `config/f2.yaml` `impl`), 질문 하나 = 실행 하나(`runs`·`agent_steps`), 자연어 시점과 `clarifications`, 주입 오류 탐지율(#35 정답, `feature: f2` 채점기). `run_f2`와 `answer_question` 두 진입점을 design 7-1 `research()` 하나로 모은다. 29a 머지 뒤 계획을 쓴다.

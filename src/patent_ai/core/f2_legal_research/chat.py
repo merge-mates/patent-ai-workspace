@@ -3,7 +3,7 @@
 모델을 부르지 않는다 (design 2절 1·3·4단계를 질문에 적용):
 1. `next_question`: 요청 + 앞 질문 -> 질문. 빠진 조건(시점·자료 유형)은 앞 질문에서 물려받는다.
 2. `answer_question`: 조문을 찾고(번호가 있으면 ID 조회, 없으면 BM25), 출처 확인을 지난 근거만
-   주장에 넣는다. 심사기준·판례·심결은 색인 전이라 body_missing으로 기록만 한다.
+   주장에 넣는다. 심사기준·판례·심결은 BM25로 찾아 추가 검토할 자료(`further_review`)로만 둔다.
 주장 글은 "어느 조문을 찾았나"만 적는다. 이 사건에 적용된다는 판단은 쓰지 않는다.
 """
 
@@ -13,15 +13,14 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from patent_ai.core.f2_legal_research.refs import ArticleRef, article_refs_in_text
+from patent_ai.core.f2_legal_research.source_search import candidate_reviews, search_sources
 from patent_ai.core.f2_legal_research.tools import (
     ALL_KINDS,
-    NOT_SEARCHED,
     LawPool,
     further_review,
     get_article,
     law_of,
     search_article,
-    search_not_indexed,
     statute_source,
 )
 from patent_ai.core.schemas.common import (
@@ -106,21 +105,21 @@ def _no_source_status(status: Status) -> Status:
     return status
 
 
-def _empty_status(statuses: list[Status], skipped: int, scope: str) -> Status:
-    """주장이 0개일 때의 묶음 status (못 찾음 != 없음)."""
+def _empty_status(statuses: list[Status], skipped: int, scopes: list[str]) -> Status:
+    """주장이 0개일 때의 묶음 status (못 찾음 != 없음). statuses는 법령이 앞, 그 밖 유형이 뒤."""
     if skipped > 0:
         # 판본을 몰라 뺀 조각이 있으면 "없음"이 아니다
         return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.EDITION_UNKNOWN)
-    for s in statuses:
-        if s.value == StatusValue.UNVERIFIED:
-            return s
     if any(s.value == StatusValue.CONFLICT for s in statuses):
         # 같은 날 시행판이 둘: 고를 근거가 없다
         return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+    for s in statuses:
+        if s.value == StatusValue.UNVERIFIED:
+            return s
     if statuses and all(s.value == StatusValue.NOT_FOUND_IN_SCOPE for s in statuses):
-        return Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
-    # 법령을 찾지 않았거나 이유를 알 수 없음: 확인되지 않음
-    return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING)
+        return Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope="; ".join(scopes))
+    # 추가 검토할 자료는 찾았지만 주장으로 옮기지 않았다 (근거 검토는 29b): "없음"이 아니다
+    return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
 
 
 def _before_earliest(pool: LawPool, as_of: date) -> bool:
@@ -205,22 +204,24 @@ def answer_question(
     checked_on: date,
     prior_evidence: list[str],
     search_k: int,
+    source_search_k: int,
 ) -> LegalEvidenceBundle:
     """질문 하나 -> 법률 근거 묶음. 검색 기준일 = 질문 시점, 없으면 확인 기준일 (design 4절)."""
     as_of = question.as_of or checked_on
     claims: list[LegalClaim] = []
     logs: list[SearchLogEntry] = []
     missed: list[tuple[str, Status]] = []
-    skipped, scope = 0, f"{pool.index_version} 법령 (찾지 않음)"
+    scopes: list[str] = []  # 찾아본 범위 글 (유형마다)
     refs: list[ArticleRef] = []
     overlaps: list[FurtherReview] = []
 
     # STATUTE를 고른 때만 법령을 찾는다
     if LegalSourceKind.STATUTE in question.source_kinds:
         refs = article_refs_in_text(question.text)
-        found, logs, missed, skipped, scope, overlaps = _statute_candidates(
+        found, logs, missed, _, scope, overlaps = _statute_candidates(
             question, refs, as_of, pool, searcher, search_k
         )
+        scopes.append(scope)
         for label, chunk in found:
             # 출처 확인을 지난 근거만 주장에 넣는다 (없는 출처 0건)
             source = statute_source(chunk, label, as_of, checked_on, pool)
@@ -266,16 +267,17 @@ def answer_question(
                 )
             )
 
-    # 심사기준·판례·심결: 아직 검색이 없어 body_missing 기록만 (못 찾음 != 없음)
-    logs += [
-        search_not_indexed(pool, kind, as_of)
-        for kind in NOT_SEARCHED
-        if kind in question.source_kinds
-    ]
+    # 심사기준·판례·심결: 고른 유형만 찾아 추가 검토할 자료로 둔다 (주장으로 올리는 것은 29b)
+    others = search_sources(
+        pool, searcher, question.text, as_of, source_search_k, checked_on, question.source_kinds
+    )
+    logs += [o.log for o in others]
+    other_statuses = [o.log.status for o in others if o.log.status is not None]
+    scopes += [s.searched_scope for s in other_statuses if s.searched_scope]
     used = {s.evidence.chunk_id for c in claims for s in c.sources}
     in_force = {c.chunk_id for c in pool.in_force(as_of)}
     known = {c.chunk_id: c for c in pool.chunks}
-    further: list[FurtherReview] = list(overlaps)
+    further: list[FurtherReview] = [*overlaps, *candidate_reviews(others)]
     for cid in dict.fromkeys(prior_evidence):
         if cid in used or cid in in_force:
             continue
@@ -296,7 +298,8 @@ def answer_question(
         status = summarize_bundle_status(claims)
     else:
         logger.warning("법률 질문 %s: 주장 0개 (근거 0개 묶음)", bundle_id)
-        status = _empty_status([s for _, s in missed], skipped, scope)
+        skipped = sum(e.skipped_unverified_edition + e.skipped_unknown_date for e in logs)
+        status = _empty_status([*(s for _, s in missed), *other_statuses], skipped, scopes)
     return LegalEvidenceBundle(
         bundle_id=bundle_id,
         question=question,

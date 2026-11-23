@@ -7,13 +7,21 @@ import pytest
 from patent_ai.core.f2_legal_research.run import load_f2_settings
 from patent_ai.core.f2_legal_research.source_search import (
     build_searcher,
+    candidate_reviews,
     search_sources,
 )
 from patent_ai.core.f2_legal_research.tools import LawPool
 from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import LegalSourceKind, Speaker, TextKind
 from patent_ai.retrieval.repository import InMemoryChunkRepository
-from patent_ai.retrieval.schemas import Chunk, Edition, Location
+from patent_ai.retrieval.schemas import (
+    Chunk,
+    Edition,
+    Location,
+    SearchHit,
+    SearchResult,
+    SearchScope,
+)
 
 IV = "law-idx-v3"
 G1 = Edition(
@@ -176,3 +184,58 @@ def test_0개인데_판본_모름으로_건너뛴_심사기준이_있으면_확�
     got = _run(pool, date(2018, 9, 1), "전혀 다른 말 xyz")[LegalSourceKind.GUIDELINE]
     assert got.sources == () and got.log.skipped_unverified_edition == 1
     assert got.log.status.reason == UnverifiedReason.EDITION_UNKNOWN
+
+
+# --- 후보의 출처와 출처 확인 (#28 28a) ---
+
+
+def test_후보에_원문_위치_판본_선고일이_source로_남는다():
+    found = list(_run(_pool(*_all()), date(2018, 9, 1)).values())
+    by = {f.chunk_id.split(":")[-1]: f.source for f in candidate_reviews(found)}
+    assert set(by) == {"g2", "p1", "p2", "t1"}
+    guide, case = by["g2"], by["p2"]
+    assert guide.evidence.location == "1쪽 (3부 3장)" and "2018-08-01" in guide.evidence.edition
+    assert guide.evidence.raw_text.startswith("진보성 판단")
+    assert (case.decided_on, case.text_kind, case.speaker) == (
+        date(2012, 5, 1), TextKind.FULL, Speaker.PARTY,
+    )  # fmt: skip
+
+
+class _FixedSearcher:
+    """정한 조각을 그대로 내는 검색기: 색인과 어긋난 결과가 와도 출처 확인이 막는지 본다."""
+
+    def __init__(self, *chunks: Chunk):
+        self.chunks = chunks
+
+    def search(self, query, corpus, mode, k, **kw):
+        hits = [
+            SearchHit(**c.model_dump(exclude={"embedding"}), score=1.0, rank=i)
+            for i, c in enumerate(self.chunks, 1)
+        ]
+        scope = SearchScope(k=k)
+        return SearchResult(corpus=corpus, index_version=IV, mode=mode, scope=scope, hits=hits)
+
+
+def _precedents(searcher):
+    as_of = date(2018, 9, 1)
+    got = search_sources(
+        _pool(*_all()), searcher, Q, as_of, 3, CHECKED, [LegalSourceKind.PRECEDENT]
+    )
+    assert [r.log.source_kind for r in got] == [LegalSourceKind.PRECEDENT]
+    return got[0]
+
+
+def test_색인과_다른_글_미래_판결_날짜_모름은_출처_확인에서_빠진다(caplog):
+    by = {c.chunk_id.split(":")[-1]: c for c in _all()}
+    fake = by["p2"].model_copy(update={"text": "지어낸 판결 글"})
+    got = _precedents(_FixedSearcher(by["p1"], fake, by["p3"], by["p4"]))
+    assert [s.evidence.chunk_id for s in got.sources] == [f"{IV}:p1"]
+    assert got.log.hits == 1 and got.log.status.value == StatusValue.CONFIRMED
+    assert "출처 확인" in caplog.text
+
+
+def test_걸린_것이_모두_출처_확인에서_빠지면_evidence_rejected():
+    later = next(c for c in _all() if c.chunk_id.endswith(":p3"))
+    got = _precedents(_FixedSearcher(later))
+    assert got.sources == () and got.log.hits == 0 and got.log.queries == 1
+    assert got.log.status.reason == UnverifiedReason.EVIDENCE_REJECTED

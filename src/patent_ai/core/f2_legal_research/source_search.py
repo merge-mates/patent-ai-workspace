@@ -11,10 +11,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 
-from patent_ai.core.f2_legal_research.tools import CORPUS, LawPool
+from patent_ai.core.f2_legal_research.tools import CASE_KINDS, CORPUS, LawPool, check_source
 from patent_ai.core.schemas.common import Evidence, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import (
     FurtherReview,
@@ -27,11 +28,10 @@ from patent_ai.core.schemas.legal_evidence import (
 )
 from patent_ai.retrieval.contract import Searcher, get_searcher
 from patent_ai.retrieval.repository import InMemoryChunkRepository
-from patent_ai.retrieval.schemas import ChunkKind, SearchHit, SearchResult, SourceKind
+from patent_ai.retrieval.schemas import SearchHit, SearchResult, SourceKind
 
 logger = logging.getLogger(__name__)
 
-_CASE_KINDS: list[ChunkKind] = ["judgment_summary", "judgment"]
 # 자료 유형 -> 색인의 source_kind
 _SOURCE_KIND: dict[LegalSourceKind, SourceKind] = {
     LegalSourceKind.GUIDELINE: "guideline",
@@ -129,7 +129,15 @@ def _finish(kind, pool, as_of, res: SearchResult, scope: str, checked_on: date) 
             return SourceSearch(_entry(kind, pool, as_of, 1, 0, _unverified(reason), res))
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
         return SourceSearch(_entry(kind, pool, as_of, 1, 0, status, res))
-    sources = tuple(_to_source(h, kind, checked_on) for h in res.hits)
+    # 출처 확인(무조건 도는 코드 단계): 색인에 있고 글이 그대로이고 기준일에 맞는 것만 남긴다
+    passed = [h for h in res.hits if check_source(pool, h.chunk_id, h.text, as_of)]
+    for h in res.hits:
+        if h not in passed:
+            logger.warning("%s %s 후보가 출처 확인에서 빠짐", kind, h.chunk_id)
+    if not passed:
+        reason = UnverifiedReason.EVIDENCE_REJECTED
+        return SourceSearch(_entry(kind, pool, as_of, 1, 0, _unverified(reason), res))
+    sources = tuple(_to_source(h, kind, checked_on) for h in passed)
     status = Status(value=StatusValue.CONFIRMED, checked=f"{scope} BM25 검색 {len(sources)}건")
     return SourceSearch(_entry(kind, pool, as_of, 1, len(sources), status, res), sources)
 
@@ -174,7 +182,7 @@ def search_cases(
             _entry(kind, pool, None, 0, 0, _unverified(UnverifiedReason.INPUT_UNVERIFIED))
         )
     res = searcher.search(
-        query, CORPUS, "bm25", k, as_of=as_of, chunk_kinds=_CASE_KINDS,
+        query, CORPUS, "bm25", k, as_of=as_of, chunk_kinds=CASE_KINDS,
         source_kinds=[_SOURCE_KIND[kind]], decided_on_or_before=as_of,
     )  # fmt: skip
     scope = f"{pool.index_version} {kind.value} (선고일 {as_of.isoformat()} 이전)"
@@ -183,20 +191,24 @@ def search_cases(
 
 def search_sources(
     pool: LawPool, searcher: Searcher, query: str, as_of: date | None, k: int,
-    checked_on: date,
+    checked_on: date, kinds: Sequence[LegalSourceKind] = tuple(_SOURCE_KIND),
 ) -> list[SourceSearch]:  # fmt: skip
-    """심사기준·판례·심결 세 유형을 차례로 찾는다."""
-    return [
-        search_guideline(searcher, pool, query, as_of, k, checked_on),
-        search_cases(searcher, pool, LegalSourceKind.PRECEDENT, query, as_of, k, checked_on),
-        search_cases(searcher, pool, LegalSourceKind.TRIAL, query, as_of, k, checked_on),
-    ]
+    """심사기준·판례·심결을 차례로 찾는다. kinds에 든 유형만 (법령은 여기서 찾지 않는다)."""
+    out = []
+    for kind in _SOURCE_KIND:
+        if kind not in kinds:
+            continue
+        if kind == LegalSourceKind.GUIDELINE:
+            out.append(search_guideline(searcher, pool, query, as_of, k, checked_on))
+        else:
+            out.append(search_cases(searcher, pool, kind, query, as_of, k, checked_on))
+    return out
 
 
 def candidate_reviews(found: list[SourceSearch]) -> list[FurtherReview]:
     """걸린 근거 후보를 묶음의 '더 볼 것'으로 옮긴다 (주장으로 올리는 것은 근거 검토 #29 몫).
 
-    요지/전문과 판단/당사자를 note에 남겨 사람이 어느 글인지 바로 안다.
+    요지/전문과 판단/당사자를 note에 남겨 사람이 어느 글인지 바로 안다. 원문·위치·판본은 source에.
     """
     out = []
     for r in found:
@@ -212,6 +224,7 @@ def candidate_reviews(found: list[SourceSearch]) -> list[FurtherReview]:
                     why=FurtherReviewWhy.NOT_USED_CANDIDATE,
                     note=f"{s.source_kind.value} {s.identifier} ({what}): 근거 검토 전 후보",
                     index_version=ev.index_version,
+                    source=s,
                 )
             )
     return out

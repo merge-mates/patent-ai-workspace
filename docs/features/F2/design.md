@@ -96,7 +96,7 @@ flowchart LR
       "flags": []
     }
   ],
-  "further_review": [{"chunk_id": "…", "why": "opposite_holding | edition_unknown | other_edition | edition_out_of_scope | not_used_candidate", "note": "…"}],
+  "further_review": [{"chunk_id": "…", "why": "opposite_holding | edition_unknown | other_edition | edition_out_of_scope | not_used_candidate", "note": "…", "source": "<LegalSource 또는 null: 원문·위치·판본·선고일·요지/전문·화자>"}],
   "search_log": [{"material_type": "precedent", "index_version": "law-idx-v3", "as_of": null, "queries": 2, "hits": 0}],
   "origin": "ai_generated",
   "status": {"value": "confirmed", "checked": "…"}

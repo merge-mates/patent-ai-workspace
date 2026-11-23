@@ -44,6 +44,7 @@ def _answer(text, *, as_of=None, kinds=None, prior=(), repo=None):
         checked_on=TODAY,
         prior_evidence=list(prior),
         search_k=3,
+        source_search_k=3,
     )
 
 
@@ -148,7 +149,58 @@ def test_법령을_안_고르면_법령을_찾지_않는다():
     )
 
 
-def test_심사기준_판례_심결은_body_missing으로만_기록한다():
+def _others(unknown_date=False):
+    """심사기준·판례·심결 조각 하나씩 (지어낸 글)."""
+    na = Edition(status="not_applicable")
+
+    def case(doc, source, decided):
+        c = law_chunk(doc, 1, "이유 1", "통상의 기술자 진보성 판결 글", na, kind="judgment")
+        return c.model_copy(
+            update={"source_kind": source, "decided_on": decided, "speaker": "court"}
+        )
+
+    guide = law_chunk(
+        "심사기준_1", 1, "1쪽", "통상의 기술자 진보성 심사기준 글", fakes.NEW, kind="guideline"
+    ).model_copy(update={"source_kind": "guideline"})
+    day = None if unknown_date else date(2019, 1, 1)
+    return [guide, case("판례_1", "precedent", day), case("심결_1", "trial", date(2021, 1, 1))]
+
+
+def test_세_자료를_찾아_출처와_함께_추가_검토할_자료로_남긴다():
+    b = _answer("통상의 기술자 진보성", repo=fakes.repo(_others()))
+    assert {s.source_kind for c in b.claims for s in c.sources} == {S}  # 주장에는 안 올린다
+    assert [f.source.source_kind for f in b.further_review] == [G, P, T]
+    assert all(f.why == FurtherReviewWhy.NOT_USED_CANDIDATE for f in b.further_review)
+    logs = {e.source_kind: e for e in b.search_log}
+    assert [(logs[k].queries, logs[k].hits) for k in (G, P, T)] == [(1, 1)] * 3
+
+
+def test_고른_자료_유형만_찾고_선고일이_시점_뒤인_것은_빠진다():
+    b = _answer(
+        "통상의 기술자 진보성", kinds=[P, T], as_of=date(2020, 6, 1), repo=fakes.repo(_others())
+    )
+    assert [f.source.source_kind for f in b.further_review] == [P]  # 심결은 2021년
+    assert [e.source_kind for e in b.search_log] == [P, T]
+
+
+def test_후보만_찾고_주장이_없으면_없음이_아니라_확인되지_않음():
+    b = _answer("통상의 기술자 진보성", kinds=[G], repo=fakes.repo(_others()))
+    assert b.claims == [] and len(b.further_review) == 1
+    assert b.status.reason == UnverifiedReason.NOT_EXTRACTED
+
+
+def test_고른_유형을_다_찾아_아무것도_없으면_조회_범위_내_없음():
+    b = _answer("zzqqxx", kinds=[G, P], repo=fakes.repo(_others()))
+    assert b.further_review == [] and b.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert "심사기준" in b.status.searched_scope and "precedent" in b.status.searched_scope
+
+
+def test_날짜_모름으로_건너뛴_판례가_있으면_조회_범위_내_없음으로_내지_않는다():
+    b = _answer("특허법 제30조제1항", repo=fakes.repo(_others(unknown_date=True)))
+    assert b.claims == [] and b.status.reason == UnverifiedReason.EDITION_UNKNOWN
+
+
+def test_조각이_0개인_유형은_body_missing으로_기록한다():
     b = _answer("특허법 제29조제2항")
     logs = {e.source_kind: e for e in b.search_log}
     for kind in (G, P, T):
