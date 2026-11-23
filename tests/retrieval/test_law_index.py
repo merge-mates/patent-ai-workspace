@@ -184,6 +184,23 @@ def test_판본은_시행일_순으로_끝일은_다음판_전날():
     assert last.label == "특허법_219103_20201210"
 
 
+def test_받지_못한_판이_있으면_앞_판을_그_전날에서_끊는다():
+    files = {"특허법_1_20180101": "20180101", "특허법_2_20200101": "20200101"}
+    eds = editions_for(files, {"특허법": [date(2019, 3, 1), date(2019, 6, 1), date(2021, 5, 1)]})
+    # 빈 기간(2019.3.1~2019.12.31)에는 어느 판도 시행 중이 아니다
+    assert eds["특허법_1_20180101"].effective_to == date(2019, 2, 28)
+    # 마지막에 받은 판 뒤에 못 받은 판이 있으면 현행이 아니다
+    assert eds["특허법_2_20200101"].effective_to == date(2021, 4, 30)
+
+
+def test_받지_못한_판_설정이_틀리면_멈춘다():
+    files = {"특허법_1_20180101": "20180101"}
+    with pytest.raises(LawIndexError):  # 법 이름 오타
+        editions_for(files, {"특허벚": [date(2019, 3, 1)]})
+    with pytest.raises(LawIndexError):  # 이미 받은 판
+        editions_for(files, {"특허법": [date(2018, 1, 1)]})
+
+
 def test_시행일을_못_읽으면_unverified():
     eds = editions_for(
         {"특허법_1_20200311": "20200311", "특허법_2_x": "", "특허법_3_y": "2020-13-40"}

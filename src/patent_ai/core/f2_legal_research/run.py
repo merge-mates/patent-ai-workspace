@@ -5,7 +5,7 @@
 2. 거절이유 조문을 그날 시행판에서 ID 조회 (`get_article`).
 3. 출처 확인(코드, 무조건): 통과한 근거만 주장에 넣는다. 근거 검토(모델)는 #29라서
    주장에 review가 없고 `needs_human_review`를 단다.
-4. 심사기준·판례·심결은 색인 전이라 `search_log`에 status unverified(body_missing)로 남긴다
+4. 심사기준·판례·심결은 BM25로 찾아 근거 후보(`further_review`)와 `search_log`에 남긴다
    (못 찾음 ≠ 없음). law corpus는 실행마다 한 번만 읽는다 (`LawPool`).
 주장 글은 "어느 조문이 근거인가"만 적는다. 이 사건에 적용된다는 판단은 쓰지 않는다.
 """
@@ -19,13 +19,16 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from patent_ai.core.f2_legal_research.refs import ArticleRef, article_ref, parse_dispatch_date
+from patent_ai.core.f2_legal_research.source_search import (
+    build_searcher,
+    candidate_reviews,
+    search_sources,
+)
 from patent_ai.core.f2_legal_research.tools import (
     ALL_KINDS,
-    NOT_SEARCHED,
     LawPool,
     further_review,
     get_article,
-    search_not_indexed,
     statute_source,
 )
 from patent_ai.core.llm.config import REPO_ROOT
@@ -48,6 +51,7 @@ from patent_ai.core.schemas.legal_evidence import (
     summarize_claim_status,
 )
 from patent_ai.core.schemas.oa_result import OAResult, Rejection
+from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.repository import ChunkRepository, PostgresChunkRepository
 
 logger = logging.getLogger(__name__)
@@ -60,11 +64,12 @@ class F2Settings(BaseModel):
 
     index_version: str  # 법령 색인 판 (law corpus)
     chat_search_k: int = Field(default=3, ge=1)  # 법률 질문: 번호 없는 질문의 BM25 조문 수
-    # 법률 질문 검색기: 방식과 낱말 자르기 (기준선 experiments/m2-i2-law-bm25-char-bigram)
+    source_search_k: int = Field(ge=1)  # OA 흐름: 심사기준·판례·심결을 유형마다 몇 개 찾을지
+    # OA 흐름과 법률 질문이 같이 쓰는 검색기 값 (기준선 experiments/m2-i2-law-bm25-char-bigram)
     search_method: Literal["bm25"] = "bm25"
-    tokenizer: str = "char_bigram"
-    # bm25 세부 값. 비우면 bm25 구현 기본값(unique_query_terms false)이라 기준선과 달라진다
-    bm25: dict[str, str | float | bool] = Field(default_factory=dict)
+    # 아래 둘은 기본값이 없다: 빠지면 unique_query_terms가 조용히 꺼져 점수가 크게 떨어진다
+    tokenizer: str
+    bm25: dict[str, str | float | bool] = Field(min_length=1)
 
 
 class F2Input(BaseModel):
@@ -160,7 +165,9 @@ def _question_of(
     return rej, as_of, ref, _question(rej, as_of, ref.label if ref else None)
 
 
-def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBundle:
+def _bundle(
+    unit: JudgmentUnit, inp: F2Input, pool: LawPool, searcher: Searcher, k: int
+) -> LegalEvidenceBundle:
     oa, checked_on = inp.oa, inp.checked_on
     rej, as_of, ref, question = _question_of(unit, oa)
     if rej is None:
@@ -176,11 +183,14 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
         )
 
     found = get_article(pool, ref, as_of)
-    logs = [found.log, *(search_not_indexed(pool, kind, as_of) for kind in NOT_SEARCHED)]
+    # 심사기준·판례·심결: BM25로 찾는다 (질의 = 거절이유 글). 걸린 것은 근거 후보로만 둔다
+    others = search_sources(pool, searcher, question.text, as_of, k, checked_on)
+    logs = [found.log, *(o.log for o in others)]
+    candidates = candidate_reviews(others)
     if found.chunk is None:
         # 같은 날 시행판이 둘이면 고르지 않고, 겹친 조각을 사람이 볼 수 있게 남긴다
         further = [further_review(c, ref.label, as_of) for c in found.conflicts]
-        return _empty(unit, oa, question, checked_on, found.status, logs, further)
+        return _empty(unit, oa, question, checked_on, found.status, logs, [*further, *candidates])
 
     chunk = found.chunk
     # 출처 확인: 색인에 있고, 글이 그대로이고, 기준일 판인 근거만 쓴다 (없는 출처 0건)
@@ -206,6 +216,7 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
         question=question,
         checked_on=checked_on,
         claims=[claim],
+        further_review=candidates,
         search_log=logs,
         status=summarize_bundle_status([claim]),
     )
@@ -233,7 +244,9 @@ def run_f2(inp: F2Input, *, repo: ChunkRepository | None = None) -> F2Result:
 
     # law corpus를 실행마다 한 번만 읽는다 (도구마다 다시 읽지 않게, #222 리뷰)
     pool = LawPool.load(repo, iv)
-    bundles = [_bundle(u, inp, pool) for u in inp.units]
+    cfg = inp.settings
+    searcher = build_searcher(pool, cfg.tokenizer, cfg.bm25)
+    bundles = [_bundle(u, inp, pool, searcher, cfg.source_search_k) for u in inp.units]
     return F2Result(
         oa_id=inp.oa.oa_id,
         bundles=bundles,

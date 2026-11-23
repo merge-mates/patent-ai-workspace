@@ -18,7 +18,7 @@ from patent_ai.core.f2_legal_research.tools import LawPool
 from patent_ai.retrieval.contract import get_searcher
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 from tests.core.f2 import fakes
-from tests.core.f2.fakes import IV, NEW_DOC
+from tests.core.f2.fakes import IV, NEW_DOC, SEARCH
 
 TODAY = date(2024, 1, 1)
 
@@ -179,7 +179,7 @@ def test_legal_chats_api_색인_캐시는_메모리_조각만_두고_세션을_�
 
     deps._cached_legal_index.cache_clear()
     monkeypatch.setattr(legal_index, "open_law_repo", make)
-    monkeypatch.setattr(deps, "get_f2_settings", lambda: F2Settings(index_version=IV))
+    monkeypatch.setattr(deps, "get_f2_settings", lambda: F2Settings(index_version=IV, **SEARCH))
     first = get_legal_index()
     assert first is not None
     assert calls == {"made": 1, "closed": 1}  # 읽은 뒤 닫았다
@@ -244,7 +244,7 @@ def test_legal_chats_api_DB_연결_실패는_못_읽은_것으로_본다(monkeyp
 
 
 def test_legal_chats_api_설정_오류는_색인_없음으로_넘기지_않는다(monkeypatch):
-    bad = F2Settings(index_version=IV, bm25={"없는키": 1})
+    bad = F2Settings(index_version=IV, **{**SEARCH, "bm25": {"없는키": 1}})
     deps._cached_legal_index.cache_clear()
     monkeypatch.setattr(
         legal_index, "open_law_repo", lambda: NoClose({"law": fakes.repo().chunks("law", IV)})
