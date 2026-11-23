@@ -23,6 +23,7 @@ from patent_ai.api.deps import (
 )
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases import upload
+from patent_ai.core.cases.case_fill import merged_message
 from patent_ai.core.cases.document_pages import read_document_pages
 from patent_ai.core.cases.store import now_utc
 from patent_ai.core.f1_oa_reader.case_grouping import (
@@ -68,8 +69,11 @@ def upload_missing_document(
     # 1) 사건과 사건 자료가 있는지 본다. 사건은 있는데 자료가 아직 없으면 result_not_ready
     materials = cases.repo.load_case_materials(case_id)
     if materials is None:
-        if unit.store.get_case(case_id) is None:
+        row = unit.store.get_case(case_id)
+        if row is None:
             raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다")
+        if row.merged_into is not None:  # 합쳐진 임시 사건: 자료는 합친 사건에 (#272)
+            raise AppError(404, "result_not_ready", merged_message(row.merged_into))
         raise AppError(404, "result_not_ready", "사건 자료가 아직 없습니다")
 
     # 2) 파일을 쓰기 전에 요청을 검사한다 (PDF인지, 빠진 자료에 답하는지)

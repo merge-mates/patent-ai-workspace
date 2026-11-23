@@ -132,9 +132,11 @@ class PostgresCaseAppStore:
         return CaseCreated(case.id, created.oa_id, created.document_id, created.run_id)
 
     def add_oa(self, case_id: str, file: NewDocument) -> OACreated:
-        if self._s.get(Case, case_id) is None:
+        case = self._s.get(Case, case_id)
+        if case is None:
             raise CaseNotFoundError(case_id)
-        return self._add_oa(case_id, file)
+        # 합쳐진 임시 사건이면 합친 사건에 붙인다 (#272)
+        return self._add_oa(case.merged_into_case_id or case_id, file)
 
     def _oas_of(self, case_id: str) -> list[OA]:
         q = select(OA).where(OA.case_id == case_id).order_by(OA.created_at, OA.id)
@@ -161,7 +163,10 @@ class PostgresCaseAppStore:
         return self._s.scalars(q).first()
 
     def list_cases(self) -> list[CaseSummaryRow]:
-        cases = self._s.scalars(select(Case).where(Case.user_id == DEFAULT_USER_ID))
+        # 같은 출원번호 사건에 합쳐진 임시 사건은 숨긴다 (#272)
+        cases = self._s.scalars(
+            select(Case).where(Case.user_id == DEFAULT_USER_ID, Case.merged_into_case_id.is_(None))
+        )
         rows = []
         for case in cases:
             oas = self._oas_of(case.id)
@@ -197,7 +202,9 @@ class PostgresCaseAppStore:
         if case is None:
             return None
         oas = [OARef(o.id) for o in self._oas_of(case_id)]
-        return CaseDetailRow(case.id, case_name_of(case.application_number), oas)
+        return CaseDetailRow(
+            case.id, case_name_of(case.application_number), oas, case.merged_into_case_id
+        )
 
     def get_oa(self, oa_id: str) -> OADetailRow | None:
         oa = self._s.get(OA, oa_id)

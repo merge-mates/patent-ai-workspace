@@ -55,7 +55,7 @@ export const runStateLabel: Record<RunState, string> = {
 // (서버는 waiting_for 없이 waiting_for_human이 되지 않는다: core/runs/state.py)
 export function waitingForLabel(w: string | null): string {
   if (w === 'application_number') return '출원번호 입력 기다림'
-  if (w === 'dispatch_number') return '발송번호 확인 기다림'
+  if (w === 'dispatch_number') return '발송번호 입력 기다림'
   return '사람 기다림'
 }
 

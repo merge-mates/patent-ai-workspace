@@ -63,7 +63,12 @@ def source(kind="statute", text_kind=None, doc="가짜법_000001_20200101", stat
     s = {
         "source_kind": kind,
         "identifier": "가짜 식별자",
-        "evidence": {"document_id": doc, "raw_text": "지어낸 원문", "edition": "20200101"},
+        "evidence": {
+            "document_id": doc,
+            "location": "제1조",
+            "raw_text": "지어낸 원문",
+            "edition": "20200101",
+        },
         "status": {"value": status, "checked": "원문 대조"}
         if status == "confirmed"
         else {"value": status, "reason": "edition_unknown"},

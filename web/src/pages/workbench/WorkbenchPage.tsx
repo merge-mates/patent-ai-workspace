@@ -1,6 +1,7 @@
 import { Alert, App, Button, Popconfirm, Result, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { useLocation, useNavigate, useRouteLoaderData } from 'react-router'
+import { OAResultConfirm } from '../../components/OAResultConfirm'
 import { PreviousResultNote } from '../../components/PreviousResultNote'
 import { isPreviousResult } from '../../previousResult'
 import { ReviewPanel } from '../../components/ReviewPanel'
@@ -122,6 +123,8 @@ export function WorkbenchPage() {
         )}
       </div>
 
+      {/* 정리 단계 머리: 사람이 지금 보이는 정리 결과를 확인했다고 남기는 줄 */}
+      <OAResultConfirm key={oa.oa_id} oaId={oa.oa_id} runId={oaResult.run_id} confirmation={data.confirmation} running={running} />
       <RejectionsCard r={r} legal={data.legal} />
       {materials ? (
         <MaterialsCard m={materials} r={r} caseId={oa.case_id} />

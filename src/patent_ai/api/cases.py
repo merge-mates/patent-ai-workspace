@@ -23,7 +23,7 @@ from patent_ai.api.deps import (
 from patent_ai.api.errors import AppError
 from patent_ai.api.runs import launch_run
 from patent_ai.core.cases import upload
-from patent_ai.core.cases.case_fill import materials_not_ready_message
+from patent_ai.core.cases.case_fill import materials_not_ready_message, merged_message
 from patent_ai.core.cases.materials import CaseMaterialsStore
 from patent_ai.core.cases.store import (
     NO_APPLICATION_NUMBER_NAME,
@@ -88,6 +88,8 @@ class CaseDetail(BaseModel):
     case_id: str
     case_name: str
     oas: list[CaseOAOut]
+    # 같은 출원번호 사건에 합쳐진 임시 사건이면 그 사건 id (#272). 화면은 그 사건을 연다
+    merged_into_case_id: str | None = None
     # 아래는 묶기 결과(#16)가 저장된 뒤에 채워진다. 그 전에는 빈 목록
     events: list[CaseEventOut] = []
     claim_versions: list[ClaimVersionOut] = []
@@ -196,6 +198,7 @@ def get_case(
     return CaseDetail(
         case_id=row.case_id,
         case_name=row.case_name,
+        merged_into_case_id=row.merged_into,
         oas=[
             CaseOAOut(
                 oa_id=o.oa_id,
@@ -226,6 +229,8 @@ def get_case_materials(
     row = unit.store.get_case(case_id)
     if row is None:
         raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다")
+    if row.merged_into is not None:
+        raise AppError(404, "result_not_ready", merged_message(row.merged_into))
     saved = materials.latest_case_materials(case_id)
     if saved is None:
         # 이유 없는 404가 되지 않게: 출원번호를 모르면 그 이유를 메시지에 (#261)

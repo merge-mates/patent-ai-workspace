@@ -113,6 +113,28 @@ describe('이유 받기 (failed·waiting_for_human)', () => {
     expect(rp.getRunSnapshot('r_1')?.waitingFor).toBe('direction_selection')
   })
 
+  it('번호를 넣어 같은 실행이 queued로 이어지면 기다림 이유를 버리고 폴링을 다시 시작한다', async () => {
+    getRun.mockResolvedValueOnce(status('waiting_for_human', { waiting_for: 'dispatch_number' }))
+    rp.seedRun(run('waiting_for_human'))
+    rp.subscribeRun('r_1')(() => {})
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(rp.getRunSnapshot('r_1')?.waitingFor).toBe('dispatch_number')
+    getRun.mockReset()
+
+    // 발송번호 PATCH 응답의 run_id(같은 실행)를 queued로 넣는다
+    getRun.mockResolvedValue(status('succeeded'))
+    // 끝나면 화면 데이터를 새로 받는다 (router.revalidate 자리에 감시 함수를 건다)
+    const spy = vi.fn()
+    rp.setRevalidate(spy)
+    rp.seedRun({ run_id: 'r_1', state: 'queued', current_step: null })
+    expect(rp.getRunSnapshot('r_1')?.run.state).toBe('queued')
+    expect(rp.getRunSnapshot('r_1')?.waitingFor).toBeNull()
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(getRun).toHaveBeenCalledWith('r_1')
+    expect(rp.getRunSnapshot('r_1')?.run.state).toBe('succeeded')
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
   it('이유 받기가 실패하면 오류를 보이고, 다음 seedRun에서 다시 묻는다', async () => {
     getRun.mockRejectedValueOnce(new Error('네트워크 오류'))
     getRun.mockResolvedValueOnce(status('failed', { error: { code: 'tool_error', message: '도구 오류' } }))

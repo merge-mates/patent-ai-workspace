@@ -16,6 +16,7 @@ from patent_ai.api.deps import (
 )
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases.start_run import OANotFoundError, RunInProgressError, create_run_for_oa
+from patent_ai.core.cases.store import CaseAppStore
 from patent_ai.core.runs.cancel import CancelRegistry, RunAlreadyFinished, request_cancel
 from patent_ai.core.runs.launcher import LaunchFailedError, RunLauncher, launch_or_fail
 from patent_ai.core.runs.store import RunNotFound, RunStatus, RunStatusStore
@@ -46,6 +47,8 @@ class RunWarningOut(BaseModel):
 class RunStatusOut(BaseModel):
     run_id: str
     oa_id: str
+    # 그 OA가 지금 속한 사건. 같은 출원번호 사건에 합쳐지면 합친 사건 id (#272, 화면이 연다)
+    case_id: str | None = None
     state: str
     current_step: str | None
     waiting_for: str | None = None  # 사람을 기다릴 때만
@@ -54,11 +57,13 @@ class RunStatusOut(BaseModel):
     warnings: list[RunWarningOut] = []  # 넘긴 단계마다 step_skipped 하나
 
 
-def _out(s: RunStatus, store: RunStatusStore) -> RunStatusOut:
+def _out(s: RunStatus, store: RunStatusStore, cases: CaseAppStore) -> RunStatusOut:
     skipped = store.skipped_steps(s.run_id)
+    oa = cases.get_oa(s.oa_id)
     return RunStatusOut(
         run_id=s.run_id,
         oa_id=s.oa_id,
+        case_id=oa.case_id if oa else None,
         state=s.state.value,
         current_step=s.current_step,
         waiting_for=s.waiting_for,
@@ -98,12 +103,14 @@ def create_run(
 
 @router.get("/runs/{run_id}", response_model=RunStatusOut)
 def get_run(
-    run_id: str, store: Annotated[RunStatusStore, Depends(get_run_status_store)]
+    run_id: str,
+    store: Annotated[RunStatusStore, Depends(get_run_status_store)],
+    unit: Annotated[CaseUnit, Depends(get_case_unit)],
 ) -> RunStatusOut:
     status = store.get_status(run_id)
     if status is None:
         raise AppError(404, "run_not_found", "실행을 찾을 수 없습니다")
-    return _out(status, store)
+    return _out(status, store, unit.store)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=RunStatusOut)
@@ -111,10 +118,11 @@ def cancel_run(
     run_id: str,
     store: Annotated[RunStatusStore, Depends(get_run_status_store)],
     registry: Annotated[CancelRegistry, Depends(get_cancel_registry)],
+    unit: Annotated[CaseUnit, Depends(get_case_unit)],
 ) -> RunStatusOut:
     try:
         # queued·waiting_for_human은 바로 cancelled, running은 표시만 (응답 state는 running 그대로)
-        return _out(request_cancel(run_id, store, registry), store)
+        return _out(request_cancel(run_id, store, registry), store, unit.store)
     except RunNotFound:
         raise AppError(404, "run_not_found", "실행을 찾을 수 없습니다") from None
     except RunAlreadyFinished:

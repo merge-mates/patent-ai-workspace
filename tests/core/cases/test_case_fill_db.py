@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from patent_ai.core.cases.case_fill import PostgresCaseFill
@@ -15,6 +15,7 @@ from patent_ai.core.cases.materials import PostgresCaseMaterialsStore
 from patent_ai.core.cases.store import NewDocument
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
 from patent_ai.core.schemas.oa_result import OAResult
+from patent_ai.db.models import OA, CaseEvent
 from patent_ai.settings import get_settings
 
 pytestmark = pytest.mark.db
@@ -76,13 +77,127 @@ def test_실행_뒤_사건_이름_발송번호_사건_자료가_채워진다(fac
     assert again.result == saved.result
 
 
-def test_같은_출원번호_사건이_있으면_임시_사건에_번호를_넣지_않는다(factory):
-    first = _upload(factory, "fill_261_a")
+def _next_oa(oa_id: str) -> OAResult:
+    """같은 출원번호, 다른 발송번호의 다음 OA."""
+    oa = _oa(oa_id)
+    return oa.model_copy(
+        update={"dispatch_number": oa.dispatch_number.model_copy(update={"value": DISP2})}
+    )
+
+
+DISP2 = "952099000000002"
+
+
+def test_같은_출원번호_사건이_있으면_올린_OA를_그_사건의_다음_OA로_옮긴다(factory):
+    # 출원번호 unique에 걸려 실패하지 않고, 기존 사건으로 옮긴다 (#272)
+    first = _upload(factory, "fill_272_a")
     fill = PostgresCaseFill(factory, lambda oa_id: None)
     fill.fill_after_f1(first.oa_id, first.run_id, _oa(first.oa_id), None)
-    second = _upload(factory, "fill_261_b")
-    # 출원번호 unique에 걸려 실패하지 않고, 번호를 넣지 않은 채 남는다 (합치기는 아직 없음)
-    fill.fill_after_f1(second.oa_id, second.run_id, _oa(second.oa_id), None)
+    second = _upload(factory, "fill_272_b")
+    fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
     with factory() as s:
-        assert PostgresCaseAppStore(s).get_case(second.case_id).case_name == "출원번호 확인 전"
+        store = PostgresCaseAppStore(s)
+        assert [r.oa_id for r in store.get_case(first.case_id).oas] == [
+            first.oa_id,
+            second.oa_id,
+        ]
+        oa = store.get_oa(second.oa_id)
+        assert (oa.case_id, oa.dispatch_number) == (first.case_id, DISP2)
+        assert store.find_document_by_sha256("fill_272_b_" + "a" * 20).case_id == first.case_id
+        # 임시 사건은 지우지 않고 합침 표시 + 목록에서 숨김
+        temp = store.get_case(second.case_id)
+        assert (temp.oas, temp.merged_into) == ([], first.case_id)
+        listed = {r.case_id for r in store.list_cases()}
+        assert first.case_id in listed and second.case_id not in listed
+        # 기존 사건 이력에 순서가 없으면 옮긴 줄도 비운다 (날짜로 정하지 않음)
+        assert s.get(CaseEvent, s.get(OA, second.oa_id).case_event_id).seq is None
+    saved = PostgresCaseMaterialsStore(factory).latest_case_materials(first.case_id)
+    assert saved.run_id == second.run_id
+    assert [d.document_id for d in saved.result.documents] == [
+        first.document_id,
+        second.document_id,
+    ]
     assert PostgresCaseMaterialsStore(factory).latest_case_materials(second.case_id) is None
+
+
+def _numbered_case(factory, tag: str):
+    """번호를 채운 사건 하나 (그 OA 이력 줄에 순서 3)."""
+    first = _upload(factory, tag)
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        first.oa_id, first.run_id, _oa(first.oa_id), None
+    )
+    with factory() as s:
+        s.get(CaseEvent, s.get(OA, first.oa_id).case_event_id).seq = 3
+        s.commit()
+    return first
+
+
+def test_기존_사건_이력에_순서가_있으면_옮긴_OA는_그_다음_순서다(factory):
+    first = _numbered_case(factory, "fill_272_seq_a")
+    second = _upload(factory, "fill_272_seq_b")
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        second.oa_id, second.run_id, _next_oa(second.oa_id), None
+    )
+    with factory() as s:
+        assert s.get(OA, second.oa_id).case_id == first.case_id
+        assert s.get(CaseEvent, s.get(OA, second.oa_id).case_event_id).seq == 4
+
+
+def test_합친_임시_사건에_다음_OA를_올리면_합친_사건에_붙는다(factory):
+    first = _numbered_case(factory, "fill_272_add_a")
+    second = _upload(factory, "fill_272_add_b")
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        second.oa_id, second.run_id, _next_oa(second.oa_id), None
+    )
+    with factory() as s:
+        third = PostgresCaseAppStore(s).add_oa(
+            second.case_id,
+            NewDocument("work/uploads/fill_272_add_c.pdf", "c" * 30, datetime.now(UTC)),
+        )
+        s.commit()
+        assert PostgresCaseAppStore(s).get_oa(third.oa_id).case_id == first.case_id
+
+
+def test_기존_사건에_같은_파일이_있으면_합치지_않는다(factory):
+    # 올릴 때 409로 막히는 드문 경우 (저장소를 바로 불러 같은 파일 사건을 둘 만든다)
+    first = _numbered_case(factory, "fill_272_dup")
+    with factory() as s:
+        second = PostgresCaseAppStore(s).create_case(
+            NewDocument("work/uploads/dup2.pdf", "fill_272_dup_" + "a" * 20, datetime.now(UTC))
+        )
+        s.commit()
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        second.oa_id, second.run_id, _next_oa(second.oa_id), None
+    )
+    with factory() as s:
+        store = PostgresCaseAppStore(s)
+        assert store.get_oa(second.oa_id).case_id == second.case_id
+        assert store.get_case(second.case_id).merged_into is None
+        assert [r.oa_id for r in store.get_case(first.case_id).oas] == [first.oa_id]
+
+
+def test_기존_사건_이력에_같은_발송번호_줄이_있으면_그_줄에_붙인다(factory):
+    # 자동 조회(#54)가 기존 사건 이력에 이번 OA 줄을 먼저 넣어 둔 경우 (OA는 아직 없음).
+    # 새 줄을 옮기면 uq_case_events_case_kind_number에 걸린다: 있던 줄(그 순서)을 쓴다
+    first = _numbered_case(factory, "fill_272_hist_a")
+    with factory() as s:
+        s.add(CaseEvent(case_id=first.case_id, kind="oa", doc_number=DISP2, seq=5))
+        s.commit()
+    second = _upload(factory, "fill_272_hist_b")
+    PostgresCaseFill(factory, lambda oa_id: None).fill_after_f1(
+        second.oa_id, second.run_id, _next_oa(second.oa_id), None
+    )
+    with factory() as s:
+        oa = s.get(OA, second.oa_id)
+        event = s.get(CaseEvent, oa.case_event_id)
+        assert (oa.case_id, event.case_id, event.doc_number, event.seq) == (
+            first.case_id,
+            first.case_id,
+            DISP2,
+            5,
+        )
+        events = s.scalars(
+            select(CaseEvent).where(CaseEvent.case_id == first.case_id, CaseEvent.kind == "oa")
+        ).all()
+        assert sorted(e.doc_number for e in events) == sorted([DISP, DISP2])  # 줄이 늘지 않음
+        assert PostgresCaseAppStore(s).get_case(second.case_id).merged_into == first.case_id

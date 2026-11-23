@@ -1,7 +1,7 @@
 import { Button, Steps } from 'antd'
 import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
-import { ApplicationNumberForm } from '../components/ApplicationNumberForm'
+import { NumberInputForm } from '../components/NumberInputForm'
 import { CaseInfo } from '../components/CaseInfo'
 import { currentRunText, isPreviousResult } from '../previousResult'
 import { HumanCheckTag } from '../components/Marks'
@@ -200,7 +200,11 @@ export function CaseShell() {
           {r && infoOpen && <CaseInfo r={r} />}
           {/* 출원번호 입력을 기다리면 사건 머리에 입력 칸 (F5 design 6절) */}
           {run?.state === 'waiting_for_human' && snap?.waitingFor === 'application_number' && (
-            <ApplicationNumberForm caseId={data.oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
+            <NumberInputForm kind="application_number" targetId={data.oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
+          )}
+          {/* 발송번호 입력을 기다리면 같은 자리에 발송번호 입력 칸 */}
+          {run?.state === 'waiting_for_human' && snap?.waitingFor === 'dispatch_number' && (
+            <NumberInputForm kind="dispatch_number" targetId={data.oa.oa_id} runId={run.run_id} read={r?.dispatch_number ?? null} />
           )}
         </div>
 

@@ -84,7 +84,7 @@ class AgentStep(Base):
     # 지휘 단계 칸 (StepRecord)
     reason: Mapped[str | None] = mapped_column(Text)
     result_status: Mapped[str | None] = mapped_column(Text)
-    result_id: Mapped[str | None] = mapped_column(Text)  # 만든 결과 ID (예: oa_results.id)
+    result_id: Mapped[str | None] = mapped_column(Text)  # 만든 결과 ID (F2·F3·F4는 step_results.id)
     model_call_count: Mapped[int | None] = mapped_column(Integer)
     # 모델 호출 칸 (CallRecord)
     model: Mapped[str | None] = mapped_column(Text)

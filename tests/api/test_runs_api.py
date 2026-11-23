@@ -98,6 +98,7 @@ def test_만들기_폴링_succeeded_결과가_저장된다(env):
     assert body == {
         "run_id": created["run_id"],
         "oa_id": created["oa_id"],
+        "case_id": created["case_id"],
         "state": "succeeded",
         "current_step": "OA 읽는 중",
         "waiting_for": None,
