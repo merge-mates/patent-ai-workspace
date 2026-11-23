@@ -157,9 +157,9 @@ def test_limit_reached_마이그레이션은_skipped_CHECK_위에_limit_reached�
         spec.loader.exec_module(mod)
         return mod
 
-    merged = load("20261123_f1c8b3e7a925_cases_merged_into")
+    prev = load("20261123_d4a8c2e6b915_legal_chats")
     new = load("20261123_a9d4c7e1b526_agent_steps_outcome_limit_reached")
-    assert new.down_revision == merged.revision
+    assert new.down_revision == prev.revision
     assert "skipped" in _values(new._OLD) and "limit_reached" not in _values(new._OLD)
     assert _values(new._NEW) == _values(new._OLD) | {"limit_reached"}
 
