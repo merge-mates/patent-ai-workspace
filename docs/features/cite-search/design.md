@@ -71,7 +71,7 @@ flowchart LR
 | 논문 쪽 하나 (학회판만) | `body` | `page` (start=end=쪽) | `pg4` | |
 | 미국 공개공보(`A1`·`A2`·`A9`) 문단 번호 `0025 …`·`[0025]` 하나 | `body` | `paragraph` (start=end=25) | `p0025` | 본문에 `FIG. N`·`FIGS. N-M`이 있으면 `figures`에. label `[0025]` |
 | 미국 공개공보 청구항 하나 | `claim` | `claim` | `claim1` | `claims=[1]`. `What is claimed is:` 머리나 마지막 문단 뒤 `1. A …` 줄부터 |
-| 미국 공보 요약 (`(57) ABSTRACT`) | `abstract` | `abstract` | `abs` | 1쪽에서만 |
+| 미국 공보 요약 (`(57) ABSTRACT`) | `abstract` | `abstract` | `abs` | 등록공보는 1쪽에서만, 공개공보는 처음 나오는 요약 머리 |
 | 미국 등록공보(`B1`·`B2`, 2001년 전 `A`) 한 칼럼의 15줄 창 | `body` | `column_line` (start=칼럼×10000+첫 줄, end=칼럼×10000+끝 줄) | `3:16-30` | label `3:16-30`. 창은 1~15, 16~30, …줄, 키는 창 안 실제 첫·끝 줄 |
 | 미국 등록공보 중 줄을 못 세는 쪽 | `body` | `page` (start=end=쪽) | `pg12` | 경고 "본문 쪽 줄 못 셈"·"칼럼·줄 못 셈" |
 - 글자층에 식별번호가 하나도 없는 한국 공보(11/19 tune에 2007년 공개공보 1건): 청구항·요약·도면 설명 조각만 만들고 본문은 조각으로 만들지 않는다. 번호를 지어내지 않는다. 경고 "식별번호 없음: 본문 조각 안 만듦"과 색인 보고에 남긴다 (재아 11/19). 그 문헌의 식별번호 정답 항목은 못 맞힘으로 남아 CQ에 보인다.
@@ -104,7 +104,7 @@ flowchart LR
 
 ## 5. 저장
 - 쓰는 테이블: `cite_chunks` (색인 스크립트). 읽는 테이블: 같은 것 (bm25 impl, 채점기).
-- 색인 판: `cite-idx-v1`(BM25). `cite-idx-v2` = v1 조각 그대로 + `embedding`(text-embedding-3-small). 하이브리드는 v2 하나로 두 점수를 다 낸다 (BM25는 `embedding`을 안 봄). `cite-idx-us1` (이슈 #308) = `config/cite_search.yaml` 청킹(한국 v1 규칙 그대로 + 미국 공보)으로 `cited_v2` PDF 전부를 다시 자른 조각 + `embedding`(같은 모델). 설정 `config/index/cite-idx-us1.yaml`. 11/23 만든 판: 문헌 254, 조각 31798(미국 6430), 임베딩 호출 307번·입력 466만 토큰·$0.09. 은진 님 `v` 줄(v4·v5) 번호와 겹치지 않게 `us` 줄로 따로 센다 (`src/patent_ai/index_version.py`). DB 표 CHECK는 아직 `v` 줄만 받아 us1은 jsonl(`--chunks`)로만 쓴다 (DB에 넣으려면 마이그레이션, 사람 판단). 조각 ID `<index_version>:<doc_id>:<위치 키>` (계약).
+- 색인 판: `cite-idx-v1`(BM25). `cite-idx-v2` = v1 조각 그대로 + `embedding`(text-embedding-3-small). 하이브리드는 v2 하나로 두 점수를 다 낸다 (BM25는 `embedding`을 안 봄). `cite-idx-us1` (이슈 #308) = `config/cite_search.yaml` 청킹(한국 v1 규칙 그대로 + 미국 공보)으로 `cited_v2` PDF 전부를 다시 자른 조각 + `embedding`(같은 모델). 설정 `config/index/cite-idx-us1.yaml`. 이 PR부터 `config/cite_search.yaml`에 미국 청킹이 들어가므로 v4 조각을 다시 만들려면 main 1e08dc4의 `config/cite_search.yaml`로 돌린다. 11/23 만든 판: 문헌 254, 조각 31798(미국 6430), 임베딩 호출 307번·입력 466만 토큰·$0.09. 은진 님 `v` 줄(v4·v5) 번호와 겹치지 않게 `us` 줄로 따로 센다 (`src/patent_ai/index_version.py`). DB 표 CHECK는 아직 `v` 줄만 받아 us1은 jsonl(`--chunks`)로만 쓴다 (DB에 넣으려면 마이그레이션, 사람 판단). 조각 ID `<index_version>:<doc_id>:<위치 키>` (계약).
 - `doc_id`: 한국은 [f1-oa-gold.md](../../evaluation/f1-oa-gold.md) 2.3 키 꼴(`KR20XX0000000A`, `KR10XXXXXXXB1`). 정답 파일·PDF 파일 이름이 이미 이 꼴이다. 논문은 2.3 꼴(`NPL: …`)에 `:`·공백이 있어 `row_id`·`chunk_id` 규칙과 부딪히므로 `NPL-<제목 줄임>-<학회 연도>`(구분자 `-`, 공백·`:` 없음)로 쓴다. 정답 표기 → `doc_id` 표는 채점기 쪽 `data/goldsets/tune/retrieval/cite_doc_ids.yaml`, PDF 파일 이름 → `doc_id` 표는 앱 쪽 `data/processed/cite_search/file_doc_ids.yaml`에 따로 둔다. 앱 코드가 정답에서 나온 내용을 읽지 않게, 그리고 tune 인용문헌 목록이 git에 들어가지 않게 둘 다 git 밖이다 (설정 파일에는 경로만). 한국 공보는 표기가 곧 `doc_id`라 표에는 논문 한 줄씩만 있다.
 - 검색: 키워드(BM25), 벡터(코사인), 하이브리드(둘의 RRF).
 - 외부 API·모델: OpenAI 임베딩 `text-embedding-3-small` (**유료**, 11/20 재아). 조각 글은 색인 때 한 번, 질의는 채점 전에 `embed_queries`로 한 번. 둘 다 `core/llm` `embed()`(캐시·호출 상한)를 거친다. 앱 검색 때 질의 임베딩은 부르는 쪽이 `embed`를 넘긴다 (계약 design 4절).
