@@ -180,14 +180,14 @@ export const HUMAN_ENTERED_CHECKED = '사람이 직접 입력함 (원문 대조 
 
 // 보류 작업 이름(⑥ held_tasks[].task, 코드 이름) → 작업 종류 한국어 (F5 #19 남은 일).
 // 이름 모양은 core가 만드는 것: f3_compare:<oa>:<인용 라벨> · f3_compare:<unit_id>[:…] · f3_units:<oa>:r<N>[:c<M>] ·
-// f3_split:<oa>:claim<N> · f3_clarity:<unit_id>. 모르는 모양은 코드 이름 그대로 (숨기지 않는다)
+// f3_split:<oa>:claim<N>[:call_failed|:limit_reached] · f3_clarity:<unit_id>. 모르는 모양은 코드 이름 그대로 (숨기지 않는다)
 export function heldTaskLabel(task: string): string {
   let m = /^f3_compare:[^:]+:([^:]+)$/.exec(task)
   if (m) return `인용발명 대비 ${m[1]}`
   if (task.startsWith('f3_compare:')) return '인용발명 대비'
   m = /^f3_units:[^:]+:r(\d+)/.exec(task)
   if (m) return `판단 단위 나누기 · 거절이유 ${m[1]}`
-  m = /^f3_split:[^:]+:claim(\d+)$/.exec(task)
+  m = /^f3_split:[^:]+:claim(\d+)(?:$|:)/.exec(task)
   if (m) return `청구항 ${m[1]} 구성요소 나누기`
   if (task.startsWith('f3_clarity:')) return '명확성 검토'
   return task

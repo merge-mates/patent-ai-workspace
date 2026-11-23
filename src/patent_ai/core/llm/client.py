@@ -57,6 +57,22 @@ _INVALID_KIND_ORDER = ("not_json", "unknown_key", "missing_key", "bad_value")
 _PYDANTIC_KIND = {"extra_forbidden": "unknown_key", "missing": "missing_key"}
 
 
+def _not_json_kind(text: str) -> str:
+    """JSON이 아닌 답의 모양만 짧은 코드로 (#317). 답 글자는 남기지 않는다.
+
+    empty = 빈 답(공백뿐) / fence = 코드 블록(```)으로 시작 / broken = `{`·`[`로 시작했지만
+    JSON이 깨짐(잘림 포함) / text = 그 밖의 글(설명 글 등)로 시작.
+    """
+    head = text.lstrip()
+    if not head:
+        return "not_json:empty"
+    if head.startswith("```"):
+        return "not_json:fence"
+    if head[0] in "{[":
+        return "not_json:broken"
+    return "not_json:text"
+
+
 def _model_in(annotation) -> type[BaseModel] | None:
     """칸 타입 안의 Pydantic 모델 하나를 찾는다 (list[Row]·Row | None -> Row). 없으면 None."""
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
@@ -318,7 +334,7 @@ def call_model(
         try:
             parsed = output_schema.model_validate(json.loads(resp.text))
         except json.JSONDecodeError as e:
-            kind = "not_json"
+            kind = _not_json_kind(resp.text)
             record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
             raise ModelOutputInvalid(f"답이 JSON이 아님: {e}", resp.stop_reason, kind) from e
         except ValidationError as e:
