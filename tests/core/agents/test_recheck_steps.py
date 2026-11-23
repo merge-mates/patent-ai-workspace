@@ -73,9 +73,26 @@ def test_다시_찾기_도구_줄이_run_f3_뒤에_단계_기록으로_남는다
     first, second = steps.records[i + 1], steps.records[i + 2]
     assert (first.step_kind, first.reason, first.outcome) == ("code_tool", "다시 찾기 도구", "ok")
     assert first.unit_id == UNIT and first.result_id == "p1,p2"
-    assert first.tool_input == {"query": "수조", "k": 3, "element_no": 2, "citation": "D1"}
+    where = {"claim": 1, "element_claim": 1, "element_no": 2, "citation": "D1"}
+    assert first.tool_input == {"query": "수조", "k": 3, **where}
     assert second.outcome == "failed" and not second.result_id
-    assert second.tool_input == {"paragraph_id": "p9", "element_no": 2, "citation": "D1"}
+    assert second.tool_input == {"paragraph_id": "p9", **where}
+
+
+def test_청구항이_달라_구성요소_번호가_같아도_도구_줄을_가린다(tmp_path, wired, monkeypatch):  # noqa: F811
+    # 한 묶음에 청구항 1·3: 둘 다 구성요소 1번이어도 claim·element_claim으로 가린다 (합격 기준 5)
+    real = f3_run.run_f3
+    one = _log_row().model_copy(update={"element_no": 1, "steps": _log_row().steps[:1]})
+    three = one.model_copy(update={"claim": 3, "element_claim": 3})
+
+    def wrapped(*a, **k):
+        return real(*a, **k).model_copy(update={"recheck_log": [one, three]})
+
+    monkeypatch.setattr(f3_run, "run_f3", wrapped)
+    _, steps = _go(tmp_path)
+    tools = [r for r in steps.records if r.tool_name.startswith("recheck.")]
+    keys = {(r.unit_id, r.tool_input["claim"], r.tool_input["element_claim"]) for r in tools}
+    assert keys == {(UNIT, 1, 1), (UNIT, 3, 3)}
 
 
 def test_도구_줄에_원문_글_quote_why가_없다(tmp_path, wired, monkeypatch):  # noqa: F811

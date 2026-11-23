@@ -222,8 +222,12 @@ def run_case(
                         result_id=",".join(call.get("result_ids") or []) or None,
                         outcome="failed" if call.get("is_error") else "ok",
                         unit_id=log.unit_id,
+                        # 구성요소를 가리는 칸: 대비 청구항 + 구성요소의 청구항 + 그 안 순번
+                        # (묶음에 청구항이 여럿이면 순번만으로 겹친다. 검색 기록과 같은 값)
                         tool_input={
                             **(call.get("tool_input") or {}),
+                            "claim": log.claim,
+                            "element_claim": log.element_claim,
                             "element_no": log.element_no,
                             "citation": log.citation,
                         },
