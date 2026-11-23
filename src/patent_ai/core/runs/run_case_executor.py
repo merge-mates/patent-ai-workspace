@@ -365,7 +365,8 @@ def _outcome_error(outcome: RunOutcome, steps: _LiveSteps) -> tuple[str, str]:
     code = str(err.get("code") or "")
     if code == "limit_reached":
         # 이유 글은 지휘가 단계·상한 이름·숫자만으로 만든 것이라 그대로 내보낸다 (#241)
-        return code, str(err.get("message") or "호출 상한에 닿아 멈췄습니다")
+        message = str(err.get("message") or "호출 상한에 닿아 멈췄습니다")
+        return code, message.removeprefix("limit_reached: ")
     if code in _OUTCOME_MESSAGES:
         message = _OUTCOME_MESSAGES[code]
         if code == "oa_already_exists" and err.get("oa_id"):

@@ -101,7 +101,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 ```json
 {"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "run_f3", "reason": "input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}], "warnings": [{"code": "step_skipped", "message": "run_f3 단계를 건너뜀: input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}]}
 ```
-`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. 호출 상한에 닿아 넘긴 단계는 `reason`이 `limit_reached: <단계> 호출 상한 <상한 이름> <숫자>에 닿음`이고 `warnings`의 `code`가 `limit_reached`다(나머지는 `step_skipped`). 이때 OA 정리가 있으면 `state`는 `succeeded`다. F1 읽기가 상한이거나 지휘 모델이 OA 정리 전에 닿으면 `state: failed`, `error.code: limit_reached`다 (ADR 0003, #241). `POST /runs/{id}/cancel` 응답도 같은 모양이다.
+`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. 지휘 모델이 OA 정리를 낸 뒤 호출 상한에 닿으면 아직 못 돈 `run_f3`·`run_f2`·`run_f4`가 `skipped_steps`에 `reason` `limit_reached: decide 호출 상한 <상한 이름> <숫자>에 닿음`으로 남고, `warnings`의 `code`는 `limit_reached`(글: "<단계> 단계를 호출 상한으로 못 돌림: …"), `state`는 `succeeded`다. F1 읽기가 상한이거나 지휘 모델이 OA 정리 전에 닿으면 `state: failed`, `error.code: limit_reached`, `error.message`는 `<단계> 호출 상한 <상한 이름> <숫자>에 닿음`이고, 이때 응답의 `skipped_steps`·`warnings`에는 상한 줄을 넣지 않는다(다른 넘긴 단계는 그대로). 그 밖 단계가 상한을 올리면 기존대로 `failed`다 (ADR 0003, #241). `POST /runs/{id}/cancel` 응답도 같은 모양이다.
 
 결과 (`GET /oas/{oa_id}/oa-result`): 결과 스키마를 `result`에 그대로 담는다.
 ```json

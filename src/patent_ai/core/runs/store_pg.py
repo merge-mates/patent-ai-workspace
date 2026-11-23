@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from patent_ai.core.cases.store import now_utc
@@ -113,7 +113,15 @@ class PostgresRunStatusStore:
             q = (
                 select(AgentStep)
                 .where(
-                    AgentStep.run_id == run_id, AgentStep.outcome.in_(["skipped", "limit_reached"])
+                    AgentStep.run_id == run_id,
+                    or_(
+                        AgentStep.outcome == "skipped",
+                        # decide 줄의 limit_reached는 넘긴 단계가 아니다 (code_tool 줄만)
+                        and_(
+                            AgentStep.outcome == "limit_reached",
+                            AgentStep.step_kind == "code_tool",
+                        ),
+                    ),
                 )
                 .order_by(AgentStep.id)  # id는 자동 증가라 기록 순서
             )

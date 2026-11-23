@@ -265,8 +265,23 @@ def run_case(
                 why = limit_reason("decide", e)
                 note("decide", "decide", why, "limit_reached", calls=calls_since(before))
                 if "read_oa" in state["results"]:
-                    # OA 정리가 있으면 거기서 멈추고 성공으로 둔다 (남은 이유는 넘긴 목록에)
-                    return {"next_tool": "stop", "skipped": {**skipped, "decide": why}}
+                    # OA 정리가 있으면 거기서 멈추고 성공으로 둔다. 아직 결과도 넘김도 없는
+                    # F3·F2·F4는 같은 이유로 못 돈 단계로 남긴다 (단계마다 code_tool 줄 하나)
+                    for name in ("run_f3", "run_f2", "run_f4"):
+                        if (
+                            name in code_tools
+                            and name not in state["results"]
+                            and name not in skipped
+                        ):
+                            note(
+                                "code_tool",
+                                name,
+                                why,
+                                "limit_reached",
+                                StatusValue.UNVERIFIED.value,
+                            )
+                            skipped = {**skipped, name: why}
+                    return {"next_tool": "stop", "skipped": skipped}
                 return {"error": _error("limit_reached", why)}
             except _TOOL_ERRORS as e:
                 note("decide", "?", "지휘 모델 실패", "failed", calls=calls_since(before))

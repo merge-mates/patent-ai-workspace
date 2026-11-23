@@ -195,6 +195,7 @@ def test_run_case_F1_읽기가_호출_상한에_닿으면_failed_limit_reached�
     st = env.run()
     assert st.state == RunState.FAILED
     assert st.error["code"] == "limit_reached"
+    assert not st.error["message"].startswith("limit_reached")  # 코드는 error.code에만
     assert "read_oa" in st.error["message"] and "max_model_calls" in st.error["message"]
     assert "2" in st.error["message"] and secret[:10] not in st.error["message"]
     assert env.oa_results.saved == []

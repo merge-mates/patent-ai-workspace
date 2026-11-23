@@ -6,7 +6,7 @@ F3·F2·F4 단계의 상한은 여기서 다루지 않는다 (F3 청구항 나�
 import pytest
 
 from patent_ai.core.agents import orchestrator
-from patent_ai.core.agents.orchestrator import CaseInput, NextAction, run_case
+from patent_ai.core.agents.orchestrator import CaseInput, NextAction, limit_reason, run_case
 from patent_ai.core.agents.steps import MemoryStepRecorder
 from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
@@ -48,7 +48,9 @@ def test_F1_읽기_상한이면_failed_limit_reached와_단계_줄(tmp_path, mon
     monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", _over)
     out, steps = _run(tmp_path, "fixed_order")
     assert out.state == "failed" and out.error["code"] == "limit_reached"
-    assert "read_oa" in out.error["message"]
+    assert out.error["message"] == limit_reason(
+        "read_oa", ModelCallLimitExceeded("max_model_calls", 3, 2)
+    )
     _no_leak(out.error["message"])
     (rec,) = [r for r in steps.records if r.outcome == "limit_reached"]
     assert rec.tool_name == "read_oa" and rec.skipped_reason == out.error["message"]
@@ -78,10 +80,24 @@ def test_지휘_모델이_read_oa_뒤에_상한이면_succeeded와_넘긴_이유
     out, steps = _run(tmp_path, "agent")
     assert out.state == "succeeded" and out.error is None
     assert "read_oa" in out.results and "cut_to_oa" in out.results
-    assert list(out.skipped) == ["decide"]
-    assert out.skipped["decide"].startswith("limit_reached:")
-    _no_leak(out.skipped["decide"])
-    assert any(r.step_kind == "decide" and r.outcome == "limit_reached" for r in steps.records)
+    # 아직 결과도 넘김도 없는 F3·F2·F4가 같은 이유로 넘어간다 (decide는 넘긴 목록에 없다)
+    assert list(out.skipped) == ["run_f3", "run_f2", "run_f4"]
+    for why in out.skipped.values():
+        assert why == limit_reason("decide", ModelCallLimitExceeded("max_model_calls", 3, 2))
+        _no_leak(why)
+    limited = [(r.step_kind, r.tool_name) for r in steps.records if r.outcome == "limit_reached"]
+    assert limited == [
+        ("decide", "decide"),
+        ("code_tool", "run_f3"),
+        ("code_tool", "run_f2"),
+        ("code_tool", "run_f4"),
+    ]
+    # 넘긴 줄만 skipped_reason을 가진다 (decide 줄은 목록에 안 나온다)
+    assert [r.tool_name for r in steps.records if r.skipped_reason] == [
+        "run_f3",
+        "run_f2",
+        "run_f4",
+    ]
 
 
 @pytest.mark.parametrize("plan", ["fixed_order"])
