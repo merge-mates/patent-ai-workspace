@@ -77,7 +77,7 @@ src/patent_ai/
   api/            라우터만 (로직 없음)
   core/
     schemas/      결과 스키마, 근거·상태
-    agents/       지휘 에이전트, 근거 검토 에이전트(F2 비교 실험: 역할 분리 있음/없음), 공통 루프·도구 규약
+    agents/       지휘 에이전트, 근거 검토 에이전트(F2 비교 실험: 근거 검토 에이전트 있음/없음), 공통 루프·도구 규약
     f1_oa_reader/        F1 도구
     f2_legal_research/   F2 서브에이전트와 도구
     f3_claim_compare/    F3 서브에이전트와 도구
