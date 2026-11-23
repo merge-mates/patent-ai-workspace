@@ -230,3 +230,22 @@ def test_같은_날_시행판이_둘이면_고르지_않고_겹친_조각을_더
     ]
     assert all(f.why == FurtherReviewWhy.OTHER_EDITION for f in b.further_review)
     assert all("시행판이 둘 이상" in f.note for f in b.further_review)
+
+
+def test_조문_여럿_중_일부를_못_찾으면_묶음이_확인됨이_아니고_못_찾은_조문이_보인다(caplog):
+    with caplog.at_level("WARNING"):
+        b = _answer("특허법 제29조제2항과 특허법 제30조제1항")  # 30조1항은 색인에 없다
+    assert b.status.value == StatusValue.NOT_FOUND_IN_SCOPE and b.status.searched_scope
+    found, missing = b.claims
+    assert found.status.value == StatusValue.CONFIRMED and found.sources
+    assert missing.text == "질문에 적은 조문을 찾지 못함: 특허법 제30조제1항"
+    assert missing.sources == [] and missing.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert Flag.NEEDS_HUMAN_REVIEW in missing.flags
+    assert any("제30조제1항" in r.getMessage() for r in caplog.records)
+
+
+def test_못_찾은_조문이_앞이어도_번호가_겹치지_않고_앞_답_조각도_다시_본다():
+    b = _answer("특허법 제30조제1항과 제29조제2항", prior=[f"{IV}:{OLD_DOC}:290002"])
+    assert [c.no for c in b.claims] == [1, 2]
+    assert b.status.value == StatusValue.NOT_FOUND_IN_SCOPE
+    assert [x.why for x in b.further_review] == [FurtherReviewWhy.EDITION_OUT_OF_SCOPE]

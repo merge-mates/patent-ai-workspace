@@ -99,6 +99,13 @@ def _claim_text(label: str, edition: str, by_search: bool, search_k: int) -> str
     return f"질문에서 찾은 조문: {label} ({edition})"
 
 
+def _no_source_status(status: Status) -> Status:
+    """근거 0개 주장의 status. 같은 날 시행판이 둘(conflict)이면 고를 근거가 없어 확인되지 않음."""
+    if status.value == StatusValue.CONFLICT:
+        return Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+    return status
+
+
 def _empty_status(statuses: list[Status], skipped: int, scope: str) -> Status:
     """주장이 0개일 때의 묶음 status (못 찾음 != 없음)."""
     if skipped > 0:
@@ -134,10 +141,13 @@ def _statute_candidates(
     searcher: Searcher,
     search_k: int,
 ):
-    """법령 후보 찾기 -> (후보 [(라벨, 조각)], 기록, 못 찾은 이유들, 뺀 수, 범위 글, 겹친 판)."""
+    """법령 후보 찾기.
+
+    -> (후보 [(라벨, 조각)], 기록, 못 찾은 [(라벨, status)], 뺀 수, 범위 글, 겹친 판)
+    """
     found: list[tuple[str, Chunk]] = []
     logs: list[SearchLogEntry] = []
-    statuses: list[Status] = []
+    missed: list[tuple[str, Status]] = []
     skipped = 0
     overlaps: list[FurtherReview] = []  # 같은 날 시행판이 둘 이상인 조각 (사람이 볼 것)
     if refs:
@@ -149,11 +159,11 @@ def _statute_candidates(
             if got.chunk is not None:
                 found.append((ref.label, got.chunk))
             else:
-                statuses.append(got.status)
+                missed.append((ref.label, got.status))
                 overlaps += [further_review(x, ref.label, as_of) for x in got.conflicts]
         labels = ", ".join(r.label for r in refs)
         scope = f"{pool.index_version} 법령 조문 {labels}, 모든 판 (기준일 {as_of.isoformat()})"
-        return found, logs, statuses, skipped, scope, overlaps
+        return found, logs, missed, skipped, scope, overlaps
     # 번호가 없으면 질문 글로 BM25 검색
     res = search_article(searcher, question.text, as_of, search_k)
     skipped = res.skipped_unverified_edition
@@ -164,14 +174,14 @@ def _statute_candidates(
             found.append((f"{law_of(h.doc_id) or h.doc_id} {h.location.label}", h))
     elif res.status == "unverified":
         status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason(res.status_reason))
-        statuses.append(status)
+        missed.append(("질문 글 검색", status))
     elif _before_earliest(pool, as_of):
         # 기준일이 이 판 법령의 가장 이른 시행일보다 앞: 그때 판이 색인에 없다 (없음이 아니다)
         status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.EDITION_UNKNOWN)
-        statuses.append(status)
+        missed.append(("질문 글 검색", status))
     else:
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
-        statuses.append(status)
+        missed.append(("질문 글 검색", status))
     logs.append(
         SearchLogEntry(
             source_kind=LegalSourceKind.STATUTE,
@@ -183,7 +193,7 @@ def _statute_candidates(
             status=status,
         )
     )
-    return found, logs, statuses, skipped, scope, overlaps
+    return found, logs, missed, skipped, scope, overlaps
 
 
 def answer_question(
@@ -200,7 +210,7 @@ def answer_question(
     as_of = question.as_of or checked_on
     claims: list[LegalClaim] = []
     logs: list[SearchLogEntry] = []
-    statuses: list[Status] = []
+    missed: list[tuple[str, Status]] = []
     skipped, scope = 0, f"{pool.index_version} 법령 (찾지 않음)"
     refs: list[ArticleRef] = []
     overlaps: list[FurtherReview] = []
@@ -208,7 +218,7 @@ def answer_question(
     # STATUTE를 고른 때만 법령을 찾는다
     if LegalSourceKind.STATUTE in question.source_kinds:
         refs = article_refs_in_text(question.text)
-        found, logs, statuses, skipped, scope, overlaps = _statute_candidates(
+        found, logs, missed, skipped, scope, overlaps = _statute_candidates(
             question, refs, as_of, pool, searcher, search_k
         )
         for label, chunk in found:
@@ -218,9 +228,10 @@ def answer_question(
                 logger.warning(
                     "법률 질문 %s: %s 근거가 출처 확인에서 빠짐", bundle_id, chunk.chunk_id
                 )
-                statuses.append(
-                    Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.EVIDENCE_REJECTED)
+                rejected = Status(
+                    value=StatusValue.UNVERIFIED, reason=UnverifiedReason.EVIDENCE_REJECTED
                 )
+                missed.append((label, rejected))
                 continue
             claims.append(
                 LegalClaim(
@@ -238,13 +249,30 @@ def answer_question(
                 )
             )
 
+    # 일부만 찾았으면 못 찾은 조문도 근거 없는 주장 줄로 남긴다. 묶음 status는 주장 중 가장 나쁜
+    # 값이라 "확인됨"으로 보이지 않는다 (하나도 못 찾으면 아래 _empty_status가 이유를 낸다)
+    if claims:
+        for label, missed_status in missed:
+            logger.warning("법률 질문 %s: %s 근거 없음 (%s)", bundle_id, label, missed_status.value)
+            claims.append(
+                LegalClaim(
+                    no=len(claims) + 1,
+                    text=f"질문에 적은 조문을 찾지 못함: {label}"
+                    if refs
+                    else f"검색한 조문의 출처를 확인하지 못함: {label}",
+                    sources=[],
+                    status=_no_source_status(missed_status),
+                    flags=[Flag.NEEDS_HUMAN_REVIEW],
+                )
+            )
+
     # 심사기준·판례·심결: 아직 검색이 없어 body_missing 기록만 (못 찾음 != 없음)
     logs += [
         search_not_indexed(pool, kind, as_of)
         for kind in NOT_SEARCHED
         if kind in question.source_kinds
     ]
-    used = {c.sources[0].evidence.chunk_id for c in claims}
+    used = {s.evidence.chunk_id for c in claims for s in c.sources}
     in_force = {c.chunk_id for c in pool.in_force(as_of)}
     known = {c.chunk_id: c for c in pool.chunks}
     further: list[FurtherReview] = list(overlaps)
@@ -268,7 +296,7 @@ def answer_question(
         status = summarize_bundle_status(claims)
     else:
         logger.warning("법률 질문 %s: 주장 0개 (근거 0개 묶음)", bundle_id)
-        status = _empty_status(statuses, skipped, scope)
+        status = _empty_status([s for _, s in missed], skipped, scope)
     return LegalEvidenceBundle(
         bundle_id=bundle_id,
         question=question,
