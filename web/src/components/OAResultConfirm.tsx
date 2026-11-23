@@ -15,6 +15,7 @@ export function OAResultConfirm({
   runId,
   confirmation,
   running,
+  waitingNumber,
 }: {
   oaId: string
   // 지금 보이는 OA 정리를 낸 실행 (oaResult.run_id)
@@ -24,6 +25,8 @@ export function OAResultConfirm({
   // 그 OA의 최근 실행이 아직 도는 중(queued·running). 도는 동안은 새 정리가 곧 나오니 버튼을 막는다.
   // (막지 못한 틈에 정리가 바뀌어도 서버가 본 run_id와 비교해 409로 막는다, #311)
   running: boolean
+  // 그 OA의 최근 실행이 출원번호·발송번호를 기다리는 중. 번호를 넣으면 같은 run_id로 정리가 바뀌어 미리 확인하지 못하게 막는다 (#325)
+  waitingNumber: boolean
 }) {
   const { message } = App.useApp()
   const revalidator = useRevalidator()
@@ -38,7 +41,7 @@ export function OAResultConfirm({
   // 확인 여부를 못 받았다(GET 실패 등): "확인 전"으로 그리지 않고 모름으로 보인다
   const unknown = pressed === null && confirmation === null
   // 실행이 막 끝나 화면이 새 정리를 다시 받는 중(revalidate)일 때도 막는다: 그 사이엔 옛 정리가 보여 누르면 409가 난다
-  const busy = running || revalidator.state !== 'idle'
+  const busy = running || waitingNumber || revalidator.state !== 'idle'
 
   const confirm = async () => {
     setSaving(true)
@@ -52,6 +55,12 @@ export function OAResultConfirm({
       // 그 사이 새 정리가 나왔다(409 stale_result): 확인은 안 남았다. 새 정리를 받아 다시 보게 한다
       if (e instanceof ApiError && e.code === 'stale_result') {
         message.warning('그 사이 새 정리가 나와 확인을 남기지 않았어요. 새 정리를 보고 다시 확인해 주세요')
+        await revalidator.revalidate()
+        return
+      }
+      // 번호를 기다리는 중(409 waiting_for_number, 화면이 아직 몰랐던 때): 확인은 안 남았다. 이유를 알린다
+      if (e instanceof ApiError && e.code === 'waiting_for_number') {
+        message.warning('번호를 넣으면 정리가 바뀌어 확인을 남기지 않았어요. 번호를 넣은 뒤 확인해 주세요')
         await revalidator.revalidate()
         return
       }
@@ -80,14 +89,19 @@ export function OAResultConfirm({
           <span className="label2 t3">
             {running
               ? '새 정리가 나오는 중이에요 · 끝난 뒤 확인해 주세요'
-              : unknown
-                ? '확인 여부 (모름): 확인 상태를 받지 못했어요'
-                : 'AI가 정리한 것을 확인했다고 남겨요'}
+              : waitingNumber
+                ? '번호를 넣으면 정리가 바뀌어요 · 번호를 넣은 뒤 확인해 주세요'
+                : unknown
+                  ? '확인 여부 (모름): 확인 상태를 받지 못했어요'
+                  : 'AI가 정리한 것을 확인했다고 남겨요'}
           </span>
         </>
       )}
       {confirmedAt !== null && running && (
         <span className="label2 t3">새 정리가 나오는 중이에요 · 끝난 뒤 다시 확인해 주세요</span>
+      )}
+      {confirmedAt !== null && waitingNumber && (
+        <span className="label2 t3">번호를 넣으면 정리가 바뀌어요 · 번호를 넣은 뒤 다시 확인해 주세요</span>
       )}
       {error && (
         <span className="label2" style={{ color: 'var(--fg-negative-text)' }}>
