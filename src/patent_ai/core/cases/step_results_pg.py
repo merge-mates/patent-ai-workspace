@@ -19,6 +19,7 @@ from patent_ai.core.cases.step_results import (
     kind_of,
     parse_body,
 )
+from patent_ai.db.ids import new_id
 from patent_ai.db.models import StepResultRow
 
 
@@ -26,11 +27,13 @@ class PostgresStepResultStore:
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._factory = session_factory
 
-    def save_step_result(self, oa_id: str, run_id: str, body: StepBody) -> None:
+    def save_step_result(self, oa_id: str, run_id: str, body: StepBody) -> str:
         kind = kind_of(body)
+        row_id = new_id("sres")  # 커밋 뒤 다시 읽지 않게 ID를 먼저 정한다
         with self._factory() as s:
             s.add(
                 StepResultRow(
+                    id=row_id,
                     oa_id=oa_id,
                     run_id=run_id,
                     kind=kind,
@@ -45,6 +48,7 @@ class PostgresStepResultStore:
                 if name == "uq_step_results_run_kind":
                     raise DuplicateStepResult(f"{run_id}/{kind}") from e
                 raise
+        return row_id
 
     def step_result(self, run_id: str, kind: StepKind) -> StepBody | None:
         q = select(StepResultRow.body).where(

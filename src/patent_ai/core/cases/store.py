@@ -138,6 +138,8 @@ class CaseDetailRow:
     case_id: str
     case_name: str
     oas: list[OARef]  # 올린 순서
+    # 같은 출원번호 사건에 합쳐진 임시 사건이면 그 사건 id (#272). oas는 비어 있다
+    merged_into: str | None = None
 
 
 @dataclass(frozen=True)
@@ -184,7 +186,8 @@ class CaseAppStore(Protocol):
 
     def add_oa(self, case_id: str, file: NewDocument) -> OACreated:
         """같은 사건에 다음 OA. 없는 사건은 CaseNotFoundError,
-        같은 사건 안 같은 파일은 DuplicateDocumentError."""
+        같은 사건 안 같은 파일은 DuplicateDocumentError.
+        합쳐진 임시 사건이면 합친 사건에 붙인다 (#272: 목록에서 숨은 사건에 묻히지 않게)."""
         ...
 
     def list_cases(self) -> list[CaseSummaryRow]:
@@ -327,6 +330,7 @@ class _Case:
     id: str
     application_number: str | None
     oa_ids: list[str]  # 올린 순서
+    merged_into: str | None = None  # 같은 출원번호 사건에 합쳐진 임시 사건이면 그 사건 id (#272)
 
 
 @dataclass
@@ -386,6 +390,8 @@ class InMemoryCaseAppStore:
         case = self._cases.get(case_id)
         if case is None:
             raise CaseNotFoundError(case_id)
+        if case.merged_into is not None:
+            case = self._cases[case.merged_into]
         return self._add_oa(case, file)
 
     def create_run(self, oa_id: str, kind: str = "full") -> RunRow:
@@ -397,6 +403,8 @@ class InMemoryCaseAppStore:
     def list_cases(self) -> list[CaseSummaryRow]:
         rows = []
         for case in self._cases.values():
+            if case.merged_into is not None:  # 합쳐진 임시 사건은 목록에서 숨긴다 (#272)
+                continue
             latest = self._oas[case.oa_ids[-1]]
             run = self._runs.latest_for_oa(latest.id)
             # 거절이유·status는 latest_oa 기준. 메모리 저장소엔 정리가 없어 늘 기본값
@@ -418,7 +426,9 @@ class InMemoryCaseAppStore:
         case = self._cases.get(case_id)
         if case is None:
             return None
-        return CaseDetailRow(case.id, case_name_of(case.application_number), self._refs(case))
+        return CaseDetailRow(
+            case.id, case_name_of(case.application_number), self._refs(case), case.merged_into
+        )
 
     def get_oa(self, oa_id: str) -> OADetailRow | None:
         oa = self._oas.get(oa_id)
@@ -453,6 +463,24 @@ class InMemoryCaseAppStore:
             self._cases[oa.case_id].application_number = application_number
         if dispatch_number is not None:
             oa.dispatch_number = dispatch_number
+
+    def merge_oa(self, oa_id: str, target_case_id: str) -> bool:
+        """OA·원문 문서를 같은 출원번호의 기존 사건 끝(다음 OA)으로 옮긴다 (#272).
+
+        같은 파일이 그 사건에 이미 있으면 옮기지 않고 False (DB의 같은 사건 같은 파일 규칙).
+        OA가 다 빠진 임시 사건은 합침 표시를 달아 목록에서 숨긴다.
+        """
+        oa = self._oas[oa_id]
+        source, target = self._cases[oa.case_id], self._cases[target_case_id]
+        doc = next(d for d in self._docs if d.id == oa.document_id)
+        if any(d.case_id == target.id and d.sha256 == doc.sha256 for d in self._docs):
+            return False
+        source.oa_ids.remove(oa_id)
+        target.oa_ids.append(oa_id)
+        oa.case_id = doc.case_id = target.id
+        if not source.oa_ids:
+            source.merged_into = target.id
+        return True
 
     def find_document_by_sha256(
         self, sha256: str, case_id: str | None = None

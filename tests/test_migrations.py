@@ -156,3 +156,10 @@ def test_offline_sql_adds_direction_selections_and_runs_kind():
 
 def test_offline_sql_adds_human_inputs():
     assert "CREATE TABLE human_inputs" in _offline_sql()
+
+
+def test_offline_sql_adds_merged_into_case_id_to_cases():
+    # 이슈 #272: 같은 출원번호 사건에 합친 임시 사건의 "합침(기존 사건 ID)" 표시
+    sql = _offline_sql()
+    assert re.search(r"ALTER TABLE cases ADD COLUMN merged_into_case_id TEXT", sql)
+    assert re.search(r"FOREIGN KEY\(merged_into_case_id\) REFERENCES cases \(id\)", sql)

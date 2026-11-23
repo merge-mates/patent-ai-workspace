@@ -91,6 +91,7 @@ def test_올린_뒤_목록과_상세(env):
         # 묶기 결과(#16)가 저장되기 전이라 비어 있다
         "events": [],
         "claim_versions": [],
+        "merged_into_case_id": None,
     }
 
 

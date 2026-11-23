@@ -72,11 +72,26 @@ def test_충돌인_번호는_값이_있어도_넣지_않는다():
     assert (fill.application_number, fill.dispatch_number, fill.case_number) == (None, None, None)
 
 
-def test_같은_출원번호_사건이_따로_있으면_넣지_않고_경고를_남긴다(caplog):
-    with caplog.at_level(logging.WARNING):
-        fill = plan_number_fill("c_tmp", None, None, _oa(), owner_of_number="c_old")
-    assert fill.application_number is None and fill.case_number is None
-    assert "c_old" in caplog.text
+def test_같은_출원번호_사건이_따로_있으면_그_사건에_합치라고_정한다():
+    # 임시 사건에 번호를 넣지 않고(출원번호 unique), 기존 사건의 다음 OA로 옮긴다 (#272)
+    fill = plan_number_fill("c_tmp", None, None, _oa(), owner_of_number="c_old")
+    assert fill.application_number is None
+    assert fill.merge_into == "c_old"
+    assert fill.case_number == APP  # 합친 사건의 출원번호로 사건 자료를 만든다
+    assert fill.dispatch_number == DISP
+
+
+def test_발송번호를_모르면_합치지_않고_사람_입력을_기다린다():
+    # requirements "발송번호가 다를 때" 붙인다: 모르면 같은 OA인지 몰라 임시 사건에 둔다.
+    # 사람이 발송번호를 넣어 이어 돌면 그때 합친다 (중복 OA가 기존 사건에 묻히지 않게)
+    fill = plan_number_fill("c_tmp", None, None, _unread(_oa(), "dispatch_number"), "c_old")
+    assert fill.merge_into is None and fill.application_number is None
+    assert fill.case_number is None
+
+
+def test_합칠_사건이_없으면_merge_into는_비어_있다():
+    assert plan_number_fill("c_1", None, None, _oa(), None).merge_into is None
+    assert plan_number_fill("c_1", None, None, _oa(), owner_of_number="c_1").merge_into is None
 
 
 def test_이미_번호가_있는_사건은_바꾸지_않는다(caplog):
@@ -180,3 +195,91 @@ def test_메모리_구현은_출원번호를_못_읽으면_사건_자료를_만�
 
     assert store.get_case(created.case_id).case_name == "출원번호 확인 전"
     assert materials.latest_case_materials(created.case_id) is None
+
+
+# --- 같은 출원번호 사건에 합치기 (#272) ----------------------------------------------
+
+DISP2 = "952099000000002"  # 같은 출원의 다음 OA 발송번호
+
+
+def _next_oa(oa_id: str) -> OAResult:
+    """같은 출원번호, 다른 발송번호의 다음 OA 정리."""
+    oa = _oa(oa_id)
+    return oa.model_copy(
+        update={"dispatch_number": oa.dispatch_number.model_copy(update={"value": DISP2})}
+    )
+
+
+def _doc(tag: str) -> NewDocument:
+    return NewDocument(f"work/u/{tag}.pdf", tag * 64, datetime(2099, 1, 1, tzinfo=UTC))
+
+
+@pytest.fixture
+def merged():
+    """사건 A(번호 채움) 뒤에 같은 출원의 다음 OA를 새 사건으로 올려 실행이 끝난 상태."""
+    store = InMemoryCaseAppStore()
+    materials = InMemoryCaseMaterialsStore()
+    results: dict[str, OAResult] = {}
+    fill = InMemoryCaseFill(store, materials, results.get)
+    first = store.create_case(_doc("a"))
+    results[first.oa_id] = _oa(first.oa_id)
+    fill.fill_after_f1(first.oa_id, first.run_id, results[first.oa_id], None)
+    second = store.create_case(_doc("b"))
+    fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
+    return store, materials, fill, first, second
+
+
+def test_같은_출원번호면_올린_OA가_기존_사건의_다음_OA가_된다(merged):
+    store, _, _, first, second = merged
+    case = store.get_case(first.case_id)
+    assert [r.oa_id for r in case.oas] == [first.oa_id, second.oa_id]
+    oa = store.get_oa(second.oa_id)
+    assert (oa.case_id, oa.case_name, oa.dispatch_number) == (first.case_id, APP, DISP2)
+    # 원문 문서도 기존 사건으로 옮긴다 (원문 경로는 그대로)
+    assert store.get_document_path(second.document_id) == "work/u/b.pdf"
+    assert store.find_document_by_sha256("b" * 64).case_id == first.case_id
+
+
+def test_합친_임시_사건은_사건_목록에서_빠진다(merged):
+    store, _, _, first, second = merged
+    assert [r.case_id for r in store.list_cases()] == [first.case_id]
+    assert store.list_cases()[0].latest_oa.oa_id == second.oa_id
+
+
+def test_합친_뒤_기존_사건_자료에_새_OA까지_들어간다(merged):
+    _, materials, _, first, second = merged
+    saved = materials.latest_case_materials(first.case_id)
+    assert saved.run_id == second.run_id
+    assert [d.document_id for d in saved.result.documents] == [
+        first.document_id,
+        second.document_id,
+    ]
+    # 두 OA가 같은 인용문헌을 인용: 빠진 자료 한 줄, 보류는 OA마다
+    assert saved.result.missing[0].depends_on_tasks == [
+        f"f3_compare:{first.oa_id}:D1",
+        f"f3_compare:{second.oa_id}:D1",
+    ]
+    assert materials.latest_case_materials(second.case_id) is None
+
+
+def test_기존_사건에_같은_파일이_있으면_합치지_않고_경고를_남긴다(caplog):
+    # 올릴 때 409로 막히는 드문 경우 (저장소를 바로 부름): 실패하지 않고 임시 사건 그대로
+    store, materials = InMemoryCaseAppStore(), InMemoryCaseMaterialsStore()
+    fill = InMemoryCaseFill(store, materials)
+    first = store.create_case(_doc("a"))
+    fill.fill_after_f1(first.oa_id, first.run_id, _oa(first.oa_id), None)
+    second = store.create_case(_doc("a"))
+    with caplog.at_level(logging.WARNING):
+        fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
+    assert first.case_id in caplog.text
+    assert store.get_oa(second.oa_id).case_id == second.case_id
+    assert store.get_case(second.case_id).case_name == "출원번호 확인 전"
+    assert len(store.list_cases()) == 2
+
+
+def test_합친_뒤_다시_실행해도_그대로다(merged):
+    store, materials, fill, first, second = merged
+    before = materials.latest_case_materials(first.case_id).result
+    fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
+    assert [r.oa_id for r in store.get_case(first.case_id).oas] == [first.oa_id, second.oa_id]
+    assert materials.latest_case_materials(first.case_id).result.documents == before.documents
