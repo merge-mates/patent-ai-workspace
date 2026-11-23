@@ -39,7 +39,7 @@ import { exampleCaseChecks, exampleDirections, exampleDrafts } from '../types/pr
 import demoFiles from 'virtual:demo-results'
 import type { CaseListExtra, CaseStage } from '../types/provisional/caseListExtra'
 import { directTodos } from '../todos'
-import { isDispatchNumberShape } from '../numberShapes'
+import { isApplicationNumberShape, isDispatchNumberShape } from '../numberShapes'
 import { ApiError } from './errors'
 import type { ResultList } from './resultList'
 
@@ -302,6 +302,9 @@ export const mockApi = {
   // 출원번호 입력: 받은 번호를 사건에 남기고, 기다리던 실행은 이어서 끝난 것으로 흉내 낸다 (서버는 PATCH /cases/{id}, #70)
   async setApplicationNumber(caseId: string, applicationNumber: string): Promise<NumberEnteredOut> {
     const b = await byCase(caseId)
+    if (!isApplicationNumberShape(applicationNumber))
+      throw new ApiError('invalid_application_number', '출원번호 꼴이 아닙니다', 422)
+    if (runOf(b).waiting_for !== 'application_number') throw new ApiError('not_waiting', '그 번호를 기다리는 실행이 없습니다', 409)
     saveAppNumber(b.case_id, applicationNumber)
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: currentRunId(b) }
   },
@@ -310,7 +313,7 @@ export const mockApi = {
     const b = await byOA(oaId)
     if (!isDispatchNumberShape(dispatchNumber))
       throw new ApiError('invalid_dispatch_number', '발송번호 꼴이 아닙니다', 422)
-    if (runOf(b).waiting_for !== 'dispatch_number') throw new ApiError('not_waiting', '발송번호를 기다리는 실행이 없습니다', 409)
+    if (runOf(b).waiting_for !== 'dispatch_number') throw new ApiError('not_waiting', '그 번호를 기다리는 실행이 없습니다', 409)
     saveDispatchNumber(b.case_id, dispatchNumber.trim())
     return { case_id: b.case_id, oa_id: b.oa_id, run_id: currentRunId(b) }
   },

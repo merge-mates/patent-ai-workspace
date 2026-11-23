@@ -2,8 +2,8 @@ import { App, Button, Input } from 'antd'
 import { useState } from 'react'
 import { api } from '../api'
 import { ApiError } from '../api/errors'
-import { isApplicationNumberShape, isDispatchNumberShape } from '../numberShapes'
-import { seedRun } from '../runPoll'
+import { isApplicationNumberShape, isDispatchNumberShape, showApplicationNumber, showDispatchNumber } from '../numberShapes'
+import { refreshRun, seedRun } from '../runPoll'
 import type { ExtractedValueStr } from '../types/generated/OAResult'
 import type { NumberEnteredOut } from '../types/provisional/case'
 import { HumanCheckTag } from './Marks'
@@ -19,6 +19,8 @@ const KINDS: Record<
     placeholder: string
     shapeError: string
     isShape: (text: string) => boolean
+    // 보일 때 하이픈 넣기 (저장 값은 그대로)
+    show: (text: string) => string
     save: (targetId: string, value: string) => Promise<NumberEnteredOut>
   }
 > = {
@@ -27,6 +29,7 @@ const KINDS: Record<
     placeholder: '10-0000-0000000',
     shapeError: '출원번호 꼴이 아니에요 (숫자 13자리, 예: 10-0000-0000000)',
     isShape: isApplicationNumberShape,
+    show: showApplicationNumber,
     save: (id, v) => api.setApplicationNumber(id, v),
   },
   dispatch_number: {
@@ -34,6 +37,7 @@ const KINDS: Record<
     placeholder: '9-5-0000-000000000',
     shapeError: '발송번호 꼴이 아니에요 (예: 9-5-2099-000000007)',
     isShape: isDispatchNumberShape,
+    show: showDispatchNumber,
     save: (id, v) => api.setDispatchNumber(id, v),
   },
 }
@@ -46,10 +50,13 @@ const KINDS: Record<
 export function NumberInputForm({
   kind,
   targetId,
+  runId,
   read,
 }: {
   kind: NumberKind
   targetId: string
+  // 기다리던 실행의 run_id (이미 기다림이 풀렸다는 409 때 그 실행을 다시 받는 데 쓴다)
+  runId: string
   // 통지서에서 읽은 번호 (정리 결과가 없으면 null)
   read: ExtractedValueStr | null
 }) {
@@ -60,6 +67,8 @@ export function NumberInputForm({
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
+    // 저장 중에는 엔터·버튼 어느 쪽으로도 다시 보내지 않는다
+    if (saving) return
     if (!k.isShape(value)) {
       setError(k.shapeError)
       return
@@ -72,6 +81,8 @@ export function NumberInputForm({
       // 같은 실행이 이어 돈다: 응답 run_id를 queued로 넣으면 폴링이 다시 시작되고, 끝나면 화면 데이터를 새로 받는다
       seedRun({ run_id: out.run_id, state: 'queued', current_step: null })
     } catch (e) {
+      // 이미 다른 곳에서 기다림이 풀렸다(409 not_waiting): 실행을 다시 받아 입력 칸이 계속 남지 않게 한다
+      if (e instanceof ApiError && e.code === 'not_waiting') void refreshRun(runId)
       setError(e instanceof ApiError ? `${e.message} (${e.code})` : e instanceof Error ? e.message : String(e))
     } finally {
       setSaving(false)
@@ -79,8 +90,9 @@ export function NumberInputForm({
   }
 
   // 통지서에서 읽은 글자·후보 (충돌이면 후보를 나란히, 고르지 않음)
-  const candidates = read?.candidates?.map((c) => c.raw_text ?? c.value).filter((x) => x) ?? []
-  const readText = read?.raw_text ?? read?.value ?? null
+  const candidates = read?.candidates?.map((c) => k.show(String(c.raw_text ?? c.value ?? ''))).filter((x) => x) ?? []
+  const rawRead = read?.raw_text ?? read?.value ?? null
+  const readText = rawRead === null ? null : k.show(String(rawRead))
 
   return (
     <div
