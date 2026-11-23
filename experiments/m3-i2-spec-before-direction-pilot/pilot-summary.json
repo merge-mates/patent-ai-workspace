@@ -1,0 +1,46 @@
+{
+  "status": "exploratory_pilot",
+  "runs_per_model_condition": 1,
+  "goldset": "tune",
+  "goldset_version": 2,
+  "oa_count": 4,
+  "code_snapshot": "04af9b2264c44e009f9f1f9eb3e5fabde1d87ebc",
+  "citation_index": "cite-idx-v5",
+  "retrieval": {
+    "claim": {
+      "queries": 38,
+      "scored_rows": 10,
+      "recall_at_10": 0.316667,
+      "mrr_at_10": 0.103571
+    },
+    "claim_and_oa": {
+      "queries": 38,
+      "scored_rows": 10,
+      "recall_at_10": 0.316667,
+      "mrr_at_10": 0.086905
+    }
+  },
+  "drafts": {
+    "current": {
+      "direction_matches": 8,
+      "scored_rows": 17,
+      "matching_original_spec_paragraph_rows": 1,
+      "original_spec_gold_rows": 10,
+      "held_units": 0
+    },
+    "bm25": {
+      "direction_matches": 11,
+      "scored_rows": 17,
+      "matching_original_spec_paragraph_rows": 3,
+      "original_spec_gold_rows": 10,
+      "held_units": 0
+    },
+    "verified_passages": {
+      "direction_matches": 10,
+      "scored_rows": 17,
+      "matching_original_spec_paragraph_rows": 5,
+      "original_spec_gold_rows": 10,
+      "held_units": 1
+    }
+  }
+}
