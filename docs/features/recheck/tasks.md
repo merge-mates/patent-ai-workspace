@@ -207,11 +207,11 @@ graph LR
 - 먼저: task-4
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- 다음: task-1
-- 막힌 것:
+- [x] task-1 (e258b63 마이그레이션 f1a6c3d8b905, 리뷰 막음 1 → 97dcf09: 도구 줄 tool_input에 claim·element_claim. 309a의 prepare_units 때문에 깨진 단계 기록 DB 테스트 고침 816436f = 309a 브랜치 49c1a84와 같은 내용)
+- [x] task-2 (43fe868, 리뷰 고칠 것 3 → 7a0c64d. eval 쪽 `NoiseScopedSearcher`·`load_doc_noise_scope(path, gold_rows)` — 계획의 `load_noise_scope(path)`와 이름·인자가 다름: 줄을 문헌으로 바꾸려면 정답 줄이 필요. 노이즈 색인 cite-idx-v4가 이 맥 DB에 없어 실제 실행은 안 함)
+- [ ] task-3 정밀도 판정: 뺌 (시간)
+- 다음: 309d ((나) 명세서 근거 — 합격 기준 2 필수), task-3
+- 막힌 것: 없음
 
 ## m3-i2-309d  (11/23)  상태: 승인 (재아 사전 승인 11/23, plan-reviewer 통과: 막음 없음, 고칠 것 15 반영)  (이슈 #309, Closes)  브랜치 `feat/309-recheck-spec` (309c 위에)
 **구현할 design 부분**: design.md 3절 (나), 5절 `amendment_basis`, 8-1 Reflexion(C+R), 2-1 판 D   **맡은 합격 기준**: requirements.md 2, 8, 7(C+R·D 줄)
