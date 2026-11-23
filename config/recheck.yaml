@@ -13,15 +13,15 @@ spec_basis: none
 
 # 에이전트 한 번의 상한
 limits:
-  tool_calls: 8   # 도구를 부르는 횟수
-  turns: 10       # 모델 호출 차례 수
+  tool_calls: 8   # [가정] 도구를 부르는 횟수
+  turns: 10       # [가정] 모델 호출 차례 수
 
 # 다시 찾기 검색 값
 search:
-  k_max: 10            # 도구 한 번이 돌려줄 최대 조각 수
-  snippet_chars: 160   # 도구가 보여 주는 조각 앞부분 글자 수
-  rewrite_k: 10        # 고정 루프: 질의마다 받는 상위 조각 수
-  rewrite_n: 3         # 고정 루프: 다시 쓸 질의 수
+  k_max: 10            # [가정] 도구 한 번이 돌려줄 최대 조각 수
+  snippet_chars: 160   # [가정] 도구가 보여 주는 조각 앞부분 글자 수
+  rewrite_k: 10        # [가정] 고정 루프: 질의마다 받는 상위 조각 수
+  rewrite_n: 3         # [가정] 고정 루프: 다시 쓸 질의 수
 
 # 단계: 고정 루프의 질의 다시 쓰기 (구성요소 × 인용문헌 하나마다 1번)
 # 가격은 claude-haiku-5-5 공식 가격표 2026-11-03 판 기준 (입력 $0.10, 출력 $0.50 / 100만 토큰)
@@ -32,7 +32,7 @@ rewrite:
   prompt: prompts/recheck/rewrite.md
   price_per_mtok_input: 0.10
   price_per_mtok_output: 0.50
-  max_model_calls: 200   # 실행 하나의 합계: 못 찾은 구성요소 × 인용문헌마다 1번 + 검사 실패 때 1번 더
+  max_model_calls: 200   # [가정] 실행 하나의 합계: 구성요소 × 인용문헌마다 1번. 출력 검사 실패는 다시 부르지 않는다
   max_retries: 2         # 전송 오류(429·연결)를 다시 부르는 횟수
 
 # 단계: 에이전트의 도구 사용 차례 (다음 task가 씀)

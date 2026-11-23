@@ -156,3 +156,31 @@ def test_다시_쓰기가_실패하면_검색하지_않고_예외를_올린다()
     with pytest.raises(ModelCallFailed):
         _run(ctx, shown=set(), searcher=searcher)
     assert searcher.calls == []
+
+
+def test_다시_쓴_질의가_빈_글뿐이면_ModelOutputInvalid이고_검색은_안_돈다():
+    ctx, _ = _ctx(_reply([" ", ""]))
+    recorder = _Recorder()
+    with pytest.raises(ModelOutputInvalid):
+        _run(ctx, set(), searcher=recorder)
+    assert recorder.calls == []
+
+
+def test_본문_없는_인용문헌이면_assert가_아니라_ValueError():
+    ctx, _ = _ctx(_reply(["수조"]))
+    nobody = ResolvedCitation.model_construct(label="D1", doc_id=None, chunk_count=0, compared=None)
+    with pytest.raises(ValueError):
+        fixed_loop_candidates(
+            unit_id="u1",
+            claim=1,
+            item_n=1,
+            element=ELEMENT,
+            claim_text=CLAIM_TEXT,
+            cite=nobody,
+            shown=set(),
+            settings=load_f3_settings(),
+            recheck=_recheck(),
+            ctx=ctx,
+            searcher=SEARCHER,
+            search_log=[],
+        )

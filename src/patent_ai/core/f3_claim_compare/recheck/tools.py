@@ -6,7 +6,6 @@ search_bm25 · search_vector · open_paragraph · submit_evidence · give_up.
 """
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -19,6 +18,7 @@ from patent_ai.core.agents.tool_loop import (
     ToolOutcome,
     ToolSpec,
 )
+from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.schemas.comparison import Judgment
@@ -84,11 +84,6 @@ class Submitted:
     judgment: Judgment | None = None
 
 
-def _squash(text: str) -> str:
-    """공백을 모두 뺀 글 (quote가 문단에 그대로 있는지 볼 때 줄바꿈 차이를 무시)."""
-    return re.sub(r"\s+", "", text)
-
-
 def _error(content: str, **logged) -> ToolOutcome:
     return ToolOutcome(content, is_error=True, logged_input=logged)
 
@@ -111,6 +106,7 @@ class CiteToolbox:
         k_max: int,
         snippet_chars: int,
         *,
+        min_quote_chars: int = 10,  # F3 설정 min_quote_chars와 같은 값 (agent.py가 넘긴다)
         root: Path | None = None,
     ) -> None:
         self.searcher = searcher
@@ -121,6 +117,7 @@ class CiteToolbox:
         self.exclude_ids = exclude_ids
         self.k_max = k_max
         self.snippet_chars = snippet_chars
+        self.min_quote_chars = min_quote_chars
         self.root = root or REPO_ROOT
         self.hits: list[str] = []  # 이 대화의 검색에 걸린 조각 ID (순서 유지, 중복 없음)
         self.opened: list[str] = []  # 연 문단 ID (순서 유지)
@@ -225,6 +222,8 @@ class CiteToolbox:
                 )
             if pid not in self.opened:
                 return f"{pid}는 열지 않은 문단이다. open_paragraph로 먼저 연다"
+        if len(set(ids)) != len(ids):
+            return "같은 문단 ID가 중복됐다. 문단마다 한 번씩만 적어 다시 낸다"
         return None
 
     def _submit_compare(self, m: SubmitCompareIn) -> ToolOutcome:
@@ -246,10 +245,17 @@ class CiteToolbox:
         for it in m.items:
             chunk = self._get(it.paragraph_id)
             assert chunk is not None  # _check_ids가 걸렀다
-            if not it.quote.strip() or _squash(it.quote) not in _squash(chunk.text):
+            # F3 근거 검사와 같은 규칙: 원문에 그대로(공백 줄이기만 허용) 있고 너무 짧지 않아야 한다
+            if find_span(it.quote, chunk.text) is None:
                 return _error(
                     f"{it.paragraph_id}의 quote가 문단 글에 그대로 없다. "
                     "연 문단에서 한 글자도 바꾸지 않고 옮겨 다시 낸다",
+                    **logged,
+                )
+            if is_too_short(it.quote, chunk.text, self.min_quote_chars):
+                return _error(
+                    f"{it.paragraph_id}의 quote가 너무 짧다 (공백 빼고 {self.min_quote_chars}자 "
+                    "이상). 근거가 되는 구절을 더 길게 옮겨 다시 낸다",
                     **logged,
                 )
         done = Submitted(

@@ -20,6 +20,7 @@ from patent_ai.core.f3_claim_compare.recheck.config import RecheckSettings
 from patent_ai.core.f3_claim_compare.result import SearchLogRow
 from patent_ai.core.f3_claim_compare.textmatch import text_hash
 from patent_ai.core.llm.client import call_model
+from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.retrieval.contract import Searcher
 
@@ -44,6 +45,9 @@ def rewrite_queries(element_text: str, claim_text: str, ctx: RunContext, *, n: i
     variables = {"n": str(n), "claim_text": claim_text, "element": element_text}
     answer = call_model(STEP, variables, RewriteAnswer, ctx=ctx).parsed
     queries = list(dict.fromkeys(q.strip() for q in answer.queries if q.strip()))
+    if not queries:
+        # 빈 질의뿐이면 찾지도 않고 "못 찾음"이 되므로 모델 답 오류로 올린다 (호출자가 보류로)
+        raise ModelOutputInvalid("recheck.rewrite: 쓸 수 있는 질의가 0개")
     if len(queries) > n:
         logger.warning("recheck.rewrite: 질의 %d개를 받아 앞 %d개만 씀", len(queries), n)
     return queries[:n]
@@ -87,7 +91,8 @@ def fixed_loop_candidates(
         _second_log_status,
     )
 
-    assert cite.doc_id is not None  # 본문 없는 인용문헌은 부르는 쪽이 이미 보류한다
+    if cite.doc_id is None:  # 본문 없는 인용문헌은 부르는 쪽이 이미 보류한다
+        raise ValueError(f"{cite.label}: doc_id가 없어 다시 찾을 수 없다")
     queries = rewrite_queries(element.text, claim_text, ctx, n=recheck.search.rewrite_n)
     if queries_out is not None:
         queries_out.extend(queries)

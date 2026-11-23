@@ -342,13 +342,16 @@ def test_판정까지_agent면_quote를_대조해_근거로_받고_compare는_�
     assert "판정까지 냅니다" in first["system"]
 
 
-def test_판정까지_agent일_때_quote가_너무_짧으면_버려_근거_탈락으로_남는다():
-    responses = {STEP: [FIRST], AGENT: _found_turns("agent", quote="수조")}
-    out, *_ = _run(_settings(judge="agent"), responses)
+def test_판정까지_agent일_때_quote가_너무_짧으면_도구가_되돌려_주고_근거로_받지_않는다():
+    # 도구가 F3와 같은 규칙으로 거절하고(오류 결과) 대화가 이어진다. 포기로 끝나면 근거는 없다
+    turns = _found_turns("agent", quote="수조")[:2] + [_found_turns("agent", quote="수조")[2]]
+    turns.append(reply(use("give_up", {"reason": "other", "tried": "수조"}, "tu_9")))
+    out, transport, *_ = _run(_settings(judge="agent"), {STEP: [FIRST], AGENT: turns})
     row = _row(out, TANK)
     assert row.evidence == []
-    assert row.status.value == StatusValue.UNVERIFIED
-    assert row.status.reason == UnverifiedReason.EVIDENCE_REJECTED
+    last = json.dumps(transport.calls[-1]["messages"], ensure_ascii=False)
+    assert "너무 짧다" in last
+    assert [h.task for h in _rechecked_holds(out)] == []
 
 
 # ---- give_up ----
@@ -477,6 +480,14 @@ def test_fixed_loop_다시_쓰기가_실패하면_그_구성요소만_보류한�
     out, _, _, unit_id = _run(_settings("fixed_loop"), responses)
     assert [h.task for h in _rechecked_holds(out)] == [_task(unit_id, "call_failed")]
     assert out.tables == _baseline().tables and out.call_errors == []
+
+
+def test_fixed_loop_다시_쓴_질의가_빈_글뿐이면_찾지_않고_call_failed로_보류한다():
+    responses = {STEP: [FIRST], REWRITE: [_rewrite([" "])]}
+    out, _, searcher, unit_id = _run(_settings("fixed_loop"), responses)
+    assert [h.task for h in _rechecked_holds(out)] == [_task(unit_id, "call_failed")]
+    assert [c[1] for c in searcher.calls] == [1, 1]  # 1차 검색 둘뿐, 다시 찾기 검색은 없다
+    assert out.tables == _baseline().tables
 
 
 def test_fixed_loop_호출_상한이면_limit_reached로_보류한다():

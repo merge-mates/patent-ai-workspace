@@ -224,14 +224,14 @@ def test_submit_agent_항목_모양과_판정(repo):
     tool(box, "open_paragraph")(paragraph_id=D1_2)
     call = tool(box, "submit_evidence", "agent")
     out = call(
-        items=[{"paragraph_id": D1_2, "quote": "컨트롤러가 온도 값을"}],
+        items=[{"paragraph_id": D1_2, "quote": "컨트롤러가 온도 값을 읽는다"}],
         judgment="disclosed",
         why="컨트롤러가 제어부에 대응",
     )
     assert out.is_error is False
     sub = out.done
     assert sub.judgment is Judgment.DISCLOSED
-    assert [(i.paragraph_id, i.quote) for i in sub.items] == [(D1_2, "컨트롤러가 온도 값을")]
+    assert [(i.paragraph_id, i.quote) for i in sub.items] == [(D1_2, "컨트롤러가 온도 값을 읽는다")]
     assert sub.paragraph_ids == [D1_2]
     # 기록에는 ID와 판정만, quote·글은 없다
     assert out.logged_input == {"paragraph_ids": [D1_2], "judgment": "disclosed"}
@@ -241,7 +241,7 @@ def test_submit_agent_항목_모양과_판정(repo):
 def test_submit_agent_안_연_문단과_문단에_없는_quote는_오류_결과(repo):
     box = make_box(repo)
     call = tool(box, "submit_evidence", "agent")
-    item = {"paragraph_id": D1_2, "quote": "컨트롤러가 온도 값을"}
+    item = {"paragraph_id": D1_2, "quote": "컨트롤러가 온도 값을 읽는다"}
     out = call(items=[item], judgment="disclosed", why="x")
     assert out.is_error and "열지 않은 문단" in out.content
     tool(box, "open_paragraph")(paragraph_id=D1_2)
@@ -280,3 +280,52 @@ def test_정의에_길이_범위_개수_제약_키가_없다(repo):
             dumped = json.dumps(d, ensure_ascii=False)
             assert d["strict"] is True
             assert not [k for k in banned if f'"{k}"' in dumped], spec.name
+
+
+def test_submit_agent_공백을_뺀_quote와_한_글자_quote는_거절한다(repo):
+    # F3와 같은 규칙: find_span은 공백을 무시하지만 "모터를구동한다"처럼 붙여 쓴 글은
+    # 원문 글자 그대로가 아니라 잘못 옮긴 것이다 -> 띄어쓰기가 원문과 다르면 거절
+    box = make_box(repo)
+    tool(box, "open_paragraph")(paragraph_id=D1_1)
+    call = tool(box, "submit_evidence", "agent")
+    squashed = call(
+        items=[{"paragraph_id": D1_1, "quote": "모터를구동한다"}], judgment="disclosed", why="x"
+    )
+    assert squashed.is_error and squashed.done is None and "quote" in squashed.content
+    short = call(items=[{"paragraph_id": D1_1, "quote": "모"}], judgment="disclosed", why="x")
+    assert short.is_error and short.done is None and "짧" in short.content
+
+
+def test_submit_같은_문단_ID가_두_번이면_오류_결과(repo):
+    box = make_box(repo)
+    tool(box, "open_paragraph")(paragraph_id=D1_1)
+    out = tool(box, "submit_evidence")(paragraph_ids=[D1_1, D1_1], why="x")
+    assert out.is_error and out.done is None and "중복" in out.content
+    quote = "제어부는 센서 신호를 받아 모터를 구동한다"
+    item = {"paragraph_id": D1_1, "quote": quote}
+    agent = tool(box, "submit_evidence", "agent")(items=[item, item], judgment="disclosed", why="x")
+    assert agent.is_error and agent.done is None and "중복" in agent.content
+
+
+def test_도구_description은_root_밑_prompts_파일에서_온다(repo, tmp_path):
+    folder = tmp_path / "prompts" / "recheck" / "tools"
+    folder.mkdir(parents=True)
+    for name in (
+        "search_bm25",
+        "search_vector",
+        "open_paragraph",
+        "submit_evidence",
+        "submit_evidence_judge",
+        "give_up",
+    ):
+        (folder / f"{name}.md").write_text(f"설명-{name}\n", encoding="utf-8")
+    searcher = FakeSearcher(repo, {"index_version": IV}, embed=lambda q: [1.0, 0.0])
+    box = CiteToolbox(
+        searcher, repo, IV, "D1", "D1", set(), k_max=10, snippet_chars=20, root=tmp_path
+    )
+    compare = {s.name: s.description for s in box.specs("compare")}
+    agent = {s.name: s.description for s in box.specs("agent")}
+    assert compare["search_bm25"] == "설명-search_bm25"
+    assert compare["submit_evidence"] == "설명-submit_evidence"
+    assert agent["submit_evidence"] == "설명-submit_evidence_judge"
+    assert compare["give_up"] == "설명-give_up"

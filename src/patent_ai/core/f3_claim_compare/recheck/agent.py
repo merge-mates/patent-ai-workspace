@@ -69,6 +69,7 @@ def run_cite_agent(
         set(shown),
         recheck.search.k_max,
         recheck.search.snippet_chars,
+        min_quote_chars=settings.min_quote_chars,
         root=root,
     )
     variables = {

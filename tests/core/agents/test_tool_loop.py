@@ -177,6 +177,13 @@ def test_도구_호출_상한이면_limit_reached이고_마지막_도구는_안_
     assert r.queries == ["q0", "q1"]
 
 
+def test_도구_호출_상한에_닿으면_모델을_한_번_더_부르지_않는다(env):
+    items = [reply(use("search", {"query": f"q{i}", "k": 1}, f"tu_{i}")) for i in range(3)]
+    r, t, _ = run(env, items, limits=LoopLimits(tool_calls=2, turns=10))
+    assert r.outcome == "limit_reached" and r.turns == 2
+    assert len(t.calls) == 2
+
+
 def test_차례_상한이면_limit_reached(env):
     items = [reply(use("search", {"query": f"q{i}", "k": 1}, f"tu_{i}")) for i in range(5)]
     r, t, _ = run(env, items, limits=LoopLimits(tool_calls=8, turns=2))
@@ -205,6 +212,16 @@ def test_도구가_RecheckToolFailed를_던지면_tool_failed(env):
     tools = [ToolSpec("search", "검색", SearchIn, boom)]
     r, _, _ = run(env, [reply(use("search", {"query": "a", "k": 1}))], tools=tools)
     assert r.outcome == "tool_failed"
+
+
+def test_RecheckToolFailed_단계_기록에_실패한_호출의_질의와_k가_남는다(env):
+    def boom(m):
+        raise RecheckToolFailed("검색 실패")
+
+    tools = [ToolSpec("search", "검색", SearchIn, boom)]
+    r, _, _ = run(env, [reply(use("search", {"query": "수조", "k": 3}))], tools=tools)
+    assert r.steps[-1].logged_input == {"query": "수조", "k": 3}
+    assert r.steps[-1].is_error
 
 
 def test_프로그래밍_오류는_잡지_않는다(env):

@@ -217,7 +217,11 @@ def run_tool_loop(
                 return finish("limit_reached")
             except RecheckToolFailed as e:
                 logger.warning("%s 도구 %s 실행 실패: %s", step, spec.name, e)
-                steps.append(LoopStep(turns, spec.name, {}, [], True))
+                # 어떤 호출이 실패했는지 남긴다 (질의·k만, 문단 글은 없음)
+                failed = {
+                    key: getattr(parsed, key) for key in ("query", "k") if hasattr(parsed, key)
+                }
+                steps.append(LoopStep(turns, spec.name, failed, [], True))
                 return finish("tool_failed")
             steps.append(
                 LoopStep(
@@ -231,6 +235,9 @@ def run_tool_loop(
 
         if done is not None:
             return finish("gave_up" if isinstance(done, GiveUp) else "submitted", done)
+        if tool_calls >= limits.tool_calls:
+            # 호출 상한을 다 씀: tool_result를 붙여 봐야 쓸 곳이 없으니 모델을 더 부르지 않고 끝낸다
+            return finish("limit_reached")
         # 한 차례의 tool_result는 user 메시지 하나에 모은다
         messages.append({"role": "user", "content": results})
 
