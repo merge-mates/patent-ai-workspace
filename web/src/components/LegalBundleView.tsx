@@ -7,8 +7,17 @@ import { AiTag, HumanCheckTag } from './Marks'
 import { StatusLine } from './StatusLine'
 
 // 근거 한 줄: 제목 + (확인됨 아니면 꼬리표) + "자세히". 펼치면 원문 위치·원문 일부
-function SourceRow({ s }: { s: LegalSource }) {
+// candidate = 추가 검토할 자료: 원문은 확인했지만 근거 검토 전이라, "확인됨" 대신 "검토 전 후보"로 보이고 위치는 늘 보인다
+function SourceRow({ s, candidate = false }: { s: LegalSource; candidate?: boolean }) {
   const [open, setOpen] = useState(false)
+  const confirmed = s.status.value === 'confirmed'
+  const where = (
+    <span className="label1 t3">
+      원문 위치: {s.evidence.location ?? '—'}
+      {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
+      {s.speaker && ` · ${speakerLabel[s.speaker]}`}
+    </span>
+  )
   return (
     <div
       style={{
@@ -26,21 +35,18 @@ function SourceRow({ s }: { s: LegalSource }) {
           {/* 판본은 법령·심사기준에만 있다. 제목 줄에 바로 보인다 */}
           {editionText(s) && ` · ${editionText(s)}`}
         </span>
-        {s.status.value !== 'confirmed' && <StatusLine status={s.status} />}
+        {!confirmed && <StatusLine status={s.status} />}
         <Button type="text" size="small" onClick={() => setOpen(!open)}>
           {open ? '접기' : '자세히'}
         </Button>
       </div>
-      {s.status.value === 'confirmed' && !open && <StatusLine status={s.status} />}
+      {confirmed && !candidate && !open && <StatusLine status={s.status} />}
+      {candidate && !open && where}
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 2 }}>
           {s.evidence.raw_text && <span className="body2r t2">“{s.evidence.raw_text}”</span>}
-          <span className="label1 t3">
-            원문 위치: {s.evidence.location ?? '—'}
-            {(s.court || s.decided_on) && ` · ${[s.court, s.decided_on].filter(Boolean).join(' ')}`}
-            {s.speaker && ` · ${speakerLabel[s.speaker]}`}
-          </span>
-          {s.status.value === 'confirmed' && <StatusLine status={s.status} />}
+          {where}
+          {confirmed && !candidate && <StatusLine status={s.status} />}
         </div>
       )}
     </div>
@@ -97,12 +103,22 @@ export function LegalBundleView({ b }: { b: LegalEvidenceBundle }) {
         {b.further_review.length === 0 ? (
           <span className="body2 t2">없음</span>
         ) : (
-          b.further_review.map((x) => (
-            <span key={x.chunk_id} className="body2 t2">
-              {furtherReviewWhyLabel[x.why]} · {x.chunk_id}
-              {x.note && ` — ${x.note}`}
-            </span>
-          ))
+          <>
+            {b.further_review.some((x) => x.source) && (
+              <span className="label2 t3">찾은 글일 뿐 아직 근거로 검토하지 않았습니다. 원문을 직접 확인해 주세요.</span>
+            )}
+            {b.further_review.map((x) =>
+              // 출처가 있으면 근거처럼 위치·판본을 보이고, 없으면(옛 결과 등) 조각 ID와 메모만
+              x.source ? (
+                <SourceRow key={x.chunk_id} s={x.source} candidate />
+              ) : (
+                <span key={x.chunk_id} className="body2 t2">
+                  {furtherReviewWhyLabel[x.why]} · {x.chunk_id}
+                  {x.note && ` — ${x.note}`}
+                </span>
+              ),
+            )}
+          </>
         )}
       </div>
     </div>
