@@ -227,6 +227,9 @@ def test_agent면_second_search는_돌지_않고_구성요소의_근거는_낸_�
     assert [e.chunk_id for e in row.evidence] == [P40]
     assert row.paragraph_source == ParagraphSource.AI_FOUND
     assert row.why_retrieved.startswith("다시 찾기(agent). 질의: 수조")
+    # 리뷰 답(#329): 에이전트가 낸 순서는 검색 순위가 아니라서 "N위"를 쓰지 않는다
+    assert "1위" not in row.why_retrieved
+    assert "구성요소 글자를 질의로 검색" not in row.why_retrieved
     # 근거가 있던 구성요소는 그대로
     sensor = _row(out, SENSOR)
     assert [e.chunk_id for e in sensor.evidence] == [P23]

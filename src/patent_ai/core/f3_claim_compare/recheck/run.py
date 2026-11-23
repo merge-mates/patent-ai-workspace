@@ -120,6 +120,8 @@ def _finish(one: _Judged, scope: str, mode: str, queries: list[str]) -> _Judged:
     """끝까지 돈 다시 찾기 결과에 찾아본 범위와 근거 줄 앞말을 붙인다."""
     one.scope = scope
     one.why_prefix = f"다시 찾기({mode}). 질의: {_asked(queries)}. "
+    # 에이전트가 낸 조각 순서는 검색 순위가 아니다 (고정 루프는 실제 검색 순위라 그대로)
+    one.rank_words = mode != "agent"
     return one
 
 
