@@ -14,3 +14,10 @@ def test_넘긴_단계마다_step_skipped_경고가_하나씩_생긴다():
 
 def test_넘긴_단계가_없으면_빈_목록():
     assert skipped_step_warnings([]) == []
+
+
+def test_호출_상한_이유는_limit_reached_경고_코드가_된다():
+    reason = "limit_reached: 지휘 호출 상한 max_model_calls 2에 닿음"
+    assert [w.code for w in skipped_step_warnings([SkippedStep("decide", reason)])] == [
+        "limit_reached"
+    ]

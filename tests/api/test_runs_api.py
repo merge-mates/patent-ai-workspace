@@ -306,6 +306,16 @@ def test_넘긴_단계가_있으면_succeeded와_skipped_steps_warnings가_보�
     assert len(env.sink.saved) == 1  # 넘겨도 결과는 저장된다
 
 
+def test_호출_상한_이유면_경고_코드가_limit_reached다(env):
+    reason = "limit_reached: 지휘 호출 상한 max_model_calls 2에 닿음"
+    env.steps = [skipping_step("decide", reason), Step("거절이유 정리 중", lambda: None)]
+    created = env.upload()
+    body = env.client.get(f"/runs/{created['run_id']}").json()
+    assert body["state"] == "succeeded"
+    assert body["skipped_steps"] == [{"step": "decide", "reason": reason}]
+    assert [w["code"] for w in body["warnings"]] == ["limit_reached"]
+
+
 def test_넘긴_단계가_없으면_skipped_steps_warnings는_빈_목록(env):
     created = env.upload()
     body = env.client.get(f"/runs/{created['run_id']}").json()

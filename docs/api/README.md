@@ -101,7 +101,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 ```json
 {"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "run_f3", "reason": "input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}], "warnings": [{"code": "step_skipped", "message": "run_f3 단계를 건너뜀: input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}]}
 ```
-`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
+`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. 호출 상한에 닿아 넘긴 단계는 `reason`이 `limit_reached: <단계> 호출 상한 <상한 이름> <숫자>에 닿음`이고 `warnings`의 `code`가 `limit_reached`다(나머지는 `step_skipped`). 이때 OA 정리가 있으면 `state`는 `succeeded`다. F1 읽기가 상한이거나 지휘 모델이 OA 정리 전에 닿으면 `state: failed`, `error.code: limit_reached`다 (ADR 0003, #241). `POST /runs/{id}/cancel` 응답도 같은 모양이다.
 
 결과 (`GET /oas/{oa_id}/oa-result`): 결과 스키마를 `result`에 그대로 담는다.
 ```json

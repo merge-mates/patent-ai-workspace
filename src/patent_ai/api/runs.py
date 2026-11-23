@@ -54,7 +54,9 @@ class RunStatusOut(BaseModel):
     waiting_for: str | None = None  # 사람을 기다릴 때만
     error: RunErrorOut | None  # 실패했을 때만 {code, message}
     skipped_steps: list[SkippedStepOut] = []  # 자료·도구가 없어 넘긴 단계
-    warnings: list[RunWarningOut] = []  # 넘긴 단계마다 step_skipped 하나
+    warnings: list[
+        RunWarningOut
+    ] = []  # 넘긴 단계마다 step_skipped 하나 (호출 상한 이유면 limit_reached)
 
 
 def _out(s: RunStatus, store: RunStatusStore, cases: CaseAppStore) -> RunStatusOut:

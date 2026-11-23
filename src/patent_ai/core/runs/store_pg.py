@@ -112,7 +112,9 @@ class PostgresRunStatusStore:
         with self._factory() as s:
             q = (
                 select(AgentStep)
-                .where(AgentStep.run_id == run_id, AgentStep.outcome == "skipped")
+                .where(
+                    AgentStep.run_id == run_id, AgentStep.outcome.in_(["skipped", "limit_reached"])
+                )
                 .order_by(AgentStep.id)  # id는 자동 증가라 기록 순서
             )
             return [SkippedStep(r.tool_name, r.reason or "") for r in s.scalars(q)]

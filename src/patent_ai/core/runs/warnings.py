@@ -13,4 +13,11 @@ class RunWarning:
 
 def skipped_step_warnings(skipped: list[SkippedStep]) -> list[RunWarning]:
     """넘긴 단계마다 경고 하나. 실행은 계속되니 사람이 빠진 부분을 알아보게 한다."""
-    return [RunWarning("step_skipped", f"{s.step} 단계를 건너뜀: {s.reason}") for s in skipped]
+    return [
+        RunWarning(
+            # 호출 상한에 닿아 넘긴 단계는 코드를 따로 준다 (이유는 orchestrator.limit_reason)
+            "limit_reached" if s.reason.startswith("limit_reached:") else "step_skipped",
+            f"{s.step} 단계를 건너뜀: {s.reason}",
+        )
+        for s in skipped
+    ]

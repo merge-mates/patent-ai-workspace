@@ -90,7 +90,7 @@ erDiagram
 - 실행 종류 `runs.kind`: `full`(끝까지 도는 실행, 기본) / `redo_drafts`(사람이 방향을 고른 뒤 초안만 다시 만드는 작은 실행, #70).
 - 같은 OA를 여러 번 돌리면 API는 판단 단위마다 가장 최근에 성공한 실행(`succeeded`) 또는 사람을 기다리는 실행(`waiting_for_human`)의 결과를 준다. 판단 단위가 없는 결과(①, 사건 전체 검사)는 OA마다, ⑥은 사건마다 가장 최근 것을 준다. 앞 결과는 지우지 않고 남긴다 (이력·채점용). 고르는 코드는 #57 (`oa_results`의 `(oa_id, created_at)` 인덱스 + `runs.state`).
 - 실행 기록: `runs`(API 실행 상태 겸, `state` 6값) · `agent_steps`(지휘 단계 `StepRecord`와 모델 호출 `CallRecord`를 한 표에. 모델 호출은 `step_kind = model_call`. 모델·토큰·비용·시간·만든 결과 ID).
-  - 넘긴 단계(도구 없음·입력 없음) = `agent_steps.outcome = skipped` + `reason`. 실행은 계속 돌고, `GET /runs/{id}`의 `skipped_steps`·`warnings`로 보인다 (#57). 지휘(#180)도 같은 표기(`step_kind = code_tool`, `outcome = skipped`, `result_status = unverified`, `reason` = 넘긴 이유)로 남긴다 (#191). 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다.
+  - 넘긴 단계(도구 없음·입력 없음) = `agent_steps.outcome = skipped` + `reason`. 실행은 계속 돌고, `GET /runs/{id}`의 `skipped_steps`·`warnings`로 보인다 (#57). 지휘(#180)도 같은 표기(`step_kind = code_tool`, `outcome = skipped`, `result_status = unverified`, `reason` = 넘긴 이유)로 남긴다 (#191). 호출 상한에 닿아 못 돈 단계는 `outcome = limit_reached`(`reason`에 단계·상한 이름·숫자만)로 남고 `skipped_steps`에도 보인다 (#241). 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다.
 - `result_inputs`(뒤 결과 → 기댄 앞 결과 `result` 또는 자료 `document`): 상태 전파와 "다시 확인 필요"에 쓴다. 가리키는 표가 여럿이라 외래 키는 걸지 않는다.
 - `api_cache`: 외부 API 응답. 외부 API 호출은 이 캐시와 호출 상한을 거친다.
 - 원본 파일은 디스크에 두고 DB에는 경로만 둔다. 자리는 쓰임마다 나눈다 (#159). 정확한 앱 경로·파일 이름 규칙은 자동 조회 이슈(#54)에서 정한다.

@@ -363,6 +363,9 @@ def _outcome_error(outcome: RunOutcome, steps: _LiveSteps) -> tuple[str, str]:
     """지휘 실패를 (code, message)로. 메시지는 코드 표에서 만들고 예외 원문을 쓰지 않는다."""
     err = outcome.error or {}
     code = str(err.get("code") or "")
+    if code == "limit_reached":
+        # 이유 글은 지휘가 단계·상한 이름·숫자만으로 만든 것이라 그대로 내보낸다 (#241)
+        return code, str(err.get("message") or "호출 상한에 닿아 멈췄습니다")
     if code in _OUTCOME_MESSAGES:
         message = _OUTCOME_MESSAGES[code]
         if code == "oa_already_exists" and err.get("oa_id"):
