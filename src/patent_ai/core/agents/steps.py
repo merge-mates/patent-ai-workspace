@@ -27,11 +27,14 @@ class StepRecord(BaseModel):
 
     @property
     def skipped_reason(self) -> str | None:
-        """넘긴 code_tool 단계(skipped·limit_reached)면 그 이유. 이 값이 있으면 결과가 없다.
+        """넘긴 단계(skipped·limit_reached)면 그 이유. 이 값이 있으면 결과가 없다.
 
-        decide 줄의 limit_reached는 넘긴 단계가 아니라서 None (단계마다 code_tool 줄이 따로 남는다).
+        skipped는 단계 종류를 안 가린다 (고정 단계도 넘길 수 있다. store_pg와 같은 규칙).
+        limit_reached는 code_tool 줄만: decide 줄은 넘긴 단계가 아니다 (code_tool 줄이 따로 남는다).
         """
-        if self.step_kind == "code_tool" and self.outcome in ("skipped", "limit_reached"):
+        if self.outcome == "skipped":
+            return self.reason
+        if self.outcome == "limit_reached" and self.step_kind == "code_tool":
             return self.reason
         return None
 

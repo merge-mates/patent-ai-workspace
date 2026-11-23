@@ -25,3 +25,9 @@ def test_step_record_ok는_넘긴_이유가_없다():
 def test_step_record_decide_줄은_상한이어도_넘긴_이유가_없다():
     # decide 줄은 넘긴 단계 목록에 안 나온다 (단계마다 code_tool 줄이 따로 남는다)
     assert _rec("limit_reached", "decide").skipped_reason is None
+
+
+def test_step_record_skipped는_단계_종류를_안_가리고_이유가_있다():
+    # Postgres skipped_steps 조회와 같은 규칙 (고정 단계를 넘긴 줄도 넘긴 단계다)
+    r = _rec("skipped", "fixed_stage")
+    assert r.skipped_reason == r.reason
