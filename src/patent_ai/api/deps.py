@@ -11,6 +11,7 @@ from typing import Annotated, Protocol
 
 from fastapi import Depends
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from patent_ai.core.cases.case_fill import PostgresCaseFill
@@ -31,7 +32,7 @@ from patent_ai.core.f1_oa_reader.case_repository import CaseRepository
 from patent_ai.core.f1_oa_reader.case_repository_pg import PostgresCaseRepository
 from patent_ai.core.f2_legal_research.chat_store import LegalChatStore
 from patent_ai.core.f2_legal_research.chat_store_pg import PostgresLegalChatStore
-from patent_ai.core.f2_legal_research.index import LegalIndex, load_legal_index
+from patent_ai.core.f2_legal_research.index import LawIndexMissing, LegalIndex, load_legal_index
 from patent_ai.core.f2_legal_research.run import F2Settings, load_f2_settings
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.limits import CallBudget, RunContext
@@ -259,7 +260,7 @@ def get_legal_index() -> LegalIndex | None:
     """색인을 못 읽으면 None (라우터가 확인되지 않음 묶음을 낸다). 이유는 경고로 남긴다."""
     try:
         return _cached_legal_index()
-    except Exception:
+    except LawIndexMissing, OperationalError:  # 판 없음·조각 0개, DB 연결 실패
         logger.warning("법률 질문: 법령 색인을 못 읽음", exc_info=True)
         return None
 

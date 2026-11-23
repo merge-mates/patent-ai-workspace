@@ -4,12 +4,14 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from patent_ai.api import deps
 from patent_ai.api.deps import get_legal_chat_unit, get_legal_index, get_today
 from patent_ai.api.main import create_app
+from patent_ai.core.cases.store import CaseNotFoundError
 from patent_ai.core.f2_legal_research import index as legal_index
-from patent_ai.core.f2_legal_research.chat_store import InMemoryLegalChatStore
+from patent_ai.core.f2_legal_research.chat_store import ChatCorrupt, InMemoryLegalChatStore
 from patent_ai.core.f2_legal_research.index import LegalIndex
 from patent_ai.core.f2_legal_research.run import F2Settings
 from patent_ai.core.f2_legal_research.tools import LawPool
@@ -201,3 +203,56 @@ def test_legal_chats_api_요청_스키마가_openapi에_실린다(client):
     ]["schema"]
     assert schema["title"] == "ChatAsk" and "text" in schema["properties"]
     assert "$ref" not in str(schema)  # 풀지 않은 참조가 남지 않는다
+
+
+def test_legal_chats_api_없는_사건이면_404_case_not_found(client):
+    class NoCase(InMemoryLegalChatStore):
+        def create(self, case_id, now):
+            raise CaseNotFoundError(case_id)
+
+    unit = FakeUnit()
+    unit.store = NoCase()
+    client.app.dependency_overrides[get_legal_chat_unit] = lambda: unit
+    res = client.post("/legal-chats", json={"case_id": "c_없음"})
+    assert (res.status_code, res.json()["code"]) == (404, "case_not_found")
+
+
+def test_legal_chats_api_저장된_대화를_못_읽으면_500_chat_corrupt(client):
+    class Corrupt(InMemoryLegalChatStore):
+        def get(self, chat_id):
+            raise ChatCorrupt(chat_id)
+
+    unit = FakeUnit()
+    unit.store = Corrupt()
+    client.app.dependency_overrides[get_legal_chat_unit] = lambda: unit
+    got = client.get("/legal-chats/lc_1")
+    asked = client.post("/legal-chats/lc_1/messages", json={"text": "특허법 제29조제2항"})
+    for res in (got, asked):
+        assert (res.status_code, res.json()["code"]) == (500, "chat_corrupt")
+
+
+def test_legal_chats_api_DB_연결_실패는_못_읽은_것으로_본다(monkeypatch, caplog):
+    def down():
+        raise OperationalError("select 1", {}, Exception("연결 실패"))
+
+    deps._cached_legal_index.cache_clear()
+    monkeypatch.setattr(legal_index, "open_law_repo", down)
+    with caplog.at_level("WARNING"):
+        assert get_legal_index() is None
+    assert any("색인" in r.message for r in caplog.records)
+    deps._cached_legal_index.cache_clear()
+
+
+def test_legal_chats_api_설정_오류는_색인_없음으로_넘기지_않는다(monkeypatch):
+    bad = F2Settings(index_version=IV, bm25={"없는키": 1})
+    deps._cached_legal_index.cache_clear()
+    monkeypatch.setattr(
+        legal_index, "open_law_repo", lambda: NoClose({"law": fakes.repo().chunks("law", IV)})
+    )
+    monkeypatch.setattr(deps, "get_f2_settings", lambda: bad)
+    with pytest.raises(ValueError):
+        get_legal_index()
+    # 서버 시작(lifespan)에서도 터진다
+    with pytest.raises(ValueError), TestClient(create_app(object())):
+        pass
+    deps._cached_legal_index.cache_clear()

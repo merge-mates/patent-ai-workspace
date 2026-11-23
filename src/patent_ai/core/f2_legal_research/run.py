@@ -13,6 +13,7 @@
 import logging
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -60,7 +61,7 @@ class F2Settings(BaseModel):
     index_version: str  # 법령 색인 판 (law corpus)
     chat_search_k: int = Field(default=3, ge=1)  # 법률 질문: 번호 없는 질문의 BM25 조문 수
     # 법률 질문 검색기: 방식과 낱말 자르기 (기준선 experiments/m2-i2-law-bm25-char-bigram)
-    search_method: str = "bm25"
+    search_method: Literal["bm25"] = "bm25"
     tokenizer: str = "char_bigram"
     # bm25 세부 값. 비우면 bm25 구현 기본값(unique_query_terms false)이라 기준선과 달라진다
     bm25: dict[str, str | float | bool] = Field(default_factory=dict)

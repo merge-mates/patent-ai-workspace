@@ -21,6 +21,7 @@ from patent_ai.api.deps import (
     get_today,
 )
 from patent_ai.api.errors import AppError
+from patent_ai.core.cases.store import CaseNotFoundError
 from patent_ai.core.f2_legal_research.chat import (
     ChatAsk,
     answer_question,
@@ -107,6 +108,9 @@ def create_chat(body: CreateChatIn, unit: Unit) -> CreatedChatOut:
     try:
         chat = unit.store.create(body.case_id, datetime.now(UTC))
         unit.commit()
+    except CaseNotFoundError:
+        unit.rollback()
+        raise AppError(404, "case_not_found", "사건을 찾을 수 없습니다") from None
     except Exception:
         unit.rollback()
         raise

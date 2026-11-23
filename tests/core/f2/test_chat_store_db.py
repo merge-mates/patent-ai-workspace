@@ -4,10 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from patent_ai.core.cases.store import NewDocument
+from patent_ai.core.cases.store import CaseNotFoundError, NewDocument
 from patent_ai.core.cases.store_pg import PostgresCaseAppStore
 from patent_ai.core.f2_legal_research.chat_store import ChatCorrupt, ChatNotFound
 from patent_ai.core.f2_legal_research.chat_store_pg import PostgresLegalChatStore
@@ -51,7 +50,7 @@ def test_사건에_붙여_만들_수_있고_없는_사건은_거절된다(sessio
     )
     store = PostgresLegalChatStore(session)
     assert store.get(store.create(created.case_id, NOW).chat_id).case_id == created.case_id
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CaseNotFoundError):
         store.create("c_없는사건", NOW)
 
 

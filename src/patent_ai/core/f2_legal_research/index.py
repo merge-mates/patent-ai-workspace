@@ -14,6 +14,10 @@ from patent_ai.retrieval.contract import Searcher, get_searcher
 from patent_ai.retrieval.repository import InMemoryChunkRepository, PostgresChunkRepository
 
 
+class LawIndexMissing(RuntimeError):
+    """법령 색인 판이 저장소에 없거나 조각이 0개."""
+
+
 @dataclass(frozen=True)
 class LegalIndex:
     """법령 색인 한 판: 조각 묶음(pool)과 검색기. 프로세스에 한 번만 만든다."""
@@ -27,6 +31,23 @@ def open_law_repo() -> PostgresChunkRepository:
     return PostgresChunkRepository.from_url()
 
 
+def _make_searcher(settings: F2Settings, repo: InMemoryChunkRepository) -> Searcher:
+    return get_searcher(
+        settings.search_method,
+        repo,
+        {
+            "index_version": settings.index_version,
+            "tokenizer": settings.tokenizer,
+            "bm25": dict(settings.bm25),
+        },
+    )
+
+
+def check_search_settings(settings: F2Settings) -> None:
+    """검색기 설정이 맞는지 빈 저장소로 만들어 본다 (DB 없음). 틀리면 예외: 서버 시작에서 부른다."""
+    _make_searcher(settings, InMemoryChunkRepository({"law": []}))
+
+
 def load_legal_index(settings: F2Settings) -> LegalIndex:
     """색인 조각을 한 번 읽어 메모리에 두고 검색기를 만든다. 읽은 뒤 DB 세션은 닫는다.
 
@@ -36,17 +57,13 @@ def load_legal_index(settings: F2Settings) -> LegalIndex:
     repo = open_law_repo()
     try:
         if not repo.has_index_version("law", iv):
-            raise RuntimeError(f"법령 색인 {iv}이 저장소에 없음")
+            raise LawIndexMissing(f"법령 색인 {iv}이 저장소에 없음")
         pool = LawPool.load(repo, iv)
     finally:
         repo.close()
     if not pool.chunks:
-        raise RuntimeError(f"법령 색인 {iv}의 조각이 0개")
+        raise LawIndexMissing(f"법령 색인 {iv}의 조각이 0개")
     # 검색기는 메모리 repo 위에 만들어 DB를 다시 보지 않는다
     mem_repo = InMemoryChunkRepository({"law": list(pool.chunks)})
-    searcher = get_searcher(
-        settings.search_method,
-        mem_repo,
-        {"index_version": iv, "tokenizer": settings.tokenizer, "bm25": dict(settings.bm25)},
-    )
+    searcher = _make_searcher(settings, mem_repo)
     return LegalIndex(pool, searcher)

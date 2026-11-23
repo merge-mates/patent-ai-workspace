@@ -9,8 +9,10 @@ from datetime import datetime
 
 from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from patent_ai.core.cases.store import CaseNotFoundError
 from patent_ai.core.f2_legal_research.chat_store import (
     ChatCorrupt,
     ChatNotFound,
@@ -29,7 +31,12 @@ class PostgresLegalChatStore:
     def create(self, case_id: str | None, now: datetime) -> LegalChat:
         row = LegalChatRow(chat_id=new_chat_id(), case_id=case_id, created_at=now)
         self._s.add(row)
-        self._s.flush()  # 없는 사건이면 여기서 FK 오류
+        try:
+            self._s.flush()
+        except IntegrityError as e:
+            if case_id is None:
+                raise
+            raise CaseNotFoundError(case_id) from e  # 새 대화 ID는 겹치지 않아 사건 FK뿐이다
         return LegalChat(row.chat_id, row.case_id, row.created_at)
 
     def get(self, chat_id: str) -> LegalChat | None:
