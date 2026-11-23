@@ -187,6 +187,8 @@ def test_human_inputs_api_confirmation_옛_정리를_보고_누른_맞아요는_
         "run_id": rerun,
         "confirmed_at": None,
     }
+    # 옛 정리의 실행에도 확인이 남지 않는다 (GET은 지금 보이는 실행만 본다)
+    assert env.human.confirmed_at(created["oa_id"], old_run) is None
     # 본문이 없으면 422
     assert env.client.put(url).status_code == 422
     # 새 정리의 run_id로는 남는다
