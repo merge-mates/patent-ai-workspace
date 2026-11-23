@@ -1,0 +1,58 @@
+{
+  "experiment": "m3-i2-recheck-b",
+  "commit": "e8076d20f16f3524e985961fae7e90cf79e1c533",
+  "goldset": "tune",
+  "goldset_version": 2,
+  "gold_sha256": "0fee10d368f3f97c15165576e7ab2d5d8555b10dfa9b7667459022777b90bf38",
+  "impl": "split_search",
+  "index_version": "cite-idx-v2",
+  "metric_name": "심사관 지정 위치 회수율",
+  "n": 8,
+  "metrics": {
+    "search_hit": 0.769253663003663,
+    "search_recall": 0.6185901069829641,
+    "search_recall_round1": 0.5897513724150629,
+    "selected_recall_incl_skipped": 0.09097537163013353,
+    "selected_hit": 0.2851190476190476,
+    "selected_recall": 0.13407501889644746,
+    "random_search_recall": 0.30312854490762803,
+    "random_search_hit": 0.4628508364149135,
+    "search_recall_rechecked": 0.875,
+    "selected_recall_rechecked": 0.11388888888888889,
+    "rechecked_rows": 15,
+    "search_recall_ratio": 2.0406857664014,
+    "novelty_tables": 3
+  },
+  "failures": {
+    "missing_prediction": 0,
+    "not_searched_rows": 6,
+    "skipped_dependent_rows": 37,
+    "excluded_no_location": 3,
+    "excluded_clarity": 0,
+    "excluded_same_as_other": 33,
+    "excluded_body_missing": 0,
+    "excluded_gold_not_in_scope": 1,
+    "excluded_gold_items_not_in_scope": 11,
+    "cq_candidates": 11,
+    "novelty_multi_citation": 0,
+    "clarity_no_claim_text": 6,
+    "clarity_gold_term_not_in_claim": 0,
+    "excluded_clarity_no_terms": 12,
+    "clarity_location_unreadable": 0
+  },
+  "skipped_metrics": {
+    "clarity_definition_recall": "정답 없음",
+    "clarity_issue_type": "정답 없음",
+    "novelty_difference_recall": "정답 없음",
+    "novelty_timing": "정답 없음",
+    "element_judgment_accuracy": "정답 없음",
+    "clarity_term_reviewed": "청구항 글자 입력 없음"
+  },
+  "cost": {
+    "usd": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "external_calls": 0,
+    "seconds": 1.948
+  }
+}

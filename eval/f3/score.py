@@ -163,6 +163,19 @@ def _searched_round1(pred: F3Pred, rejection: int, claim: int, doc_id: str) -> s
 
 
 _HELD_PREFIX = "f3_compare:"
+# 다시 찾은 줄: (발송번호, 거절이유 번호, 청구항, 인용문헌)
+RecheckedRows = set[tuple[str, int, int, str]]
+
+
+def rechecked_rows_of(preds: dict[str, F3Pred]) -> RecheckedRows:
+    """2차(round 2) 검색 기록이 있는 줄 집합. 1차에 못 찾아 다시 찾은 줄이다."""
+    rows: RecheckedRows = set()
+    for key, pred in preds.items():
+        rejection_of = {u.unit_id: u.rejection for u in pred.units}
+        for log in pred.search_log:
+            if log.round == 2 and log.unit_id in rejection_of:
+                rows.add((_dispatch(key), rejection_of[log.unit_id], log.claim, log.doc_id))
+    return rows
 
 
 def _skipped_dependent(pred: F3Pred | None) -> set[tuple[str, int]]:
@@ -186,6 +199,7 @@ def _score_cite(
     failures: dict[str, int],
     stamp: dict,
     missing: set[str],
+    rechecked: RecheckedRows,
 ) -> tuple[dict[str, float], set[str], list[dict]]:
     """(지표, 채점한 OA 발송번호, CQ 줄). 줄 점수 -> OA 평균 -> 세트 평균."""
     by_dispatch = {_dispatch(key): pred for key, pred in preds.items()}
@@ -213,7 +227,8 @@ def _score_cite(
             failures["excluded_gold_not_in_scope"] += 1
             continue
         marks = per_oa.setdefault(
-            dispatch, {k: [] for k in ("sh", "sr", "sr1", "lh", "lr", "li", "rr", "rh")}
+            dispatch,
+            {k: [] for k in ("sh", "sr", "sr1", "lh", "lr", "li", "rr", "rh", "rsr", "rlr", "rn")},
         )
         pred = by_dispatch.get(dispatch)
         skipped_dep = False
@@ -248,6 +263,12 @@ def _score_cite(
         if not skipped_dep:  # 대비를 건너뛴 줄은 선택 지표 분모에서 뺀다
             marks["lh"].append(float(found_selected > 0))
             marks["lr"].append(found_selected / len(kept))
+        # 다시 찾은 줄만 좁혀 센 지표 (계산은 같고 대상 줄만 다르다)
+        if (dispatch, rejection, claim, doc_id) in rechecked:
+            marks["rn"].append(1.0)
+            marks["rsr"].append(found_search / len(kept))
+            if not skipped_dep:
+                marks["rlr"].append(found_selected / len(kept))
         # 무작위 기준선: 같은 범위(N개)에서 검색이 가져온 만큼(k)을 아무렇게나 뽑았을 때의 기대값.
         # 가져온 조각이 0개면 무작위도 0 (함수가 k=0을 막는다)
         if searched:
@@ -303,12 +324,18 @@ def _score_cite(
         "lr": "selected_recall",
         "rr": "random_search_recall",
         "rh": "random_search_hit",
+        "rsr": "search_recall_rechecked",
+        "rlr": "selected_recall_rechecked",
     }
     metrics = {
         name: _mean([m for oa in per_oa.values() if (m := _mean(oa[k])) is not None])
         for k, name in names.items()
     }
     metrics = {k: v for k, v in metrics.items() if v is not None}
+    # 다시 찾은 줄 수(정수). 0이면 넣지 않는다 (score_f3가 이유를 skipped_metrics에 남김)
+    n_rechecked = sum(len(oa["rn"]) for oa in per_oa.values())
+    if n_rechecked:
+        metrics["rechecked_rows"] = n_rechecked
     # 검색이 무작위보다 몇 배 나은가 (세트 평균끼리 나눔). 분모가 0이면 score_f3가 뺀다
     if metrics.get("random_search_recall"):
         metrics["search_recall_ratio"] = metrics["search_recall"] / metrics["random_search_recall"]
@@ -428,8 +455,12 @@ def score_f3(
     *,
     commit: str,
     gold_sha256: str,
+    rechecked_rows: RecheckedRows | None = None,
 ) -> Report:
-    """정답(없는 쪽은 None)과 예측을 맞춰 scores와 CQ 줄을 만든다. 파일은 쓰지 않는다."""
+    """정답(없는 쪽은 None)과 예측을 맞춰 scores와 CQ 줄을 만든다. 파일은 쓰지 않는다.
+
+    rechecked_rows: `*_rechecked` 지표의 줄 집합. 없으면 자기 예측의 2차 검색 기록으로 정한다.
+    """
     started = time.monotonic()
     if not run.preds:
         raise EvalError("F3 예측이 0개다")
@@ -456,9 +487,19 @@ def score_f3(
             skipped[name] = NO_GOLD
     else:
         cite_metrics, oas, cq = _score_cite(
-            cfg, cite_rows, run.preds, repo, failures, stamp, missing
+            cfg,
+            cite_rows,
+            run.preds,
+            repo,
+            failures,
+            stamp,
+            missing,
+            rechecked_rows_of(run.preds) if rechecked_rows is None else rechecked_rows,
         )
         metrics.update(cite_metrics)
+        for name in ("search_recall_rechecked", "selected_recall_rechecked", "rechecked_rows"):
+            if name not in cite_metrics:
+                skipped[name] = "다시 찾은 줄 없음"  # 0점이 아니라 대상 줄이 없는 것
         if "search_recall_ratio" not in cite_metrics:
             skipped["search_recall_ratio"] = "무작위 기준선이 0이라 나눌 수 없음"
         scored |= oas
@@ -589,6 +630,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--goldsets-root", default="data/goldsets")
     ap.add_argument("--predictions", required=True, help="F3Result JSON 폴더 (git 밖)")
     ap.add_argument("--chunks", default=None, help="조각 JSONL. 없으면 Postgres(DATABASE_URL)")
+    ap.add_argument(
+        "--rechecked-rows-from",
+        default=None,
+        help="`*_rechecked`의 줄 집합을 이 예측 폴더(판 A)의 2차 검색 기록으로 정한다."
+        " 없으면 자기 예측",
+    )
     ap.add_argument("--scores-dir", default=None)
     ap.add_argument("--cq-dir", default=None, help="기본 work/f3/<실험>/ (git 밖)")
     args = ap.parse_args(argv)
@@ -611,7 +658,22 @@ def main(argv: list[str] | None = None) -> int:
             if chunks_mode
             else postgres_repo()
         )
-        report = score_f3(cfg, cite_rows, f1_golds, run, repo, commit=git_commit(), gold_sha256=sha)
+        # 판마다 같은 분모를 쓰려고 줄 집합을 다른 예측 폴더에서 가져올 수 있다
+        ref_rows = (
+            rechecked_rows_of(load_run(Path(args.rechecked_rows_from)).preds)
+            if args.rechecked_rows_from
+            else None
+        )
+        report = score_f3(
+            cfg,
+            cite_rows,
+            f1_golds,
+            run,
+            repo,
+            commit=git_commit(),
+            gold_sha256=sha,
+            rechecked_rows=ref_rows,
+        )
         work_dir = REPO_ROOT / "work" / "f3" / cfg.experiment
         cq_dir = Path(args.cq_dir) if args.cq_dir else work_dir
         if not is_git_ignored(cq_dir):

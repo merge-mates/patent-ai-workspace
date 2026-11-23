@@ -35,7 +35,11 @@ from patent_ai.core.f3_claim_compare.examiner import (
     match_location,
 )
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
-from patent_ai.core.f3_claim_compare.result import ExaminerLocationRow, SearchLogRow
+from patent_ai.core.f3_claim_compare.result import (
+    ExaminerLocationRow,
+    RecheckLogRow,
+    SearchLogRow,
+)
 from patent_ai.core.f3_claim_compare.retry import call_checked, confirmed, unverified
 from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short, text_hash
 from patent_ai.core.f3_claim_compare.units import ancestors
@@ -115,6 +119,7 @@ class CompareOutput(BaseModel):
     units_tried: int = 0
     search_log: list[SearchLogRow] = Field(default_factory=list)
     examiner_locations: list[ExaminerLocationRow] = Field(default_factory=list)
+    recheck_log: list[RecheckLogRow] = Field(default_factory=list)  # 근거 다시 찾기 기록
 
 
 # ---- 검색기 만들기 (진짜 DB 저장소·진짜 임베딩은 부르는 쪽이 넘긴다) ----
@@ -135,10 +140,38 @@ def f3_query_embedder(ctx: RunContext) -> Embed:
     return memo_embed(query_embedder(EMBED_STEP, ctx))
 
 
+class _ModeRouter:
+    """설정 구현(impl)이 맡는 방식은 그 구현으로, 에이전트가 고르는 bm25·vector는 같은 설정의
+    bm25·vector 구현으로 보내는 검색기.
+
+    hybrid 구현은 hybrid 방식만 받는다. 근거 다시 찾기 에이전트의 search_bm25·search_vector
+    도구가 같은 검색기 객체 하나로 찾을 수 있게 한다 (1차·다시 찾기가 한 객체를 쓴다).
+    방식이 impl과 같거나 bm25·vector가 아니면 그대로 설정 구현에 넘긴다 (1차 검색은 그대로).
+    """
+
+    def __init__(self, main: Searcher, impl: str, repo: ChunkRepository, settings: dict, embed):
+        self._main = main
+        self._impl = impl
+        self._repo = repo
+        self._settings = settings
+        self._embed = embed
+        self._extra: dict[str, Searcher] = {}  # 쓸 때 한 번만 만든다
+
+    def search(self, query, corpus, mode, k, doc_ids=None, as_of=None, **kw):
+        if mode == self._impl or mode not in ("bm25", "vector"):
+            return self._main.search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of, **kw)
+        if mode not in self._extra:
+            self._extra[mode] = get_searcher(mode, self._repo, self._settings, self._embed)
+        return self._extra[mode].search(query, corpus, mode, k, doc_ids=doc_ids, as_of=as_of, **kw)
+
+
 def make_searcher(settings: F3Settings, repo: ChunkRepository, embed: Embed | None) -> Searcher:
-    """설정의 검색 구현으로 검색기를 만든다 (계약 검사 래퍼 포함)."""
+    """설정의 검색 구현으로 검색기를 만든다 (계약 검사 래퍼 포함, bm25·vector 방식도 받는다)."""
     search = settings.search
-    return get_searcher(search.impl, repo, search.searcher_settings(), embed)
+    config = search.searcher_settings()
+    return _ModeRouter(
+        get_searcher(search.impl, repo, config, embed), search.impl, repo, config, embed
+    )
 
 
 # ---- 작은 도우미 ----
@@ -328,6 +361,11 @@ class _Judged:
     picks: list[tuple[_Candidate, str]] = field(default_factory=list)  # (후보, 조각 원문 글자)
     dropped: int = 0  # 대조에 떨어져 버린 근거 수
     scope: str | None = None  # 한 번 더 찾았을 때의 찾아본 범위 글 (두 번 찾음)
+    # 근거 줄 why_retrieved 앞말 (근거 다시 찾기: "다시 찾기(<방식>). 질의: …. "). 없으면
+    # second_search의 "두 번째 검색. "
+    why_prefix: str | None = None
+    # False면 근거 줄에 검색 순위("N위")를 붙이지 않는다: 에이전트가 낸 순서는 검색 순위가 아니다
+    rank_words: bool = True
 
     def not_found(self) -> bool:
         """근거를 못 고른 것 (버린 근거도 없고 개시됨이라고 하지도 않음)."""
@@ -341,6 +379,7 @@ class _Collected:
     held: list[HeldTask] = field(default_factory=list)
     search_log: list[SearchLogRow] = field(default_factory=list)
     examiner: list[ExaminerLocationRow] = field(default_factory=list)
+    recheck: list[RecheckLogRow] = field(default_factory=list)
 
 
 # ---- 1) 후보 모으기: 검색 상위 k ∪ 심사관 지정 조각 ----
@@ -671,8 +710,9 @@ def _rows_of(
     if by_examiner:
         rows.append(row(one.judgment, status, by_examiner, examiner=True))
     if by_ai:
-        why = _why(item.n, by_ai, scope)
-        rows.append(row(one.judgment, status, by_ai, why="두 번째 검색. " + why if twice else why))
+        prefix = one.why_prefix or ("두 번째 검색. " if twice else "")
+        why = prefix + _why(item.n, by_ai, scope) if one.rank_words else prefix.rstrip()
+        rows.append(row(one.judgment, status, by_ai, why=why))
     return rows
 
 
@@ -798,15 +838,27 @@ def _compare_claim(
         judged = {
             (i.n, label): _Judged(Judgment.DIFFERENCE_CANDIDATE) for i in usable for label in labels
         }
-    if config.settings.second_search:
-        missing = [
-            (i, cite)
-            for i in usable
-            for cite in cites
-            if (one := judged.get((i.n, cite.label))) is not None and one.not_found()
-        ]
+    # 1차에서 근거를 못 고른 (구성요소, 인용문헌). 다시 찾기 둘 다 이것만 다시 찾는다
+    missing = [
+        (i, cite)
+        for i in usable
+        for cite in cites
+        if (one := judged.get((i.n, cite.label))) is not None and one.not_found()
+    ]
+    first = {key: judged[key].judgment for key in [(i.n, c.label) for i, c in missing]}
+    if config.recheck.recheck != "none":
+        # 근거 다시 찾기(fixed_loop·agent): second_search 자리를 대신한다 (같이 돌지 않음, D11).
+        # recheck가 이 모듈을 부르고 이 모듈이 recheck를 부르므로 함수 안에서 가져온다
+        from patent_ai.core.f3_claim_compare.recheck.run import recheck_missing
+
         if missing:
-            first = {key: judged[key].judgment for key in [(i.n, c.label) for i, c in missing]}
+            judged.update(
+                recheck_missing(
+                    unit, view, missing, first, candidates, config, ctx, searcher, repo, seen
+                )
+            )
+    elif config.settings.second_search:
+        if missing:
             judged.update(
                 _second_round(
                     unit, view, missing, first, candidates, config, ctx, searcher, repo, seen
@@ -1316,6 +1368,7 @@ def _compare_unit(
         units_tried=1 if called_model else 0,
         search_log=seen.search_log,
         examiner_locations=seen.examiner,
+        recheck_log=seen.recheck,
     )
 
 
@@ -1356,6 +1409,7 @@ def compare_units(
         tables += out.tables
         total.search_log += out.search_log
         total.examiner += out.examiner_locations
+        total.recheck += out.recheck_log
         for h in out.held_tasks:
             _hold(total, h.task, h.waiting_for)
     if not tables:
@@ -1367,4 +1421,5 @@ def compare_units(
         units_tried=tried,
         search_log=total.search_log,
         examiner_locations=total.examiner,
+        recheck_log=total.recheck,
     )

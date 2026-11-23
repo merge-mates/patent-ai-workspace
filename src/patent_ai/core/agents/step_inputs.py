@@ -11,6 +11,7 @@ from typing import Any
 from patent_ai.core.f2_legal_research.run import F2Result, load_f2_settings
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
 from patent_ai.core.f3_claim_compare.inputs import F3Inputs
+from patent_ai.core.f3_claim_compare.recheck.config import load_recheck_settings
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f3_claim_compare.run import PreparedUnits
 from patent_ai.core.schemas.case_materials import CaseMaterials
@@ -58,7 +59,11 @@ def f3_input(results: dict[str, Any], case_id: str, texts: F3Inputs | None) -> d
         "oa_result": oa,
         # 사건 자료 목록은 자르기(#54)가 아직 CaseMaterials를 만들지 않아 빈 목록으로 넘긴다
         "case_materials": CaseMaterials(case_id=case_id),
-        "config": {"settings": load_f3_settings(), "inputs": texts},
+        "config": {
+            "settings": load_f3_settings(),
+            "inputs": texts,
+            "recheck": load_recheck_settings(),  # 근거 다시 찾기 (config/recheck.yaml)
+        },
     }
     prepared = results.get("prepare_units")
     if isinstance(prepared, PreparedUnits):  # 앞 고정 단계가 나눈 결과를 이어 쓴다 (다시 안 나눔)
