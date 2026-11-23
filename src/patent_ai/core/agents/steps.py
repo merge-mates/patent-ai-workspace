@@ -23,6 +23,10 @@ class StepRecord(BaseModel):
     # ok = 돌았음 / failed = 실패 / waiting = 사람을 기다림 / skipped = 자료·도구가 없어 넘김.
     # DB agent_steps.outcome 검사 제약도 skipped를 받는다 (#187 마이그레이션)
     outcome: Literal["ok", "failed", "waiting", "skipped"]
+    # 다시 찾기 도구 줄(tool_name "recheck.<도구>")에서만 채운다. 옛 줄은 None.
+    # tool_input은 질의·ID·element_no·citation만 (원문 문단 글·quote·why는 넣지 않는다)
+    unit_id: str | None = None
+    tool_input: dict | None = None
 
     @property
     def skipped_reason(self) -> str | None:

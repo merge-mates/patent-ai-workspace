@@ -86,6 +86,9 @@ class AgentStep(Base):
     result_status: Mapped[str | None] = mapped_column(Text)
     result_id: Mapped[str | None] = mapped_column(Text)  # 만든 결과 ID (F2·F3·F4는 step_results.id)
     model_call_count: Mapped[int | None] = mapped_column(Integer)
+    # 다시 찾기 도구 줄 칸 (#309): 어느 판단 단위의 호출인지, 넘긴 입력(원문 글 없음). 옛 줄은 NULL
+    unit_id: Mapped[str | None] = mapped_column(Text)
+    tool_input: Mapped[dict | None] = mapped_column(JSONB)
     # 모델 호출 칸 (CallRecord)
     model: Mapped[str | None] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)

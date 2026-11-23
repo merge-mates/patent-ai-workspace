@@ -39,6 +39,8 @@ class PostgresStepRecorder:
                         result_status=step.result_status,
                         result_id=step.result_id,
                         model_call_count=step.model_call_count,
+                        unit_id=step.unit_id,
+                        tool_input=step.tool_input,
                     )
                 )
                 s.commit()
