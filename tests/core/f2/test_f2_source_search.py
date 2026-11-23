@@ -2,16 +2,13 @@
 
 from datetime import date
 
-import pytest
-
+from patent_ai.core.f2_legal_research.run import load_f2_settings
 from patent_ai.core.f2_legal_research.source_search import (
     build_searcher,
-    load_search_settings,
     search_guideline,
     search_sources,
 )
 from patent_ai.core.f2_legal_research.tools import LawPool
-from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import LegalSourceKind, Speaker, TextKind
 from patent_ai.retrieval.repository import InMemoryChunkRepository
@@ -82,8 +79,10 @@ CHECKED = date(2026, 11, 23)
 
 
 def _run(pool, as_of, query=Q):
-    st = load_search_settings()
-    found = search_sources(pool, build_searcher(pool, st), query, as_of, st.k, CHECKED)
+    st = load_f2_settings()
+    found = search_sources(
+        pool, build_searcher(pool, st.tokenizer, st.bm25), query, as_of, st.source_search_k, CHECKED
+    )
     return {r.log.source_kind: r for r in found}
 
 
@@ -148,21 +147,10 @@ def test_기준일을_모르면_판례_심결은_검색하지_않는다():
 def test_질의의_되풀이_낱말은_한_번만_센다():
     # 같은 낱말을 길게 되풀이해도 한 번만 센 점수와 같다 (unique_query_terms true)
     pool = _pool(*_all())
-    st = load_search_settings()
-    s = build_searcher(pool, st)
+    st = load_f2_settings()
+    s = build_searcher(pool, st.tokenizer, st.bm25)
     once = search_guideline(s, pool, "진보성", date(2018, 9, 1), 3, CHECKED)
     many = search_guideline(s, pool, "진보성 " * 5, date(2018, 9, 1), 3, CHECKED)
     assert [x.evidence.chunk_id for x in once.sources] == [
         x.evidence.chunk_id for x in many.sources
     ]
-
-
-def test_설정_파일에서_unique_query_terms가_켜져_있다():
-    st = load_search_settings()
-    assert st.bm25["unique_query_terms"] is True and st.tokenizer == "char_bigram"
-
-
-def test_설정_칸이_빠지면_멈춘다(tmp_path):
-    (tmp_path / "f2_search.yaml").write_text("tokenizer: char_bigram\n", encoding="utf-8")
-    with pytest.raises(ModelConfigError):
-        load_search_settings(tmp_path)

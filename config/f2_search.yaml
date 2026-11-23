@@ -1,9 +1,0 @@
-# F2 심사기준·판례·심결 검색 설정 (core/f2_legal_research/source_search.py가 읽는다, #24 24d task-d3).
-# 기준선 experiments/m2-i2-law-bm25-char-bigram과 같다. 법률 질문(#29)의 config/f2.yaml bm25 칸과 따로 둔다.
-k: 3
-tokenizer: char_bigram
-bm25:
-  method: lucene
-  k1: 1.5
-  b: 0.75
-  unique_query_terms: true   # 질의에 되풀이된 낱말을 한 번만 센다 (false면 tune Hit@1 0.632 → 0.211)

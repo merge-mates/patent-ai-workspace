@@ -3,15 +3,19 @@
 import logging
 from datetime import date
 
+import pytest
+import yaml
+
 from patent_ai.core.f2_legal_research import run as f2_run
 from patent_ai.core.f2_legal_research import tools as f2_tools
 from patent_ai.core.f2_legal_research.run import F2Input, F2Settings, load_f2_settings, run_f2
 from patent_ai.core.f3_claim_compare.units import build_units
+from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.schemas.common import ExtractedValue, Flag, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import AsOfSource, LegalSourceKind
 from patent_ai.retrieval.repository import InMemoryChunkRepository
 from tests.core.f2 import fakes
-from tests.core.f2.fakes import IV, NEW_DOC, TEXT_292_NEW, TEXT_424_NEW
+from tests.core.f2.fakes import IV, NEW_DOC, SEARCH, TEXT_292_NEW, TEXT_424_NEW
 from tests.core.f3.fakes import OK, bad, oa, rejection, split
 
 CHECKED_ON = date(2099, 2, 1)
@@ -26,7 +30,9 @@ def _oa(**fields):
 def _input(o=None) -> F2Input:
     o = o or _oa()
     units, _ = build_units(o, {1: split(1, ["가"]), 2: split(2, ["나"], [1])})
-    return F2Input(oa=o, units=units, checked_on=CHECKED_ON, settings=F2Settings(index_version=IV))
+    return F2Input(
+        oa=o, units=units, checked_on=CHECKED_ON, settings=F2Settings(index_version=IV, **SEARCH)
+    )
 
 
 def test_판단_단위마다_발송일_시행판_조문이_근거로_붙는다():
@@ -131,7 +137,24 @@ def test_repo가_없으면_make_law_repo로_만든다(monkeypatch):
 
 
 def test_저장소_설정을_읽는다():
-    assert load_f2_settings().index_version == "law-idx-v2"
+    assert load_f2_settings().index_version == "law-idx-v3"
+    assert load_f2_settings().bm25["unique_query_terms"] is True
+
+
+@pytest.mark.parametrize("missing", ["source_search_k", "tokenizer", "bm25"])
+def test_검색_칸이_빠지면_기본값으로_때우지_않고_멈춘다(tmp_path, missing):
+    data = {"index_version": IV, **SEARCH}
+    del data[missing]
+    (tmp_path / "f2.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(ModelConfigError):
+        load_f2_settings(tmp_path)
+
+
+def test_bm25_칸이_비어도_멈춘다(tmp_path):
+    data = {"index_version": IV, **SEARCH, "bm25": {}}
+    (tmp_path / "f2.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(ModelConfigError):
+        load_f2_settings(tmp_path)
 
 
 def test_법령_색인이_저장소에_없으면_없음이_아니라_확인되지_않음(caplog):
@@ -147,7 +170,7 @@ def test_법령_색인이_저장소에_없으면_없음이_아니라_확인되�
         )
         assert b.question.article_refs  # 질문은 남긴다
     assert out.status.reason == UnverifiedReason.BODY_MISSING
-    assert "law-idx-v2" in caplog.text
+    assert IV in caplog.text
 
 
 def test_같은_날_시행판이_둘이면_고르지_않고_겹친_조각을_더_볼_것으로_남긴다():
@@ -172,7 +195,7 @@ def test_발송일이_확인되지_않음이면_글자가_있어도_조문을_�
     units, _ = build_units(o, {1: split(1, ["가"]), 2: split(2, ["나"], [1])})
     # OA 전체 status는 칸을 모은 값이라, 검사를 거치지 않는 model_construct로 칸만 바꾼다
     inp = F2Input.model_construct(
-        oa=o, units=units, checked_on=CHECKED_ON, settings=F2Settings(index_version=IV)
+        oa=o, units=units, checked_on=CHECKED_ON, settings=F2Settings(index_version=IV, **SEARCH)
     )
     for b in run_f2(inp, repo=fakes.repo()).bundles:
         assert b.claims == [] and b.status.reason == UnverifiedReason.INPUT_UNVERIFIED

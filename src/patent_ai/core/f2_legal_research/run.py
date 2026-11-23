@@ -5,7 +5,7 @@
 2. 거절이유 조문을 그날 시행판에서 ID 조회 (`get_article`).
 3. 출처 확인(코드, 무조건): 통과한 근거만 주장에 넣는다. 근거 검토(모델)는 #29라서
    주장에 review가 없고 `needs_human_review`를 단다.
-4. 심사기준·판례·심결은 색인 전이라 `search_log`에 status unverified(body_missing)로 남긴다
+4. 심사기준·판례·심결은 BM25로 찾아 근거 후보(`further_review`)와 `search_log`에 남긴다
    (못 찾음 ≠ 없음). law corpus는 실행마다 한 번만 읽는다 (`LawPool`).
 주장 글은 "어느 조문이 근거인가"만 적는다. 이 사건에 적용된다는 판단은 쓰지 않는다.
 """
@@ -22,7 +22,6 @@ from patent_ai.core.f2_legal_research.refs import ArticleRef, article_ref, parse
 from patent_ai.core.f2_legal_research.source_search import (
     build_searcher,
     candidate_reviews,
-    load_search_settings,
     search_sources,
 )
 from patent_ai.core.f2_legal_research.tools import (
@@ -65,11 +64,12 @@ class F2Settings(BaseModel):
 
     index_version: str  # 법령 색인 판 (law corpus)
     chat_search_k: int = Field(default=3, ge=1)  # 법률 질문: 번호 없는 질문의 BM25 조문 수
-    # 법률 질문 검색기: 방식과 낱말 자르기 (기준선 experiments/m2-i2-law-bm25-char-bigram)
+    source_search_k: int = Field(ge=1)  # OA 흐름: 심사기준·판례·심결을 유형마다 몇 개 찾을지
+    # OA 흐름과 법률 질문이 같이 쓰는 검색기 값 (기준선 experiments/m2-i2-law-bm25-char-bigram)
     search_method: Literal["bm25"] = "bm25"
-    tokenizer: str = "char_bigram"
-    # bm25 세부 값. 비우면 bm25 구현 기본값(unique_query_terms false)이라 기준선과 달라진다
-    bm25: dict[str, str | float | bool] = Field(default_factory=dict)
+    # 아래 둘은 기본값이 없다: 빠지면 unique_query_terms가 조용히 꺼져 점수가 크게 떨어진다
+    tokenizer: str
+    bm25: dict[str, str | float | bool] = Field(min_length=1)
 
 
 class F2Input(BaseModel):
@@ -244,9 +244,9 @@ def run_f2(inp: F2Input, *, repo: ChunkRepository | None = None) -> F2Result:
 
     # law corpus를 실행마다 한 번만 읽는다 (도구마다 다시 읽지 않게, #222 리뷰)
     pool = LawPool.load(repo, iv)
-    search_cfg = load_search_settings()
-    searcher = build_searcher(pool, search_cfg)
-    bundles = [_bundle(u, inp, pool, searcher, search_cfg.k) for u in inp.units]
+    cfg = inp.settings
+    searcher = build_searcher(pool, cfg.tokenizer, cfg.bm25)
+    bundles = [_bundle(u, inp, pool, searcher, cfg.source_search_k) for u in inp.units]
     return F2Result(
         oa_id=inp.oa.oa_id,
         bundles=bundles,

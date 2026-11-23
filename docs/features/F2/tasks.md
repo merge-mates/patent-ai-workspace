@@ -202,13 +202,13 @@ graph LR
 
 #### task-d3: F2 심사기준·판례·심결 검색 연결 (11/23 추가, 임베딩 없이 BM25)
 - 합격 기준: #24 1·2, F2 requirements 3·4·5 (요지/전문, 판단/당사자 구분)
-- 고칠 파일: `src/patent_ai/core/f2_legal_research/source_search.py`(새), `config/f2_search.yaml`(새: BM25 값. `config/f2.yaml`·`F2Settings`는 안 건드림: #29 브랜치 02570121의 `bm25` 칸과 겹치지 않게), `run.py`(`search_not_indexed` 부르던 한 줄만 바꿈), `tests/core/f2/test_f2_source_search.py`
+- 고칠 파일: `src/patent_ai/core/f2_legal_research/source_search.py`(새), `config/f2.yaml`·`F2Settings`(BM25 값을 법률 질문과 같이 쓰고 `source_search_k` 추가, `index_version` v3. 처음엔 `f2_search.yaml`로 따로 뒀다가 #316 머지 뒤 합침, 11/23 은진 결정), `run.py`(`search_not_indexed` 부르던 한 줄만 바꿈), `tests/core/f2/test_f2_source_search.py`
 - 규칙:
   - BM25는 `unique_query_terms: true`, 낱말 자르기 `char_bigram` (기준선 `m2-i2-law-bm25-char-bigram`과 같게).
   - 심사기준: `chunk_kinds=[guideline]`, 기준일 판만. 기준일에 시행 중인 판이 없는데 조각은 있으면(가장 이른 판 앞, 판 사이 빈 기간 2018.4.24~7.31·2023.3.22~2026.3.12) `unverified(edition_unknown)`. 0개면 `body_missing`.
   - 판례·심결: `source_kinds`로 가르고 `decided_on_or_before=기준일`. 기준일을 모르면 검색하지 않고 `unverified(input_unverified)`. 요지(`judgment_summary`)와 전문(`judgment`)은 `text_kind`로, 법원·당사자·모름은 `speaker`로 근거 후보에 남긴다.
   - 걸린 조각은 근거 후보일 뿐이다. 주장으로 올리는 것은 근거 검토(#29) 몫이라 묶음에는 `further_review`(`not_used_candidate`)로만 둔다.
-- 테스트할 경우: 같은 절 두 판 중 기준일 판만 / 빈 기간 → `edition_unknown` / 가장 이른 판 앞 → `edition_unknown` / 심사기준 0개 → `body_missing` / 선고일이 기준일 뒤인 판례 빠짐 + 날짜 모름 건수 / 요지·전문 `text_kind` / `speaker` 그대로 / 기준일 없음 → 검색 안 함 / 반복 낱말 질의가 `unique_query_terms`로 한 번만 세어짐 / `f2.yaml` 안 바뀜
+- 테스트할 경우: 같은 절 두 판 중 기준일 판만 / 빈 기간 → `edition_unknown` / 가장 이른 판 앞 → `edition_unknown` / 심사기준 0개 → `body_missing` / 선고일이 기준일 뒤인 판례 빠짐 + 날짜 모름 건수 / 요지·전문 `text_kind` / `speaker` 그대로 / 기준일 없음 → 검색 안 함 / 반복 낱말 질의가 `unique_query_terms`로 한 번만 세어짐 / 검색 칸이 빠지면 멈춤
 - 확인 방법: `uv run pytest tests/core/f2 tests/retrieval`
 - 먼저: task-d1
 

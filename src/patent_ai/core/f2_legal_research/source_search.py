@@ -1,6 +1,6 @@
 """F2 심사기준·판례·심결 검색 (design 2절 3단계, #24 24d task-d3). 모두 코드, 모델을 부르지 않는다.
 
-- 검색은 BM25 한 가지다 (law-idx-v3에는 벡터가 없다). 값은 `config/f2_search.yaml`.
+- 검색은 BM25 한 가지다 (law-idx-v3에는 벡터가 없다). 값은 `config/f2.yaml` (법률 질문과 같이 쓴다).
 - 심사기준은 기준일에 시행 중인 판만 본다. 그 판이 없으면(가장 이른 판 앞, 판 사이 빈 기간)
   "없음"이 아니라 `unverified(edition_unknown)`이다 (못 찾음 ≠ 없음).
 - 판례·심결은 선고일이 기준일 이전인 것만 본다. 요지/전문(`text_kind`)과 판단/당사자(`speaker`)를
@@ -13,14 +13,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date
-from pathlib import Path
-
-import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from patent_ai.core.f2_legal_research.tools import CORPUS, LawPool
-from patent_ai.core.llm.config import REPO_ROOT
-from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.schemas.common import Evidence, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import (
     FurtherReview,
@@ -46,16 +40,6 @@ _SOURCE_KIND: dict[LegalSourceKind, SourceKind] = {
 }
 
 
-class SearchSettings(BaseModel):
-    """칸이 빠지면 기본값으로 때우지 않고 멈춘다 (unique_query_terms가 조용히 꺼지면 안 됨)."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    k: int = Field(ge=1)
-    tokenizer: str
-    bm25: dict[str, str | float | bool]
-
-
 @dataclass(frozen=True)
 class SourceSearch:
     """자료 유형 하나를 찾은 결과: 기록(search_log)과 근거 후보."""
@@ -64,19 +48,7 @@ class SourceSearch:
     sources: tuple[LegalSource, ...] = field(default_factory=tuple)
 
 
-def load_search_settings(config_dir: Path | None = None) -> SearchSettings:
-    """config/f2_search.yaml을 읽는다. 파일이 없거나 값이 틀리면 멈춘다."""
-    path = (config_dir or REPO_ROOT / "config") / "f2_search.yaml"
-    if not path.is_file():
-        raise ModelConfigError(f"설정 파일이 없음: {path}")
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    try:
-        return SearchSettings.model_validate(data)
-    except ValidationError as e:
-        raise ModelConfigError(f"{path.name} 설정 값이 잘못됨: {e}") from e
-
-
-def build_searcher(pool: LawPool, settings: SearchSettings) -> Searcher:
+def build_searcher(pool: LawPool, tokenizer: str, bm25: dict[str, str | float | bool]) -> Searcher:
     """pool 조각 위에 BM25 검색기를 만든다 (DB를 다시 읽지 않는다)."""
     repo = InMemoryChunkRepository({CORPUS: list(pool.chunks)})
     return get_searcher(
@@ -84,8 +56,8 @@ def build_searcher(pool: LawPool, settings: SearchSettings) -> Searcher:
         repo,
         {
             "index_version": pool.index_version,
-            "tokenizer": settings.tokenizer,
-            "bm25": dict(settings.bm25),
+            "tokenizer": tokenizer,
+            "bm25": dict(bm25),
         },
     )
 
@@ -171,7 +143,7 @@ def search_guideline(
         return SourceSearch(
             _entry(kind, pool, as_of, 0, 0, _unverified(UnverifiedReason.BODY_MISSING))
         )
-    if not any(c in pool.in_force(as_of) for c in mine):
+    if not any(c.chunk_kind == "guideline" for c in pool.in_force(as_of)):
         # 기준일 판이 색인에 없다: 그날 글을 모를 뿐 없는 것이 아니다
         logger.warning("심사기준: %s에 시행 중인 판이 색인에 없음 (확인되지 않음)", as_of)
         return SourceSearch(
