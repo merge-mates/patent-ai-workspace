@@ -323,9 +323,12 @@ export const mockApi = {
     const runId = gateResult(b)
     return { oa_id: b.oa_id, run_id: runId, confirmed_at: loadConfirmedAt(b.oa_id, runId) }
   },
-  async confirmOAResult(oaId: string): Promise<ConfirmationOut> {
+  async confirmOAResult(oaId: string, seenRunId: string): Promise<ConfirmationOut> {
     const b = await byOA(oaId)
     const runId = gateResult(b)
+    // 서버와 같게: 사람이 본 정리가 지금 정리와 다르면 확인을 남기지 않는다 (#311)
+    if (seenRunId !== runId)
+      throw new ApiError('stale_result', '보던 정리가 바뀌었습니다. 새 정리를 보고 다시 확인해 주세요', 409)
     const at = new Date().toISOString()
     saveConfirmedAt(b.oa_id, runId, at)
     return { oa_id: b.oa_id, run_id: runId, confirmed_at: at }
