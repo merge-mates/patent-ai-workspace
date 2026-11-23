@@ -175,15 +175,6 @@ function notReadyAsNull(e: unknown): null {
   throw e
 }
 
-// 사건 전체 검사(case-check)만: 결과가 아직 없음(result_not_ready)에 더해, 서버에 엔드포인트가 아직 없어서 나는
-// 404 (code not_found)도 null로 받는다. 그 밖의 오류는 그대로 올린다 (조용히 삼키지 않는다).
-// case-check 엔드포인트가 서버에 생기면(#305) not_found 분기를 빼고 notReadyAsNull로 바꾼다.
-// 다른 엔드포인트에는 쓰지 않는다: 있는 엔드포인트의 not_found는 경로를 잘못 부른 것이라 "아직 없음"으로 가리면 안 된다
-function caseCheckMissingAsNull(e: unknown): null {
-  if (isNotReady(e) || (e instanceof ApiError && e.code === 'not_found')) return null
-  throw e
-}
-
 export interface CompareLoaderData {
   // 판단 단위 결과가 아직 없으면 null (실행 중, 404 result_not_ready)
   units: JudgmentUnit[] | null
@@ -237,7 +228,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
     api.getUnits(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getComparisons(oaId).catch(notReadyAsNull),
-    api.getCaseCheck(oaId).catch(caseCheckMissingAsNull),
+    api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
   if (units === null || directions === null) return null
   return {
@@ -270,7 +261,7 @@ export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<Draf
       return notReadyAsNull(e)
     }),
     api.getDirections(oaId).catch(notReadyAsNull),
-    api.getCaseCheck(oaId).catch(caseCheckMissingAsNull),
+    api.getCaseCheck(oaId).catch(notReadyAsNull),
   ])
   // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
   if (directions === null) return null
