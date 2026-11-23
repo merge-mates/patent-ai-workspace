@@ -13,6 +13,7 @@ from collections.abc import Collection
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.agents.tool_loop import call_environment
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation
 from patent_ai.core.f3_claim_compare.elements import ClaimElement
 from patent_ai.core.f3_claim_compare.inputs import F3Settings
@@ -100,8 +101,12 @@ def fixed_loop_candidates(
     scope = _scope(cite, settings, recheck, len(queries))
     candidates: dict[str, _Candidate] = {}
     for query in queries:
-        result = searcher.search(
-            query, "cite", mode, recheck.search.rewrite_k, doc_ids=[cite.doc_id]
+        # 검색기·DB 예외는 그 구성요소만 tool_failed 보류가 되게 감싼다 (에이전트와 같은 함수)
+        result = call_environment(
+            f"{mode} 검색",
+            lambda q=query: searcher.search(
+                q, "cite", mode, recheck.search.rewrite_k, doc_ids=[cite.doc_id]
+            ),
         )
         fresh = [h for h in result.hits if h.chunk_id not in shown]
         search_log.append(

@@ -329,3 +329,30 @@ def test_도구_description은_root_밑_prompts_파일에서_온다(repo, tmp_pa
     assert compare["submit_evidence"] == "설명-submit_evidence"
     assert agent["submit_evidence"] == "설명-submit_evidence_judge"
     assert compare["give_up"] == "설명-give_up"
+
+
+class _BrokenRepo:
+    """조각 저장소가 끊긴 상황: 읽으면 환경 예외."""
+
+    def chunks(self, *a, **kw):
+        raise RuntimeError("DB 끊김")
+
+
+def test_저장소_읽기_예외도_RecheckToolFailed(repo):
+    # 리뷰 막음(#329): open·submit이 부르는 _own()의 저장소 예외가 그대로 올라가면 F3 전체가 끝난다
+    box = make_box(repo)
+    box.repo = _BrokenRepo()
+    with pytest.raises(RecheckToolFailed):
+        tool(box, "open_paragraph")(paragraph_id=D1_2)
+
+
+def test_설정_오류는_tool_failed로_삼키지_않는다(repo):
+    # 리뷰 고칠 것(#329): 설정·코드 잘못은 그대로 올라가 실행이 실패해야 한다 (design 4-4)
+    from patent_ai.core.llm.errors import ModelConfigError
+
+    def bad(q):
+        raise ModelConfigError("임베딩 설정 없음")
+
+    box = make_box(repo, embed=bad)
+    with pytest.raises(ModelConfigError):
+        tool(box, "search_vector")(query="a", k=1)

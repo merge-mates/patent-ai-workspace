@@ -477,6 +477,15 @@ def test_fixed_loop_평소는_다시_쓴_질의로_찾아_compare가_다시_판�
     assert _rechecked_holds(out) == []
 
 
+def test_fixed_loop의_검색이_예외를_던지면_그_구성요소만_tool_failed이고_1차_대비표는_남는다():
+    # 리뷰 막음(#329): 방식과 상관없이 그 구성요소만 tool_failed 보류 (requirements)
+    searcher = _Searcher({"수조": RuntimeError("DB 끊김")})
+    responses = {STEP: [FIRST], REWRITE: [_rewrite(["수조"])]}
+    out, _, _, unit_id = _run(_settings("fixed_loop"), responses, searcher=searcher)
+    assert [h.task for h in _rechecked_holds(out)] == [_task(unit_id, "tool_failed")]
+    assert out.tables == _baseline().tables
+
+
 def test_fixed_loop에서_새_조각이_0개면_보류_없이_조회_범위_내_없음이다():
     search = RecheckSearch(k_max=10, snippet_chars=160, rewrite_k=1, rewrite_n=1)
     responses = {STEP: [FIRST], REWRITE: [_rewrite(["물통"])]}

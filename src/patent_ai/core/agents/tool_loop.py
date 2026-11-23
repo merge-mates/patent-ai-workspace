@@ -16,7 +16,9 @@ from pydantic import BaseModel, ValidationError
 from patent_ai.core.llm.errors import (
     ModelCallFailed,
     ModelCallLimitExceeded,
+    ModelConfigError,
     ModelOutputInvalid,
+    RecordingMissing,
 )
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.llm.turns import call_model_turn
@@ -43,6 +45,31 @@ NO_TEXT_ONLY = "도구로만 답한다: 끝낼 때 submit 또는 give_up"
 
 class RecheckToolFailed(Exception):
     """도구 실행이 환경 때문에 실패함 (예: 검색 예외). 루프가 tool_failed로 끝낸다."""
+
+
+# 감싸지 않고 그대로 올리는 예외 (design 4-4).
+# - 모델 호출 실패·상한: 부르는 쪽이 call_failed·limit_reached로 바꾼다 (고정 루프와 같은 이름)
+# - 설정·코드 잘못: 실행이 실패해야 고친다. tool_failed로 삼키면 설정이 틀려도 성공처럼 보인다
+_PASS_THROUGH = (
+    ModelCallFailed,
+    ModelCallLimitExceeded,
+    ModelConfigError,
+    RecordingMissing,
+    TypeError,
+    AttributeError,
+    KeyError,
+    NameError,
+)
+
+
+def call_environment[T](what: str, fn: Callable[[], T]) -> T:
+    """검색기·조각 저장소 같은 바깥 자원 부르기. 그 밖의 예외만 RecheckToolFailed로 감싼다."""
+    try:
+        return fn()
+    except _PASS_THROUGH:
+        raise
+    except Exception as e:  # 검색기·DB·네트워크 같은 환경 실패
+        raise RecheckToolFailed(f"{what} 실패: {type(e).__name__}: {e}") from e
 
 
 @dataclass(frozen=True)
