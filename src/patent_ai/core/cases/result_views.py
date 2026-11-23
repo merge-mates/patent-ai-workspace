@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from patent_ai.core.agents.steps import LIMIT_PREFIX
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.step_results import StepKind, StepResultStore
 from patent_ai.core.f2_legal_research.run import F2Result
@@ -21,6 +22,7 @@ from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.runs.state import RunState
 from patent_ai.core.runs.store import RunStatusStore
+from patent_ai.core.runs.warnings import is_limit_reason
 
 ResultName = Literal[
     "units", "comparisons", "clarity-reviews", "legal-evidence", "directions", "drafts"
@@ -55,6 +57,9 @@ def _why_missing(tool: str, run_id: str, runs: RunStatusStore) -> str:
     """그 실행에 단계 결과가 없는 이유."""
     for s in runs.skipped_steps(run_id):
         if s.step == tool:
+            if is_limit_reason(s.reason):
+                # 호출 상한에 닿아 못 돈 것은 넘긴 것이 아니다 (ADR 0003: 확인되지 않음)
+                return f"확인되지 않음: {s.reason.removeprefix(LIMIT_PREFIX)}"
             return f"넘김: {s.reason}"
     status = runs.get_status(run_id)
     if status is not None and status.state == RunState.WAITING_FOR_HUMAN:

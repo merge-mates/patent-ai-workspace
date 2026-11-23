@@ -4,6 +4,7 @@
 이 모듈의 `CaseFillSink.fill_after_f1`을 불러:
 1. 번호 채우기: 출원번호가 confirmed이고 사건에 아직 없으면 사건에, 발송번호가 confirmed이면
    그 OA 이력 줄에 넣는다. 읽지 못한(unverified·conflict) 번호는 넣지 않는다 (지어내지 않음).
+   사건 이력에 같은 발송번호 줄이 먼저 있으면(#54 채우기가 넣은 앞 OA) 그 줄에 붙인다 (#326).
 2. 사건 자료 저장: 사건 출원번호를 알 때만 만든다 (묶기가 출원번호로 자료를 맞춰 보기 때문).
    자동 조회(#54) 전이라 인용문헌 본문은 받은 것이 없어 "올려 주세요"(lookup_failed)로 남는다.
    #54가 붙으면 받은 인용문헌과 못 받은 이유를 이 자리로 넘긴다.
@@ -12,7 +13,7 @@
    넣지 않고(출원번호 unique) OA·이력 줄·원문 문서를 그 사건 끝(다음 OA)으로 옮긴다.
    결과·실행은 oa_id로 묶여 있어 따라간다. 빈 임시 사건은 지우지 않고 "합침(기존 사건 ID)"
    표시(`cases.merged_into_case_id`)를 달아 목록에서 숨긴다. 사건 자료는 합친 사건에 다시 만든다.
-   이력 순서는 날짜로 끼우지 않고 맨 뒤에 붙인다 (올린 OA엔 이력 순서가 없어서. #54 뒤에 맞춤).
+   같은 발송번호 줄이 그 사건에 있으면 그 줄에, 없으면 맨 뒤에 붙인다 (날짜로 끼우지 않는다).
 
 하지 않는 것 (조용히 넘기지 않고 경고를 남긴다):
 - 합칠 사건에 같은 파일이 이미 있을 때 합치기 (올릴 때 409로 막히는 드문 경우). 임시 사건 그대로.
@@ -241,7 +242,17 @@ class PostgresCaseFill:
             if fill.application_number is not None:
                 case.application_number = fill.application_number
             if fill.dispatch_number is not None and event.doc_number is None:
-                event.doc_number = fill.dispatch_number
+                existing = _oa_event(s, case.id, fill.dispatch_number)
+                if existing is not None and not _has_oa(s, existing):
+                    # 사건 채우기(#54)가 이 OA 줄을 먼저 넣어 뒀다: 그 줄(그 순서)에 붙이고,
+                    # 올릴 때 만든 번호 빈 줄은 지운다 (같은 사건 이력에 한 OA가 두 줄이 되지 않게)
+                    _attach(oa, s.get(Document, oa.document_id), event, existing)
+                    s.flush()
+                    s.delete(event)
+                    event = existing
+                else:
+                    # 그 줄에 이미 OA가 있으면(같은 OA) unique에 걸려 실행이 failed로 끝난다
+                    event.doc_number = fill.dispatch_number
             s.flush()
 
             if fill.case_number is None:
@@ -270,6 +281,29 @@ class PostgresCaseFill:
             s.commit()
 
 
+def _oa_event(s: Session, case_id: str, dispatch: str) -> CaseEvent | None:
+    """그 사건 이력에서 같은 발송번호의 OA 줄."""
+    return s.scalars(
+        select(CaseEvent).where(
+            CaseEvent.case_id == case_id,
+            CaseEvent.kind == "oa",
+            CaseEvent.doc_number == dispatch,
+        )
+    ).first()
+
+
+def _has_oa(s: Session, event: CaseEvent) -> bool:
+    """이력 줄에 이미 올린 OA가 있는지."""
+    return s.scalar(select(OA.id).where(OA.case_event_id == event.id).limit(1)) is not None
+
+
+def _attach(oa: OA, doc: Document | None, old: CaseEvent, new: CaseEvent) -> None:
+    """OA와 원문 문서를 old 줄에서 new 줄로 옮겨 단다."""
+    oa.case_event_id = new.id
+    if doc is not None and doc.case_event_id == old.id:
+        doc.case_event_id = new.id
+
+
 def _merge_oa_pg(
     s: Session, oa: OA, event: CaseEvent, target_id: str, dispatch: str | None
 ) -> CaseEvent | None:
@@ -291,19 +325,11 @@ def _merge_oa_pg(
             return None
     existing = None
     if dispatch is not None:
-        existing = s.scalars(
-            select(CaseEvent).where(
-                CaseEvent.case_id == target_id,
-                CaseEvent.kind == "oa",
-                CaseEvent.doc_number == dispatch,
-            )
-        ).first()
+        existing = _oa_event(s, target_id, dispatch)
     if existing is not None:
-        if s.scalar(select(OA.id).where(OA.case_event_id == existing.id).limit(1)) is not None:
+        if _has_oa(s, existing):
             return None
-        oa.case_event_id = existing.id
-        if doc is not None and doc.case_event_id == event.id:
-            doc.case_event_id = existing.id
+        _attach(oa, doc, event, existing)
         moved = existing
     else:
         last_seq = s.scalar(select(func.max(CaseEvent.seq)).where(CaseEvent.case_id == target_id))

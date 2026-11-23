@@ -87,10 +87,11 @@ erDiagram
 - 결과 표: **원본은 결과 표의 본문(`jsonb`)이다.** `status`·`origin`·`run_id`·`oa_id`는 거르기용 보통 컬럼. M1은 `oa_results`와 `case_materials`(⑥, 사건마다 최신 한 줄). ⑥은 지휘가 실행이 끝날 때·자료가 더해질 때 다시 써서 저장하고, 사건을 다시 열면 저장본을 읽는다. 스키마 검증은 Pydantic이 한다. M2 F2·F3·F4 결과는 `step_results` 한 표에 실행·단계마다 한 줄(`run_id` + `kind` = `f2`·`f3`·`f4`, 같은 실행·단계는 한 줄)로 두고, 본문은 도구 출력 `F2Result`(④ 판단 단위마다 법률 근거 묶음, #28)·`F3Result`(②·③·명확성 검토)·`F4Output`(⑤ 방향 후보·초안) 통째다 (#191). 결과 스키마마다 표를 나누지 않은 이유: 결과 API가 OA 정리(①)와 같은 실행을 골라 한 번에 읽어 칸들이 실행끼리 섞이지 않게 하려고. 본문 모델은 판을 매기지 않아 칸을 지우거나 이름을 바꾸면 옛 줄을 못 읽는다 (그때 판 칸을 더한다). 거절이유 엔티티 표 4개(`rejections`·`cited_references`·`rejection_claims`·`rejection_citations`)는 M1에서 비어 있고, M2에서 F3가 청구항·인용문헌으로 찾아야 할 때 결과에서 채운다.
 - 사람 선택 표 `direction_selections`(oa_id, run_id, unit_id, candidate_id 또는 written_direction, origin, created_at): 사람이 고른 방향 기록. run_id는 그 선택을 적용할 작은 실행(`redo_drafts`)이고 그 실행만 이 줄을 쓴다 (앞 선택은 앞 F4 결과의 selection에 이미 들어 있어, 끝까지 다시 돌린 뒤 옛 선택이 새 후보에 되살아나지 않는다). origin은 `human_selected`·`human_written`만(AI 기본값은 F4 결과 안 selection에만), candidate_id와 written_direction 중 정확히 하나. 지우지 않고 쌓는다 (#70).
 - 사람 입력 표 `human_inputs`(oa_id, run_id, kind, value, created_at): 사람이 넣은 출원번호(`application_number`)·발송번호(`dispatch_number`)와 OA 정리 확인 "맞아요"(`oa_result_confirmed`, value 없음). run_id는 번호면 그 번호로 이어 돌 실행, 확인이면 확인한 정리를 낸 실행. 지우지 않고 쌓는다 (#70).
+- 법률 질문 대화 표 `legal_chats`(chat_id, case_id 비어도 됨(사건에 붙여 물었을 때만, `cases` 참조), created_at)와 `legal_chat_turns`(chat_id → `legal_chats` 참조·대화를 지우면 같이 지움, no 1부터, question(LegalQuestion jsonb), scope_changed(앞 질문과 시점·자료 유형이 달라졌는지), bundle(④ 묶음 jsonb), created_at, 기본키 (chat_id, no)). 법률 질문 대화의 묶음은 `step_results`가 아니라 턴 줄에 둔다 (OA 실행에 묶이지 않아서). 되읽을 때 스키마 검사하고 못 읽으면 오류 (#29)
 - 실행 종류 `runs.kind`: `full`(끝까지 도는 실행, 기본) / `redo_drafts`(사람이 방향을 고른 뒤 초안만 다시 만드는 작은 실행, #70).
 - 같은 OA를 여러 번 돌리면 API는 판단 단위마다 가장 최근에 성공한 실행(`succeeded`) 또는 사람을 기다리는 실행(`waiting_for_human`)의 결과를 준다. 판단 단위가 없는 결과(①, 사건 전체 검사)는 OA마다, ⑥은 사건마다 가장 최근 것을 준다. 앞 결과는 지우지 않고 남긴다 (이력·채점용). 고르는 코드는 #57 (`oa_results`의 `(oa_id, created_at)` 인덱스 + `runs.state`).
 - 실행 기록: `runs`(API 실행 상태 겸, `state` 6값) · `agent_steps`(지휘 단계 `StepRecord`와 모델 호출 `CallRecord`를 한 표에. 모델 호출은 `step_kind = model_call`. 모델·토큰·비용·시간·만든 결과 ID).
-  - 넘긴 단계(도구 없음·입력 없음) = `agent_steps.outcome = skipped` + `reason`. 실행은 계속 돌고, `GET /runs/{id}`의 `skipped_steps`·`warnings`로 보인다 (#57). 지휘(#180)도 같은 표기(`step_kind = code_tool`, `outcome = skipped`, `result_status = unverified`, `reason` = 넘긴 이유)로 남긴다 (#191). 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다.
+  - 넘긴 단계(도구 없음·입력 없음) = `agent_steps.outcome = skipped` + `reason`. 실행은 계속 돌고, `GET /runs/{id}`의 `skipped_steps`·`warnings`로 보인다 (#57). 지휘(#180)도 같은 표기(`step_kind = code_tool`, `outcome = skipped`, `result_status = unverified`, `reason` = 넘긴 이유)로 남긴다 (#191). 호출 상한에 닿은 단계는 `outcome = limit_reached`(`reason`에 단계·상한 이름·숫자만)로 남는다. `step_kind = code_tool` 줄(못 돈 단계)만 `skipped_steps`에 보이고, 지휘 모델의 `decide` 줄은 기록만 한다. 실행이 `failed`면 화면 응답에서는 뺀다 (#241). 사람을 기다리는 것은 `step_kind = check`의 `waiting`뿐이다.
 - `result_inputs`(뒤 결과 → 기댄 앞 결과 `result` 또는 자료 `document`): 상태 전파와 "다시 확인 필요"에 쓴다. 가리키는 표가 여럿이라 외래 키는 걸지 않는다.
 - `api_cache`: 외부 API 응답. 외부 API 호출은 이 캐시와 호출 상한을 거친다.
 - 원본 파일은 디스크에 두고 DB에는 경로만 둔다. 자리는 쓰임마다 나눈다 (#159). 정확한 앱 경로·파일 이름 규칙은 자동 조회 이슈(#54)에서 정한다.
@@ -110,5 +111,4 @@ erDiagram
 | LLM 출력 스키마 (structured output): 결과 스키마와 같을지 일부일지 | F1 설계 |
 | 화면 TS 타입: OpenAPI에서 자동 생성 (손으로 안 만듦). 생성 도구 | 화면 설계 |
 | 그래프 노드·연결선 스키마와 저장 | M3 `cite` 그래프(11/22 정함, [ADR 0002](decisions/0002-first-build-scope.md)), Neo4j 방향 (ADR 0003), 세부는 #27 |
-| 법률 질문 대화의 칸 | F2 설계 |
 | F4 초안 결과 스키마 | F4 설계 |

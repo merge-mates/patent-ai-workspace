@@ -15,7 +15,7 @@ from patent_ai.core.agents.orchestrator import CaseInput, run_case
 from patent_ai.core.agents.steps import MemoryStepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
-from patent_ai.core.llm.errors import ModelCallFailed, ModelCallLimitExceeded, ModelOutputInvalid
+from patent_ai.core.llm.errors import ModelCallFailed, ModelOutputInvalid
 from patent_ai.core.llm.limits import CallBudget, MemoryRecorder, RunContext
 from patent_ai.core.llm.transport import FakeTransport, TransportResponse
 from patent_ai.core.schemas.oa_result import OAResult
@@ -139,7 +139,6 @@ def _raise_validation(*a, **k):
     "exc",
     [
         ModelCallFailed("전송 실패"),
-        ModelCallLimitExceeded("max_model_calls", 2, 2),
         ModelOutputInvalid("JSON 아님"),
         PdfReadError("PDF를 읽지 못함"),
         ToolOutputInvalid("출력이 이상함"),
