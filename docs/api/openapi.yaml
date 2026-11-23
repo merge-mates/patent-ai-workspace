@@ -550,6 +550,12 @@ paths:
         schema:
           type: string
           title: Oa Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmationIn'
       responses:
         '200':
           description: Successful Response
@@ -1482,6 +1488,15 @@ components:
       - medium
       - low
       title: Confidence
+    ConfirmationIn:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+      type: object
+      required:
+      - run_id
+      title: ConfirmationIn
     ConfirmationOut:
       properties:
         oa_id:

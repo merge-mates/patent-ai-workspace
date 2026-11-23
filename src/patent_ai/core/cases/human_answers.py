@@ -53,6 +53,10 @@ class ResultNotReadyError(LookupError):
     """확인할 OA 정리가 아직 없다 (API는 404 result_not_ready)."""
 
 
+class StaleResultError(RuntimeError):
+    """사람이 본 정리가 지금 보이는 정리와 다르다 (API는 409 stale_result)."""
+
+
 @dataclass(frozen=True)
 class NumberEntered:
     case_id: str
@@ -193,10 +197,21 @@ def _visible_run(oa_id: str, store: CaseAppStore, oa_results: OAResultStore) -> 
 
 
 def confirm_oa_result(
-    oa_id: str, *, store: CaseAppStore, oa_results: OAResultStore, human: HumanInputStore
+    oa_id: str,
+    *,
+    seen_run_id: str,
+    store: CaseAppStore,
+    oa_results: OAResultStore,
+    human: HumanInputStore,
 ) -> Confirmation:
-    """지금 보이는 OA 정리를 사람이 확인했다 ("맞아요")."""
+    """사람이 본 OA 정리(seen_run_id)를 확인했다 ("맞아요").
+
+    그 사이 새 실행이 정리를 바꿔 지금 보이는 정리와 다르면, 사람이 본 적 없는 정리에
+    확인이 붙지 않도록 기록하지 않고 StaleResultError를 낸다.
+    """
     run_id = _visible_run(oa_id, store, oa_results)
+    if seen_run_id != run_id:
+        raise StaleResultError(oa_id)
     at = human.add(oa_id, run_id, "oa_result_confirmed", None)
     return Confirmation(oa_id, run_id, at)
 

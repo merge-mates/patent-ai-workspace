@@ -30,6 +30,7 @@ from patent_ai.core.cases.human_answers import (
     InvalidNumberError,
     NotWaitingError,
     ResultNotReadyError,
+    StaleResultError,
     confirm_oa_result,
     enter_application_number,
     enter_dispatch_number,
@@ -73,6 +74,10 @@ class NumberEnteredOut(BaseModel):
     case_id: str
     oa_id: str
     run_id: str  # 이어 도는 실행
+
+
+class ConfirmationIn(BaseModel):
+    run_id: str  # 사람이 화면에서 본 OA 정리를 낸 실행
 
 
 class ConfirmationOut(BaseModel):
@@ -121,18 +126,27 @@ def patch_oa(
     return NumberEnteredOut(case_id=got.case_id, oa_id=got.oa_id, run_id=got.run_id)
 
 
-def _confirmation(call, oa_id: str, unit: Unit, results: Results, human: Human) -> Confirmation:
+def _confirmation(
+    call, oa_id: str, unit: Unit, results: Results, human: Human, **kw
+) -> Confirmation:
     try:
-        return call(oa_id, store=unit.store, oa_results=results, human=human)
+        return call(oa_id, store=unit.store, oa_results=results, human=human, **kw)
     except OANotFoundError:
         raise AppError(404, "oa_not_found", "OA를 찾을 수 없습니다") from None
     except ResultNotReadyError:
         raise AppError(404, "result_not_ready", "확인할 OA 정리가 아직 없습니다") from None
+    except StaleResultError:
+        # 보던 정리가 그 사이 바뀜: 확인을 남기지 않고 새 정리를 다시 보게 한다
+        raise AppError(
+            409, "stale_result", "보던 정리가 바뀌었습니다. 새 정리를 보고 다시 확인해 주세요"
+        ) from None
 
 
 @router.put("/oas/{oa_id}/oa-result/confirmation", response_model=ConfirmationOut)
-def put_confirmation(oa_id: str, unit: Unit, results: Results, human: Human) -> ConfirmationOut:
-    c = _confirmation(confirm_oa_result, oa_id, unit, results, human)
+def put_confirmation(
+    oa_id: str, body: ConfirmationIn, unit: Unit, results: Results, human: Human
+) -> ConfirmationOut:
+    c = _confirmation(confirm_oa_result, oa_id, unit, results, human, seen_run_id=body.run_id)
     return ConfirmationOut(oa_id=c.oa_id, run_id=c.run_id, confirmed_at=c.confirmed_at)
 
 
