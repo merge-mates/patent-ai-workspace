@@ -64,8 +64,8 @@ class Shaped(BaseModel):
     title: str
 
 
-def _call(text):
-    fake = FakeTransport({"test.summarize": TransportResponse(text, 10, 5, "end_turn")})
+def _call(text, stop_reason="end_turn"):
+    fake = FakeTransport({"test.summarize": TransportResponse(text, 10, 5, stop_reason)})
     return call_model(
         "test.summarize",
         VARS,
@@ -82,6 +82,12 @@ def test_call_model은_꼬리_붙은_답을_통과시키고_경고를_남긴다(
     assert _call('{"title": "비밀 글"}]}').parsed.title == "비밀 글"
     assert "JSON 밖 글자를 벗기고 읽음" in caplog.text
     assert "비밀 글" not in caplog.text  # 답 글자는 로그에 안 남긴다
+
+
+def test_call_model은_max_tokens로_잘린_답의_꼬리를_벗기지_않는다():
+    with pytest.raises(ModelOutputInvalid) as e:
+        _call('{"title": "가"}]}', stop_reason="max_tokens")
+    assert (e.value.stop_reason, e.value.invalid_kind) == ("max_tokens", "not_json")
 
 
 def test_벗긴_뒤에도_스키마_검사는_그대로다():
