@@ -45,6 +45,8 @@ def load_legal_index(settings: F2Settings) -> LegalIndex:
     # 검색기는 메모리 repo 위에 만들어 DB를 다시 보지 않는다
     mem_repo = InMemoryChunkRepository({"law": list(pool.chunks)})
     searcher = get_searcher(
-        settings.search_method, mem_repo, {"index_version": iv, "tokenizer": settings.tokenizer}
+        settings.search_method,
+        mem_repo,
+        {"index_version": iv, "tokenizer": settings.tokenizer, "bm25": dict(settings.bm25)},
     )
     return LegalIndex(pool, searcher)
