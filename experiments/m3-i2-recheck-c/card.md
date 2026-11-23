@@ -3,7 +3,7 @@
 기능: 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309)
 담당: 재아
 날짜: 2026-11-23
-기준선: experiments/m3-i2-recheck-a/ (같은 커밋 e8076d2의 판 A)
+기준선: experiments/m3-i2-recheck-a/ (같은 커밋 e8076d2 (rebase 전, 다시 찾기 코드는 1b9fb7d와 같음)의 판 A)
 평가 세트: tune 10건 (VERSION 2). F3 채점은 검색 정답이 있는 8건
 바꾼 것: `recheck: none` → `agent` (tool use 루프, 판정은 compare)
 주 지표: selected_recall_rechecked
@@ -12,7 +12,7 @@
 > 주 지표 = 1차에 못 찾은 구성요소가 있는 정답 줄의 selected_recall (분모는 판 A 예측의 2차 기록으로 고정, n=15).
 > **smoke 1회다.** eval 규칙의 "같은 설정 2회 이상"을 채우지 않았다. 판정(design.md 7-3)은 두 사람 환경을 맞춘 뒤 판마다 2회로 한다. 이 카드의 숫자로 C를 쓸지 정하지 않는다 (밤 작업, 재아 아침 확인 전).
 
-## 결과 (smoke 1회, 실행·채점 커밋 e8076d2, 11/23 10:00~10:25 한 맥에서 판 넷 동시)
+## 결과 (smoke 1회, 실행·채점 커밋 e8076d2 (rebase 전, 다시 찾기 코드는 1b9fb7d와 같음), 11/23 10:00~10:25 한 맥에서 판 넷 동시)
 | 지표 | A (none) | B (fixed_loop) | C (agent, judge compare) | C-judge (agent, judge agent) |
 |---|---|---|---|---|
 | search_recall | 0.600 | 0.619 | 0.612 | 0.630 |
