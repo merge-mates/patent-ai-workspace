@@ -70,6 +70,19 @@ def test_심사기준_판례_심결은_색인_전이라_body_missing이_기록�
     ]
 
 
+def test_심사기준_조각이_있으면_BM25로_찾아_근거_후보로만_남긴다():
+    guide = fakes.law_chunk(
+        "심사기준_101_20200101", 1, "1쪽 (제3부 제3장)", "결합 논리 진보성 판단 심사기준 글",
+        fakes.NEW, kind="guideline",
+    ).model_copy(update={"source_kind": "guideline"})  # fmt: skip
+    bundle = run_f2(_input(), repo=fakes.repo([guide])).bundles[0]
+    log = {e.source_kind: e for e in bundle.search_log}[LegalSourceKind.GUIDELINE]
+    assert log.hits == 1 and log.status.value == StatusValue.CONFIRMED
+    # 주장(근거 검토는 #29)에는 안 올리고 더 볼 것으로만 둔다
+    assert [c.chunk_id for c in bundle.further_review] == [guide.chunk_id]
+    assert len(bundle.claims) == 1 and len(bundle.claims[0].sources) == 1
+
+
 def test_발송일을_못_읽으면_조문을_찾지_않고_확인되지_않음(caplog):
     # 원문 글자에 날짜 꼴이 없음 (F1은 확인됨으로 두었어도 날짜로 읽을 수 없다)
     o = _oa(notice_date=ExtractedValue(value=None, raw_text="날짜 없음", page=1, status=OK))

@@ -18,11 +18,16 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from patent_ai.core.f2_legal_research.refs import ArticleRef, article_ref, parse_dispatch_date
+from patent_ai.core.f2_legal_research.source_search import (
+    build_searcher,
+    candidate_reviews,
+    load_search_settings,
+    search_sources,
+)
 from patent_ai.core.f2_legal_research.tools import (
     LawPool,
     check_source,
     get_article,
-    search_not_indexed,
 )
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
@@ -49,6 +54,7 @@ from patent_ai.core.schemas.legal_evidence import (
     summarize_claim_status,
 )
 from patent_ai.core.schemas.oa_result import OAResult, Rejection
+from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.repository import ChunkRepository, PostgresChunkRepository
 from patent_ai.retrieval.schemas import Chunk
 
@@ -150,10 +156,6 @@ def _unverified(reason: UnverifiedReason) -> Status:
     return Status(value=StatusValue.UNVERIFIED, reason=reason)
 
 
-# 심사기준·판례·심결: 검색이 아직 없어 body_missing으로 기록만 남기는 유형 (law-idx-v3 뒤 검색)
-_NOT_SEARCHED = (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL)
-
-
 def _question_of(
     unit: JudgmentUnit, oa: OAResult
 ) -> tuple[Rejection | None, date | None, ArticleRef | None, LegalQuestion]:
@@ -175,7 +177,9 @@ def _question_of(
     return rej, as_of, ref, _question(rej, as_of, ref.label if ref else None)
 
 
-def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBundle:
+def _bundle(
+    unit: JudgmentUnit, inp: F2Input, pool: LawPool, searcher: Searcher, k: int
+) -> LegalEvidenceBundle:
     oa, checked_on = inp.oa, inp.checked_on
     rej, as_of, ref, question = _question_of(unit, oa)
     if rej is None:
@@ -191,7 +195,10 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
         )
 
     found = get_article(pool, ref, as_of)
-    logs = [found.log, *(search_not_indexed(pool, kind, as_of) for kind in _NOT_SEARCHED)]
+    # 심사기준·판례·심결: BM25로 찾는다 (질의 = 거절이유 글). 걸린 것은 근거 후보로만 둔다
+    others = search_sources(pool, searcher, question.text, as_of, k, checked_on)
+    logs = [found.log, *(o.log for o in others)]
+    candidates = candidate_reviews(others)
     if found.chunk is None:
         # 같은 날 시행판이 둘이면 고르지 않고, 겹친 조각을 사람이 볼 수 있게 남긴다
         further = [
@@ -203,7 +210,7 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
             )
             for c in found.conflicts
         ]
-        return _empty(unit, oa, question, checked_on, found.status, logs, further)
+        return _empty(unit, oa, question, checked_on, found.status, logs, [*further, *candidates])
 
     chunk = found.chunk
     evidence = Evidence(
@@ -243,6 +250,7 @@ def _bundle(unit: JudgmentUnit, inp: F2Input, pool: LawPool) -> LegalEvidenceBun
         question=question,
         checked_on=checked_on,
         claims=[claim],
+        further_review=candidates,
         search_log=logs,
         status=summarize_bundle_status([claim]),
     )
@@ -270,7 +278,9 @@ def run_f2(inp: F2Input, *, repo: ChunkRepository | None = None) -> F2Result:
 
     # law corpus를 실행마다 한 번만 읽는다 (도구마다 다시 읽지 않게, #222 리뷰)
     pool = LawPool.load(repo, iv)
-    bundles = [_bundle(u, inp, pool) for u in inp.units]
+    search_cfg = load_search_settings()
+    searcher = build_searcher(pool, search_cfg)
+    bundles = [_bundle(u, inp, pool, searcher, search_cfg.k) for u in inp.units]
     return F2Result(
         oa_id=inp.oa.oa_id,
         bundles=bundles,
