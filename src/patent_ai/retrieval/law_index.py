@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import sys
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -167,8 +168,14 @@ def _parse_date(s: str) -> date | None:
         return None
 
 
-def editions_for(files: dict[str, str]) -> dict[str, Edition]:
-    """doc_id → 시행일(YYYYMMDD) 을 받아 판본을 붙인다. 법마다 시행일 순으로 줄 세운다."""
+def editions_for(
+    files: dict[str, str], missing: Mapping[str, Sequence[date]] | None = None
+) -> dict[str, Edition]:
+    """doc_id → 시행일(YYYYMMDD) 을 받아 판본을 붙인다. 법마다 시행일 순으로 줄 세운다.
+
+    missing: 법 → 받지 못한 판의 시행일. 앞 판을 그 전날에서 끊는다 (안 받은 기간에 앞 판 글이
+    확인됨으로 나가지 않게). 빈 기간에는 시행 중인 조각이 없다.
+    """
     out: dict[str, Edition] = {}
     by_law: dict[str, list[tuple[date, str]]] = {}
     for doc_id, raw in files.items():
@@ -180,14 +187,23 @@ def editions_for(files: dict[str, str]) -> dict[str, Edition]:
         law = doc_id.rsplit("_", 2)[0]
         by_law.setdefault(law, []).append((d, doc_id))
 
+    # 설정 오타로 끊기가 조용히 빠지지 않게, 색인에 없는 법 이름은 막는다
+    unknown = sorted(set(missing or {}) - set(by_law))
+    if unknown:
+        raise LawIndexError(f"missing_editions에 색인에 없는 법: {unknown}")
     for law, items in by_law.items():
         items.sort()  # 번호(MST) 순이 아니라 시행일 순
         dates = [d for d, _ in items]
         if len(set(dates)) != len(dates):
             raise LawIndexError(f"{law}: 시행일이 같은 판이 둘 이상이다")
+        gaps = list((missing or {}).get(law, ()))
+        both = sorted(set(gaps) & set(dates))
+        if both:
+            raise LawIndexError(f"{law}: 받은 판인데 missing_editions에 있다: {both}")
         for i, (d, doc_id) in enumerate(items):
-            # 끝일 = 다음 판 시행일 하루 전, 마지막 판은 None(지금도 효력)
-            to = items[i + 1][0] - timedelta(days=1) if i + 1 < len(items) else None
+            # 끝일 = 다음 판(받지 못한 판 포함) 시행일 하루 전, 마지막 판은 None(지금도 효력)
+            nexts = [x for x in gaps if x > d] + dates[i + 1 : i + 2]
+            to = min(nexts) - timedelta(days=1) if nexts else None
             out[doc_id] = Edition(
                 status="confirmed", effective_from=d, effective_to=to, label=doc_id
             )
@@ -195,7 +211,10 @@ def editions_for(files: dict[str, str]) -> dict[str, Edition]:
 
 
 def build_index(
-    raw_dir: str | Path, laws: list[str], index_version: str
+    raw_dir: str | Path,
+    laws: list[str],
+    index_version: str,
+    missing: Mapping[str, Sequence[date]] | None = None,
 ) -> tuple[list[Chunk], int]:
     """원본 폴더 → (조각 목록, 설정에 없어 뺀 파일 수)."""
     if not is_index_version("law", index_version):
@@ -213,7 +232,8 @@ def build_index(
         {
             d: str(data.get("법령", {}).get("기본정보", {}).get("시행일자", ""))
             for d, data in loaded.items()
-        }
+        },
+        missing,
     )
     chunks = [c for d, data in loaded.items() for c in chunk_law(data, d, eds[d], index_version)]
     if skipped:
