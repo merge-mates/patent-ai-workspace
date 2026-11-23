@@ -163,6 +163,19 @@ def test_limit_reached_마이그레이션은_skipped_CHECK_위에_limit_reached�
     assert "skipped" in _values(new._OLD) and "limit_reached" not in _values(new._OLD)
     assert _values(new._NEW) == _values(new._OLD) | {"limit_reached"}
 
+    # downgrade는 code_tool 줄만 skipped로 (decide 줄이 "건너뛴 단계"로 보이지 않게 failed)
+    sqls: list[str] = []
+
+    class _Op:
+        execute = staticmethod(sqls.append)
+        drop_constraint = create_check_constraint = staticmethod(lambda *a, **k: None)
+
+    new.op = _Op
+    new.downgrade()
+    assert len(sqls) == 1
+    assert "WHEN step_kind = 'code_tool' THEN 'skipped' ELSE 'failed'" in sqls[0]
+    assert sqls[0].endswith("WHERE outcome = 'limit_reached'")
+
 
 # --- 이슈 #70 방향 선택 기록·실행 종류 ---
 

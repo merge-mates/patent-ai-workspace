@@ -34,7 +34,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # 옛 CHECK는 limit_reached를 못 받으니 먼저 skipped로 되돌린다
-    op.execute("UPDATE agent_steps SET outcome = 'skipped' WHERE outcome = 'limit_reached'")
+    # 옛 CHECK는 limit_reached를 못 받으니 먼저 되돌린다. 넘긴 단계로 보일 것은 code_tool 줄뿐이다
+    # (옛 skipped_steps 조회는 step_kind를 안 가려 decide 줄까지 skipped면 건너뛴 단계로 보인다)
+    op.execute(
+        "UPDATE agent_steps SET outcome = "
+        "CASE WHEN step_kind = 'code_tool' THEN 'skipped' ELSE 'failed' END "
+        "WHERE outcome = 'limit_reached'"
+    )
     op.drop_constraint(CONSTRAINT, "agent_steps", type_="check")
     op.create_check_constraint(CONSTRAINT, "agent_steps", _OLD)

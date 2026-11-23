@@ -26,7 +26,7 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
 from patent_ai.core.agents.step_inputs import InputMissing, f2_input, f3_input, f4_input
-from patent_ai.core.agents.steps import StepRecord, StepRecorder
+from patent_ai.core.agents.steps import LIMIT_PREFIX, StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
 from patent_ai.core.agents.tools_f2 import register_f2_tools
 from patent_ai.core.agents.tools_f3 import register_f3_tools
@@ -147,7 +147,7 @@ def _error(code: str, message: str) -> dict:
 
 def limit_reason(step: str, e: ModelCallLimitExceeded) -> str:
     """호출 상한 이유 글: 단계·상한 이름·상한 숫자만. 예외 글(str(e))은 쓰지 않는다 (#241)."""
-    return f"limit_reached: {step} 호출 상한 {e.limit} {e.limit_value}에 닿음"
+    return f"{LIMIT_PREFIX}{step} 호출 상한 {e.limit} {e.limit_value}에 닿음"
 
 
 def run_case(

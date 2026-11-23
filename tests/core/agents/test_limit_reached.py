@@ -105,3 +105,12 @@ def test_상한이_아니면_limit_reached_줄이_없다(tmp_path, plan):
     out, steps = _run(tmp_path, plan)
     assert out.state == "succeeded"
     assert not [r for r in steps.records if r.outcome == "limit_reached"]
+
+
+def test_read_oa가_아닌_도구가_상한이면_기존대로_failed(tmp_path, monkeypatch):
+    # ADR 0003·API 문서의 "그 밖 단계가 상한을 올리면 기존대로 failed" 가지 (#331 리뷰)
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.pages.extract_pages", _over)
+    out, steps = _run(tmp_path, "fixed_order")
+    assert out.state == "failed" and out.error["code"] == "ModelCallLimitExceeded"
+    assert [r.tool_name for r in steps.records if r.outcome == "failed"] == ["extract_pages"]
+    assert not [r for r in steps.records if r.outcome == "limit_reached"]

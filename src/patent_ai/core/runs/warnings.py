@@ -2,9 +2,8 @@
 
 from dataclasses import dataclass
 
+from patent_ai.core.agents.steps import LIMIT_PREFIX
 from patent_ai.core.runs.store import SkippedStep
-
-LIMIT_PREFIX = "limit_reached: "
 
 
 def is_limit_reason(reason: str) -> bool:

@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# 호출 상한 이유 글의 앞머리 (#241). 지휘가 붙이고 실행기·경고·빈 이유가 이것으로 알아본다
+LIMIT_PREFIX = "limit_reached: "
+
 
 class StepRecord(BaseModel):
     run_id: str
