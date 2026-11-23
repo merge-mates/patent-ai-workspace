@@ -1,7 +1,7 @@
 """legal_chats·legal_chat_turns 표 더하기 (법률 질문 대화 저장)
 
 Revision ID: d4a8c2e6b915
-Revises: c7e2a5d9f103
+Revises: f1c8b3e7a925
 Create Date: 2026-11-23 15:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "d4a8c2e6b915"
-down_revision: str | Sequence[str] | None = "c7e2a5d9f103"
+down_revision: str | Sequence[str] | None = "f1c8b3e7a925"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

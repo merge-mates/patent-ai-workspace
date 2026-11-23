@@ -219,7 +219,7 @@ graph LR
 **목표** (한 줄): 화면 법률 질문 탭이 부르는 `/legal-chats` 세 엔드포인트를 만들고, 모델 호출 없이 질문 하나마다 출처 확인을 지난 조문 근거 묶음(④)을 돌려주고 저장한다 (E2E 막힘 풀기).
 **끝나면 보여 줄 것**: `uv run pytest tests/api/test_legal_chats_api.py tests/core/f2` → 대화를 만들고 "특허법 제29조제2항"을 물으면 그 조문 근거 묶음, 이어 묻기에서 시점을 바꾸면 `scope_changed = true`, `GET`으로 다시 열어도 같다. 화면은 법률 질문 탭 스크린샷.
 **어림 크기**: 코드 약 350줄 + 테스트 약 300줄. 400줄을 넘지만 셋이 이어져야 탭이 돌아서 PR 하나, 커밋별 리뷰 순서(task 순서)를 PR 본문에 적는다.
-**공유 자원**: 마이그레이션 하나 (`legal_chats`·`legal_chat_turns`). `down_revision = c7e2a5d9f103`(main head). #303(`f1c8b3e7a925`)이 먼저 머지되면 이 PR이 `down_revision`을 그쪽으로 맞춘다 (나중에 머지하는 쪽이 맞춤).
+**공유 자원**: 마이그레이션 하나 (`legal_chats`·`legal_chat_turns`). `down_revision = f1c8b3e7a925` (처음 c7e2a5d9f103, 11/23 #303 머지 뒤 맞춤).
 **29a에서 줄인 것** (design과 다르게, 29b에서 채움):
 - 주장 글은 모델이 쓰지 않는다. 주장 = 번호로 읽은 조문은 "질문에서 찾은 조문: <조문> (<판본>)", 검색으로 찾은 조문은 "질문 글로 검색한 조문 (BM25 상위 <k>): <조문> (<판본>)" 한 줄, 근거 = 그 조각. 근거 검토 전이라 `review = null` + `needs_human_review` (m2-i3 OA 흐름과 같은 규칙).
 - 심사기준·판례·심결은 OA 흐름처럼 `search_not_indexed` (status `unverified(body_missing)`). 질문 글 속 자연어 시점("2020년 기준")과 선택 조건이 부딪힐 때의 `clarifications`도 29b (29a는 선택 조건 시점만 읽는다).
