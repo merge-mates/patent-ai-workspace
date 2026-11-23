@@ -20,14 +20,15 @@ class StepRecord(BaseModel):
     # link_result로 붙인다 (#267). 결과를 안 만든 단계(skipped·failed)와 read_oa는 None
     result_id: str | None = None
     model_call_count: int | None = None  # 이 단계의 실제 전송 시도 수. 셀 수 없는 기록기면 None
-    # ok = 돌았음 / failed = 실패 / waiting = 사람을 기다림 / skipped = 자료·도구가 없어 넘김.
-    # DB agent_steps.outcome 검사 제약도 skipped를 받는다 (#187 마이그레이션)
-    outcome: Literal["ok", "failed", "waiting", "skipped"]
+    # ok = 돌았음 / failed = 실패 / waiting = 사람을 기다림 / skipped = 자료·도구가 없어 넘김 /
+    # limit_reached = 모델 호출 상한에 닿아 못 돎 (reason에 단계·상한 이름·숫자만, #241).
+    # DB agent_steps.outcome 검사 제약도 두 값을 받는다 (#187·#241 마이그레이션)
+    outcome: Literal["ok", "failed", "waiting", "skipped", "limit_reached"]
 
     @property
     def skipped_reason(self) -> str | None:
-        """넘긴 단계면 그 이유. 이 값이 있으면 그 단계 결과는 없다 (성공이 아니다)."""
-        return self.reason if self.outcome == "skipped" else None
+        """넘긴 단계(skipped·limit_reached)면 그 이유. 이 값이 있으면 그 단계 결과는 없다."""
+        return self.reason if self.outcome in ("skipped", "limit_reached") else None
 
 
 class StepRecorder(Protocol):

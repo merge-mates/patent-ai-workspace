@@ -144,6 +144,26 @@ def test_skipped_마이그레이션의_옛_CHECK는_앞_마이그레이션의_�
     assert _values(skipped._NEW) == _values(prev._NEW) | {"skipped"}
 
 
+def test_limit_reached_마이그레이션은_skipped_CHECK_위에_limit_reached만_더한다():
+    # 이슈 #241: 호출 상한 보류 줄을 agent_steps.outcome에 적을 수 있게 한다
+    import importlib.util
+    from pathlib import Path
+
+    versions = Path(__file__).resolve().parents[1] / "src/patent_ai/db/migrations/versions"
+
+    def load(name: str):
+        spec = importlib.util.spec_from_file_location(name, versions / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    merged = load("20261123_f1c8b3e7a925_cases_merged_into")
+    new = load("20261123_a9d4c7e1b526_agent_steps_outcome_limit_reached")
+    assert new.down_revision == merged.revision
+    assert "skipped" in _values(new._OLD) and "limit_reached" not in _values(new._OLD)
+    assert _values(new._NEW) == _values(new._OLD) | {"limit_reached"}
+
+
 # --- 이슈 #70 방향 선택 기록·실행 종류 ---
 
 
