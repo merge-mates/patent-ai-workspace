@@ -1,7 +1,9 @@
 """embed(): 글 → 벡터 (가짜·기록 전송층만, 네트워크·API 키 없음). #66 A3."""
 
+import json
 import logging
 
+import httpx
 import pytest
 
 from patent_ai.core.llm.cache import MemoryCache
@@ -201,6 +203,64 @@ def test_기록_전송층은_저장한_벡터를_돌려주고_없으면_Recordin
 def test_질의_하나를_벡터로_바꾸는_함수(tmp_path):
     f = query_embedder(STEP, ctx_with(FakeEmbedTransport(vec_of)), config_dir=make_config(tmp_path))
     assert f("가나") == vec_of("가나")
+
+
+def test_Gemini_질의_설정은_요청에_반영하고_벡터를_정규화한다(tmp_path, monkeypatch):
+    client_class = httpx.Client
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        if request.url.path.endswith(":countTokens"):
+            return httpx.Response(200, json={"totalTokens": 7})
+        return httpx.Response(200, json={"embeddings": [{"values": [3.0, 4.0]}]})
+
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **kwargs: client_class(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    cfg = make_config(
+        tmp_path,
+        provider="gemini",
+        model="gemini-embedding-001",
+        task_type="RETRIEVAL_QUERY",
+        dimensions=2,
+        max_model_calls=2,
+    )
+    ctx = ctx_with(None, cache=MemoryCache())
+
+    assert query_embedder(STEP, ctx, config_dir=cfg)("센서로 화면 밝기를 제어한다") == [0.6, 0.8]
+    assert query_embedder(STEP, ctx, config_dir=cfg)("센서로 화면 밝기를 제어한다") == [0.6, 0.8]
+    count_request, embed_request = requests
+    assert count_request.url.path.endswith("/gemini-embedding-001:countTokens")
+    assert embed_request.url.path.endswith("/gemini-embedding-001:batchEmbedContents")
+    assert embed_request.headers["x-goog-api-key"] == "test-key"
+    assert json.loads(embed_request.content)["requests"] == [
+        {
+            "model": "models/gemini-embedding-001",
+            "taskType": "RETRIEVAL_QUERY",
+            "outputDimensionality": 2,
+            "content": {"parts": [{"text": "센서로 화면 밝기를 제어한다"}]},
+        }
+    ]
+    assert ctx.recorder.records[0].input_tokens == 7
+
+
+def test_Gemini_작업_유형과_차원이_다르면_캐시를_같이_쓰지_않는다(tmp_path):
+    transport = FakeEmbedTransport(vec_of)
+    ctx = ctx_with(transport, MemoryCache())
+    settings = {"provider": "gemini", "model": "gemini-embedding-001"}
+    for task_type, dimensions in [
+        ("RETRIEVAL_QUERY", 1536),
+        ("RETRIEVAL_DOCUMENT", 1536),
+        ("RETRIEVAL_QUERY", 768),
+    ]:
+        cfg = make_config(tmp_path, **settings, task_type=task_type, dimensions=dimensions)
+        embed(STEP, ["가나"], ctx=ctx, config_dir=cfg)
+    assert len(transport.calls) == 3
 
 
 def test_설정_검사(tmp_path, caplog):

@@ -33,7 +33,7 @@ db-reset: ## DB를 지우고 처음부터 다시 만든다 (로컬 데이터가 
 
 api: ## 서버만 맥에서 바로 띄운다 (DB는 make db로 먼저). 화면 개발 서버는 web/에서 npm run dev
 	uv run alembic upgrade head
-	uv run uvicorn patent_ai.api.main:app --reload --reload-dir src
+	uv run $(if $(wildcard .env),--env-file .env) uvicorn patent_ai.api.main:app --reload --reload-dir src
 
 test: ## 파이썬 테스트 (DB·네트워크·API 키 없이)
 	uv run pytest
