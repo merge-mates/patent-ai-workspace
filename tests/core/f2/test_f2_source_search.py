@@ -2,10 +2,11 @@
 
 from datetime import date
 
+import pytest
+
 from patent_ai.core.f2_legal_research.run import load_f2_settings
 from patent_ai.core.f2_legal_research.source_search import (
     build_searcher,
-    search_guideline,
     search_sources,
 )
 from patent_ai.core.f2_legal_research.tools import LawPool
@@ -145,12 +146,33 @@ def test_기준일을_모르면_판례_심결은_검색하지_않는다():
 
 
 def test_질의의_되풀이_낱말은_한_번만_센다():
-    # 같은 낱말을 길게 되풀이해도 한 번만 센 점수와 같다 (unique_query_terms true)
+    # 되풀이한 질의의 점수가 한 번 쓴 것과 같다. 끈 검색기는 점수가 커진다
     pool = _pool(*_all())
     st = load_f2_settings()
-    s = build_searcher(pool, st.tokenizer, st.bm25)
-    once = search_guideline(s, pool, "진보성", date(2018, 9, 1), 3, CHECKED)
-    many = search_guideline(s, pool, "진보성 " * 5, date(2018, 9, 1), 3, CHECKED)
-    assert [x.evidence.chunk_id for x in once.sources] == [
-        x.evidence.chunk_id for x in many.sources
-    ]
+
+    def score(bm25, query):
+        s = build_searcher(pool, st.tokenizer, bm25)
+        return s.search(query, "law", "bm25", 3, as_of=date(2018, 9, 1)).hits[0].score
+
+    assert score(st.bm25, "진보성 " * 5) == pytest.approx(score(st.bm25, "진보성 "))
+    off = {**st.bm25, "unique_query_terms": False}
+    assert score(off, "진보성 " * 5) > score(off, "진보성 ")
+
+
+def test_0개인데_날짜_모름으로_건너뛴_판례가_있으면_확인되지_않음():
+    late = _case("p3", "precedent", "judgment", "진보성 판단 이후 판결", date(2021, 5, 1), "court")
+    unknown = _case("p4", "precedent", "judgment", "진보성 날짜 모름", None, "unknown")
+    got = _run(_pool(late, unknown), date(2018, 9, 1))[LegalSourceKind.PRECEDENT]
+    assert got.sources == () and got.log.skipped_unknown_date == 1
+    assert (got.log.status.value, got.log.status.reason) == (
+        StatusValue.UNVERIFIED,
+        UnverifiedReason.EDITION_UNKNOWN,
+    )
+
+
+def test_0개인데_판본_모름으로_건너뛴_심사기준이_있으면_확인되지_않음():
+    unknown = _guide("g9", Edition(status="unverified"))
+    pool = _pool(_guide("g2", G2), unknown)
+    got = _run(pool, date(2018, 9, 1), "전혀 다른 말 xyz")[LegalSourceKind.GUIDELINE]
+    assert got.sources == () and got.log.skipped_unverified_edition == 1
+    assert got.log.status.reason == UnverifiedReason.EDITION_UNKNOWN

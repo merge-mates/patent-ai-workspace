@@ -64,7 +64,7 @@ def test_판단_단위마다_발송일_시행판_조문이_근거로_붙는다()
     assert out.status.value == StatusValue.CONFIRMED and out.oa_id == "oa_1"
 
 
-def test_심사기준_판례_심결은_색인_전이라_body_missing이_기록에_남는다():
+def test_심사기준_판례_심결은_그_유형_조각이_0개라_body_missing이_기록에_남는다():
     bundle = run_f2(_input(), repo=fakes.repo()).bundles[0]
     # 묶음은 조문으로 확인됨이어도, 안 본 유형과 그 이유가 search_log status에 남는다
     assert bundle.status.value == StatusValue.CONFIRMED

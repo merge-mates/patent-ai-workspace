@@ -119,6 +119,14 @@ def _finish(kind, pool, as_of, res: SearchResult, scope: str, checked_on: date) 
             # 그 유형 조각이 없어 찾을 것이 없었다: 질의 0번으로 기록 (전과 같음)
             logger.warning("%s 조각이 색인 %s에 없음 (확인되지 않음)", kind, pool.index_version)
             return SourceSearch(_entry(kind, pool, as_of, 0, 0, _unverified(reason), res))
+        if res.skipped_unknown_date or res.skipped_unverified_edition:
+            # 날짜·판본을 몰라 건너뛴 조각이 있다: 그 안에 있을 수 있어 "없음"이 아니다 (design 2절)
+            logger.warning(
+                "%s 0개, 날짜 모름 %d개·판본 모름 %d개를 건너뜀 (확인되지 않음)",
+                kind, res.skipped_unknown_date, res.skipped_unverified_edition,
+            )  # fmt: skip
+            reason = UnverifiedReason.EDITION_UNKNOWN
+            return SourceSearch(_entry(kind, pool, as_of, 1, 0, _unverified(reason), res))
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
         return SourceSearch(_entry(kind, pool, as_of, 1, 0, status, res))
     sources = tuple(_to_source(h, kind, checked_on) for h in res.hits)
