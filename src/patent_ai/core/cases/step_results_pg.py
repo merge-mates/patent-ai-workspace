@@ -57,3 +57,25 @@ class PostgresStepResultStore:
         with self._factory() as s:
             body = s.scalars(q).first()
         return parse_body(kind, body) if body is not None else None
+
+    def update_step_result(
+        self, run_id: str, kind: StepKind, change: Callable[[StepBody], StepBody]
+    ) -> StepBody | None:
+        # 줄을 잠그고(FOR UPDATE) 읽어 바꾼 뒤 같은 세션에서 커밋한다
+        # (두 요청이 겹쳐도 앞 고침을 잃지 않는다)
+        q = (
+            select(StepResultRow)
+            .where(StepResultRow.run_id == run_id, StepResultRow.kind == kind)
+            .with_for_update()
+        )
+        with self._factory() as s:
+            row = s.scalars(q).first()
+            if row is None:
+                return None
+            new = change(parse_body(kind, row.body))
+            if kind_of(new) != kind:
+                raise TypeError(f"{kind} 결과를 다른 단계 결과로 덮을 수 없음")
+            row.body = new.model_dump(mode="json")
+            row.status = new.status.value.value
+            s.commit()
+        return new

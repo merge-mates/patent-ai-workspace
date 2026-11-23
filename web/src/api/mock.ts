@@ -210,7 +210,7 @@ export const mockApi = {
   },
   // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
   async askLegal(q: LegalQuestion, chatId?: string): Promise<LegalAnswer> {
-    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q) }
+    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q), scope_changed: false }
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<ResultList<DirectionCandidates>> {

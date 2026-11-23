@@ -4,6 +4,7 @@ import logging
 from datetime import date
 
 from patent_ai.core.f2_legal_research import run as f2_run
+from patent_ai.core.f2_legal_research import tools as f2_tools
 from patent_ai.core.f2_legal_research.run import F2Input, F2Settings, load_f2_settings, run_f2
 from patent_ai.core.f3_claim_compare.units import build_units
 from patent_ai.core.schemas.common import ExtractedValue, Flag, StatusValue, UnverifiedReason
@@ -109,7 +110,7 @@ def test_그날_판이_색인에_없으면_확인되지_않음_어느_판에도_
 
 
 def test_출처_확인에서_빠진_근거는_넣지_않는다(monkeypatch):
-    monkeypatch.setattr(f2_run, "check_source", lambda *a, **k: False)
+    monkeypatch.setattr(f2_tools, "check_source", lambda *a, **k: False)
     out = run_f2(_input(), repo=fakes.repo())
     for b in out.bundles:
         assert b.claims == []

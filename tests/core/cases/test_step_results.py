@@ -59,3 +59,30 @@ def test_step_results_F2_법률_근거도_저장하고_다시_읽으면_같은_�
     got = store.step_result("r_1", "f2")
     assert isinstance(got, F2Result) and got == f2
     assert got.bundles and got.bundles[0].claims[0].sources[0].evidence.chunk_id
+
+
+def test_step_results_update는_바꾼_값으로_덮고_다시_읽으면_그_값(outcome):
+    # 사람이 초안을 고칠 때 (#304): 같은 실행·같은 단계 줄을 바꾼다
+    store = InMemoryStepResultStore()
+    store.save_step_result("oa_1", "r_1", outcome.results["run_f4"])
+    new = store.update_step_result(
+        "r_1", "f4", lambda b: b.model_copy(update={"held_units": ["u_x"]})
+    )
+    assert new.held_units == ["u_x"]
+    assert store.step_result("r_1", "f4").held_units == ["u_x"]
+    assert store.update_step_result("r_2", "f4", lambda b: b) is None  # 줄 없음
+
+
+def test_step_results_update에서_예외가_나면_아무것도_바꾸지_않는다(outcome):
+    store = InMemoryStepResultStore()
+    f4, f3 = outcome.results["run_f4"], outcome.results["run_f3"]
+    store.save_step_result("oa_1", "r_1", f4)
+
+    def boom(b):
+        raise ValueError("안 됨")
+
+    with pytest.raises(ValueError):
+        store.update_step_result("r_1", "f4", boom)
+    with pytest.raises(TypeError):
+        store.update_step_result("r_1", "f4", lambda b: f3)  # 다른 단계 결과로 못 덮음
+    assert store.step_result("r_1", "f4") == f4

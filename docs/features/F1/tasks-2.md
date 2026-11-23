@@ -76,3 +76,73 @@ graph LR
 - 된 것: 도구 규약(tools.py: code_tool·fixed_stage·subagent, F1 도구 셋 등록), 지휘 그래프(LangGraph: extract_pages → decide → read_oa → check_oa → cut_to_oa 고정 간선 → decide, plan agent|fixed_order), `run_case(case_input, oa_id, run_id, store, config_path, *, ctx, steps)` 하나만 밖으로, 출원번호·발송번호를 모르면 waiting_for_human, 같은 OA → failed + 기존 ID, 기존 사건에 붙이기, max_steps → failed + 찾아본 도구 목록, 실패 경로마다 단계 기록(메모리). `uv run pytest -q` 346 passed. /check: 증거 통과, 이슈 리뷰 막음 없음. 진짜 모델 호출 없음.
 - 안 된 것·사람 판단: 이어 가기(resume·체크포인터)와 단계 기록 DB는 새 이슈(#55 뒤). cut_to_oa는 #54 전까지 가짜 몸통(unverified + 경고). 발송번호를 모르면 사람 기다림(Claude 판단). 코드(테스트 제외) 약 480줄로 400줄 기준을 넘음. agent 모드에서 지휘가 read_oa를 고르는 것과 architecture 8절 그림(F1 고정 흐름)의 관계, extract_pages kind. 실행 하나의 시간·비용 상한(ADR 0003)은 아직 없음. 지휘 모델에 원문을 안 보낸다는 단언 테스트 없음(코드로 확인).
 - 다음 이슈로: 서버(#56·#57)가 run_case에 넘길 ctx·store·steps 만들기.
+
+## m3-i1-54a  (11/23)  상태: 끝  (이슈 #54 1단계)
+<!-- 11/23 재아·은진 Slack 합의: #54는 재아 담당, 1단계(받아 둔 폴더 local_folder + 연결)는 은진, 2단계(KIPRIS)는 재아. 인터페이스 모양은 PR에서 재아가 본다. -->
+**구현할 design 부분**: design.md 4절 (심사 대상 판 고르기, OA 시점 자르기는 F1이 출원번호를 읽은 뒤 무조건 도는 코드 단계)   **맡은 합격 기준**: #54 "대상 OA 시점까지만 넣는다", "청구항 판은 심사 대상 판까지만", "자르기는 조회 도구 코드로, 날짜가 아니라 이력 순서·발송번호·접수번호로", "조회에 실패한 항목은 이유와 함께"(1단계는 없음 + 이유를 돌려주고 단계 기록·넘긴 이유에 남김). #166 합격 기준 1 (화면에서 OA만 올려 F1~F4).
+**목표** (한 줄): 출원번호 + 발송번호로 행정 이력·청구항 이력·출원서를 OA 시점까지 잘라 가져오는 인터페이스 하나와 받아 둔 폴더 구현을 만들고, F1 뒤·F3 앞에서 사건을 채워 OA만 올려도 F4까지 간다.
+**끝나면 보여 줄 것** (데모 한 줄): 화면에서 tune 사건 OA 하나만 올려 실행하면 F3·F2·F4가 넘겨지지 않고 결과가 나오며, 저장 뒤 다시 열어도 그대로다 (스크린샷). 테스트 `uv run pytest tests/core/cases/case_source -q`.
+
+```mermaid
+graph LR
+    task-1 --> task-2
+    task-1 --> task-3
+    task-2 --> task-4
+    task-3 --> task-4
+```
+
+### task-1: 공통 파서와 OA 시점 자르기
+- 담당: 은진
+- 합격 기준: #54 "OA 시점까지만", "자르기는 날짜가 아니라 이력 순서·발송번호·접수번호로"
+- 고칠 파일: `src/patent_ai/core/cases/case_source/{__init__,base,parse,cut}.py`, `tests/core/cases/case_source/test_case_source_cut.py`
+- 만들 함수·인터페이스 모양:
+  - `CaseSource` (Protocol): `name: str`, `fetch(application_number, dispatch_number) -> SourceFiles`. 구현은 원본(자르기 전이어도 됨)만 돌려준다. 자르기는 구현 밖 공통 코드가 늘 한다.
+  - `SourceFiles{admin_history: str | Missing, claim_history: str | Missing, application_document: Path | Missing}`. 글자는 KIPRIS Plus 받은 꼴(`¶`로 나눈 표, 첫 줄 머리글). 2단계 KIPRIS 구현은 받은 응답을 같은 꼴로 `data/raw/cases/<출원번호>/`에 두고 같은 파서를 쓴다.
+  - `Missing{what: "admin_history" | "claim_history" | "application_document", reason: UnverifiedReason, detail: str}` (오류가 아니라 없음 + 이유).
+  - `parse_admin_history(text) -> list[AdminRow]`, `parse_claim_history(text) -> list[ClaimChangeRow]` (칸 이름으로 읽고, 칸이 빠지면 `SourceFormatError`).
+  - `cut_at_oa(admin, claims, dispatch_number) -> CaseAtOA | Missing`: 행정 이력 줄 순서로 대상 OA 줄까지 남기고, 청구항 이력은 남은 이력의 접수번호 줄만. 이력 줄 → `HistoryEvent` (의견제출통지서 → oa, 청구항이 바뀐 접수번호의 보정서 → amendment, 의견서 → opinion, 그 밖 other).
+  - `lookup_case(source, application_number, dispatch_number) -> CaseLookup{history, claim_changes, application_document, missing: list[Missing]}`: fetch → 파싱 → 자르기. 못 읽은 파일도 Missing(not_extracted)로.
+- 테스트할 경우: 평소(OA 뒤 줄·뒤 보정 청구항이 빠짐, 날짜가 거꾸로여도 줄 순서로 자름) / 빈 입력(머리글만 → 대상 OA 없음 Missing lookup_failed) / 실패(대상 OA가 두 번 → Missing ambiguous, 칸 빠진 표 → Missing not_extracted, 청구항이 안 바뀐 보정서는 판을 만들지 않음)
+- 확인: `uv run pytest tests/core/cases/case_source/test_case_source_cut.py -q`
+
+### task-2: 받아 둔 폴더 구현 (`local_folder`)
+- 담당: 은진
+- 합격 기준: #54 "평가 사건은 받아 둔 자료를 같은 경로로 넣는다"
+- 고칠 파일: `src/patent_ai/core/cases/case_source/local_folder.py`, `config/case_source.yaml`, `tests/core/cases/case_source/test_case_source_local_folder.py`
+- 만들 함수·인터페이스 모양: `LocalFolderSource(root)`: `<root>/<출원번호>/<발송번호>/<출원번호>_행정이력.txt`·`_청구항이력.txt`·`_출원서_<접수번호>.pdf`. `load_case_source(config_path) -> CaseSource` (설정 `impl: local_folder`, `root: data/processed/cases`. 상대 경로는 저장소 뿌리 기준).
+- 테스트할 경우: 평소(tmp 폴더에 지어낸 사건) / 빈 입력(폴더 없음 → 셋 다 Missing lookup_failed) / 실패(출원서만 없음 → 그것만 Missing, 모르는 impl → 설정 오류)
+- 확인: `uv run pytest tests/core/cases/case_source/test_case_source_local_folder.py -q`
+
+### task-3: 올린 사건에 채워 저장 (DB)
+- 담당: 은진
+- 합격 기준: #54 "그 OA와 앞 이벤트만 저장", "청구항 판은 심사 대상 판까지만"
+- 고칠 파일: `src/patent_ai/core/cases/case_source/fill.py`, `tests/core/cases/case_source/test_case_source_fill.py`, `tests/core/cases/case_source/test_case_source_fill_db.py`
+- 만들 함수·인터페이스 모양: `PostgresCaseSourceFill.fill_before_f3(oa_id, application_number, dispatch_number) -> FillOutcome{filled: bool, missing: list[Missing], why: str | None}`. 조회 결과로 `CaseRecord`를 만들어 기존 `plan_case_rows`로 줄을 계산하고, 올린 임시 사건(#56)에 이력 줄·출원서 문서·청구항 판을 더한다. 올린 OA 이력 줄은 새로 만들지 않고 그 줄에 순서·발송번호를 넣고, 그 OA의 심사 대상 판을 잇는다. 앞 OA 이력 줄은 넣지 않는다 (이 사건에 그 OA를 더하면 `store_pg._add_oa`가 만든 줄에 실행 끝 case_fill이 같은 발송번호를 넣어 `uq_case_events_case_kind_number`에 걸림. #303 합치기 길은 같은 발송번호 줄에 붙여 겹치지 않음). 앞 OA를 새 사건으로 뒤에 올리면 합친 이력에서 맨 뒤로 가는 순서 문제는 후속: add_oa도 같은 발송번호 줄에 붙이게 한 뒤 앞 OA 줄을 넣는다. 이미 판이 있는 사건(다시 실행, 평가 저장)은 건너뜀, 같은 출원번호 사건이 따로 있으면 건너뜀(#303 합치기와 겹치지 않게, 이유를 남김). 마이그레이션 없음.
+- 테스트할 경우: 평소(출원 때 판 사건 → 판 0 + 출원서 문서 + OA 심사 대상 판) / 빈 입력(조회가 전부 Missing → 아무것도 안 쓰고 이유) / 실패(이미 판 있음 → 건너뜀, 다른 사건이 같은 출원번호 → 건너뜀, 저장 중 오류 → 되돌림)
+- 확인: `uv run pytest tests/core/cases/case_source -q` (DB는 `-m db`, PR 전용 test DB에서)
+
+### task-4: F1 뒤·F3 앞에 연결
+- 담당: 은진
+- 합격 기준: #54 "자르기는 조회 도구 코드로 막는다"(지휘가 건너뛸 수 없음), #166 합격 기준 1
+- 고칠 파일: `src/patent_ai/core/agents/orchestrator.py`, `src/patent_ai/core/runs/run_case_executor.py`, `src/patent_ai/api/deps.py`, `src/patent_ai/core/cases/case_source/filler.py`, `compose.yaml`, `tests/core/agents/test_fill_case.py`, `tests/core/cases/case_source/test_case_source_filler.py`, `tests/core/runs/test_run_case_executor.py`
+- 만들 함수·인터페이스 모양: `run_case(..., fill_case: CaseFiller | None = None)`. `cut_to_oa` 고정 단계 앞에서 `fill_case.fill(oa_id, 출원번호, 발송번호) -> FilledTexts{texts, reason}`을 부르고 단계 기록 `fill_case`(fixed_stage, 글자를 못 만들면 ok + unverified, 예외면 failed)를 남긴다. 돌려받은 글자를 F3·F4 입력으로 쓴다 (없으면 넘긴 이유에 조회 이유를 붙임). 실행기는 `SourceCaseFiller`(`PostgresCaseSourceFill` + `TextsSource`, `case_source/filler.py`)를 받는다. 서버 컨테이너가 받아 둔 폴더를 읽게 `compose.yaml`에 읽기 마운트를 더한다.
+- 테스트할 경우: 평소(채운 뒤 글자로 F3·F4가 돎) / 빈 입력(fill_case 없음 → 지금처럼) / 실패(조회 없음 → F3 넘긴 이유에 조회 이유, fill_case 예외 → 실행 failed)
+- 확인: `uv run pytest tests/core/agents tests/core/runs -q` + 화면 확인 (#166 합격 기준 1, 스크린샷)
+
+### 이번에 안 하는 것
+- KIPRIS 구현과 `data/raw/cases/` 캐시 (2단계, 재아).
+- 보정 판 청구항 글자: tune 102건 중 4건은 심사 대상 판이 보정 판인데 받아 둔 폴더에 보정서 PDF가 없다 (OA 앞 보정서 25건 중 21건은 청구항을 안 바꾼 서식 보정). 판은 저장하지만 글자를 못 만들어 F3·F4가 이유와 함께 넘겨진다. 청구항이력 글자로 판 청구항을 만드는 것은 후속. 출원서가 없는 2건도 같다 (11/23 받아 둔 폴더로 잼: 96건은 출원 때 판 + 출원서).
+- 출원서 없는 사건(2건)에 공개공보를 최초 명세서로 쓰기, 인용문헌 본문, 못 가져온 항목을 ⑥ 빠진 자료 "올려 주세요"로 띄우기.
+- 같은 출원번호 사건 합치기 (#303).
+
+### 진행
+- [x] task-1
+- [x] task-2
+- [x] task-3
+- [x] task-4
+- 다음: 화면 확인 (#166 합격 기준 1, 스크린샷), PR 리뷰 (재아: 인터페이스 모양)
+- 막힌 것: 화면 확인은 worktree `.env`와 개발 DB 마이그레이션(main head까지)이 먼저라 은진 확인 대기
+
+### 끝난 뒤 (11/23)
+- 된 것: `CaseSource.fetch` 인터페이스 + 공통 파서·OA 시점 자르기(`case_source/cut.py`), 받아 둔 폴더 구현, 올린 사건 채우기(DB), 지휘 고정 단계 `fill_case`(check_oa → fill_case → cut_to_oa). 받아 둔 폴더 102건 계산: 96건은 출원 때 판 + 출원서로 글자를 만들 수 있다. 실제 tune 3건을 PR 전용 test DB에 채워 글자(청구항 10~20개, 명세서 27~36쪽)를 만들었다 (되돌림).
+- 리뷰 참고(다음으로): 보정각하 표시(`HistoryEvent.dismissed`)를 아무도 안 채움 (tune OA 앞 각하 0건), `SourceFiles`에 인용문헌 본문 칸 없음 (2단계), KIPRIS 네트워크 실패·호출 상한은 구현 안에서 `Missing(lookup_failed)`로, 출원서를 사람이 이미 올린 사건은 같은 해시로 실패, 같은 사건 둘째 OA는 채우지 않음.
