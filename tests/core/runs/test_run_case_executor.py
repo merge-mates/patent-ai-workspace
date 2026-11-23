@@ -4,7 +4,9 @@
 네트워크·키·DB 없음.
 """
 
+import logging
 import threading
+from datetime import timedelta
 
 import pytest
 
@@ -77,7 +79,9 @@ class _CaseFill:
 
 
 class Env:
-    def __init__(self, tmp_path, *, with_texts=True, cases=None, store=None, fill_case=None):
+    def __init__(
+        self, tmp_path, *, with_texts=True, cases=None, store=None, step_log=None, fill_case=None
+    ):
         self.store = store or MemoryStatusStore()
         self.registry = CancelRegistry()
         self.oa_results = InMemoryOAResultStore(self.store)
@@ -101,6 +105,7 @@ class Env:
             selections=self.selections,
             human=self.human,
             lock=self.lock,
+            step_log=step_log,
             fill_case=fill_case,
         )
 
@@ -486,3 +491,49 @@ def test_resume_번호를_넣으면_같은_실행이_끝까지_돌고_결과가_
     st = env.store.get_status(RID)
     assert st.state == RunState.SUCCEEDED and st.waiting_for is None
     assert env.step_results.step_result(RID, "f4") is not None
+
+
+# ---- 작은 실행의 확인 기준일 (#293): 날을 넘겨 골라도 앞 실행(방향 후보)의 기준일을 쓴다 ----
+LATER = CHECKED_ON + timedelta(days=3)
+
+
+def _redo_on_later_day(env, prev_f4_update=None, drop_f2=False):
+    """앞 실행은 CHECKED_ON에 돌고, 사람은 사흘 뒤에 고른다. 앞 결과를 바꿔 끼울 수 있다."""
+    assert env.run().state == RunState.SUCCEEDED
+    real = env.step_results.step_result
+
+    def prev(run_id, kind):
+        body = real(run_id, kind)
+        if run_id == RID and kind == "f4" and prev_f4_update is not None:
+            return body.model_copy(update=prev_f4_update)
+        if run_id == RID and kind == "f2" and drop_f2:
+            return None
+        return body
+
+    env.step_results.step_result = prev
+    env.executor._today = lambda: LATER
+    env.store.add(REDO, OID, kind="redo_drafts")
+    sel = DirectionSelection(candidate_id=f"{UNIT}:d1", origin=Origin.HUMAN_SELECTED)
+    env.selections.save_selection(OID, UNIT, sel, run_id=REDO)
+    env.executor.execute(REDO, OID)
+    assert env.store.get_status(REDO).state == RunState.SUCCEEDED, env.store.get_status(REDO)
+    return real(REDO, "f4")
+
+
+def test_redo_날을_넘겨_골라도_앞_실행의_확인_기준일을_쓴다(env):
+    assert _redo_on_later_day(env).checked_on == CHECKED_ON
+
+
+def test_redo_옛_F4에_기준일이_없으면_앞_F2_묶음의_기준일을_쓴다(env, caplog):
+    with caplog.at_level(logging.WARNING):
+        out = _redo_on_later_day(env, {"checked_on": None})
+    assert out.checked_on == CHECKED_ON
+    # 앞 F2 기준일로 이어 쓸 수 있으면 오늘로 대신하지 않으니 경고도 없다
+    assert "확인 기준일" not in caplog.text
+
+
+def test_redo_앞_기준일을_모르면_오늘을_쓰고_경고한다(env, caplog):
+    with caplog.at_level(logging.WARNING):
+        out = _redo_on_later_day(env, {"checked_on": None}, drop_f2=True)
+    assert out.checked_on == LATER
+    assert "확인 기준일" in caplog.text

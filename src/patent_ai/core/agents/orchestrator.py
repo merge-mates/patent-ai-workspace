@@ -252,7 +252,8 @@ def run_case(
             todo = [n for n in fixed_order if n not in state["results"] and n not in skipped]
             # 도구가 아직 없는 단계: 설정에 넘겨도 된다고 적힌 이름만 넘기고 다음 단계로 간다
             while todo and todo[0] not in registered and todo[0] in skip_if_missing:
-                why = "tool_missing: 등록된 도구가 없음 (설정 skip_if_missing에 있어 넘김)"
+                # 뒤 글은 화면에 그대로 보인다: 설정 이름 대신 사람이 읽는 말로 (이슈 #294)
+                why = "tool_missing: 이 단계 도구가 아직 연결되지 않아 넘김"
                 skipped = skip(todo.pop(0), skipped, why)
             choice = todo[0] if todo else "stop"
         else:

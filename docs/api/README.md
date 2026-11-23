@@ -33,9 +33,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | POST | `/cases` | 첫 OA PDF 하나를 올려 PDF를 저장하고 사건·OA를 만든 뒤 실행 하나를 바로 시작한다. `{case_id, oa_id, run_id}`를 돌려준다. 실행 안에서 OA 읽기 → 자동 조회 + OA 시점 자르기 → 분석이 이어진다 |
 | POST | `/cases/{id}/oas` | 같은 사건의 다음 OA를 올리고 실행을 시작한다. `{oa_id, run_id}`를 돌려준다 |
 | GET | `/cases` | 사건 목록 |
-| GET | `/cases/{id}` | 사건 보기 (OA 목록 포함). 묶기 결과가 저장된 뒤에는 이력 `events`(순서 `seq`), 청구항 판 `claim_versions`, OA마다 심사 대상 판 `examined_claim_version`도 준다 (저장 전에는 빈 목록·null). 이력·청구항 판은 원문이 있는 OA 중 가장 늦은 OA 시점까지 자르고 공개·등록공보 판은 뺀다 |
+| GET | `/cases/{id}` | 사건 보기 (OA 목록 포함). 같은 출원번호 사건에 합쳐진 임시 사건이면 `merged_into_case_id`에 합친 사건 id(그때 `oas`는 빈 목록, 사건 목록에서는 숨김. 그 사건에 `POST /cases/{id}/oas`를 하면 합친 사건에 붙는다). 묶기 결과가 저장된 뒤에는 이력 `events`(순서 `seq`), 청구항 판 `claim_versions`, OA마다 심사 대상 판 `examined_claim_version`도 준다 (저장 전에는 빈 목록·null). 이력·청구항 판은 원문이 있는 OA 중 가장 늦은 OA 시점까지 자르고 공개·등록공보 판은 뺀다 |
 | GET | `/oas/{oa_id}` | OA 보기 (통지 정보, 원문 문서 ID, 가장 최근 실행 `latest_run`: run_id·state·current_step). 화면은 사건을 다시 열 때 이것으로 실행을 찾는다 |
-| GET | `/cases/{id}/materials` | 사건 자료·보류 목록 (결과 스키마 ⑥). 실행이 끝나면 만든다. 아직 없으면 404 `result_not_ready`, 출원번호를 모르면(실행 전·못 읽음·같은 출원번호 사건이 이미 있음) 메시지에 그 이유 |
+| GET | `/cases/{id}/materials` | 사건 자료·보류 목록 (결과 스키마 ⑥). 실행이 끝나면 만든다. 아직 없으면 404 `result_not_ready`, 출원번호를 모르면(실행 전·못 읽음·같은 출원번호 사건에 같은 파일이 이미 있음) 메시지에 그 이유, 합쳐진 임시 사건이면 합친 사건 id |
 | POST | `/cases/{id}/documents` | 조회하지 못한 자료를 올린다 ("올려 주세요"에 답함). 폼으로 `file`(PDF)과 `what`(답하는 빠진 자료, `missing[].what` 글자 그대로)을 받고 `{case_id, document_id, result: CaseMaterials}`를 돌려준다. 그 빠진 자료와 그 자료를 기다리던 보류 작업이 빠진다. 오류: 404 `case_not_found`·`result_not_ready`(묶기 결과 전), 422 `missing_not_found`·`upload_not_asked`(직접 확인할 자료)·`empty_file`·`not_pdf`, 409 `document_already_exists`(같은 사건에 같은 파일, `case_id`) |
 | GET | `/documents/{id}` | 원문과 쪽: 올린 문서의 쪽 글자 `PageText`(쪽마다 `page`·`text`·`status`·`tables`, 문서 전체 `status`). 요청 때 원본 PDF에서 뽑는다. 원본 파일을 못 읽으면 200 + `pages: []` + `status` 확인되지 않음(`lookup_failed`). 오류: 404 `document_not_found` |
 
@@ -43,7 +43,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
 | POST | `/oas/{oa_id}/runs` | 지휘 에이전트를 끝까지 돌린다. 빠진 자료를 더 올렸거나 대응 방향을 바꿨을 때는 "다시 확인 필요"가 붙은 판단 단위만 다시 돌릴 수 있다 (사람이 정함, [데이터 모델](../data-model.md) 3절 규칙 2) |
-| GET | `/runs/{id}` | 실행 상태 + "지금 하는 주요 작업" 한 줄 (세부 과정 중계 없음) |
+| GET | `/runs/{id}` | 실행 상태 + "지금 하는 주요 작업" 한 줄 (세부 과정 중계 없음). `case_id`는 그 OA가 지금 속한 사건이다: F1이 읽은 출원번호의 사건이 이미 있으면 실행이 끝날 때 OA를 그 사건의 다음 OA로 옮기므로 합친 사건 id가 된다 |
 | POST | `/runs/{id}/cancel` | 실행 취소 |
 
 실행 상태 `state`: `queued`(대기) / `running`(실행 중) / `waiting_for_human`(사람 기다림: OA 번호(출원번호·발송번호)를 못 읽어 사람 입력을 기다림) / `succeeded`(끝남) / `failed`(실패, 이유를 남김) / `cancelled`(취소). 실패를 succeeded로 돌려주지 않는다. 자동 조회의 진행·실패도 이 실행에 남는다. 화면은 `GET /runs/{id}`만 폴링한다. `waiting_for` 값은 `application_number`·`dispatch_number` 둘뿐이다. 번호를 넣으면(`PATCH /cases/{id}`·`PATCH /oas/{id}`) 같은 실행이 `waiting_for_human → running`으로 이어 돈다. 체크포인터 없이, 그 실행이 저장해 둔 OA 정리에 사람이 넣은 번호를 덮어 `check_oa`부터 돈다 (OA 글자 읽기는 다시 하지만 F1 모델은 다시 부르지 않는다). 방향 고르기는 실행을 멈추지 않는다: 실행은 `succeeded`로 끝나고 확신 낮은 묶음만 선택 `null` + 초안 보류이며, 사람이 고르면(`PUT /directions/{unit_id}/selection`) 그 OA에 작은 실행을 새로 만든다.
@@ -64,8 +64,8 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
 | PUT | `/directions/{unit_id}/selection` | `unit_id`는 내용으로 정한 ID ([데이터 모델](../data-model.md) 4절 ②). 대응 방향을 후보 중에서 고르거나 직접 쓰기. 본문은 `{candidate_id}` 또는 `{written_direction}` 중 하나. 응답은 `{unit_id, run_id, selection}`이고 `run_id`는 새로 만든 작은 실행이다(화면은 그 `run_id`를 폴링). 작은 실행은 앞 실행의 OA 정리·F3·F2를 그대로 옮기고 F4 방향 후보도 그대로 둔 채 선택만 바꿔 의견서·보정 초안을 다시 만든다. 직접 쓴 묶음은 AI가 초안을 만들지 않고 보류한다("사람이 쓴 방향", origin = `human_written`). 오류: 404 `oa_not_found`·`unit_not_found`, 404 `result_not_ready`, 409 `run_in_progress`(그 OA에 진행 중 실행), 422 `candidate_not_found`·`invalid_selection`(빈 글 등). 고르지 않으면 1등 후보(origin = AI 기본값). 확신 "낮음" 묶음은 선택이 비어 있고(`null`), 사람이 고를 때까지 그 묶음 초안은 만들지 않는다(서버 코드로 막음). 이 PUT으로 저장한 선택은 1등 후보와 같아도 origin = 사람이 고름 |
-| PATCH | `/cases/{id}` | 본문 `{application_number}`. 그 사건 OA 중 출원번호를 기다리는(`waiting_for: application_number`) 실행에 사람이 읽은 출원번호를 넣고 그 실행을 이어 돌린다. 하이픈은 있어도 되고 숫자로 맞춘다. 그 실행은 바로 `waiting_for_human → queued`로 바뀌고(조건부: 그 사이 다른 요청이 가져갔으면 409 `not_waiting`), 실행기가 잡으면 `running`으로 이어 돈다. 응답 `{case_id, oa_id, run_id}` (화면은 그 run_id를 폴링). 사람이 넣은 값은 `human_inputs` 표에 남기고, OA 정리의 그 칸은 status 확인됨 + `checked: "사람이 직접 입력함 (원문 대조 아님)"`으로 AI가 읽은 값과 구분한다. 오류: 404 `case_not_found`, 409 `not_waiting`(출원번호를 기다리는 실행 없음), 422 `invalid_application_number`(출원번호 꼴 아님) |
-| PATCH | `/oas/{id}` | 본문 `{dispatch_number}`. 발송번호를 기다리는 실행에 넣고 이어 돌린다. 응답·남기는 방식은 위와 같다. 오류: 404 `oa_not_found`, 409 `not_waiting`, 422 `invalid_dispatch_number` |
+| PATCH | `/cases/{id}` | 본문 `{application_number}`. 그 사건 OA 중 출원번호를 기다리는(`waiting_for: application_number`) 실행에 사람이 읽은 출원번호를 넣고 그 실행을 이어 돌린다. 하이픈은 있어도 되고 숫자로 맞춘다. 그 실행은 바로 `waiting_for_human → queued`로 바뀌고(조건부: 그 사이 다른 요청이 가져갔으면 409 `not_waiting`), 실행기가 잡으면 `running`으로 이어 돈다. 응답 `{case_id, oa_id, run_id}` (화면은 그 run_id를 폴링). 사람이 넣은 값은 `human_inputs` 표에 남기고, OA 정리의 그 칸은 status 확인됨 + `checked: "사람이 직접 입력함 (원문 대조 아님)"`으로 AI가 읽은 값과 구분한다. 오류: 404 `case_not_found`, 409 `not_waiting`(출원번호를 기다리는 실행 없음), 422 `invalid_application_number`(출원번호 꼴 아님), 500 `human_input_not_saved`(번호 기록을 못 남김: 실행은 `queued`에서 다시 `waiting_for_human`으로 되돌아가니 다시 넣으면 된다) |
+| PATCH | `/oas/{id}` | 본문 `{dispatch_number}`. 발송번호를 기다리는 실행에 넣고 이어 돌린다. 응답·남기는 방식은 위와 같다. 오류: 404 `oa_not_found`, 409 `not_waiting`, 422 `invalid_dispatch_number`, 500 `human_input_not_saved` |
 | PUT | `/oas/{id}/oa-result/confirmation` | 정리 결과 "맞아요": 사람이 지금 보이는 OA 정리(그 `run_id`)를 확인했다고 남긴다. 본문 없음. 응답 `{oa_id, run_id, confirmed_at}`. 다시 보내면 시각만 새로 남는다. 다른 실행의 정리가 보이게 되면(다시 돌림) 확인은 그 실행 것이 아니라 비어 보인다. 오류: 404 `oa_not_found`·`result_not_ready` |
 | GET | `/oas/{id}/oa-result/confirmation` | 지금 보이는 OA 정리를 사람이 확인했는지. `{oa_id, run_id, confirmed_at}`, 확인 전이면 `confirmed_at: null`. 오류: 404 `oa_not_found`·`result_not_ready` |
 | PATCH | `/drafts/{draft_id}` | 사람이 초안을 고친다. AI 원본 값은 남긴다. 중간 결과(F1·F2·F3)는 고치지 않는다 |
@@ -99,9 +99,9 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 
 실행 상태 (`GET /runs/{id}`):
 ```json
-{"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "인용문헌 조회", "reason": "인용문헌 자료 없음"}], "warnings": [{"code": "step_skipped", "message": "인용문헌 조회 단계를 건너뜀: 인용문헌 자료 없음"}]}
+{"run_id": "r_1", "oa_id": "oa_1", "state": "succeeded", "current_step": "거절이유 정리 중", "waiting_for": null, "error": null, "skipped_steps": [{"step": "run_f3", "reason": "input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}], "warnings": [{"code": "step_skipped", "message": "run_f3 단계를 건너뜀: input_unverified: OA 당시 청구항·명세서 글자를 찾지 못함"}]}
 ```
-`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
+`skipped_steps`·`warnings`는 넘긴 단계가 없으면 빈 목록이다. `step`은 지휘 도구 이름(`read_oa`·`run_f3`·`run_f2`·`run_f4`)이고, `reason`은 앞머리 코드(`input_unverified`·`tool_missing`) 뒤에 사람이 읽는 이유 글이 붙는다. `POST /runs/{id}/cancel` 응답도 같은 모양이다.
 
 결과 (`GET /oas/{oa_id}/oa-result`): 결과 스키마를 `result`에 그대로 담는다.
 ```json

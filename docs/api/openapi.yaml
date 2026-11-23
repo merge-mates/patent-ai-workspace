@@ -894,6 +894,11 @@ components:
             $ref: '#/components/schemas/CaseOAOut'
           type: array
           title: Oas
+        merged_into_case_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Merged Into Case Id
         events:
           items:
             $ref: '#/components/schemas/CaseEventOut'
@@ -2963,6 +2968,11 @@ components:
         oa_id:
           type: string
           title: Oa Id
+        case_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Id
         state:
           type: string
           title: State

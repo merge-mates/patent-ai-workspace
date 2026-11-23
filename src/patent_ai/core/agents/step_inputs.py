@@ -23,6 +23,13 @@ class InputMissing:
     why: str
 
 
+# 넘김 이유 글. 화면에 그대로 보이므로 코드 이름 대신 사람이 읽는 말로 쓴다 (이슈 #294)
+NO_OA = "앞 단계인 OA 거절이유 정리 결과가 없음"
+NO_F3 = "앞 단계인 청구항–인용발명 대비 결과가 없음"
+NO_TEXTS = "OA 당시 청구항·명세서 글자를 찾지 못함"
+NO_CHECKED_ON = "확인 기준일이 주어지지 않음"
+
+
 def _missing(what: str) -> InputMissing:
     return InputMissing(f"input_unverified: {what}")
 
@@ -31,9 +38,9 @@ def f3_input(results: dict[str, Any], case_id: str, texts: F3Inputs | None) -> d
     """run_f3 입력: read_oa 결과(OAResult) + 실행 입력 글자 + config/f3.yaml 설정."""
     oa = results.get("read_oa")
     if not isinstance(oa, OAResult):
-        return _missing("앞 단계 결과가 없음 (read_oa)")
+        return _missing(NO_OA)
     if texts is None:
-        return _missing("OA 당시 청구항·명세서 글자가 실행 입력에 없음 (CaseInput.texts)")
+        return _missing(NO_TEXTS)
     return {
         "oa_result": oa,
         # 사건 자료 목록은 자르기(#54)가 아직 CaseMaterials를 만들지 않아 빈 목록으로 넘긴다
@@ -46,12 +53,12 @@ def f2_input(results: dict[str, Any], checked_on: date | None) -> dict | InputMi
     """run_f2 입력: read_oa 결과(OAResult) + F3 판단 단위 + 확인 기준일 + config/f2.yaml 설정."""
     oa, f3 = results.get("read_oa"), results.get("run_f3")
     if not isinstance(oa, OAResult):
-        return _missing("앞 단계 결과가 없음 (read_oa)")
+        return _missing(NO_OA)
     if not isinstance(f3, F3Result):
         # 법률 근거 묶음은 판단 단위마다 만든다 (F4가 unit_id로 찾음)
-        return _missing("앞 단계 결과가 없음 (run_f3)")
+        return _missing(NO_F3)
     if checked_on is None:
-        return _missing("확인 기준일이 실행 입력에 없음 (CaseInput.checked_on)")
+        return _missing(NO_CHECKED_ON)
     return {
         "oa": oa,
         "units": f3.units,
@@ -66,14 +73,14 @@ def f4_input(
     """run_f4 입력: OAResult + F3 결과(판단 단위·대비표·명확성 검토) + 글자 + 확인 기준일."""
     oa, f3, f2 = results.get("read_oa"), results.get("run_f3"), results.get("run_f2")
     if not isinstance(oa, OAResult):
-        return _missing("앞 단계 결과가 없음 (read_oa)")
+        return _missing(NO_OA)
     if not isinstance(f3, F3Result):
-        return _missing("앞 단계 결과가 없음 (run_f3)")
+        return _missing(NO_F3)
     if texts is None:
-        return _missing("OA 당시 청구항·명세서 글자가 실행 입력에 없음 (CaseInput.texts)")
+        return _missing(NO_TEXTS)
     if checked_on is None:
         # 오늘 날짜를 코드가 몰래 읽지 않는다 (F4Input.checked_on과 같은 이유)
-        return _missing("확인 기준일이 실행 입력에 없음 (CaseInput.checked_on)")
+        return _missing(NO_CHECKED_ON)
     return {
         "oa": oa,
         "units": f3.units,

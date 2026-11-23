@@ -39,6 +39,8 @@ export async function casesLoader(): Promise<CasesLoaderData> {
 // /cases/:caseId → 그 사건의 가장 최근 OA 작업대로
 export async function caseLoader({ params }: LoaderFunctionArgs) {
   const c = await api.getCase(params.caseId!)
+  // 같은 출원번호 사건에 합쳐진 임시 사건이면 합친 사건을 연다 (#272. 옛 링크로 와도 빈 사건이 아니게)
+  if (c.merged_into_case_id) return redirect(`/cases/${c.merged_into_case_id}`)
   const latest = c.oas.at(-1)
   if (!latest) throw new Error('이 사건에 OA가 없습니다')
   return redirect(`/oas/${latest.oa_id}`)

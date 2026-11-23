@@ -145,13 +145,15 @@ def _apply_amendment(
     """보정서 하나를 앞 판에 적용한다. 돌려주는 것은 (새 판, 새 최대 번호, 문제 상태 또는 None).
 
     last는 앞 판까지 쓰인 가장 큰 청구항 번호다. 삭제된 청구항도 번호는 남으므로
-    청구항 글이 없어진 뒤에도 last는 줄지 않는다 (추가 번호는 last + 1부터 이어져야 한다).
+    청구항 글이 없어진 뒤에도, 청구범위를 통째로 바꿔 번호가 줄어도 last는 줄지 않는다
+    (추가 번호는 last + 1부터 이어져야 한다).
     """
     items = _claim_items(text)
     if not items:
         # 보정대상항목이 없으면 따로 올린 보정 청구항(청구항 묶음 전체)으로 본다
         whole = _parse_full_set(text)
-        return whole.claims, whole.last_number(), whole.problem
+        # 묶음이 앞 판보다 번호가 적어도 이미 쓰인 번호는 남는다 (이슈 #284)
+        return whole.claims, max(last, whole.last_number()), whole.problem
 
     claims = dict(prev)
     base = last  # 이 보정서의 추가 번호가 이어 붙을 앞 번호
@@ -179,8 +181,9 @@ def _apply_amendment(
             if whole.problem:
                 return claims, last, whole.problem
             claims = whole.claims
-            # 청구범위를 통째로 바꾸면 번호도 새로 센다
-            base, added = whole.last_number(), []
+            # 통째로 바꿔 번호가 줄어도 앞 판까지 쓰인 번호는 다시 쓰지 않는다 (이슈 #284).
+            # 새 묶음이 더 크면 그 최대 번호 다음부터 추가한다
+            base, added = max(last, whole.last_number()), []
             continue
 
         number_m = _TARGET_CLAIM.match(target)

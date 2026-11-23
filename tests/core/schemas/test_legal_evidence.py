@@ -111,6 +111,23 @@ def test_판례는_판본_없이_confirmed_통과():
     assert s.status.value == StatusValue.CONFIRMED
 
 
+# ---------- 근거 하나: 원문 위치 (#28 합격 기준 1, requirements 4) ----------
+
+
+@pytest.mark.parametrize("kind", ["statute", "guideline", "precedent", "trial"])
+@pytest.mark.parametrize("location", [None, "", "   "])
+def test_원문_위치_없는_근거는_confirmed_불가(kind, location):
+    ev = source(kind=kind).evidence.model_copy(update={"location": location})
+    with pytest.raises(ValidationError):
+        source(kind=kind, evidence=ev)
+
+
+def test_원문_위치_없어도_unverified는_통과():
+    ev = source().evidence.model_copy(update={"location": None})
+    s = source(evidence=ev, status=UNKNOWN_EDITION)
+    assert s.evidence.location is None
+
+
 def test_법령_심사기준은_speaker_거부():
     with pytest.raises(ValidationError):
         source(kind="statute", speaker="court")

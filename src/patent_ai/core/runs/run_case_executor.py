@@ -26,7 +26,7 @@ from pathlib import Path
 
 from patent_ai.core.agents.orchestrator import CaseFiller, CaseStore, RunOutcome, run_case
 from patent_ai.core.agents.step_inputs import InputMissing, f4_input
-from patent_ai.core.agents.steps import StepRecord, StepRecorder
+from patent_ai.core.agents.steps import StepLog, StepRecord, StepRecorder
 from patent_ai.core.cases.case_fill import CaseFillSink
 from patent_ai.core.cases.human_answers import apply_human_numbers
 from patent_ai.core.cases.human_inputs import HumanInputStore
@@ -91,6 +91,12 @@ class _SkippedOnlySink:
         if step.skipped_reason is not None:
             self._store.record_skipped(step.run_id, step.tool_name, step.skipped_reason)
 
+    def link_result(self, run_id: str, tool_name: str, result_id: str) -> None:
+        """단계 줄을 아예 안 남기는 기록 자리라 붙일 곳이 없다 (옛 동작).
+
+        실행마다 늘 그러니 경고하지 않는다 (붙일 줄이 빠진 게 아니라 줄이 없는 자리다).
+        """
+
 
 class _LiveSteps:
     """지휘의 단계 기록기. 기록마다 sink 한 곳에 넘기고, 실행 상태를 옮기고, 취소 표시를 본다."""
@@ -136,7 +142,7 @@ class RunCaseExecutor:
         selections: SelectionStore,
         human: HumanInputStore,
         lock: threading.Lock | None = None,
-        step_log: StepRecorder | None = None,
+        step_log: StepLog | None = None,
         fill_case: CaseFiller | None = None,
     ) -> None:
         self._store = store
@@ -244,6 +250,23 @@ class RunCaseExecutor:
             raise _CannotResume("no_saved_oa_result", "이어 돌 OA 정리가 저장돼 있지 않습니다")
         return apply_human_numbers(saved, numbers)
 
+    def _prev_checked_on(self, run_id: str, f4: F4Output, f2) -> date:
+        """앞 실행의 확인 기준일 (#293). 날을 넘겨 골라도 방향 후보와 같은 기준일로 초안을 만든다.
+
+        앞 F4 결과 → 앞 F2 묶음 순으로 찾고, 둘 다 없으면 오늘 날짜를 쓰고 경고한다.
+        """
+        if f4.checked_on is not None:
+            return f4.checked_on
+        bundles = getattr(f2, "bundles", None) or []
+        days = {b.checked_on for b in bundles}
+        if len(days) == 1:
+            return days.pop()
+        today = self._today()
+        logger.warning(
+            "실행 %s: 앞 실행의 확인 기준일을 몰라 오늘(%s)을 확인 기준일로 씀", run_id, today
+        )
+        return today
+
     def _redo(self, run_id: str, oa_id: str) -> None:
         """사람 선택 뒤 초안만 다시 만든다 (#70). 앞 실행 결과는 지우지 않고 이 실행으로 옮긴다."""
         self._store.set_current_step(run_id, REDO_STEP)
@@ -258,7 +281,9 @@ class RunCaseExecutor:
         try:
             texts = self._inputs.case_input(oa_id).texts
             payload = f4_input(
-                {"read_oa": saved.result, "run_f3": f3, "run_f2": f2}, texts, self._today()
+                {"read_oa": saved.result, "run_f3": f3, "run_f2": f2},
+                texts,
+                self._prev_checked_on(run_id, f4, f2),
             )
             if isinstance(payload, InputMissing):
                 self._fail(run_id, "step_failed", f"초안 입력을 만들지 못함 ({payload.why})")
@@ -304,6 +329,11 @@ class RunCaseExecutor:
             return
         try:
             self._save(run_id, oa_id, outcome)
+        except RunLogWriteFailed as e:
+            # 결과 ID를 단계 기록에 붙이지 못함 (#267): 결과 저장 실패와 섞지 않고 기록 실패로
+            logger.exception("실행 %s의 실행 기록 저장 실패", run_id)
+            self._fail(run_id, "record_failed", f"실행 기록 저장 실패 ({e.where})")
+            return
         except Exception as exc:
             logger.exception("실행 %s의 결과 저장 실패", run_id)
             self._fail(run_id, "result_save_failed", safe_message("결과 저장", exc))
@@ -326,7 +356,11 @@ class RunCaseExecutor:
         self._case_fill.fill_after_f1(oa_id, run_id, oa, text_status)
         for name in ("run_f3", "run_f2", "run_f4"):
             if name in outcome.results:
-                self._step_results.save_step_result(oa_id, run_id, outcome.results[name])
+                result_id = self._step_results.save_step_result(
+                    oa_id, run_id, outcome.results[name]
+                )
+                # 이미 남긴 그 단계 기록이 방금 저장한 결과 줄을 가리키게 한다 (#267)
+                self._step_log.link_result(run_id, name, result_id)
 
 
 def _outcome_error(outcome: RunOutcome, steps: _LiveSteps) -> tuple[str, str]:
