@@ -102,7 +102,7 @@ def build_index(
     cfg: dict,
     extractor: PageExtractor,
     column_extractor: PageExtractor | None = None,
-    granted_extractor=None,
+    granted_extractor: PageExtractor | None = None,
 ) -> tuple[list[Chunk], IndexReport]:
     iv = cfg["index_version"]
     hf = HeaderFooterConfig.from_dict(cfg["header_footer"])
@@ -172,8 +172,11 @@ def build_index(
                 hf.min_page_ratio,
                 hf.keep_patterns,
             )
+            # 칼럼 배치가 없는 쪽(쪽 줄만 주는 추출기)은 columns=None
+            # → chunk_granted가 쪽 조각 + 경고 (색인 전체가 멈추지 않게)
             stripped = [
-                GrantedPage(p.page, q.lines, p.columns) for p, q in zip(pages, sp, strict=True)
+                GrantedPage(p.page, q.lines, getattr(p, "columns", None))
+                for p, q in zip(pages, sp, strict=True)
             ]
         else:
             stripped, removed = strip_repeated(

@@ -244,3 +244,18 @@ def test_미국_공개공보_파일_이름은_그대로_doc_id이고_두_단_추
     }
     assert "paragraph_check" not in r["docs"]["KR100A"]
     assert {c.doc_id for c in chunks} >= {"US20130000001A1", "KR100A"}
+
+
+def test_등록공보에_칼럼_추출기를_안_주면_쪽_조각과_경고로_끝난다(env):
+    # 가짜 추출기 하나(쪽 줄만 돌려줌)로 등록공보가 와도 색인 전체가 멈추지 않는다
+    cfg, _, ext, tmp, _ = env
+    (tmp / "raw" / "c1" / "US7000001B2.pdf").write_bytes(b"%PDF fake granted")
+    ext.by_name["US7000001B2.pdf"] = [
+        PageText(page=1, lines=["Made up granted page one."]),
+        PageText(page=2, lines=["Made up granted page two."]),
+    ]
+    chunks, report = build_index(cfg, ext)
+    d = report.to_dict()["docs"]["US7000001B2"]
+    assert d["chunks"] == {"body": 2}
+    assert any("칼럼·줄 못 셈" in w for w in d["warnings"])
+    assert {c.location.kind for c in chunks if c.doc_id == "US7000001B2"} == {"page"}
