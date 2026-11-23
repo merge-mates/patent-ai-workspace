@@ -138,6 +138,9 @@ def _log_agent_search(
     outcome = run.loop.outcome
     if hits:
         status = confirmed("다시 찾기 검색 결과를 받음")
+    elif not run.loop.queries:
+        # 성공한 검색이 0번: 다시 찾기는 찾아보지 않았으니 "없음"이라 쓰지 않는다
+        status = unverified(UnverifiedReason.NOT_EXTRACTED)
     elif outcome in ("submitted", "gave_up"):
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
     else:  # 끝까지 못 봄: 없다고 쓰지 않는다

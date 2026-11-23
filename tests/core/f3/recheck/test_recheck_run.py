@@ -371,6 +371,20 @@ def test_give_up이면_보류_없이_조회_범위_내_없음과_찾아본_범�
     assert out.tables[0].status.value == StatusValue.NOT_FOUND_IN_SCOPE
 
 
+def test_거절된_검색만_하고_give_up이면_2차_검색_기록을_조회_범위_내_없음으로_쓰지_않는다():
+    # 리뷰 막음(#329): k 범위 밖이라 검색하지 않았는데 "질의 수조"·not_found_in_scope로 남으면
+    # 검색에서 못 찾음 ≠ 없음 원칙을 어긴다. 대비 줄은 1차 결과(1차는 실제로 검색함)를 그대로 둔다
+    turns = [
+        _search_turn(k=99),
+        reply(use("give_up", {"reason": "other", "tried": "수조"}, "tu_2")),
+    ]
+    out, *_ = _run(_settings(), {STEP: [FIRST], AGENT: turns})
+    assert out.recheck_log[0].queries == []
+    second = [r for r in out.search_log if r.round == 2]
+    assert second and all(r.status.value != StatusValue.NOT_FOUND_IN_SCOPE for r in second)
+    assert "질의 수조" not in _row(out, TANK).status.searched_scope
+
+
 def test_바로_give_up이어도_보류_없이_조회_범위_내_없음이다():
     turns = [reply(use("give_up", {"reason": "other", "tried": "없음"}))]
     out, *_ = _run(_settings(), {STEP: [FIRST], AGENT: turns})

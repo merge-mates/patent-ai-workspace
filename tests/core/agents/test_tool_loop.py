@@ -294,3 +294,25 @@ def test_길이_범위_개수_제약_키는_정의에_싣지_않는다():
     # 중첩 모델도 additionalProperties false + required 전부
     item_schema = s["$defs"]["Item"]
     assert item_schema["additionalProperties"] is False and item_schema["required"] == ["text"]
+
+
+def test_오류로_돌아온_검색의_질의는_queries에_넣지_않는다(env):
+    # 리뷰 막음(#329): 거절돼 검색하지 않은 질의(k 범위 밖 등)는 '찾아본 질의'가 아니다
+    def search(m):
+        if m.k > 10:
+            return ToolOutcome("k는 1~10", is_error=True, logged_input={"query": m.query})
+        return ToolOutcome("결과", result_ids=["D1-1"], logged_input={"query": m.query})
+
+    tools = make_tools([])
+    tools[0] = ToolSpec("search", "검색", SearchIn, search)
+    r, _, _ = run(
+        env,
+        [
+            reply(use("search", {"query": "거절", "k": 99})),
+            reply(use("search", {"query": "성공", "k": 3}, "tu_2")),
+            reply(use("give_up", {"reason": "other"}, "tu_3")),
+        ],
+        tools=tools,
+    )
+    assert r.outcome == "gave_up"
+    assert r.queries == ["성공"]

@@ -206,9 +206,6 @@ def run_tool_loop(
                 steps.append(LoopStep(turns, spec.name, {}, [], True))
                 results.append(_tool_result(use, _validation_message(e), True))
                 continue
-            query = getattr(parsed, "query", None)
-            if isinstance(query, str) and query not in queries:
-                queries.append(query)
             try:
                 outcome = spec.run(parsed)
             except ModelCallLimitExceeded:
@@ -229,6 +226,10 @@ def run_tool_loop(
                 )
             )
             results.append(_tool_result(use, outcome.content, outcome.is_error))
+            # 오류 없이 돈 검색의 질의만 '찾아본 질의'로 남긴다 (거절된 질의는 검색하지 않았다)
+            query = getattr(parsed, "query", None)
+            if not outcome.is_error and isinstance(query, str) and query not in queries:
+                queries.append(query)
             if outcome.done is not None:
                 done = outcome.done
                 break  # 끝 도구가 통과했으면 뒤 호출은 돌리지 않는다
