@@ -23,6 +23,7 @@ from patent_ai.core.llm.errors import (
     ModelOutputInvalid,
     RecordingMissing,
 )
+from patent_ai.core.llm.json_answer import parse_answer
 from patent_ai.core.llm.limits import CallBudget, CallRecord, CallRecorder, RunContext
 from patent_ai.core.llm.prompts import render_prompt
 from patent_ai.core.llm.transport import (
@@ -316,7 +317,7 @@ def call_model(
         truncated = resp.stop_reason == TRUNCATED_STOP_REASON
         failed = "output_truncated" if truncated else "invalid_output"
         try:
-            parsed = output_schema.model_validate(json.loads(resp.text))
+            parsed = output_schema.model_validate(parse_answer(resp.text, truncated=truncated))
         except json.JSONDecodeError as e:
             kind = "not_json"
             record(resp, elapsed_ms, hit is not None, failed, tries, invalid_kind=kind)
