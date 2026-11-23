@@ -56,6 +56,10 @@ class Case(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=id_factory("c"))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     application_number: Mapped[str | None] = mapped_column(Text)
+    # 같은 출원번호 사건에 OA를 옮겨 합친 임시 사건이면 그 사건 id (#272). 목록에서 숨긴다
+    merged_into_case_id: Mapped[str | None] = mapped_column(
+        ForeignKey("cases.id", name="fk_cases_merged_into_case_id")
+    )
     created_at: Mapped[datetime] = _created_at()
 
 

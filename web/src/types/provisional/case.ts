@@ -29,6 +29,8 @@ export interface LatestRun {
 // GET /runs/{id}: 실행 상태 + "지금 하는 주요 작업" 한 줄 (current_step은 자유 글이라 파싱하지 않는다)
 export interface RunStatus extends LatestRun {
   oa_id: string
+  // 그 OA가 지금 속한 사건. 같은 출원번호 사건에 합쳐지면 합친 사건 id (#272)
+  case_id?: string | null
   // 사람 기다림의 이유. 사람을 기다릴 때만 값이 있다 (서버 core/agents/orchestrator.py WaitingFor:
   // application_number / dispatch_number). 서버 칸은 str이라 모르는 값도 올 수 있다
   waiting_for?: string | null
@@ -92,6 +94,8 @@ export interface CaseDetail {
   oas: CaseOA[]
   events?: CaseEvent[] // 묶기 결과 저장 전이면 빈 목록 (선택 칸: 하위 호환)
   claim_versions?: ClaimVersion[]
+  // 같은 출원번호 사건에 합쳐진 임시 사건이면 그 사건 id (#272). 그때 oas는 빈 목록
+  merged_into_case_id?: string | null
 }
 
 // GET /oas/{oa_id}
