@@ -48,11 +48,11 @@ export async function caseLoader({ params }: LoaderFunctionArgs) {
 
 export interface OALoaderData {
   oa: OADetail
-  // 실행이 아직 안 끝났거나(404 result_not_ready) 서버에 엔드포인트가 아직 없으면 null
+  // 실행이 아직 안 끝났으면(404 result_not_ready) null
   oaResult: OAResultResponse | null
   // 정리 결과 "맞아요" 확인 상태. 정리 결과가 아직 없으면(result_not_ready) 또는 받지 못하면 null (받지 못한 것은 warnings에도)
   confirmation: ConfirmationOut | null
-  // 사건 자료 목록이 아직 없거나 서버에 엔드포인트가 아직 없으면 null
+  // 사건 자료 목록이 아직 없으면(404 result_not_ready) null
   materials: CaseMaterials | null
   // 검토할 사항 목록. 따로 받은 목록이 없으면 사건 자료 ⑥의 review_items. 그것도 None이면 null (개수와 상관없이 모름)
   reviewItems: ReviewItem[] | null
@@ -90,15 +90,15 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   if (oa.latest_run) seedRun(oa.latest_run)
   let draftCheckMissing = false
   const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
-    api.getOAResult(oa.oa_id).catch(missingAsNull),
+    api.getOAResult(oa.oa_id).catch(notReadyAsNull),
     // 정리 확인: 결과가 아직 없으면 null, 그 밖의 오류는 모름(null) + 경고 (화면을 막지 않는다)
     probe(api.getOAResultConfirmation(oa.oa_id)),
-    // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
-    probe(api.getMaterials(oa.case_id), true),
+    // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음(result_not_ready)은 경고 없이 null, 그 밖의 오류는 null + 경고
+    probe(api.getMaterials(oa.case_id)),
     // 목록 엔드포인트가 API v0에 없거나 아직 없을 때만 null. 다른 오류는 오류 화면으로
     api.getReviewItems(oa.case_id).catch((e: unknown) => {
       if (e instanceof ApiError && e.code === 'not_in_api_v0') return null
-      return missingAsNull(e)
+      return notReadyAsNull(e)
     }),
     // 원문 쪽 글자는 어떤 오류든 null (원문 보기에서 "받지 못함"으로 알린다)
     oa.document_id ? api.getDocument(oa.document_id).catch(() => null) : Promise.resolve(null),
@@ -160,13 +160,11 @@ interface Probe<T> {
   value: T | null
   unknown: boolean
 }
-// notFoundIsMissing: 서버에 엔드포인트가 아직 없어서 나는 404(not_found)도 "아직 없음"으로 본다
-async function probe<T>(p: Promise<T>, notFoundIsMissing = false): Promise<Probe<T>> {
+async function probe<T>(p: Promise<T>): Promise<Probe<T>> {
   try {
     return { value: await p, unknown: false }
   } catch (e) {
     if (isNotReady(e)) return { value: null, unknown: false }
-    if (notFoundIsMissing && e instanceof ApiError && e.code === 'not_found') return { value: null, unknown: false }
     return { value: null, unknown: true }
   }
 }
@@ -177,9 +175,11 @@ function notReadyAsNull(e: unknown): null {
   throw e
 }
 
-// "아직 없음"만 null로 받고, 다른 오류는 그대로 올린다 (조용히 삼키지 않는다).
-// 아직 없음 = 404 result_not_ready, 또는 서버에 그 엔드포인트가 아직 없어서 나는 404 (code not_found)
-function missingAsNull(e: unknown): null {
+// 사건 전체 검사(case-check)만: 결과가 아직 없음(result_not_ready)에 더해, 서버에 엔드포인트가 아직 없어서 나는
+// 404 (code not_found)도 null로 받는다. 그 밖의 오류는 그대로 올린다 (조용히 삼키지 않는다).
+// case-check 엔드포인트가 서버에 생기면(#305) not_found 분기를 빼고 notReadyAsNull로 바꾼다.
+// 다른 엔드포인트에는 쓰지 않는다: 있는 엔드포인트의 not_found는 경로를 잘못 부른 것이라 "아직 없음"으로 가리면 안 된다
+function caseCheckMissingAsNull(e: unknown): null {
   if (isNotReady(e) || (e instanceof ApiError && e.code === 'not_found')) return null
   throw e
 }
@@ -237,7 +237,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
     api.getUnits(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getComparisons(oaId).catch(notReadyAsNull),
-    api.getCaseCheck(oaId).catch(missingAsNull),
+    api.getCaseCheck(oaId).catch(caseCheckMissingAsNull),
   ])
   if (units === null || directions === null) return null
   return {
@@ -270,7 +270,7 @@ export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<Draf
       return notReadyAsNull(e)
     }),
     api.getDirections(oaId).catch(notReadyAsNull),
-    api.getCaseCheck(oaId).catch(missingAsNull),
+    api.getCaseCheck(oaId).catch(caseCheckMissingAsNull),
   ])
   // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
   if (directions === null) return null
