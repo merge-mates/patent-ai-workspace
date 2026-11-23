@@ -34,9 +34,9 @@ def test_판단_단위마다_발송일_시행판_조문이_근거로_붙는다()
     assert [b.unit_id for b in out.bundles] == ["oa_1:29-2:c1", "oa_1:42-4-2:c2"]
     assert [b.bundle_id for b in out.bundles] == ["lb:oa_1:29-2:c1", "lb:oa_1:42-4-2:c2"]
     inventive, clarity = out.bundles
-    for bundle, label, text in (
-        (inventive, "특허법 제29조제2항", TEXT_292_NEW),
-        (clarity, "특허법 제42조제4항제2호", TEXT_424_NEW),
+    for bundle, label, text, loc in (
+        (inventive, "특허법 제29조제2항", TEXT_292_NEW, "제29조제2항"),
+        (clarity, "특허법 제42조제4항제2호", TEXT_424_NEW, "제42조제4항"),
     ):
         q = bundle.question
         assert (q.as_of, q.as_of_source, q.article_refs) == (
@@ -49,6 +49,7 @@ def test_판단_단위마다_발송일_시행판_조문이_근거로_붙는다()
         assert source.source_kind == LegalSourceKind.STATUTE and source.identifier == label
         ev = source.evidence
         assert (ev.document_id, ev.raw_text, ev.index_version) == (NEW_DOC, text, IV)
+        assert ev.location == loc  # 원문 위치 = 조각 loc_label 그대로
         assert ev.chunk_id.startswith(f"{IV}:{NEW_DOC}:") and ev.edition.startswith(NEW_DOC)
         assert ev.checked_on == CHECKED_ON
         # 근거 검토(모델)는 아직 없다: 확인됨이어도 사람이 봐야 한다고 표시

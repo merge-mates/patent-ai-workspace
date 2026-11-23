@@ -143,6 +143,12 @@ class LegalSource(BaseModel):
             and not (self.evidence.raw_text or "").strip()
         ):
             raise ValueError("confirmed 근거는 evidence.raw_text(원문 발췌)가 비지 않아야 함")
+        # 확인됨이면 원문 위치도 있어야 한다 (모든 결과에 출처·판본·원문 위치, #28 합격 기준 1)
+        if (
+            self.status.value == StatusValue.CONFIRMED
+            and not (self.evidence.location or "").strip()
+        ):
+            raise ValueError("confirmed 근거는 evidence.location(원문 위치)이 비지 않아야 함")
         if self.source_kind in _VERSIONED:
             edition = self.evidence.edition
             # 판본을 모르는 법령·심사기준은 확인됨으로 둘 수 없다

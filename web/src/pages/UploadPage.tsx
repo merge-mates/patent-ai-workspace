@@ -3,12 +3,13 @@ import { App, Button, Steps, Upload } from 'antd'
 import { useState } from 'react'
 import { Link, useLoaderData, useNavigate } from 'react-router'
 import { api, API_MODE } from '../api'
-import { ApplicationNumberForm } from '../components/ApplicationNumberForm'
+import { NumberInputForm } from '../components/NumberInputForm'
 import { MaterialRows } from '../components/MaterialRows'
 import { RunNotice } from '../components/RunNotice'
 import { skippedStepLabel, skippedStepRow, unverifiedReasonLabel, waitingForLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
 import { isRunEnded, refreshRun } from '../runPoll'
+import { showApplicationNumber, showDispatchNumber } from '../numberShapes'
 import { existingCaseLink } from '../uploadError'
 import { useRunSnapshot } from '../useRunSnapshot'
 
@@ -161,8 +162,9 @@ function UploadProgress({ data }: { data: OALoaderData }) {
           <RunNotice oaId={oa.oa_id} snap={snap} />
           {/* 출원번호 입력을 기다리면 입력 칸 (사건 머리와 같은 부품) */}
           {waiting && waitingFor === 'application_number' && (
-            <ApplicationNumberForm caseId={oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
+            <NumberInputForm kind="application_number" targetId={oa.case_id} runId={run.run_id} read={r?.application_number ?? null} />
           )}
+          {waiting && waitingFor === 'dispatch_number' && <NumberInputForm kind="dispatch_number" targetId={oa.oa_id} runId={run.run_id} read={r?.dispatch_number ?? null} />}
           <span className="label2 t3">조회는 이 통지서 시점까지만 해요. 그 뒤 보정서·등록 청구항은 넣지 않아요.</span>
           {/* 사람 기다림은 폴링이 멈춘 상태지만 새로 보기는 눌러 볼 수 있게 둔다 */}
           {(!ended || run.state === 'waiting_for_human' || runError !== null) && (
@@ -180,11 +182,11 @@ function UploadProgress({ data }: { data: OALoaderData }) {
             <h2 className="headline1" style={{ flex: '1 1 auto' }}>
               찾아온 자료
             </h2>
-            {/* 통지서에서 읽은 글자 그대로. 정리 결과가 있을 때만 */}
+            {/* 통지서에서 읽은 글자 (번호는 하이픈을 넣어 보임). 정리 결과가 있을 때만 */}
             {r && (
               <span className="label1 t3">
-                출원번호 {r.application_number.raw_text ?? r.application_number.value ?? '모름'} · 발송번호{' '}
-                {r.dispatch_number.raw_text ?? r.dispatch_number.value ?? '모름'}로 묶음
+                출원번호 {showApplicationNumber(r.application_number.raw_text ?? r.application_number.value ?? '모름')} · 발송번호{' '}
+                {showDispatchNumber(r.dispatch_number.raw_text ?? r.dispatch_number.value ?? '모름')}로 묶음
               </span>
             )}
           </div>

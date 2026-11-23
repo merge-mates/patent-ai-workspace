@@ -11,7 +11,7 @@ import type { ComparisonTable } from './types/generated/ComparisonTable'
 import type { DirectionCandidates } from './types/generated/DirectionCandidates'
 import type { JudgmentUnit } from './types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle } from './types/generated/LegalEvidenceBundle'
-import type { CaseSummary, OADetail, OAResultResponse } from './types/provisional/case'
+import type { CaseSummary, ConfirmationOut, OADetail, OAResultResponse } from './types/provisional/case'
 import type { CaseListExtra } from './types/provisional/caseListExtra'
 import type { CaseCheck, DraftsWithCheck } from './types/provisional/pending'
 import { seedRun } from './runPoll'
@@ -50,6 +50,8 @@ export interface OALoaderData {
   oa: OADetail
   // 실행이 아직 안 끝났거나(404 result_not_ready) 서버에 엔드포인트가 아직 없으면 null
   oaResult: OAResultResponse | null
+  // 정리 결과 "맞아요" 확인 상태. 정리 결과가 아직 없으면(result_not_ready) 또는 받지 못하면 null (받지 못한 것은 warnings에도)
+  confirmation: ConfirmationOut | null
   // 사건 자료 목록이 아직 없거나 서버에 엔드포인트가 아직 없으면 null
   materials: CaseMaterials | null
   // 검토할 사항 목록. 따로 받은 목록이 없으면 사건 자료 ⑥의 review_items. 그것도 None이면 null (개수와 상관없이 모름)
@@ -87,8 +89,10 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
   let draftCheckMissing = false
-  const [oaResult, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
+  const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(missingAsNull),
+    // 정리 확인: 결과가 아직 없으면 null, 그 밖의 오류는 모름(null) + 경고 (화면을 막지 않는다)
+    probe(api.getOAResultConfirmation(oa.oa_id)),
     // 사건 자료는 없어도 화면을 막지 않는다: 아직 없음·엔드포인트 없음(not_found)은 경고 없이 null, 그 밖의 오류는 null + 경고
     probe(api.getMaterials(oa.case_id), true),
     // 목록 엔드포인트가 API v0에 없거나 아직 없을 때만 null. 다른 오류는 오류 화면으로
@@ -126,6 +130,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     if (p.unknown) warnings.push(`${label} 결과를 받지 못했어요`)
     return p.value
   }
+  const confirmation = known(confirmationP, '정리 확인')
   const materials = known(materialsP, '사건 자료')
   // 목록 엔드포인트가 없으면(서버) ⑥의 review_items를 쓴다. None(모름)은 개수가 있어도 null로 둔다 (0건으로 그리지 않음)
   const reviewItems = reviewList ?? materials?.review_items ?? null
@@ -141,7 +146,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     directions: directionsP.unknown ? null : directions !== null,
     drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings }
+  return { oa, oaResult, confirmation, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings }
 }
 
 // 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)
