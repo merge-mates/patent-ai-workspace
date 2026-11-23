@@ -1,0 +1,16 @@
+# 법령 색인 law-idx-v3 설정 (#24 24d). 조문 + 심사기준 + 판례·심결. 설정을 바꾸면 새 판(v4)으로.
+# 임베딩 없음: F2 검색은 BM25 (11/23). vector가 필요해지면 새 판에서 채운다
+index_version: law-idx-v3
+raw_dir: data/raw/law
+laws:
+  - 특허법
+  - 특허법_시행령
+# 받지 못한 판의 시행일 (목록 data/raw/law/list_*.json과 대조, 11/23). 앞 판을 이날 전날에서 끊는다.
+# 안 그러면 앞 판이 다음에 받은 판 전날까지 "확인됨"으로 늘어난다
+missing_editions:
+  특허법: [2018-05-29, 2018-07-18, 2024-03-15, 2024-08-07, 2024-08-21, 2025-05-27, 2025-07-22, 2025-10-01]
+  특허법_시행령: [2018-04-24, 2018-07-18, 2019-07-09, 2020-07-14, 2022-04-20, 2022-11-01, 2024-01-01, 2024-07-10, 2024-08-07]
+parts:
+  - data/processed/law/guideline-v3.jsonl
+  - data/processed/law/precedent-v3.jsonl
+out: data/processed/law/law-idx-v3.jsonl
