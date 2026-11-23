@@ -153,14 +153,15 @@ graph LR
 - 먼저: task-4
 
 ### 진행
-- [ ] task-1
-- [ ] task-2
-- [ ] task-3
-- [ ] task-4
-- [ ] task-5
-- [ ] task-6
-- 다음: task-1·task-5
-- 막힌 것:
+- [x] task-1 (d022329, 리뷰 통과)
+- [x] task-2 (94f7726, 리뷰 고칠 것 2 → e8076d2)
+- [x] task-3 (e2055e1, 리뷰 고칠 것 3 → e8076d2)
+- [x] task-4 (de04ac3, 리뷰 고칠 것 1 → e8076d2. 계획 밖: `make_searcher`가 방식 라우터를 돌려줌 — hybrid 검색기가 bm25·vector 방식을 거부해 에이전트 검색 도구가 늘 실패할 뻔함)
+- [x] task-5 (5899404)
+- [x] task-6 (실험 넷 m3-i2-recheck-a·b·c·c-judge, smoke 1회씩)
+- 고침 묶음 e8076d2 재리뷰 통과. 테스트 폴더는 `tests/core/f3/recheck/`로 모음 (계획의 `tests/core/f3_claim_compare/recheck/` 대신, 기존 F3 테스트 폴더).
+- 다음: 309c (agent_steps 마이그레이션), 판정용 2회
+- 막힌 것: 없음. 남은 것: agent 근거 줄 why 글이 "1위"로 나옴(낸 순서), 보류된 구성요소 줄 status가 1차 "조회 범위 내 없음"으로 남음 [사람 판단], compare·embed 상한을 config/f3.yaml에서 올릴지 (지금은 실험 스크립트가 덮음)
 
 ## m3-i2-309c  (11/23)  상태: 승인 (재아 사전 승인 11/23, plan-reviewer 통과: 막음 없음, 고칠 것 15 반영)  (이슈 #309, Refs)  브랜치 `feat/309-recheck-steps` (309b 위에)
 **구현할 design 부분**: design.md 6절(저장), 5절 검색 범위(둘째 점수), 7-2 정밀도 판정   **맡은 합격 기준**: requirements.md 5, 7

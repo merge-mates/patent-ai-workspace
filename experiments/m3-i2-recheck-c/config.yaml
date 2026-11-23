@@ -1,0 +1,25 @@
+# 근거 다시 찾기 비교 (이슈 #309) 판 C: 에이전트 루프: tool use(search_bm25·search_vector·open_paragraph·submit·give_up), 판정은 compare
+# 판끼리 다른 줄은 recheck·recheck_judge 둘. 바꾼 줄 옆에 # changed (판 A 대비)
+experiment: m3-i2-recheck-c
+feature: f3
+baseline: m3-i2-recheck-a   # 같은 커밋의 판 A (지금 방식)
+goldset: tune
+goldset_version: 2
+impl: split_search
+index_version: cite-idx-v2
+k: 10
+settings:                 # config/f3.yaml + config/recheck.yaml (실행 스크립트가 판 값만 덮는다)
+  model: claude-haiku-5-5
+  effort: medium
+  search: hybrid (RRF)
+  use_examiner_paragraphs: false   # 채점 실행: 심사관 지정 번호를 입력에 주지 않음
+  second_search: true     # recheck가 none이 아니면 쓰지 않음 (design D11)
+  recheck: agent   # changed
+  recheck_judge: compare
+  recheck_limits: {tool_calls: 8, turns: 10}   # [가정] 구성요소 하나
+  step_limit_override: {f3.compare: 480, f3.compare_recall: 480, f3.embed: 1200}   # [가정] 판 넷 같게 실행 스크립트가 덮음 (config/f3.yaml 240·400은 다시 찾기 몫이 없음)
+runs: 1                   # smoke 1회 (판정용 2회는 두 사람 환경을 맞춘 뒤, eval 규칙의 2회 비교가 아님)
+runner: uv run python ../../repo/work/overnight_1123_recheck/run_recheck.py <out> --arm c --cache-dir <판 캐시> --workers 4   # git 밖, 판마다 캐시 따로. run_case fixed_order로 F1→F4
+budget:
+  max_usd: 3.0
+  max_external_calls: 2000
