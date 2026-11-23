@@ -1,7 +1,7 @@
 """agent_steps unit_id tool_input
 
 Revision ID: f1a6c3d8b905
-Revises: c7e2a5d9f103
+Revises: f1c8b3e7a925
 Create Date: 2026-11-23 20:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "f1a6c3d8b905"
-down_revision: str | Sequence[str] | None = "c7e2a5d9f103"
+down_revision: str | Sequence[str] | None = "f1c8b3e7a925"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
