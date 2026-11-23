@@ -100,6 +100,12 @@ def test_offline_sql_adds_invalid_kind_to_agent_steps():
     assert re.search(r"ALTER TABLE agent_steps ADD COLUMN invalid_kind TEXT", _offline_sql())
 
 
+def test_offline_sql_adds_nullable_recheck_columns_to_agent_steps():
+    sql = _offline_sql()
+    assert "ALTER TABLE agent_steps ADD COLUMN unit_id TEXT;" in sql
+    assert "ALTER TABLE agent_steps ADD COLUMN tool_input JSONB;" in sql
+
+
 # --- 이슈 #57 T5: 건너뛴 단계 ---
 
 

@@ -13,7 +13,8 @@ from collections.abc import Collection
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from patent_ai.core.agents.tool_loop import call_environment
+from patent_ai.core.agents.tool_loop import LoopStep, RecheckToolFailed, call_environment
+from patent_ai.core.bundle_errors import BUNDLE_ERRORS
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation
 from patent_ai.core.f3_claim_compare.elements import ClaimElement
 from patent_ai.core.f3_claim_compare.inputs import F3Settings
@@ -78,12 +79,14 @@ def fixed_loop_candidates(
     searcher: Searcher,
     search_log: list[SearchLogRow],
     queries_out: list[str] | None = None,
+    steps_out: list[LoopStep] | None = None,
 ) -> dict:
     """구성요소 하나 × 인용문헌 하나의 다시 찾기 후보 {chunk_id: _Candidate}.
 
     shown = 1차에 모델에 보여 준 조각 ID (후보에서 뺀다). item_n = 모델에 보여 주는 구성요소 번호.
     질의마다 검색 기록(round=2)을 search_log에 더한다. queries_out을 주면 다시 쓴 질의를 거기 담는다
     (부르는 쪽이 근거 줄·다시 찾기 기록에 질의를 적는다. 중간에 실패해도 쓴 질의까지는 남는다).
+    steps_out에는 실제 호출한 검색을 성공·실패와 함께 남긴다.
     """
     # compare.py가 이 모듈을 부르게 되면 맞물려 import되므로 함수 안에서 가져온다
     from patent_ai.core.f3_claim_compare.compare import (
@@ -98,16 +101,26 @@ def fixed_loop_candidates(
     if queries_out is not None:
         queries_out.extend(queries)
     mode = _mode(settings.search.impl)
+    tool_name = f"search_{mode}"
+    k = recheck.search.rewrite_k
     scope = _scope(cite, settings, recheck, len(queries))
     candidates: dict[str, _Candidate] = {}
     for query in queries:
         # 검색기·DB 예외는 그 구성요소만 tool_failed 보류가 되게 감싼다 (에이전트와 같은 함수)
-        result = call_environment(
-            f"{mode} 검색",
-            lambda q=query: searcher.search(
-                q, "cite", mode, recheck.search.rewrite_k, doc_ids=[cite.doc_id]
-            ),
-        )
+        logged = {"query": query, "k": k}
+        try:
+            result = call_environment(
+                f"{mode} 검색",
+                lambda q=query: searcher.search(q, "cite", mode, k, doc_ids=[cite.doc_id]),
+            )
+        except (*BUNDLE_ERRORS, RecheckToolFailed):
+            if steps_out is not None:
+                steps_out.append(LoopStep(1, tool_name, logged, [], True))
+            raise
+        if steps_out is not None:
+            steps_out.append(
+                LoopStep(1, tool_name, logged, [h.chunk_id for h in result.hits], False)
+            )
         fresh = [h for h in result.hits if h.chunk_id not in shown]
         search_log.append(
             SearchLogRow(

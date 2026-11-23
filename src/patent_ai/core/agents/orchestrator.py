@@ -210,6 +210,34 @@ def run_case(
             )
         )
 
+    def note_recheck_tools(f3_result) -> None:
+        """다시 찾기 도구 호출 줄을 run_f3 줄 바로 뒤에 호출 순서대로 옮겨 쓴다 (design 6절).
+
+        F3가 저장용으로 추린 도구 인자에 청구항·구성요소·인용문헌 식별 값을 붙인다.
+        """
+        for log in getattr(f3_result, "recheck_log", None) or []:
+            for call in log.steps:
+                steps.record(
+                    StepRecord(
+                        run_id=run_id,
+                        step_kind="code_tool",
+                        tool_name=f"recheck.{call['tool_name']}",
+                        reason="다시 찾기 도구",
+                        result_id=",".join(call.get("result_ids") or []) or None,
+                        outcome="failed" if call.get("is_error") else "ok",
+                        unit_id=log.unit_id,
+                        # 구성요소를 가리는 칸: 대비 청구항 + 구성요소의 청구항 + 그 안 순번
+                        # (묶음에 청구항이 여럿이면 순번만으로 겹친다. 검색 기록과 같은 값)
+                        tool_input={
+                            **(call.get("tool_input") or {}),
+                            "claim": log.claim,
+                            "element_claim": log.element_claim,
+                            "element_no": log.element_no,
+                            "citation": log.citation,
+                        },
+                    )
+                )
+
     def skip(
         name: str, skipped: dict[str, str], why: str, kind: str = "code_tool"
     ) -> dict[str, str]:
@@ -259,6 +287,8 @@ def run_case(
             note(tool.kind, name, reason, "failed", calls=calls_since(before))
             return {"error": _error(type(e).__name__, str(e))}
         note(tool.kind, name, reason, "ok", out.status.value, calls_since(before))
+        if name == "run_f3":
+            note_recheck_tools(out.result)
         trace.append(name)
         # 자르기(fixed_stage)는 지휘가 고른 것이 아니라서 max_steps에 세지 않는다
         counted = tool.kind == "code_tool"

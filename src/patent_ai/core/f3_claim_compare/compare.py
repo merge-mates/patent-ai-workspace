@@ -1176,7 +1176,9 @@ def compare_unit(
         _hold_error(seen, unit.unit_id, e)
         # BUNDLE_ERRORS는 모델 호출에서만 나므로 이 묶음은 모델을 부른 묶음으로 센다
         errors = [] if is_limit(e) else [e]
-        return CompareOutput(held_tasks=seen.held, call_errors=errors, units_tried=1)
+        return CompareOutput(
+            held_tasks=seen.held, call_errors=errors, units_tried=1, recheck_log=seen.recheck
+        )
 
 
 def _compare_unit(

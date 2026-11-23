@@ -224,7 +224,7 @@ def run_tool_loop(
             spec = by_name.get(use.get("name"))
             if spec is None:
                 content = f"없는 도구 {use.get('name')}. 쓸 수 있는 도구: " + ", ".join(by_name)
-                steps.append(LoopStep(turns, str(use.get("name")), {}, [], True))
+                steps.append(LoopStep(turns, "unknown_tool", {}, [], True))
                 results.append(_tool_result(use, content, True))
                 continue
             try:

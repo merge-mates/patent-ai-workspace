@@ -9,6 +9,8 @@ second_search는 안 돎, 근거 0개 구성요소만 다시 찾음, 구성요�
 import functools
 import json
 
+import pytest
+
 from patent_ai.core.agents import step_inputs
 from patent_ai.core.bundle_errors import held_error_status
 from patent_ai.core.f3_claim_compare.compare import STEP, compare_unit, make_searcher
@@ -477,16 +479,33 @@ def test_fixed_loop_평소는_다시_쓴_질의로_찾아_compare가_다시_판�
         "submitted",
         ["수조"],
     )
+    assert log.tool_calls == 1
+    assert log.steps == [
+        {
+            "turn": 1,
+            "tool_name": "search_hybrid",
+            "tool_input": {"query": "수조", "k": 10},
+            "result_ids": [P40, P31, FIG4, P23],
+            "is_error": False,
+        }
+    ]
     assert _rechecked_holds(out) == []
 
 
 def test_fixed_loop의_검색이_예외를_던지면_그_구성요소만_tool_failed이고_1차_대비표는_남는다():
     # 리뷰 막음(#329): 방식과 상관없이 그 구성요소만 tool_failed 보류 (requirements)
-    searcher = _Searcher({"수조": RuntimeError("DB 끊김")})
-    responses = {STEP: [FIRST], REWRITE: [_rewrite(["수조"])]}
+    searcher = _Searcher({"끊긴 질의": RuntimeError("DB 끊김")})
+    responses = {STEP: [FIRST], REWRITE: [_rewrite(["수조", "끊긴 질의", "다음 질의"])]}
     out, _, _, unit_id = _run(_settings("fixed_loop"), responses, searcher=searcher)
     assert [h.task for h in _rechecked_holds(out)] == [_task(unit_id, "tool_failed")]
     assert out.tables == _baseline().tables
+    (log,) = out.recheck_log
+    assert log.tool_calls == 2
+    assert [(s["tool_input"]["query"], s["is_error"]) for s in log.steps] == [
+        ("수조", False),
+        ("끊긴 질의", True),
+    ]
+    assert log.steps[-1]["result_ids"] == []
 
 
 def test_fixed_loop에서_새_조각이_0개면_보류_없이_조회_범위_내_없음이다():
@@ -524,6 +543,30 @@ def test_fixed_loop_호출_상한이면_limit_reached로_보류한다():
 
 
 # ---- 독립항 건너뜀 판단은 다시 찾은 뒤 결과로 ----
+@pytest.mark.parametrize(
+    "failure",
+    [ModelCallFailed("끊김"), ModelCallLimitExceeded("f3.compare", 1, 1)],
+)
+def test_뒤_청구항_호출_실패나_상한에도_앞_청구항_다시_찾기_로그는_남는다(failure):
+    claims = {
+        **CLAIMS,
+        3: "제1항에 있어서, 뚜껑을 더 포함하는 화분.",
+    }
+    splits = {**SPLITS, 3: split(3, ["뚜껑"], [1])}
+    result = oa([rejection(1, "29-2", [1, 3], [citation("D1", D1)])])
+    responses = {STEP: [FIRST, FOUND40, failure], AGENT: _found_turns()}
+    out, transport, _, _ = _run(_settings(), responses, result=result, splits=splits, claims=claims)
+    assert len(_compare_calls(transport)) == 3
+    assert out.held_tasks
+    (log,) = out.recheck_log
+    assert log.claim == 1
+    assert [s["tool_name"] for s in log.steps] == [
+        "search_vector",
+        "open_paragraph",
+        "submit_evidence",
+    ]
+
+
 def test_다시_찾아_독립항이_무너지면_종속항을_건너뛰지_않고_대비한다():
     claims = {
         1: "화분에 있어서, 습도 센서; 및 물통을 포함하는 화분.",
