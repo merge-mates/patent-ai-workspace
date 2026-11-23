@@ -21,12 +21,13 @@ export interface CoverageModel {
   unknown: number
 }
 
-// 묶음(unit_id)에서 지금 고른 후보
+// 묶음(unit_id)에서 지금 고른 후보. 직접 쓴 방향(written)이면 후보는 없지만 "안 고름"이 아니다
 function selectedCandidate(directions: DirectionCandidates[], unitId: string | undefined) {
-  if (unitId === undefined) return { known: false, cand: null }
+  if (unitId === undefined) return { known: false, cand: null, written: false }
   const g = directions.find((d) => d.unit_id === unitId)
   const cand = g?.candidates.find((c) => c.candidate_id === g.selection?.candidate_id) ?? null
-  return { known: g !== undefined, cand }
+  const written = g?.selection?.origin === 'human_written'
+  return { known: g !== undefined, cand, written }
 }
 
 export function buildCoverage(
@@ -69,7 +70,14 @@ export function buildCoverage(
         const how = sel.cand ? coarseLabel[sel.cand.coarse] : hit.where
         cells[no] = { kind: 'done', text: how ? `대응함 · ${how}` : '대응함' }
       } else if (hit) {
-        cells[no] = { kind: 'pending', text: sel.known && sel.cand === null ? '남음 · 방향 안 고름' : '남음 · 초안에 안 적음' }
+        cells[no] = {
+          kind: 'pending',
+          text: sel.written
+            ? '남음 · 직접 쓴 방향(직접 대응)'
+            : sel.known && sel.cand === null
+              ? '남음 · 방향 안 고름'
+              : '남음 · 초안에 안 적음',
+        }
       } else {
         unknown += 1
         cells[no] = { kind: 'unknown', text: '확인되지 않음 · 검사 결과 없음' }
@@ -113,11 +121,11 @@ export function buildFixes(
     if (c.covered || unsupported.includes(c.rejection)) continue
     const unitId = drafts.claims.find((x) => x.claim === c.claim)?.unit_id
     const sel = selectedCandidate(directions, unitId)
-    const noPick = sel.known && sel.cand === null
+    const noPick = sel.known && sel.cand === null && !sel.written
     out.push({
       key: `cov-${c.rejection}-${c.claim}`,
       tag: 'missing',
-      title: `거절이유 ${c.rejection} × 청구항 ${c.claim} · ${noPick ? '대응 방향을 안 골랐어요' : '초안에 대응을 안 적었어요'}`,
+      title: `거절이유 ${c.rejection} × 청구항 ${c.claim} · ${noPick ? '대응 방향을 안 골랐어요' : sel.written ? '직접 쓴 방향이라 AI 초안 없음 · 직접 대응해 주세요' : '초안에 대응을 안 적었어요'}`,
       action: noPick ? { kind: 'pick' } : undefined,
     })
   }

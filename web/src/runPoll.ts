@@ -18,6 +18,8 @@ export interface RunSnapshot {
   // 넘긴 단계 (GET /runs/{id}의 skipped_steps). latest_run에는 없어서 succeeded를 처음 보면 한 번 받아 온다.
   // 넘김을 "끝남"으로 보이지 않으려고 쓴다 (이슈 #260)
   skipped: SkippedStep[]
+  // 화면이 방금 방향을 고르거나 직접 써서 시작한 작은 실행(초안만 다시 만듦)인가. 새로고침하면 잊는다 (모듈 메모리)
+  fromSelection: boolean
 }
 
 // 더 이상 바뀌지 않는 상태 (waiting_for_human은 사람이 고를 때까지 멈춘 것으로 본다)
@@ -53,7 +55,7 @@ export function seedRun(run: LatestRun) {
   const e = entries.get(run.run_id)
   if (!e) {
     entries.set(run.run_id, {
-      snap: { run, error: null, reason: null, waitingFor: null, skipped: [] },
+      snap: { run, error: null, reason: null, waitingFor: null, skipped: [], fromSelection: false },
       listeners: new Set(),
       timer: null,
       reasonAsked: false,
@@ -72,6 +74,7 @@ export function seedRun(run: LatestRun) {
       reason: run.state === 'failed' ? e.snap.reason : null,
       waitingFor: run.state === 'waiting_for_human' ? e.snap.waitingFor : null,
       skipped: e.snap.skipped, // 넘긴 단계는 실행 하나에 쌓이기만 한다 (다시 돌리면 run_id가 새로 생김)
+      fromSelection: e.snap.fromSelection, // loader가 같은 run_id로 다시 불러도 표시는 지우지 않는다
     }
     // 상태가 바뀌면(예: 사람 기다림 → 실패) 이유를 다시 받는다
     if (stateChanged || hadError || !needsDetail(run.state)) e.reasonAsked = false
@@ -89,6 +92,26 @@ function askReason(runId: string) {
   if (!e || !needsDetail(e.snap.run.state) || e.reasonAsked) return
   e.reasonAsked = true
   void refresh(runId, false)
+}
+
+// 방향 고르기·직접 쓰기(PUT /directions/{unit_id}/selection)가 시작한 작은 실행을 표시한다.
+// 사건 머리·단계 막대·방향 화면이 같이 읽는다. 아직 모르는 run_id면 queued로 시작한다
+export function markSelectionRun(runId: string) {
+  const e = entries.get(runId)
+  if (!e) {
+    seedRun({ run_id: runId, state: 'queued', current_step: null })
+    const created = entries.get(runId)
+    if (created) created.snap = { ...created.snap, fromSelection: true }
+    return
+  }
+  if (e.snap.fromSelection) return
+  e.snap = { ...e.snap, fromSelection: true }
+  notify(e)
+}
+
+// 고르기로 시작한 작은 실행이 아직 도는 중인가 (succeeded·failed·cancelled가 되면 거짓)
+export function isSelectionRunActive(snap: RunSnapshot | null): boolean {
+  return snap !== null && snap.fromSelection && (snap.run.state === 'queued' || snap.run.state === 'running')
 }
 
 export function getRunSnapshot(runId: string): RunSnapshot | null {
@@ -153,7 +176,7 @@ async function refresh(runId: string, force: boolean) {
       e.snap.waitingFor !== waitingFor ||
       !sameSkipped(e.snap.skipped, skipped)
     ) {
-      e.snap = { run, error: null, reason, waitingFor, skipped }
+      e.snap = { run, error: null, reason, waitingFor, skipped, fromSelection: e.snap.fromSelection }
       notify(e)
     }
     // 이유·넘긴 단계를 방금 받았다: 끝난 상태면 뒤따르는 seedRun(revalidate)이 같은 것을 또 묻지 않게 한다

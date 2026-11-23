@@ -24,6 +24,7 @@ import type {
   OAResultResponse,
   RunStatus,
   CreatedRun,
+  SelectionResult,
   NumberEnteredOut,
   ConfirmationOut,
 } from '../types/provisional/case'
@@ -98,10 +99,9 @@ const httpApi: typeof mockApi = {
     return { chat_id: res.chat_id, answer: res.result, scope_changed: res.scope_changed }
   },
   getDirections: (oaId) => getResult<DirectionCandidates>(`/oas/${oaId}/directions`),
-  selectDirection: (unitId, candidateId) =>
-    sendJson<DirectionCandidates>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, {
-      candidate_id: candidateId,
-    }),
+  // 후보 id 또는 직접 쓴 방향 글 하나를 보낸다. 응답의 run_id는 초안만 다시 만드는 새 작은 실행
+  selectDirection: (unitId, body) =>
+    sendJson<SelectionResult>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, body),
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
   getDrafts: (oaId) => getDraftsResult(oaId),
   // 고친 뒤 받은 초안도 같은 가드를 거친다
