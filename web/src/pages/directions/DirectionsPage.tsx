@@ -18,12 +18,13 @@ import {
   rebuttalTypeLabel,
   rejectionKindLabel,
   sourceKindLabel,
+  waitingForLabel,
   LOW_CONFIDENCE_TEXT,
 } from '../../labels'
 import type { DirectionsLoaderData, OALoaderData } from '../../loaders'
-import { markSelectionRun } from '../../runPoll'
+import { getRunSnapshot, markSelectionRun } from '../../runPoll'
 import { selectionErrorText } from '../../selectionError'
-import type { SelectionBody } from '../../types/provisional/case'
+import type { LatestRun, SelectionBody } from '../../types/provisional/case'
 import { useRunSnapshot } from '../../useRunSnapshot'
 import type { Evidence1 } from '../../types/generated/ComparisonTable'
 import type { DirectionCandidate, DirectionCandidates, DirectionSelection } from '../../types/generated/DirectionCandidates'
@@ -184,12 +185,31 @@ export function DirectionsPage() {
   const [justChosen, setJustChosen] = useState<Record<string, { selection: DirectionSelection; runId: string }>>({})
   // 그 OA의 최근 실행이 도는 동안은 못 고른다 (서버는 409 run_in_progress)
   const runSnap = useRunSnapshot(oa.latest_run)
-  const runState = runSnap?.run.state
-  const rebuilding = runState === 'queued' || runState === 'running'
+  // 방금 PUT으로 받은 새 실행: revalidate가 끝나기 전에는 oa.latest_run이 아직 옛 실행이라, 그 사이에도 이 실행을 구독해 본다.
+  // (구독은 useSyncExternalStore라 이 실행의 상태가 바뀌면 다시 그려진다. revalidate 뒤 latest_run이 같은 실행이 되면 같은 스냅숏이다)
+  const [pendingRun, setPendingRun] = useState<LatestRun | null>(null)
+  const pendingSnap = useRunSnapshot(pendingRun)
+  const isBuildingState = (s: string | undefined) => s === 'queued' || s === 'running'
+  // 그 선택이 묶인 실행의 스냅숏: 지금 latest_run이면 그것, 아직 아니면 방금 받은 새 실행.
+  // 방금 받은 실행은 도는 동안(틈)만 쓴다: 끝나면 runPoll이 revalidate해 latest_run이 따라오고,
+  // 그 뒤 다른 실행(다시 돌리기 등)으로 넘어가면 옛 작은 실행의 "반영 중"·"반영되지 않음"이 남지 않게 한다
+  const snapOf = (runId: string) =>
+    runSnap?.run.run_id === runId
+      ? runSnap
+      : pendingSnap?.run.run_id === runId && isBuildingState(pendingSnap.run.state)
+        ? pendingSnap
+        : null
+  // 막기: 서버 ACTIVE_STATES(queued·running·waiting_for_human)와 같다. waiting_for_human에 고르면 서버가 409
+  const blocked =
+    isBuildingState(runSnap?.run.state) || runSnap?.run.state === 'waiting_for_human' || isBuildingState(pendingSnap?.run.state)
+  // 초안을 만드는 중: 번호를 기다리는 동안은 만드는 중이 아니라서 따로 둔다 ("반영 중"·"만드는 중" 글에만 쓴다)
+  const rebuilding = isBuildingState(runSnap?.run.state) || isBuildingState(pendingSnap?.run.state)
   // 지금 실행이 이 화면에서 고른 작은 실행인가 (그 밖의 실행: 다시 돌리기 등)
-  const ownRun = runSnap?.fromSelection === true
+  const ownRun = runSnap?.fromSelection === true || (isBuildingState(pendingSnap?.run.state) && pendingSnap?.fromSelection === true)
   // 저장 중인 묶음들 (여러 묶음을 빨리 골라도 서로 덮지 않게 묶음마다 따로)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  // 누르기 막기: 실행이 막는 동안 + 어느 묶음이든 저장(PUT)이 오가는 동안 (그 사이 다른 묶음을 누르면 서버가 409)
+  const locked = blocked || Object.values(saving).some(Boolean)
   const [checkOpen, setCheckOpen] = useState(false)
   // 문서 번호 → 인용발명 이름 (대비표 줄의 근거와 citation 이름으로 맞춘다)
   const citeNames = new Map<string, string>()
@@ -212,6 +232,9 @@ export function DirectionsPage() {
       // 다시 받은 OA의 latest_run이 그 실행이라 사건 틀이 구독하고, 끝나면 runPoll이 방향·초안을 다시 받게 한다
       // (사건 틀의 "직접 할 일" 개수는 실행이 끝나 loader가 새 선택을 받아야 줄어든다)
       markSelectionRun(saved.run_id) // 사건 머리·단계 막대도 읽는 곳에 "고르기로 시작한 작은 실행"으로 넣는다
+      // revalidate가 끝나기 전 틈에도 이 실행을 보게 한다 (markSelectionRun이 queued로 넣어 둔 값)
+      const seeded = getRunSnapshot(saved.run_id)
+      if (seeded) setPendingRun(seeded.run)
       revalidator.revalidate()
       return true
     } catch (e) {
@@ -246,12 +269,16 @@ export function DirectionsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {/* 서버는 작은 실행이 끝날 때까지 옛 선택을 돌려준다: 끝나면 고른 선택이 여기에 보인다 */}
-      {rebuilding && (
+      {blocked && (
         <Alert
           type="info"
           showIcon
           message={
-            ownRun ? '고른 방향으로 초안을 만드는 중이에요 · 끝나면 선택이 여기에 보여요' : '실행 중이라 지금은 고를 수 없어요 · 끝난 뒤 골라 주세요'
+            rebuilding
+              ? ownRun
+                ? '고른 방향으로 초안을 만드는 중이에요 · 끝나면 선택이 여기에 보여요'
+                : '실행 중이라 지금은 고를 수 없어요 · 끝난 뒤 골라 주세요'
+              : `${waitingForLabel(runSnap?.waitingFor ?? null)} 중이라 지금은 고를 수 없어요 · 입력하고 실행이 끝난 뒤 골라 주세요`
           }
         />
       )}
@@ -265,9 +292,11 @@ export function DirectionsPage() {
       {directions.map((d, idx) => {
         const sel = d.selection
         const mine = justChosen[d.unit_id]
-        const live = mine !== undefined && mine.runId === runSnap?.run.run_id // 그 선택이 묶인 실행이 지금 실행일 때만
-        const just = live && rebuilding ? mine.selection : undefined
-        const dropped = live && (runState === 'failed' || runState === 'cancelled') // 서버가 선택을 버린 경우
+        const mineSnap = mine !== undefined ? snapOf(mine.runId) : null // 그 선택이 묶인 실행 (아직 latest_run이 아니어도 찾는다)
+        const live = mine !== undefined && mineSnap !== null
+        const mineState = mineSnap?.run.state
+        const just = live && isBuildingState(mineState) ? mine.selection : undefined
+        const dropped = live && (mineState === 'failed' || mineState === 'cancelled') // 서버가 선택을 버린 경우
         const justName = d.candidates.find((c) => c.candidate_id === just?.candidate_id)?.name
         const picked = d.candidates.find((c) => c.candidate_id === sel?.candidate_id)
         return (
@@ -347,7 +376,7 @@ export function DirectionsPage() {
               </span>
               <Radio.Group
                 value={just ? just.candidate_id : (sel?.candidate_id ?? null)}
-                disabled={saving[d.unit_id] === true || rebuilding}
+                disabled={locked}
                 onChange={(e) => choose(d, e.target.value as string)}
                 options={d.candidates.map((c) => ({
                   label: (
@@ -369,7 +398,7 @@ export function DirectionsPage() {
               <div>
                 <Button
                   type={!sel && !just && d.flags.includes('needs_human_judgment') ? 'primary' : 'default'}
-                  disabled={saving[d.unit_id] === true || rebuilding}
+                  disabled={locked}
                   onClick={() => setWriting((prev) => ({ ...prev, [d.unit_id]: sel?.written_direction ?? '' }))}
                 >
                   직접 쓰기
@@ -384,7 +413,7 @@ export function DirectionsPage() {
                   onChange={(e) => setWriting((prev) => ({ ...prev, [d.unit_id]: e.target.value }))}
                 />
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button type="primary" size="small" loading={saving[d.unit_id] === true} disabled={rebuilding} onClick={() => void saveWritten(d)}>
+                  <Button type="primary" size="small" loading={saving[d.unit_id] === true} disabled={locked && saving[d.unit_id] !== true} onClick={() => void saveWritten(d)}>
                     저장
                   </Button>
                   <Button size="small" onClick={() => closeWriting(d.unit_id)}>

@@ -226,9 +226,9 @@ export const mockApi = {
     if (!entry || !found) throw new ApiError('unit_not_found', '판단 단위를 찾을 수 없습니다', 404)
     const b = await byOA(entry[0])
     flushPending(b)
-    // 서버처럼 실행이 도는 동안은 못 고른다
+    // 서버처럼 실행이 도는 동안은 못 고른다 (서버 ACTIVE_STATES: queued·running·waiting_for_human)
     const now = runOf(b).state
-    if (now === 'queued' || now === 'running') throw new ApiError('run_in_progress', '이미 진행 중인 실행이 있습니다', 409)
+    if (now === 'queued' || now === 'running' || now === 'waiting_for_human') throw new ApiError('run_in_progress', '이미 진행 중인 실행이 있습니다', 409)
     // 서버와 같게: 후보 id 또는 직접 쓴 글, 정확히 하나 (빈 글·둘 다·둘 다 없음은 422 invalid_selection)
     const raw = body as { candidate_id?: string | null; written_direction?: string | null }
     const candidateId = raw.candidate_id ?? null

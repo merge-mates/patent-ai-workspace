@@ -72,10 +72,10 @@ function stepItems(
       return { ...base, status: 'wait', disabled: true }
     }
     // queued · running
-    // 초안 단계는 결과가 있어도 실행이 도는 동안은 옛 초안일 수 있다. latest_run에는 실행 종류(작은 실행·전체)가 없어서
-    // 화면이 고르기로 시작한 작은 실행(smallRun)일 때만 "다시 만드는 중"이라 하고, 그 밖에는 "이전 결과"로 보인다
+    // 고르기로 시작한 작은 실행(smallRun)은 초안만 다시 만드니 4단계(초안)만 "다시 만드는 중"으로 보인다.
+    // latest_run에는 실행 종류가 없어서, 그 밖의 실행(전체 다시 돌리기 등)은 4단계도 다른 단계처럼 doneText·finish로 두고
+    // 지금 도는 단계 이름(stepText)을 초안 단계에 붙이지 않는다
     if (ready[i] && i === 3 && smallRun) return { ...base, description: <>{run.current_step ? stepText : <div>다시 만드는 중</div>}</>, status: 'process' }
-    if (ready[i] && i === 3) return { ...base, description: <><div>이전 결과</div>{stepText}</>, status: 'process' }
     if (ready[i]) return { ...base, description: doneText, status: 'finish' }
     if (i === firstMissing) return { ...base, description: <><div>찾는 중</div>{stepText}</>, status: 'process', disabled: true }
     return { ...base, description: '대기', status: 'wait', disabled: true }
