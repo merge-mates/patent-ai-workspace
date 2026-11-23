@@ -26,7 +26,7 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ValidationError
 
 from patent_ai.core.agents.step_inputs import InputMissing, f2_input, f3_input, f4_input
-from patent_ai.core.agents.steps import StepRecord, StepRecorder
+from patent_ai.core.agents.steps import LIMIT_PREFIX, StepRecord, StepRecorder
 from patent_ai.core.agents.tools import ToolOutputInvalid, ToolRegistry, register_f1_tools
 from patent_ai.core.agents.tools_f2 import register_f2_tools
 from patent_ai.core.agents.tools_f3 import register_f3_tools
@@ -145,6 +145,11 @@ def _error(code: str, message: str) -> dict:
     return {"code": code, "message": message}
 
 
+def limit_reason(step: str, e: ModelCallLimitExceeded) -> str:
+    """호출 상한 이유 글: 단계·상한 이름·상한 숫자만. 예외 글(str(e))은 쓰지 않는다 (#241)."""
+    return f"{LIMIT_PREFIX}{step} 호출 상한 {e.limit} {e.limit_value}에 닿음"
+
+
 def run_case(
     case_input: CaseInput,
     oa_id: str,
@@ -222,6 +227,22 @@ def run_case(
         before = model_calls()
         try:
             out = tool.run(payload, ctx)
+        except ModelCallLimitExceeded as e:
+            if name != "read_oa":
+                # 묶음 밖의 다른 단계(F3·F2·F4 등)는 이 이슈 범위 밖이라 기존대로 failed
+                note(tool.kind, name, reason, "failed", calls=calls_since(before))
+                return {"error": _error(type(e).__name__, str(e))}
+            # F1 읽기가 상한이면 보여 줄 정리가 없다: 실패로 끝내되 이유는 limit_reached (ADR 0003)
+            why = limit_reason(name, e)
+            note(
+                tool.kind,
+                name,
+                why,
+                "limit_reached",
+                StatusValue.UNVERIFIED.value,
+                calls_since(before),
+            )
+            return {"error": _error("limit_reached", why)}
         except _TOOL_ERRORS as e:
             note(tool.kind, name, reason, "failed", calls=calls_since(before))
             return {"error": _error(type(e).__name__, str(e))}
@@ -260,6 +281,28 @@ def run_case(
             before = model_calls()
             try:
                 action = _ask_model(registry, state, ctx)
+            except ModelCallLimitExceeded as e:
+                why = limit_reason("decide", e)
+                note("decide", "decide", why, "limit_reached", calls=calls_since(before))
+                if "read_oa" in state["results"]:
+                    # OA 정리가 있으면 거기서 멈추고 성공으로 둔다. 아직 결과도 넘김도 없는
+                    # F3·F2·F4는 같은 이유로 못 돈 단계로 남긴다 (단계마다 code_tool 줄 하나)
+                    for name in ("run_f3", "run_f2", "run_f4"):
+                        if (
+                            name in code_tools
+                            and name not in state["results"]
+                            and name not in skipped
+                        ):
+                            note(
+                                "code_tool",
+                                name,
+                                why,
+                                "limit_reached",
+                                StatusValue.UNVERIFIED.value,
+                            )
+                            skipped = {**skipped, name: why}
+                    return {"next_tool": "stop", "skipped": skipped}
+                return {"error": _error("limit_reached", why)}
             except _TOOL_ERRORS as e:
                 note("decide", "?", "지휘 모델 실패", "failed", calls=calls_since(before))
                 return {"error": _error(type(e).__name__, str(e))}

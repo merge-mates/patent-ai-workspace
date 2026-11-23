@@ -16,8 +16,10 @@ from patent_ai.api.deps import (
     get_upload_dir,
 )
 from patent_ai.api.main import create_app
+from patent_ai.core.agents.orchestrator import limit_reason
 from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.store import InMemoryCaseAppStore, InMemoryRunStore
+from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.runs.cancel import CancelRegistry
 from patent_ai.core.runs.executor import Step, StepRunExecutor
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
@@ -304,6 +306,32 @@ def test_넘긴_단계가_있으면_succeeded와_skipped_steps_warnings가_보�
         {"code": "step_skipped", "message": "run_f3 단계를 건너뜀: 자료 없음"}
     ]
     assert len(env.sink.saved) == 1  # 넘겨도 결과는 저장된다
+
+
+def test_호출_상한_이유면_경고_코드가_limit_reached다(env):
+    reason = limit_reason("decide", ModelCallLimitExceeded("max_model_calls", 3, 2))
+    env.steps = [skipping_step("run_f3", reason), Step("거절이유 정리 중", lambda: None)]
+    created = env.upload()
+    body = env.client.get(f"/runs/{created['run_id']}").json()
+    assert body["state"] == "succeeded"
+    assert body["skipped_steps"] == [{"step": "run_f3", "reason": reason}]
+    assert [w["code"] for w in body["warnings"]] == ["limit_reached"]
+    assert body["warnings"][0]["message"].startswith("run_f3 단계를 호출 상한으로 못 돌림")
+
+
+def test_실행이_failed면_limit_reached_줄은_skipped_steps_warnings에서_빠진다(env):
+    reason = limit_reason("read_oa", ModelCallLimitExceeded("max_model_calls", 3, 2))
+    env.steps = [
+        skipping_step("run_f3", "tool_missing: 도구 없음"),
+        skipping_step("read_oa", reason),
+        raising_step("OA 읽는 중", RuntimeError("실패")),
+    ]
+    created = env.upload()
+    body = env.client.get(f"/runs/{created['run_id']}").json()
+    assert body["state"] == "failed"
+    # error와 겹치는 상한 줄은 뺀다. 다른 넘긴 단계는 그대로
+    assert body["skipped_steps"] == [{"step": "run_f3", "reason": "tool_missing: 도구 없음"}]
+    assert [w["code"] for w in body["warnings"]] == ["step_skipped"]
 
 
 def test_넘긴_단계가_없으면_skipped_steps_warnings는_빈_목록(env):

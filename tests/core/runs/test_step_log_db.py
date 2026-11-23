@@ -273,3 +273,20 @@ def test_실행_뒤_결과를_저장한_단계의_result_id가_그_step_results_
     assert set(saved) == {"f2", "f3", "f4"}
     linked = {r.tool_name: r.result_id for r in steps if r.result_id is not None}
     assert linked == {"run_f2": saved["f2"], "run_f3": saved["f3"], "run_f4": saved["f4"]}
+
+
+def test_limit_reached_code_tool_줄은_skipped_steps에_나오고_decide_줄은_안_나온다(factory):  # noqa: F811
+    _, rid = _new_run(factory, "db_steplog_" + "l" * 20)
+    rec = PostgresStepRecorder(factory)
+    why = "limit_reached: decide 호출 상한 max_model_calls 2에 닿음"
+    rec.record(
+        _step(rid, "run_f3", "limit_reached", result_status="unverified").model_copy(
+            update={"reason": why}
+        )
+    )
+    rec.record(
+        StepRecord(
+            run_id=rid, step_kind="decide", tool_name="decide", reason=why, outcome="limit_reached"
+        )
+    )
+    assert PostgresRunStatusStore(factory).skipped_steps(rid) == [SkippedStep("run_f3", why)]
