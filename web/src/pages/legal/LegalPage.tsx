@@ -19,6 +19,7 @@ const WHEN_OPTIONS = [
 interface Turn {
   text: string
   answer: LegalEvidenceBundle
+  scopeChanged: boolean // 앞 질문과 시점·자료 유형이 바뀌어 새 범위로 찾았는가
 }
 
 // 법률 질문 (사건 없이, 디자인 PQuestion): 질문·답 쌍이 위에서 아래로 쌓이고, 입력줄은 맨 아래에 붙는다
@@ -42,7 +43,7 @@ export function LegalPage() {
     try {
       const res = await api.askLegal({ text: q, as_of: when === 'pick' ? asOf : null, source_kinds: kinds }, chatId ?? undefined)
       setChatId(res.chat_id)
-      setTurns([...turns, { text: q, answer: res.answer }])
+      setTurns([...turns, { text: q, answer: res.answer, scopeChanged: res.scope_changed }])
       setText('')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -98,6 +99,9 @@ export function LegalPage() {
             >
               <span className="body2">{t.text}</span>
             </div>
+            {t.scopeChanged && (
+              <Alert type="info" showIcon banner message="앞 질문과 시점·자료 유형이 바뀌어 새 범위로 찾았어요" />
+            )}
             <LegalBundleView b={t.answer} />
           </div>
         ))}

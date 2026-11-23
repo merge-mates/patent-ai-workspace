@@ -17,12 +17,14 @@ import type {
   CreatedCase,
   CreatedOA,
   LegalAnswer,
+  LegalChatAnswerResponse,
   LegalChatView,
   UploadedDocument,
   OADetail,
   OAResultResponse,
   RunStatus,
   CreatedRun,
+  SelectionResult,
   NumberEnteredOut,
   ConfirmationOut,
 } from '../types/provisional/case'
@@ -88,18 +90,18 @@ const httpApi: typeof mockApi = {
   getComparisons: (oaId) => getResult<ComparisonTable>(`/oas/${oaId}/comparisons`),
   getClarityReviews: (oaId) => getResult<ClarityReview>(`/oas/${oaId}/clarity-reviews`),
   getLegalEvidence: (oaId) => getResult<LegalEvidenceBundle>(`/oas/${oaId}/legal-evidence`),
-  // 법률 질문 (필드는 F2 설계 때 바뀔 수 있음): chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
+  // 법률 질문: chatId가 없으면 대화를 새로 만들고, 있으면 그 대화에 이어 묻는다
   // (질문마다 새 대화를 만들면 두 번째 질문부터 앞 맥락이 끊긴다)
+  // 서버 응답 {chat_id, no, scope_changed, result}의 result(법률 근거 묶음)가 화면의 answer다
   askLegal: async (q, chatId): Promise<LegalAnswer> => {
     const id = chatId ?? (await postJson<{ chat_id: string }>('/legal-chats', {})).chat_id
-    const answer = await postJson<LegalEvidenceBundle>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
-    return { chat_id: id, answer }
+    const res = await postJson<LegalChatAnswerResponse>(`/legal-chats/${encodeURIComponent(id)}/messages`, q)
+    return { chat_id: res.chat_id, answer: res.result, scope_changed: res.scope_changed }
   },
   getDirections: (oaId) => getResult<DirectionCandidates>(`/oas/${oaId}/directions`),
-  selectDirection: (unitId, candidateId) =>
-    sendJson<DirectionCandidates>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, {
-      candidate_id: candidateId,
-    }),
+  // 후보 id 또는 직접 쓴 방향 글 하나를 보낸다. 응답의 run_id는 초안만 다시 만드는 새 작은 실행
+  selectDirection: (unitId, body) =>
+    sendJson<SelectionResult>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, body),
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
   getDrafts: (oaId) => getDraftsResult(oaId),
   // 고친 뒤 받은 초안도 같은 가드를 거친다
@@ -139,7 +141,7 @@ const httpApi: typeof mockApi = {
   // PUT 본문에 사람이 본 정리의 run_id를 보낸다. 그 사이 정리가 바뀌었으면 서버가 409 stale_result로 막는다 (#311)
   confirmOAResult: (oaId, runId) =>
     sendJson<ConfirmationOut>('PUT', `/oas/${encodeURIComponent(oaId)}/oa-result/confirmation`, { run_id: runId }),
-  // GET /legal-chats/{id}: 대화 보기 (응답 모양 미정)
+  // GET /legal-chats/{id}: 대화 보기
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }
 

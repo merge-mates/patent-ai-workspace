@@ -1,3 +1,13 @@
 # F2 법률 근거 조사 설정 (core/f2_legal_research/run.py가 읽는다). 걷는 뼈대 m2-i3: 모델 호출 없음.
 # 법령 색인 판 (law corpus). 심사기준·판례가 들어오는 law-idx-v3(#24) 뒤 이 줄을 바꾼다
 index_version: law-idx-v2
+# 법률 질문 탭(chat.py): 조문 번호 없는 질문을 BM25로 찾을 때 가져올 조문 수
+chat_search_k: 3
+# 법률 질문 검색기: 검색 방식과 낱말 자르기 (기준선 m2-i2-law-bm25-char-bigram). 지금은 bm25만 된다 (search_article·주장 글이 bm25 고정, 다른 방식은 29b)
+search_method: bm25
+tokenizer: char_bigram
+bm25:
+  method: lucene
+  k1: 1.5
+  b: 0.75
+  unique_query_terms: true   # 질의에 되풀이된 낱말을 한 번만 센다 (false면 tune Hit@1 0.632 → 0.211)

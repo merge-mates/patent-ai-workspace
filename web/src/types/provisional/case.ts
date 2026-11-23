@@ -2,7 +2,8 @@
 // 서버 응답 스키마(#56·#57)가 생기면 OpenAPI에서 뽑은 타입으로 바꿈. 손으로 오래 두지 않는다.
 // 결과 본문(OAResult·CaseMaterials·ReviewItem)은 types/generated/ 의 뽑은 타입을 쓴다.
 import type { CaseMaterials } from '../generated/CaseMaterials'
-import type { LegalEvidenceBundle } from '../generated/LegalEvidenceBundle'
+import type { DirectionSelection } from '../generated/DirectionCandidates'
+import type { LegalEvidenceBundle, LegalQuestion } from '../generated/LegalEvidenceBundle'
 import type {
   ExtractedValueStr,
   NoticeKind,
@@ -49,6 +50,16 @@ export interface SkippedStep {
 // 화면은 이 값을 읽지 않고 다시 불러온 OA의 latest_run 으로 실행을 구독한다
 export interface CreatedRun {
   run_id: string
+}
+
+// PUT /directions/{unit_id}/selection 본문 (서버 SelectionIn): 후보 id 또는 직접 쓴 방향 글, 정확히 하나
+export type SelectionBody = { candidate_id: string } | { written_direction: string }
+
+// PUT /directions/{unit_id}/selection 응답 (서버 SelectionOut). run_id는 초안만 다시 만드는 새 작은 실행이라 화면이 폴링한다
+export interface SelectionResult {
+  unit_id: string
+  run_id: string
+  selection: DirectionSelection
 }
 
 // PATCH /oas/{id} (발송번호 입력) 응답: docs/api/openapi.yaml NumberEnteredOut.
@@ -153,11 +164,32 @@ export interface UploadedDocument {
   result: CaseMaterials
 }
 
-// 법률 질문 답: 이어 묻기가 되도록 대화 ID(chat_id)와 같이 돌려준다 (임시: F2 설계 때 정함)
+// 법률 질문 답(화면용): 이어 묻기가 되도록 대화 ID(chat_id)와 같이 돌려준다
 export interface LegalAnswer {
   chat_id: string
   answer: LegalEvidenceBundle
+  scope_changed: boolean // 앞 질문과 시점·자료 유형이 바뀌었는가 (서버가 알려 줌)
 }
 
-// GET /legal-chats/{id}: 대화 보기. 응답 모양이 명세에 없다 (임시: F2 설계 때 정함).
-export type LegalChatView = { chat_id?: string } & Record<string, unknown>
+// POST /legal-chats/{id}/messages 응답: 묶음은 result에 담긴다 (docs/api/README.md)
+export interface LegalChatAnswerResponse {
+  chat_id: string
+  no: number
+  scope_changed: boolean // 앞 질문과 시점 또는 자료 유형이 달라졌는가
+  result: LegalEvidenceBundle
+}
+
+// GET /legal-chats/{id}: 대화 보기
+export interface LegalChatView {
+  chat_id: string
+  case_id: string | null
+  created_at: string
+  turns: {
+    no: number
+    question: LegalQuestion
+    scope_changed: boolean
+    created_at: string
+    result: LegalEvidenceBundle
+  }[]
+  prior_evidence: string[] // 앞 턴에서 확인된 색인 조각 ID
+}

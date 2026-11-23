@@ -212,3 +212,58 @@ graph LR
 - [ ] 24d: task-d1 · task-d2
 - 다음: #291 리뷰·머지, 24d
 - 막힌 것: 없음
+
+## m3-i2-29a  (11/23)  상태: 승인 (11/23 은진 "승인할게 가자")  (이슈 #29, 계획 둘 = PR 둘. 29a는 Refs, 29b가 Closes #29)
+**구현할 design 부분**: 3-2 `LegalChat`(여러 번 묻고 답하기, `prior_evidence`), 5절 `legal_chats` 표, 2절 1·3·4단계를 사용자 질문에 (질문 읽기의 조문 번호 꼴 맞추기, 검색, 출처 확인)
+**맡은 합격 기준**: #29 본문 2(조회 범위 내 없음 ↔ 확인되지 않음 + 이유), 3(사건에 적용된다는 문장 없음), 11/17 멀티턴. 1(주입 오류 탐지율)은 29b.
+**목표** (한 줄): 화면 법률 질문 탭이 부르는 `/legal-chats` 세 엔드포인트를 만들고, 모델 호출 없이 질문 하나마다 출처 확인을 지난 조문 근거 묶음(④)을 돌려주고 저장한다 (E2E 막힘 풀기).
+**끝나면 보여 줄 것**: `uv run pytest tests/api/test_legal_chats_api.py tests/core/f2` → 대화를 만들고 "특허법 제29조제2항"을 물으면 그 조문 근거 묶음, 이어 묻기에서 시점을 바꾸면 `scope_changed = true`, `GET`으로 다시 열어도 같다. 화면은 법률 질문 탭 스크린샷.
+**어림 크기**: 코드 약 350줄 + 테스트 약 300줄. 400줄을 넘지만 셋이 이어져야 탭이 돌아서 PR 하나, 커밋별 리뷰 순서(task 순서)를 PR 본문에 적는다.
+**공유 자원**: 마이그레이션 하나 (`legal_chats`·`legal_chat_turns`). `down_revision = f1c8b3e7a925` (처음 c7e2a5d9f103, 11/23 #303 머지 뒤 맞춤).
+**29a에서 줄인 것** (design과 다르게, 29b에서 채움):
+- 주장 글은 모델이 쓰지 않는다. 주장 = 번호로 읽은 조문은 "질문에서 찾은 조문: <조문> (<판본>)", 검색으로 찾은 조문은 "질문 글로 검색한 조문 (BM25 상위 <k>): <조문> (<판본>)" 한 줄, 근거 = 그 조각. 근거 검토 전이라 `review = null` + `needs_human_review` (m2-i3 OA 흐름과 같은 규칙).
+- 심사기준·판례·심결은 OA 흐름처럼 `search_not_indexed` (status `unverified(body_missing)`). 질문 글 속 자연어 시점("2020년 기준")과 선택 조건이 부딪힐 때의 `clarifications`도 29b (29a는 선택 조건 시점만 읽는다).
+- 질문 하나 = 실행 하나(`runs`)는 29b. 29a는 모델을 안 불러 금방 끝나므로 요청 안에서 바로 답한다 (화면 `askLegal`이 답을 바로 받는 모양).
+- 지난 질문 목록(`GET /legal-chats`)과 답 맨 위 한 문장 답·"한 일" 줄은 #264 (#239 뒤, 이 계획이 먼저). 29a는 대화·턴마다 `created_at`을 저장해 #264가 "대화는 최근 것이 앞, 한 대화 안 질문은 질문 순서"로 읽을 수 있게만 한다.
+- 0개면 질의를 바꿔 한 번 더 찾기(design 2절 3단계)는 29b.
+- `prior_evidence`: 앞 답에서 출처 확인을 지난 조각 ID를 모은다. 바뀐 시점에서 시행판이 아닌 조각은 `further_review`(`edition_out_of_scope`)로 보인다. 시행판인 앞 조각을 다시 후보로 넣는 것은 답 쓰기가 붙는 29b.
+
+```mermaid
+graph LR
+    task-1 --> task-3
+    task-2 --> task-3
+```
+
+### task-1: 사용자 질문 → 근거 묶음 (코드, 모델 없음)
+- 합격 기준: #29 2·3, 멀티턴 조건 물려받기
+- 고칠 파일: `src/patent_ai/core/f2_legal_research/refs.py`(`article_refs_in_text`), `src/patent_ai/core/f2_legal_research/chat.py`(새), `tests/core/f2/test_f2_refs.py`, `tests/core/f2/test_f2_chat.py`(새)
+- 만들 것:
+  - `article_refs_in_text(text) -> list[ArticleRef]`: 글 속 `특허법 제29조제2항`·`제42조 제4항 제2호`·`29조 2항` 꼴을 `ArticleRef`로 (법 이름이 없으면 특허법, 다른 법 이름이 붙으면 버림). 같은 조·항은 하나로.
+  - `ChatAsk(text, as_of: date | None | 빠짐, source_kinds: list | 빠짐)`: 요청 본문. 빠진 칸은 앞 질문을 물려받고, `source_kinds = []`는 전부.
+  - `next_question(prev: LegalQuestion | None, ask) -> (LegalQuestion, scope_changed)`: `as_of`가 있으면 `user_condition`, 없으면 `none`(현행). 앞 질문과 시점·자료 유형이 다르면 `scope_changed = true`.
+  - `answer_question(question, *, bundle_id, pool, searcher, checked_on, prior_evidence) -> LegalEvidenceBundle`: 검색 기준일 = `as_of` 또는 `checked_on`(design 4절). 법령을 찾으면: 글에 조문 번호가 있으면 `get_article`, 없으면 `search_article`(BM25, k = `config/f2.yaml` `chat_search_k`). 근거마다 `check_source`, 통과한 것만 주장에. 심사기준·판례·심결은 `search_not_indexed`. 주장 0개면 `not_found_in_scope`(+ 찾아본 범위) 또는 그 이유의 `unverified`. `prior_evidence` 중 기준일 판이 아닌 조각 → `further_review(edition_out_of_scope)`.
+- 테스트할 경우: 조문 꼴 셋 + 다른 법 버림 + 중복 합침 / 조건 물려받기·덮기·`scope_changed` / 조문 번호 질문 → 그 조문 confirmed 근거 + needs_human_review / 번호 없는 질문 → BM25 상위 조문 / 판 없음 → `unverified(edition_unknown)`, 어느 판에도 없음 → `not_found_in_scope` / 법령을 안 고르면 법령을 안 찾음 / 심사기준 등 body_missing 기록 / 주장 글에 "적용" 판단 문장이 없음 / 앞 조각이 기준일 밖 → further_review
+- 확인 방법: `uv run pytest tests/core/f2`
+
+### task-2: 대화 저장 (`legal_chats` 표)
+- 고칠 파일: `src/patent_ai/db/migrations/versions/20261123_<rev>_legal_chats.py`, `src/patent_ai/db/models/legal_chats.py`(새, `models/__init__.py`에 등록), `src/patent_ai/core/f2_legal_research/chat_store.py`(Protocol + 메모리), `chat_store_pg.py`(Postgres), `docs/data-model.md`(6절 "법률 질문 대화의 칸"), 테스트 `tests/core/f2/test_chat_store.py`, `tests/core/f2/test_chat_store_db.py`(`@pytest.mark.db`)
+- 표: `legal_chats(chat_id PK, case_id NULL, created_at)`, `legal_chat_turns(chat_id FK, no, question JSONB, scope_changed, bundle JSONB, created_at, PK(chat_id, no))`. 묶음은 턴 줄에 둔다 (`legal_evidence_bundles` 표는 OA 흐름이 `step_results`를 쓰고 있어 아직 없다).
+- 저장소: `create(case_id) -> chat_id`, `get(chat_id) -> LegalChat | None`, `add_turn(chat_id, turn)`. 되읽을 때 스키마 검사, 못 읽으면 오류로 (조용히 빈 대화 안 됨).
+- 테스트할 경우: 만들기·턴 더하기·되읽기(메모리·DB) / 없는 대화 None / 턴 번호 1부터 이어짐
+- 확인 방법: `uv run pytest tests/core/f2/test_chat_store.py` + PR 전용 test DB에서 `make test-db`
+
+### task-3: `/legal-chats` API + 화면 연결
+- 고칠 파일: `src/patent_ai/api/legal_chats.py`(새), `api/main.py`, `api/deps.py`, `docs/api/README.md`(법률 질문 표·응답 예시), `web/src/api/index.ts`(`askLegal`이 `result`를 꺼냄), `web/src/types/provisional/case.ts`(`LegalChatView`), `web/src/api/mock.ts`(모양 맞춤), `tests/api/test_legal_chats_api.py`(새)
+- 모양: `POST /legal-chats` `{case_id?}` → 201 `{chat_id}`. `POST /legal-chats/{id}/messages` `{text, as_of?, source_kinds?}` → 200 `{chat_id, no, scope_changed, result: ④}`. `GET /legal-chats/{id}` → `{chat_id, case_id, turns: [{no, question, scope_changed, result}], prior_evidence}`. 오류 404 `chat_not_found`, 422 `invalid_question`(빈 글). 법령 색인을 못 읽으면 묶음이 `unverified(body_missing)` + 경고 (run_f2와 같음).
+- 테스트할 경우: 만들기 → 묻기 → 보기 / 이어 묻기 scope_changed / 없는 대화 404 / 빈 글 422 / 색인 없음 → body_missing 묶음
+- 확인 방법: `uv run pytest tests/api/test_legal_chats_api.py`, `npm run build`(web), 화면 스크린샷
+
+### 진행
+- [x] task-1 (c8aa508, 리뷰 반영 c21d845: 옛 시점 BM25 0개는 `unverified(edition_unknown)`, 검색 조문 문구 나눔)
+- [x] task-2 (2f5c49f, 마이그레이션 `d4a8c2e6b915`. 저장소 모양은 계획과 조금 다름: `create(case_id, now) -> LegalChat`, `add_turn(chat_id, question, scope_changed, bundle, now) -> LegalChatTurn`. 시각을 밖에서 받아 테스트가 쉬움)
+- [x] task-3 (087cefa·0e033fa, 리뷰 반영 e369f10: 색인 캐시는 메모리 조각만 두고 DB 세션을 닫음(`PostgresChunkRepository.close()` 추가), 요청 스키마를 OpenAPI에 실음). 저장본 못 읽음은 500 `chat_corrupt`
+- 다음: PR #316 머지 (/check 통과. task별·이슈 리뷰를 합쳐 막음 2·고칠 것 8 반영, 이 중 이슈 전체 리뷰는 막음 1·고칠 것 3: 6db2177·ee3ad79·4d38f38, 재리뷰 통과. 재아 리뷰 고칠 것 2 반영)
+- 막힌 것: 없음
+
+## m3-i2-29b  (뒤에)  상태: 계획 전  (이슈 #29, Closes)
+- 답 쓰기(모델) + 근거 검토 에이전트(`split`/`code_only`, `config/f2.yaml` `impl`), 질문 하나 = 실행 하나(`runs`·`agent_steps`), 자연어 시점과 `clarifications`, 주입 오류 탐지율(#35 정답, `feature: f2` 채점기). `run_f2`와 `answer_question` 두 진입점을 design 7-1 `research()` 하나로 모은다. 29a 머지 뒤 계획을 쓴다.

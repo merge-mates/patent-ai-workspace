@@ -58,7 +58,7 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | GET | `/oas/{oa_id}/legal-evidence` | ④ 법률 근거 묶음 (OA 흐름에서 지휘 에이전트가 자동으로 찾은 것) |
 | GET | `/oas/{oa_id}/directions` | ⑤ 대응 방향 후보 |
 | GET | `/oas/{oa_id}/drafts` | 의견서·보정 청구항 초안. 초안 검사 결과(누락·번호 불일치)는 #40 전까지 응답에 없다 |
-| GET | `/oas/{oa_id}/case-check` | 사건 전체 검사 (스키마는 F4 설계 때) |
+| GET | `/oas/{oa_id}/case-check` | 사건 전체 검사. 응답 `{oa_id, run_id, items[{name, result: ok·warn·fail, detail}], unsupported_rejections}` (OA 정리와 같은 실행). 지금 검사하는 규칙은 지원 안 하는 거절이유·두 묶음이 같은 청구항을 고친 것 둘이고, 아직 검사하지 않는 규칙은 `ok`로 두지 않고 `warn` + `확인되지 않음`이다. 칸은 F4 설계(#39)에서 정해지면 바꾼다. 오류: 404 `oa_not_found`·`result_not_ready` |
 
 ### 사람이 하는 것
 | 메서드 | 경로 | 하는 일 |
@@ -68,14 +68,14 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 | PATCH | `/oas/{id}` | 본문 `{dispatch_number}`. 발송번호를 기다리는 실행에 넣고 이어 돌린다. 응답·남기는 방식은 위와 같다. 오류: 404 `oa_not_found`, 409 `not_waiting`, 422 `invalid_dispatch_number`, 500 `human_input_not_saved` |
 | PUT | `/oas/{id}/oa-result/confirmation` | 정리 결과 "맞아요": 사람이 본 OA 정리를 확인했다고 남긴다. 본문 `{run_id}` (화면에 보이던 정리를 낸 실행, 필수. 없으면 422). 그 `run_id`가 지금 보이는 정리의 실행과 다르면(그 사이 다시 돌림) 확인을 남기지 않고 409 `stale_result`. 응답 `{oa_id, run_id, confirmed_at}`. 다시 보내면 시각만 새로 남는다. 다른 실행의 정리가 보이게 되면(다시 돌림) 확인은 그 실행 것이 아니라 비어 보인다. 오류: 404 `oa_not_found`·`result_not_ready`, 409 `stale_result` |
 | GET | `/oas/{id}/oa-result/confirmation` | 지금 보이는 OA 정리를 사람이 확인했는지. `{oa_id, run_id, confirmed_at}`, 확인 전이면 `confirmed_at: null`. 오류: 404 `oa_not_found`·`result_not_ready` |
-| PATCH | `/drafts/{draft_id}` | 사람이 초안을 고친다. AI 원본 값은 남긴다. 중간 결과(F1·F2·F3)는 고치지 않는다 |
+| PATCH | `/drafts/{draft_id}` | 사람이 초안을 고친다. 본문은 `{section, text}`(의견서 칸 key) 또는 `{claim, text}`(보정 청구항 번호) 중 하나. AI 원문 `ai_text`는 그대로 두고 `human_text`·`origin = human_edited`만 바꾼다. AI 원문과 같은 글을 보내면 고친 것을 되돌린다. 고치는 초안은 지금 보이는 실행(OA 정리와 같은 실행)의 초안이고, 다시 열면(`GET /oas/{oa_id}/drafts`) 고친 글이 나온다. 응답은 고친 `Drafts` 전체. 중간 결과(F1·F2·F3)는 고치지 않는다. 오류: 404 `draft_not_found`(없는 초안·결과 전·F4 넘김), 409 `run_in_progress`(그 OA에 진행 중 실행: 끝나면 새 초안이 보여 고친 글이 가려지므로 막음), 422 `claim_not_editable`(없는 번호·보류된 청구항)·`invalid_draft_edit`(칸·번호 중 하나가 아님, 없는 칸, 빈 글)·`validation_error`(`text` 없음) |
 
-### 법률 질문 (자리만, 필드와 여러 번 묻고 답하는 방식은 F2 설계 때)
+### 법률 질문 (사건 없이도 여러 번 묻고 답한다, 이슈 #29)
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
-| POST | `/legal-chats` | 대화 만들기 |
-| POST | `/legal-chats/{id}/messages` | 질문 보내기 |
-| GET | `/legal-chats/{id}` | 대화 보기 |
+| POST | `/legal-chats` | 대화 만들기. 본문 `{case_id?}`(없어도 됨). 201 `{chat_id}`. 오류: 404 `case_not_found` |
+| POST | `/legal-chats/{id}/messages` | 질문 보내기. 본문 `{text, as_of?, source_kinds?}`. `as_of`·`source_kinds`는 빠지면 앞 질문 것을 물려받고(첫 질문은 현행·전부), `as_of: null`은 현행으로 덮고, `source_kinds: []`는 전부다. 200 `{chat_id, no, scope_changed, result}`이고 `result`는 법률 근거 묶음(`LegalEvidenceBundle`)이다. `scope_changed`는 앞 질문과 시점 또는 자료 유형이 달라졌는지다. 조문 일부만 찾으면 못 찾은 조문도 근거 없는 주장으로 남고 묶음 status는 그중 가장 나쁜 값이다. 글에 조문 번호가 있으면 그 조문을, 없으면 BM25로 찾은 조문을 근거로 준다(심사기준·판례·심결은 아직 검색 전이라 `body_missing`으로 기록만). 법령 색인을 못 읽으면 200 + 주장 없는 묶음 + `unverified(body_missing)`다. 오류: 404 `chat_not_found`, 422 `invalid_question`(빈 글·잘못된 값·JSON 객체 아님), 500 `chat_corrupt`(저장된 대화를 못 읽음) |
+| GET | `/legal-chats/{id}` | 대화 보기. `{chat_id, case_id, created_at, turns: [{no, question, scope_changed, created_at, result}], prior_evidence}`. 오류: 404 `chat_not_found`, 500 `chat_corrupt`(저장된 턴을 스키마대로 못 읽음, 빈 대화로 돌려주지 않음) |
 
 ### 그 밖
 | 메서드 | 경로 | 하는 일 |
@@ -111,6 +111,11 @@ FastAPI 관례대로 Pydantic 클래스는 스키마, SQLAlchemy 클래스는 �
 OA 보기 (`GET /oas/{oa_id}`):
 ```json
 {"oa_id": "oa_1", "case_id": "c_1", "case_name": "출원번호 확인 전", "document_id": "doc_1", "latest_run": {"run_id": "r_1", "state": "queued", "current_step": null}, "dispatch_number": null}
+```
+
+법률 질문 답 (`POST /legal-chats/{id}/messages`):
+```json
+{"chat_id": "lc_1", "no": 2, "scope_changed": true, "result": {"...": "LegalEvidenceBundle (데이터 모델 4절 ④)"}}
 ```
 
 오류:

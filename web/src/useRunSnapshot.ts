@@ -18,7 +18,7 @@ export function useRunSnapshot(loaderRun: LatestRun | null): RunSnapshot | null 
   if (snap) return snap
   let f = fallbacks.get(loaderRun)
   if (!f) {
-    f = { run: loaderRun, error: null, reason: null, waitingFor: null, skipped: [] }
+    f = { run: loaderRun, error: null, reason: null, waitingFor: null, skipped: [], fromSelection: false }
     fallbacks.set(loaderRun, f)
   }
   return f

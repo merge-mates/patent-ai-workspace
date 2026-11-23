@@ -417,6 +417,10 @@ class PostgresChunkRepository:
         engine = create_engine(url or get_settings().database_url)
         return cls(Session(engine))
 
+    def close(self) -> None:
+        """읽기가 끝나면 세션(연결)을 돌려준다."""
+        self._session.close()
+
     def _where(
         self,
         corpus: Corpus,
