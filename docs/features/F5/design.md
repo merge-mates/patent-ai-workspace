@@ -132,7 +132,9 @@ flowchart LR
 | AI가 만든 값 | `origin = ai_generated` | 판(카드) 머리에 "AI 결과" 한 번 (`AiResultMark`, `Marks.tsx`. 칸마다 아님) |
 | 날짜·제출기일 | F1 `value = null`, `raw_text`만 | 원문 글자 + "직접 확인" 꼬리표, 계산한 날짜를 보이지 않음 |
 | 지원 안 하는 거절이유·나라 | `flags: needs_human_review` | "직접 검토 필요" 꼬리표 (나라는 "지원 안 하는 나라 · 직접 확인"), AI 대비·초안 없음 |
-| 출원번호 입력 기다림 | 실행 `waiting_for_human`, `waiting_for: application_number` | 사건 머리에 입력 칸 (`PATCH /cases/{id}`) |
+| 출원번호 입력 기다림 | 실행 `waiting_for_human`, `waiting_for: application_number` | 사건 머리·올리기 화면에 입력 칸 (`PATCH /cases/{id}`) |
+| 발송번호 입력 기다림 | 실행 `waiting_for_human`, `waiting_for: dispatch_number` (출원번호를 먼저 묻고 그다음) | 진행 단계 "정리"에 "발송번호 입력 기다림", 사건 머리·올리기 화면에 입력 칸 (`PATCH /oas/{id}`, 넣으면 기다리던 같은 실행이 이어 돈다). AI가 읽은 값은 상태·후보와 "직접 확인" 꼬리표로 옆에 (PR #312 `NumberInputForm.tsx`) |
+| 정리 결과 맞아요 | `PUT·GET /oas/{id}/oa-result/confirmation` (`confirmed_at`, 확인 전이면 null). 확인은 그 정리를 낸 실행(`run_id`)에 붙는다. 다른 실행의 정리가 보이면 확인 전으로 보인다 | 정리 단계 머리에 "정리 결과 맞아요" 버튼, 누른 뒤엔 "직접 확인함"(사람 꼬리표 `HumanTag`, AI 결과 꼬리표와 다름) + 확인 시각 + "다시 확인". 실행이 도는 동안은 막음, 확인 여부를 못 받으면 "확인 여부 (모름)" (PR #312 `OAResultConfirm.tsx`). 정리가 맞다는 사람 기록일 뿐, 법적 판단이 아니다 |
 | (M3) 대응 방향 | `origin = ai_default` / `human_selected`, `needs_human_judgment` | "AI 기본값"(점선 꼬리표) / "사람이 고름"(채운 꼬리표, 1등과 같아도) / 초안은 "사람이 고침 N곳", 직접 판단 필요 묶음은 선택 없이 "고르기" (#43, PR #153 `DirectionTags.tsx`) |
 - 금지 글자: "적용된다", "등록 가능", "적법", "거절 해소" 같은 법적 결론을 AI 결과 글로 보이지 않는다.
 
