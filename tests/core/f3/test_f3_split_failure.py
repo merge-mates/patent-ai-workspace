@@ -11,7 +11,7 @@ import pytest
 from patent_ai.core.llm.config import load_step_config
 from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.transport import TransportError, TransportResponse
-from patent_ai.core.schemas.common import StatusValue
+from patent_ai.core.schemas.common import Flag, StatusValue, UnverifiedReason
 from tests.core.f3 import scenario
 from tests.core.f3.run_helpers import run_scenario
 
@@ -39,9 +39,36 @@ def test_다시_부른_답이_JSON이_아니면_그_청구항만_보류하고_�
     assert held is not None
     assert held.waiting_for.startswith("원문 확인 필요")
     assert "ModelOutputInvalid" in held.waiting_for  # 이유가 남는다
-    # 청구항 1은 끝까지 대비한다 (청구항 2는 나눈 결과가 없어 단위에 못 들어감)
+    # 청구항 1은 끝까지 대비한다 (청구항 2는 혼자 단위로 남지만 구성요소가 없어 대비 보류)
     assert [t.unit_id for t in result.comparisons] == ["oa_1:29-2:c1"]
     # 조용히 성공으로 두지 않는다 (이유는 결과 전체 status가 고른 값. 보류는 위에서 봄)
+    assert result.status.value == StatusValue.UNVERIFIED
+
+
+def test_독립항_나누기가_실패하면_그를_인용하는_청구항도_혼자_단위로_남고_확인되지_않음이다():
+    # 독립항 1의 두 답이 모두 비어 실패하고 종속항 2는 나뉜다 (인용 관계 [1]).
+    # build_units는 인용 관계를 끝까지 모르는 청구항을 빼지 않고 혼자 단위로 둔다 (units.py)
+    answers = scenario.responses()
+    answers["f3.split_elements"] = [
+        EMPTY,
+        EMPTY,
+        scenario._split(2, [scenario.MODULE], [1], "제1항에 있어서"),
+    ]
+    answers["f3.compare"] = answers["f3.compare"][1:]  # 청구항 1은 구성요소가 없어 안 부름
+    result, _ = run_scenario(answers=answers)
+    assert _held(result, "f3_split:oa_1:claim1:call_failed") is not None
+    units = {u.unit_id: u for u in result.units}
+    # 진보성은 독립항 묶음이 아니라 청구항마다 혼자 단위, 명확성 단위도 남는다
+    assert sorted(units) == ["oa_1:29-2:c1", "oa_1:29-2:c2", "oa_1:42-4-2:c2"]
+    alone = units["oa_1:29-2:c2"]
+    assert alone.claims == [2] and alone.representative_claim == 2
+    for unit in units.values():
+        assert unit.status.value == StatusValue.UNVERIFIED
+        assert unit.status.reason == UnverifiedReason.INPUT_UNVERIFIED
+        assert Flag.NEEDS_HUMAN_REVIEW in unit.flags
+    # 청구항 1 단위는 대비하지 못해 보류, 종속항 2는 부모 구성요소 없이 혼자 대비된다
+    assert _held(result, "f3_compare:oa_1:29-2:c1:claim1") is not None
+    assert [t.unit_id for t in result.comparisons] == ["oa_1:29-2:c2"]
     assert result.status.value == StatusValue.UNVERIFIED
 
 

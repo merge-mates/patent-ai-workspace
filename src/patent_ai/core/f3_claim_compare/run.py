@@ -92,9 +92,11 @@ def _split_claims(
             split = split_elements(claim, claims[claim], numbers, ctx=ctx)
         except BUNDLE_ERRORS as e:
             # 청구항 하나의 호출 실패(다시 부른 답도 JSON·스키마가 틀림 / 전송 오류)는
-            # 그 청구항만 보류한다 (#317, 묶음 규칙 #166 (가)와 같음). 그 청구항을 인용하는
-            # 청구항은 인용 관계를 몰라 단위에 들어가지 않는다 (build_units가 보류로 남김).
-            # 호출 상한은 실패가 아니라 limit_reached 보류다 (ADR 0003, 대비·명확성과 같음)
+            # 그 청구항만 보류한다 (#317, 묶음 규칙 #166 (가)와 같음). 그 청구항과 그를
+            # 인용하는 대상 청구항은 인용 관계를 몰라 빠지지 않고 혼자 단위가 된다
+            # (build_units: 확인되지 않음 + 직접 검토 필요. 독립항이 실패하면 종속항은
+            # 부모 구성요소 없이 혼자 대비된다). 호출 상한은 실패가 아니라
+            # limit_reached 보류다 (ADR 0003, 대비·명확성과 같음)
             held.append(hold_for_error("f3_split", f"{oa.oa_id}:claim{claim}", e))
             if not is_limit(e):
                 errors.append(e)
