@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# 호출 상한 이유 글의 앞머리 (#241). 지휘가 붙이고 실행기·경고·빈 이유가 이것으로 알아본다
+LIMIT_PREFIX = "limit_reached: "
+
 
 class StepRecord(BaseModel):
     run_id: str
@@ -16,22 +19,31 @@ class StepRecord(BaseModel):
     # 돌리지 않고 넘긴 단계(outcome skipped)는 넘긴 이유 ("tool_missing: …", "input_unverified: …")
     reason: str
     result_status: str | None = None  # 결과 status 값. 실패하면 None
-    # 만든 결과 ID (step_results.id). 기록은 단계가 끝날 때 먼저 남고, 실행기가 결과를 저장한 뒤
-    # link_result로 붙인다 (#267). 결과를 안 만든 단계(skipped·failed)와 read_oa는 None
+    # 일반 단계는 결과 저장 뒤 link_result로 step_results.id를 붙인다 (#267).
+    # 다시 찾기 도구는 그때 돌려받은 조각 ID를 쉼표로 이어 남긴다.
     result_id: str | None = None
     model_call_count: int | None = None  # 이 단계의 실제 전송 시도 수. 셀 수 없는 기록기면 None
-    # ok = 돌았음 / failed = 실패 / waiting = 사람을 기다림 / skipped = 자료·도구가 없어 넘김.
-    # DB agent_steps.outcome 검사 제약도 skipped를 받는다 (#187 마이그레이션)
-    outcome: Literal["ok", "failed", "waiting", "skipped"]
+    # ok = 돌았음 / failed = 실패 / waiting = 사람을 기다림 / skipped = 자료·도구가 없어 넘김 /
+    # limit_reached = 모델 호출 상한에 닿아 못 돎 (reason에 단계·상한 이름·숫자만, #241).
+    # DB agent_steps.outcome 검사 제약도 두 값을 받는다 (#187·#241 마이그레이션)
+    outcome: Literal["ok", "failed", "waiting", "skipped", "limit_reached"]
     # 다시 찾기 도구 줄(tool_name "recheck.<도구>")에서만 채운다. 옛 줄은 None.
-    # tool_input은 질의·ID·element_no·citation만 (원문 문단 글·quote·why는 넣지 않는다)
+    # tool_input은 길이를 제한한 도구 인자와 청구항·구성요소·인용문헌 식별 값을 담는다.
     unit_id: str | None = None
     tool_input: dict | None = None
 
     @property
     def skipped_reason(self) -> str | None:
-        """넘긴 단계면 그 이유. 이 값이 있으면 그 단계 결과는 없다 (성공이 아니다)."""
-        return self.reason if self.outcome == "skipped" else None
+        """넘긴 단계(skipped·limit_reached)면 그 이유. 이 값이 있으면 결과가 없다.
+
+        skipped는 단계 종류를 안 가린다 (고정 단계도 넘길 수 있다. store_pg와 같은 규칙).
+        limit_reached는 code_tool 줄만: decide 줄은 넘긴 단계가 아니다 (code_tool 줄이 따로 남는다).
+        """
+        if self.outcome == "skipped":
+            return self.reason
+        if self.outcome == "limit_reached" and self.step_kind == "code_tool":
+            return self.reason
+        return None
 
 
 class StepRecorder(Protocol):

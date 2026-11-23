@@ -16,6 +16,7 @@ from patent_ai.core.cases.results import InMemoryOAResultStore
 from patent_ai.core.cases.run_inputs import RunInputNotFound
 from patent_ai.core.cases.selections import InMemorySelectionStore
 from patent_ai.core.cases.step_results import InMemoryStepResultStore
+from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.runs.cancel import CancelRegistry, request_cancel
 from patent_ai.core.runs.run_case_executor import RunCaseExecutor
 from patent_ai.core.runs.state import RunState
@@ -204,6 +205,28 @@ def test_run_case_단계가_실패하면_failed이고_예외_원문은_이유에
     assert "비밀 원문 문장" not in st.error["message"]
     assert env.oa_results.saved == []
     assert env.step_results.step_result(RID, "f3") is None
+
+
+def test_run_case_F1_읽기가_호출_상한에_닿으면_failed_limit_reached이고_원문은_이유에_없다(
+    tmp_path, monkeypatch
+):
+    wire(monkeypatch)
+    secret = "비밀 원문 문장" * 20
+
+    def over(*a, **k):
+        e = ModelCallLimitExceeded("max_model_calls", 3, 2)
+        e.args = (secret,)  # str(e)에 원문이 섞여도 이유에는 없어야 한다
+        raise e
+
+    monkeypatch.setattr("patent_ai.core.f1_oa_reader.read_oa.read_oa", over)
+    env = Env(tmp_path)
+    st = env.run()
+    assert st.state == RunState.FAILED
+    assert st.error["code"] == "limit_reached"
+    assert not st.error["message"].startswith("limit_reached")  # 코드는 error.code에만
+    assert "read_oa" in st.error["message"] and "max_model_calls" in st.error["message"]
+    assert "2" in st.error["message"] and secret[:10] not in st.error["message"]
+    assert env.oa_results.saved == []
 
 
 def test_run_case_이미_있는_OA면_failed_oa_already_exists(tmp_path, monkeypatch):

@@ -20,7 +20,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from patent_ai.core.agents.tool_loop import RecheckToolFailed
+from patent_ai.core.agents.tool_loop import LoopStep, RecheckToolFailed
 from patent_ai.core.bundle_errors import BUNDLE_ERRORS, CALL_FAILED, LIMIT_REACHED, TOOL_FAILED
 from patent_ai.core.f3_claim_compare.citations import ResolvedCitation
 from patent_ai.core.f3_claim_compare.compare import (
@@ -37,7 +37,7 @@ from patent_ai.core.f3_claim_compare.compare import (
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Settings
 from patent_ai.core.f3_claim_compare.recheck.agent import AgentRun, run_cite_agent
 from patent_ai.core.f3_claim_compare.recheck.fixed_loop import fixed_loop_candidates
-from patent_ai.core.f3_claim_compare.recheck.tools import Submitted
+from patent_ai.core.f3_claim_compare.recheck.tools import QUERY_MAX, SUBMIT_MAX, Submitted
 from patent_ai.core.f3_claim_compare.result import RecheckLogRow, SearchLogRow
 from patent_ai.core.f3_claim_compare.retry import confirmed, unverified
 from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short, text_hash
@@ -94,10 +94,30 @@ class _Trace:
     queries: list[str] = field(default_factory=list)
     tool_calls: int = 0
     turns: int = 0
-    steps: list[dict] = field(default_factory=list)
+    steps: list[LoopStep] = field(default_factory=list)
     submitted_ids: list[str] = field(default_factory=list)
     reason: str | None = None
     outcome: str = "submitted"
+
+
+def _recorded_step(step: LoopStep) -> dict:
+    """F3 결과와 DB 단계 기록에 공통으로 남길 도구 입력만 골라 길이를 제한한다."""
+    raw = step.logged_input
+    tool_input = {}
+    for key in ("query", "paragraph_id", "judgment", "reason"):
+        if key in raw:
+            tool_input[key] = raw[key][:QUERY_MAX]
+    if "k" in raw:
+        tool_input["k"] = raw["k"]
+    if "paragraph_ids" in raw:
+        tool_input["paragraph_ids"] = [pid[:QUERY_MAX] for pid in raw["paragraph_ids"][:SUBMIT_MAX]]
+    return {
+        "turn": step.turn,
+        "tool_name": step.tool_name,
+        "tool_input": tool_input,
+        "result_ids": step.result_ids,
+        "is_error": step.is_error,
+    }
 
 
 def _asked(queries: list[str]) -> str:
@@ -120,6 +140,8 @@ def _finish(one: _Judged, scope: str, mode: str, queries: list[str]) -> _Judged:
     """끝까지 돈 다시 찾기 결과에 찾아본 범위와 근거 줄 앞말을 붙인다."""
     one.scope = scope
     one.why_prefix = f"다시 찾기({mode}). 질의: {_asked(queries)}. "
+    # 에이전트가 낸 조각 순서는 검색 순위가 아니다 (고정 루프는 실제 검색 순위라 그대로)
+    one.rank_words = mode != "agent"
     return one
 
 
@@ -138,6 +160,9 @@ def _log_agent_search(
     outcome = run.loop.outcome
     if hits:
         status = confirmed("다시 찾기 검색 결과를 받음")
+    elif not run.loop.queries:
+        # 성공한 검색이 0번: 다시 찾기는 찾아보지 않았으니 "없음"이라 쓰지 않는다
+        status = unverified(UnverifiedReason.NOT_EXTRACTED)
     elif outcome in ("submitted", "gave_up"):
         status = Status(value=StatusValue.NOT_FOUND_IN_SCOPE, searched_scope=scope)
     else:  # 끝까지 못 봄: 없다고 쓰지 않는다
@@ -214,16 +239,7 @@ def _agent_pair(
     loop = run.loop
     trace.queries = list(loop.queries)
     trace.tool_calls, trace.turns, trace.outcome = loop.tool_calls, loop.turns, loop.outcome
-    trace.steps = [
-        {
-            "turn": s.turn,
-            "tool_name": s.tool_name,
-            "tool_input": s.logged_input,
-            "result_ids": s.result_ids,
-            "is_error": s.is_error,
-        }
-        for s in loop.steps
-    ]
+    trace.steps = loop.steps
     give_up = getattr(loop.value, "reason", None) if loop.outcome == "gave_up" else None
     scope = _scope(cite, settings, "agent", trace.queries, give_up)
     _log_agent_search(unit, view, item, cite, run, scope, seen)
@@ -293,8 +309,8 @@ def _fixed_pair(
         searcher=searcher,
         search_log=seen.search_log,
         queries_out=trace.queries,
+        steps_out=trace.steps,
     )
-    trace.tool_calls = len(trace.queries)  # 질의마다 검색 한 번
     scope = _scope(cite, settings, "fixed_loop", trace.queries)
     trace.submitted_ids = list(found)
     if not found:
@@ -393,12 +409,12 @@ def recheck_missing(
                 mode=mode,
                 judge=judge,
                 outcome=trace.outcome,
-                tool_calls=trace.tool_calls,
+                tool_calls=len(trace.steps) if mode == "fixed_loop" else trace.tool_calls,
                 turns=trace.turns,
                 queries=trace.queries,
                 submitted_ids=trace.submitted_ids,
                 reason=trace.reason,
-                steps=trace.steps,
+                steps=[_recorded_step(step) for step in trace.steps],
             )
         )
     return out

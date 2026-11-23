@@ -52,7 +52,7 @@ class RunStatus(BaseModel):
 
 @dataclass(frozen=True)
 class SkippedStep:
-    """넘긴 단계 하나: 단계 이름과 넘긴 이유 (agent_steps의 outcome = 'skipped' 줄)."""
+    """넘긴 단계 하나: 단계 이름과 이유 (agent_steps의 code_tool 줄 중 skipped·limit_reached)."""
 
     step: str
     reason: str

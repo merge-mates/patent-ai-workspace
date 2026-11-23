@@ -14,13 +14,12 @@ from pydantic import BaseModel, ConfigDict
 
 from patent_ai.core.agents.tool_loop import (
     GiveUp,
-    RecheckToolFailed,
     ToolOutcome,
     ToolSpec,
+    call_environment,
 )
 from patent_ai.core.f3_claim_compare.textmatch import find_span, is_too_short
 from patent_ai.core.llm.config import REPO_ROOT
-from patent_ai.core.llm.errors import ModelCallLimitExceeded
 from patent_ai.core.schemas.comparison import Judgment
 from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.repository import ChunkRepository
@@ -128,7 +127,10 @@ class CiteToolbox:
     # ---- 조각 찾기 ----
     def _own(self) -> dict[str, Chunk]:
         if self._doc_chunks is None:
-            rows = self.repo.chunks("cite", self.index_version, [self.doc_id])
+            rows = call_environment(
+                "조각 저장소 읽기",
+                lambda: self.repo.chunks("cite", self.index_version, [self.doc_id]),
+            )
             self._doc_chunks = {c.chunk_id: c for c in rows}
         return self._doc_chunks
 
@@ -158,12 +160,11 @@ class CiteToolbox:
             return _error(f"query는 1~{QUERY_MAX}자 글이다. 짧게 줄여 다시 부른다", **logged)
         if not 1 <= m.k <= self.k_max:
             return _error(f"k는 1~{self.k_max} 정수다. 범위 안으로 고쳐 다시 부른다", **logged)
-        try:
-            result = self.searcher.search(m.query, "cite", mode, m.k, doc_ids=[self.doc_id])
-        except ModelCallLimitExceeded:
-            raise  # 질의 임베딩 호출 상한은 환경 실패가 아니다: 루프가 limit_reached로 끝낸다
-        except Exception as e:  # 검색기·DB·임베딩 어떤 예외든 환경 실패로 본다
-            raise RecheckToolFailed(f"{mode} 검색 실패: {type(e).__name__}: {e}") from e
+        # 질의 임베딩 상한·호출 실패와 설정 오류는 그대로 올라가고, 검색기·DB 예외만 tool_failed
+        result = call_environment(
+            f"{mode} 검색",
+            lambda: self.searcher.search(m.query, "cite", mode, m.k, doc_ids=[self.doc_id]),
+        )
         if not result.hits:
             return ToolOutcome("결과 0개: 다른 말로 찾거나 give_up", logged_input=logged)
         rows = []

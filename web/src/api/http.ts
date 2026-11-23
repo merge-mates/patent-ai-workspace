@@ -30,12 +30,6 @@ export async function sendJson<T>(method: 'PUT' | 'PATCH', path: string, body: u
   return readBody<T>(res)
 }
 
-// 본문 없는 PUT (정리 결과 "맞아요"). 서버가 본문을 받지 않아 Content-Type도 보내지 않는다
-export async function putNoBody<T>(path: string): Promise<T> {
-  const res = await fetch(`/api${path}`, { method: 'PUT' })
-  return readBody<T>(res)
-}
-
 async function readBody<T>(res: Response): Promise<T> {
   if (res.ok) return (await res.json()) as T
   // 오류 본문이 {code, message}가 아니어도 조용히 넘기지 않고 HTTP 코드로 알린다

@@ -13,11 +13,13 @@ from patent_ai.api import (
     drafts,
     health,
     human_inputs,
+    legal_chats,
     oas,
     results,
     runs,
 )
 from patent_ai.api.errors import add_error_handlers
+from patent_ai.core.f2_legal_research.index import check_search_settings
 from patent_ai.core.runs.recovery import fail_unfinished_runs
 from patent_ai.core.runs.store import RunStatusStore
 
@@ -32,6 +34,8 @@ def create_app(startup_store: RunStatusStore | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # 법률 질문 검색 설정이 틀렸으면 요청마다 "색인 없음"으로 넘기지 않고 시작에서 멈춘다
+        check_search_settings(deps.get_f2_settings())
         # 서버가 꺼질 때 사라진 백그라운드 실행(queued·running)을 failed(server_restarted)로
         fail_unfinished_runs(startup_store or deps.get_run_status_store())
         yield
@@ -47,6 +51,7 @@ def create_app(startup_store: RunStatusStore | None = None) -> FastAPI:
     app.include_router(directions.router)
     app.include_router(drafts.router)
     app.include_router(human_inputs.router)
+    app.include_router(legal_chats.router)
     return app
 
 

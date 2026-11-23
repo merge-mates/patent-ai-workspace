@@ -9,7 +9,7 @@
 주 지표: selected_recall_rechecked
 ---
 
-> 주 지표 = 1차에 못 찾은 구성요소가 있는 정답 줄의 selected_recall (분모는 판 A 예측의 2차 기록으로 고정, n=15).
+> 주 지표 `selected_recall_rechecked`의 비교 대상은 판 A의 2차 기록에 있는 정답 줄 15개다. 채점기는 판마다 대비를 건너뛴 종속항 줄을 빼고, 나머지 줄의 점수를 OA별로 평균한 뒤 OA 평균을 다시 평균한다. 표의 `rechecked_rows` 15는 종속항을 빼기 전 줄 수다.
 > **smoke 1회다.** eval 규칙의 "같은 설정 2회 이상"을 채우지 않았다. 판정(design.md 7-3)은 두 사람 환경을 맞춘 뒤 판마다 2회로 한다. 이 카드의 숫자로 C를 쓸지 정하지 않는다 (밤 작업, 재아 아침 확인 전).
 
 ## 결과 (smoke 1회, 실행·채점 커밋 e8076d2 (rebase 전, 다시 찾기 코드는 1b9fb7d와 같음), 11/23 10:00~10:25 한 맥에서 판 넷 동시)
@@ -43,7 +43,7 @@
 - 정밀도(정답에 없는 낸 근거의 LLM 판정)는 못 잼: 판정 채점기(309c task-3)를 오늘 밤 만들지 못함.
 
 ## 원인 표
-판 B·C 카드에 (기준선이라 이 판에는 없음).
+이번 1회에서 주 지표 `selected_recall_rechecked`는 판 A가 0.334로 가장 높았다. 같은 설정을 반복한 주 지표 점수가 없어 실행 간 흔들림은 모른다. 판 사이 차이의 원인 표는 판 B·C·C-judge 카드에 있다.
 
 ## 실행
 - 예측: `uv run --directory <워크트리> python <work>/overnight_1123_recheck/run_recheck.py <out> --arm a --cache-dir <판 캐시> --workers 4` (git 밖 일회용, run_case fixed_order F1→F4, F3 `use_examiner_paragraphs: false`)

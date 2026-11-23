@@ -102,7 +102,9 @@ def test_단위가_0개면_경고를_남기고_status는_확인되지_않음이�
 def test_나누기_모델_호출이_실패하면_run_f3와_같은_예외로_멈춘다():
     broken = TransportResponse("JSON 아님", 10, 10)
     answers = scenario.responses()
-    answers["f3.split_elements"] = [broken, broken]
+    # #322 뒤: 청구항 하나만 실패하면 그 청구항만 보류. 모델을 부른 청구항(2개)이 모두
+    # 실패해야(다시 부른 답까지 2 × 2) run_f3와 같은 예외로 멈춘다
+    answers["f3.split_elements"] = [broken] * 4
     ctx, _ = scenario.context(answers)
     with pytest.raises(ModelOutputInvalid):
         prepare_units(scenario.oa_result(), scenario.config(), ctx=ctx)

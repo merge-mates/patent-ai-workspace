@@ -2,10 +2,15 @@
 
 import json
 
+from patent_ai.core.agents import step_inputs
 from patent_ai.core.agents.steps import StepRecord
 from patent_ai.core.f3_claim_compare import run as f3_run
+from patent_ai.core.f3_claim_compare.recheck.config import RecheckSettings
+from patent_ai.core.f3_claim_compare.recheck.tools import QUERY_MAX
 from patent_ai.core.f3_claim_compare.result import RecheckLogRow
-from tests.core.agents.test_fixed_order_f3_f4 import _go, wired  # noqa: F401
+from tests.core.agents.test_fixed_order_f3_f4 import _go, _responses, wired  # noqa: F401
+from tests.core.agents.test_tool_loop import reply, use
+from tests.core.f3 import scenario
 
 UNIT = "oa_1:29-2:c1"
 
@@ -96,13 +101,60 @@ def test_청구항이_달라_구성요소_번호가_같아도_도구_줄을_가�
 
 
 def test_도구_줄에_원문_글_quote_why가_없다(tmp_path, wired, monkeypatch):  # noqa: F811
-    _with_recheck(monkeypatch)
-    _, steps = _go(tmp_path)
-    found = [r for r in steps.records if r.tool_name.startswith("recheck.")]
-    assert found
-    for r in found:
-        dumped = json.dumps(r.model_dump(), ensure_ascii=False)
-        assert "quote" not in dumped and "why" not in dumped and "text" not in dumped
+    # 실제 검색·열기·제출을 돌려 F3 결과와 그 결과에서 옮긴 단계 기록을 함께 본다.
+    settings = RecheckSettings(recheck="agent", recheck_judge="agent")
+    monkeypatch.setattr(step_inputs, "load_recheck_settings", lambda *a, **k: settings)
+    pid = scenario.P31
+    paragraph_text = scenario.CHUNKS[1].text
+    why = "이 문장이 대비 근거인 이유"
+    long_input = "가" * 1320 + "기록에서 제외할 끝부분"
+    responses = _responses()
+    responses["recheck.agent"] = [
+        reply(use(long_input, {})),
+        reply(use("search_vector", {"query": long_input, "k": 1})),
+        reply(use("open_paragraph", {"paragraph_id": long_input})),
+        reply(use("search_vector", {"query": "물통", "k": 1})),
+        reply(use("open_paragraph", {"paragraph_id": pid})),
+        reply(
+            use(
+                "submit_evidence",
+                {
+                    "items": [{"paragraph_id": pid, "quote": paragraph_text}],
+                    "judgment": "disclosed",
+                    "why": why,
+                },
+            )
+        ),
+        reply(use("give_up", {"reason": "not_in_document", "tried": "간격"})),
+    ]
+    out, steps = _go(tmp_path, responses)
+    assert out.state == "succeeded"
+    found = [
+        r
+        for r in steps.records
+        if r.tool_name.startswith("recheck.") and r.tool_input["claim"] == 1
+    ]
+    assert [r.tool_name for r in found] == [
+        "recheck.unknown_tool",
+        "recheck.search_vector",
+        "recheck.open_paragraph",
+        "recheck.search_vector",
+        "recheck.open_paragraph",
+        "recheck.submit_evidence",
+    ]
+    assert [r.outcome for r in found] == ["failed"] * 3 + ["ok"] * 3
+    assert found[1].tool_input["query"] == long_input[:QUERY_MAX]
+    assert found[2].tool_input["paragraph_id"] == long_input[:QUERY_MAX]
+    assert found[3].tool_input["query"] == "물통"
+    assert found[4].result_id == found[5].result_id == pid
+    assert found[5].tool_input["paragraph_ids"] == [pid]
+    (log,) = [r for r in out.results["run_f3"].recheck_log if r.claim == 1]
+    for rows in (log.steps, [r.model_dump() for r in found]):
+        dumped = json.dumps(rows, ensure_ascii=False)
+        assert all(
+            text not in dumped
+            for text in (paragraph_text, why, long_input[QUERY_MAX:], '"quote"', '"why"', '"text"')
+        )
 
 
 def test_다시_찾기_기록이_없으면_옛_줄_그대로다(tmp_path, wired):  # noqa: F811

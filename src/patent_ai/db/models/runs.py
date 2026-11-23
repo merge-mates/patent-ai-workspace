@@ -67,10 +67,10 @@ class AgentStep(Base):
             "step_kind IN ('code_tool', 'fixed_stage', 'decide', 'check', 'model_call')",
             name="ck_agent_steps_step_kind",
         ),
-        # StepRecord: ok/failed/waiting/skipped, CallRecord: ok/cache_hit/transport_error/…
+        # StepRecord: ok/failed/waiting/skipped/limit_reached, CallRecord: ok/cache_hit/…
         CheckConstraint(
-            "outcome IN ('ok', 'failed', 'waiting', 'skipped', 'cache_hit', 'transport_error', "
-            "'limit_exceeded', 'invalid_output', 'output_truncated')",
+            "outcome IN ('ok', 'failed', 'waiting', 'skipped', 'limit_reached', 'cache_hit', "
+            "'transport_error', 'limit_exceeded', 'invalid_output', 'output_truncated')",
             name="ck_agent_steps_outcome",
         ),
     )

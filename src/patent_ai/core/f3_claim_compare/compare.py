@@ -364,6 +364,8 @@ class _Judged:
     # 근거 줄 why_retrieved 앞말 (근거 다시 찾기: "다시 찾기(<방식>). 질의: …. "). 없으면
     # second_search의 "두 번째 검색. "
     why_prefix: str | None = None
+    # False면 근거 줄에 검색 순위("N위")를 붙이지 않는다: 에이전트가 낸 순서는 검색 순위가 아니다
+    rank_words: bool = True
 
     def not_found(self) -> bool:
         """근거를 못 고른 것 (버린 근거도 없고 개시됨이라고 하지도 않음)."""
@@ -708,9 +710,9 @@ def _rows_of(
     if by_examiner:
         rows.append(row(one.judgment, status, by_examiner, examiner=True))
     if by_ai:
-        why = _why(item.n, by_ai, scope)
         prefix = one.why_prefix or ("두 번째 검색. " if twice else "")
-        rows.append(row(one.judgment, status, by_ai, why=prefix + why))
+        why = prefix + _why(item.n, by_ai, scope) if one.rank_words else prefix.rstrip()
+        rows.append(row(one.judgment, status, by_ai, why=why))
     return rows
 
 
@@ -1174,7 +1176,9 @@ def compare_unit(
         _hold_error(seen, unit.unit_id, e)
         # BUNDLE_ERRORS는 모델 호출에서만 나므로 이 묶음은 모델을 부른 묶음으로 센다
         errors = [] if is_limit(e) else [e]
-        return CompareOutput(held_tasks=seen.held, call_errors=errors, units_tried=1)
+        return CompareOutput(
+            held_tasks=seen.held, call_errors=errors, units_tried=1, recheck_log=seen.recheck
+        )
 
 
 def _compare_unit(

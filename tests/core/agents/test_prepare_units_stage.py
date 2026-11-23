@@ -116,7 +116,8 @@ def test_청구항_글자가_없으면_prepare_units_run_f3_run_f2가_같은_이
 def test_prepare_units_모델_호출이_실패하면_실행이_failed이고_코드가_같다(tmp_path, wired):
     responses = base._responses()
     broken = TransportResponse("JSON 아님", 10, 10)
-    responses["f3.split_elements"] = [broken, broken]
+    # #322 뒤: 모델을 부른 청구항(2개)이 모두 실패해야(다시 부른 답까지 2 × 2) 단계가 실패한다
+    responses["f3.split_elements"] = [broken] * 4
     out, steps = base._go(tmp_path, responses)
     assert out.state == "failed" and out.error["code"] == "ModelOutputInvalid"
     assert out.trace == ["extract_pages", "read_oa", "cut_to_oa"]
