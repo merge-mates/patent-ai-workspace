@@ -18,13 +18,15 @@ import type {
   OAResultResponse,
   RunStatus,
   CreatedRun,
+  SelectionBody,
+  SelectionResult,
   NumberEnteredOut,
   ConfirmationOut,
   UploadedDocument,
 } from '../types/provisional/case'
 import type { ClarityReview } from '../types/generated/ClarityReview'
 import type { ComparisonTable } from '../types/generated/ComparisonTable'
-import type { DirectionCandidates } from '../types/generated/DirectionCandidates'
+import type { DirectionCandidates, DirectionSelection } from '../types/generated/DirectionCandidates'
 import type { JudgmentUnit } from '../types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle } from '../types/generated/LegalEvidenceBundle'
 import {
@@ -168,6 +170,7 @@ export const mockApi = {
   // 사건 목록에 더 보이는 값 (fixture·예시에서 채운다). 서버 모드는 비어 있어 "모름"
   async listCaseExtras(): Promise<CaseListExtra[]> {
     return (await bundles()).map((b) => {
+      flushPending(b)
       const todos = directTodos({
         reviewItems: b.review_items,
         materials: b.materials,
@@ -207,24 +210,42 @@ export const mockApi = {
   },
   // 이어 묻기: mock은 대화를 기억하지 않고 고정 chat_id만 돌려준다 (서버 모양만 맞춤)
   async askLegal(q: LegalQuestion, chatId?: string): Promise<LegalAnswer> {
-    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q) }
+    return { chat_id: chatId ?? MOCK_CHAT_ID, answer: exampleLegalAnswer(q), scope_changed: false }
   },
   // ⑤ 대응 방향·초안: 사람이 고른 것·고친 것은 메모리 + localStorage에 남는다 (아래 저장 코드, "mock 처음으로"로 지움)
   async getDirections(oaId: string): Promise<ResultList<DirectionCandidates>> {
-    gateResult(await byOA(oaId))
+    const b = await byOA(oaId)
+    flushPending(b)
+    gateResult(b)
     return listOf(directions[oaId] ?? [])
   },
-  async selectDirection(unitId: string, candidateId: string): Promise<DirectionCandidates> {
-    const list = Object.values(directions).flat()
-    const found = list.find((d) => d.unit_id === unitId)
-    if (!found) throw new ApiError('unit_not_found', '판단 단위를 찾을 수 없습니다', 404)
-    if (!found.candidates.some((c) => c.candidate_id === candidateId))
-      throw new ApiError('candidate_not_found', '후보를 찾을 수 없습니다', 400)
+  // 방향을 고르면 서버처럼 초안만 다시 만드는 새 작은 실행이 생긴 것으로 흉내 낸다 (run_id를 돌려준다)
+  async selectDirection(unitId: string, body: SelectionBody): Promise<SelectionResult> {
+    const entry = Object.entries(directions).find(([, list]) => list.some((d) => d.unit_id === unitId))
+    const found = entry?.[1].find((d) => d.unit_id === unitId)
+    if (!entry || !found) throw new ApiError('unit_not_found', '판단 단위를 찾을 수 없습니다', 404)
+    const b = await byOA(entry[0])
+    flushPending(b)
+    // 서버처럼 실행이 도는 동안은 못 고른다 (서버 ACTIVE_STATES: queued·running·waiting_for_human)
+    const now = runOf(b).state
+    if (now === 'queued' || now === 'running' || now === 'waiting_for_human') throw new ApiError('run_in_progress', '이미 진행 중인 실행이 있습니다', 409)
+    // 서버와 같게: 후보 id 또는 직접 쓴 글, 정확히 하나 (빈 글·둘 다·둘 다 없음은 422 invalid_selection)
+    const raw = body as { candidate_id?: string | null; written_direction?: string | null }
+    const candidateId = raw.candidate_id ?? null
+    const written = raw.written_direction ?? null
+    if ((candidateId === null) === (written === null) || (written !== null && written.trim() === ''))
+      throw new ApiError('invalid_selection', '후보 id나 직접 쓴 방향 중 하나만 보내야 합니다', 422)
+    if (candidateId !== null && !found.candidates.some((c) => c.candidate_id === candidateId))
+      throw new ApiError('candidate_not_found', '그 묶음의 후보가 아닙니다', 422)
     // PUT으로 저장한 선택은 1등과 같아도 "사람이 고름" (docs/api/README.md)
-    found.selection = { candidate_id: candidateId, written_direction: null, origin: 'human_selected' }
-    saveSelection(unitId, candidateId)
+    // 작은 실행이 끝날 때까지 GET directions는 옛 선택을 준다: 고른 것은 그 실행에 묶어 두고 끝나면 반영한다
     // 사람 선택은 selection.origin 한 곳에만 둔다 (묶음 맨 위 origin은 ai_generated 그대로)
-    return found
+    const selection = selectionOf({ unitId, candidateId, written })
+    // 그 OA에 작은 실행 시작: 앞 결과는 이어 보인다 (서버도 앞 실행 결과를 옮긴다)
+    startRun(b, true, true)
+    const run = loadRun(b.oa_id)
+    if (run) saveRun(b.oa_id, { ...run, pending: [{ unitId, candidateId, written }] })
+    return { unit_id: unitId, run_id: runOf(b).run_id, selection }
   },
   async getCaseCheck(oaId: string): Promise<CaseCheck> {
     gateResult(await byOA(oaId))
@@ -234,7 +255,9 @@ export const mockApi = {
     return check
   },
   async getDrafts(oaId: string): Promise<DraftsWithCheck> {
-    gateResult(await byOA(oaId))
+    const b = await byOA(oaId)
+    flushPending(b)
+    gateResult(b)
     const d = drafts[oaId]
     if (!d) throw new ApiError('result_not_ready', '초안이 아직 없습니다', 404)
     return d
@@ -271,8 +294,9 @@ export const mockApi = {
     if (!b) throw new ApiError('run_not_found', '실행을 찾을 수 없습니다', 404)
     const run = loadRun(b.oa_id)
     // 이미 끝난 실행은 취소할 수 없다 (끝난 것을 취소로 바꾸지 않는다)
-    if (run && !run.cancelledAt && elapsedOf(run) < STEP_MS * RUN_STEPS.length) {
+    if (run && !run.cancelledAt && elapsedOf(run) < (run.small ? SMALL_RUN_MS : STEP_MS * RUN_STEPS.length)) {
       run.cancelledAt = Date.now()
+      run.pending = [] // 취소한 작은 실행은 고른 것을 반영하지 않는다
       saveRun(b.oa_id, run)
     }
     return { ...runOf(b), oa_id: b.oa_id, error: null }
@@ -350,6 +374,10 @@ const RUN_STEPS = [
   '인용발명 대비 · 법률 근거',
   '대응 방향 후보',
 ]
+// 작은 실행(방향 고른 뒤 초안 다시 만들기): 1초 queued, 4초까지 running, 그 뒤 succeeded (판단)
+const SMALL_QUEUED_MS = 1000
+const SMALL_RUN_MS = 4000
+const SMALL_STEP = '초안 다시 만드는 중'
 const STEP_MS = 3000 // 단계마다 약 3초 (판단)
 // 결과가 "열리는" 단계 번호: 그 단계를 지나면(번호 이상이면) 결과 엔드포인트가 200
 // 사건 자료 목록만 단계로 연다 (사건 단위 자료라 실행 결과 계약 밖으로 보고, 올리기 화면이 "찾아온 자료"를 실행 중에 보인다).
@@ -358,6 +386,18 @@ const PHASE = { materials: 2, compare: 4, directions: 5 }
 
 const MOCK_CHAT_ID = 'mock_chat_1'
 
+// 고른 것 하나: 후보 id 또는 직접 쓴 글 중 하나만 값이 있다
+interface PendingSelection {
+  unitId: string
+  candidateId: string | null
+  written: string | null
+}
+// 서버 DirectionSelection과 같게: 직접 쓴 글이면 origin은 human_written, 후보면 human_selected
+const selectionOf = (p: PendingSelection): DirectionSelection =>
+  p.written !== null
+    ? { candidate_id: null, written_direction: p.written, origin: 'human_written' }
+    : { candidate_id: p.candidateId, written_direction: null, origin: 'human_selected' }
+
 interface MockRun {
   startedAt: number
   cancelledAt?: number
@@ -365,6 +405,10 @@ interface MockRun {
   runId?: string
   // 다시 돌리기 전에 끝나 있던 실행의 run_id: 이 실행이 끝나기 전까지 결과는 그 실행 것으로 보인다
   prevRunId?: string | null
+  // 방향을 고른 뒤 초안만 다시 만드는 작은 실행: 짧게 queued → running → succeeded, 단계는 한 줄
+  small?: boolean
+  // 작은 실행이 끝나야 GET directions에 반영되는 선택 (서버도 선택을 새 실행에 묶어 저장한다)
+  pending?: PendingSelection[]
 }
 // mockRuns[oa_id]: 새로고침해도 이어지게 sessionStorage에 둔다 (막히면 메모리만)
 const mockRuns: Record<string, MockRun> = {}
@@ -391,9 +435,25 @@ function saveRun(oaId: string, run: MockRun) {
   }
 }
 // 올리기(새 사건·다음 OA)는 이전 결과가 없고, 다시 돌리기(keepPrev)는 마지막으로 끝난 실행의 결과를 이어 보인다
-function startRun(b: Bundle, keepPrev: boolean) {
+function startRun(b: Bundle, keepPrev: boolean, small = false) {
+  flushPending(b, true) // 앞 작은 실행이 남긴 선택은 새 실행을 만들기 전에 반영한다
   const prevRunId = keepPrev ? lastDoneRunId(b) : null
-  saveRun(b.oa_id, { startedAt: Date.now(), runId: `${b.run_id}_r${Date.now()}`, prevRunId })
+  saveRun(b.oa_id, { startedAt: Date.now(), runId: `${b.run_id}_r${Date.now()}`, prevRunId, ...(small ? { small: true } : {}) })
+}
+// 끝난 작은 실행이 묶어 둔 선택을 방향 목록에 반영하고 저장한다 (force면 도는 중이어도)
+function flushPending(b: Bundle, force = false) {
+  const run = loadRun(b.oa_id)
+  if (!run?.pending?.length) return
+  const state = runOf(b).state
+  if (!force && (state === 'queued' || state === 'running')) return
+  for (const p of run.pending) {
+    const unit = directions[b.oa_id]?.find((d) => d.unit_id === p.unitId)
+    if (!unit) continue
+    unit.selection = selectionOf(p)
+    saveSelection(p.unitId, unit.selection)
+    applyDraftHold(unit.unit_id, unit.selection, true)
+  }
+  saveRun(b.oa_id, { ...run, pending: [] })
 }
 const currentRunId = (b: Bundle) => loadRun(b.oa_id)?.runId ?? b.run_id
 // 지금까지 결과가 확정된 마지막 실행 (없으면 null)
@@ -409,7 +469,8 @@ const elapsedOf = (run: MockRun) => (run.cancelledAt ?? Date.now()) - run.starte
 // 지금 몇 번째 단계까지 왔나: 0~4는 그 단계를 하는 중, 5는 모두 끝남. 표에 없으면 5
 function phaseOf(oaId: string): number {
   const run = loadRun(oaId)
-  if (!run) return RUN_STEPS.length
+  // 작은 실행은 앞 단계를 다시 돌지 않아 앞 결과가 처음부터 다 열려 있다
+  if (!run || run.small) return RUN_STEPS.length
   return Math.min(Math.floor(elapsedOf(run) / STEP_MS), RUN_STEPS.length)
 }
 
@@ -495,6 +556,12 @@ function runOf(b: Bundle): RunStatusLike {
   const phase = phaseOf(b.oa_id)
   const run_id = currentRunId(b)
   if (run.cancelledAt) return { run_id, state: 'cancelled', current_step: null }
+  if (run.small) {
+    const t = elapsedOf(run)
+    if (t < SMALL_QUEUED_MS) return { run_id, state: 'queued', current_step: null }
+    if (t < SMALL_RUN_MS) return { run_id, state: 'running', current_step: SMALL_STEP }
+    return { run_id, state: 'succeeded', current_step: null }
+  }
   if (phase < RUN_STEPS.length) return { run_id, state: 'running', current_step: RUN_STEPS[phase] }
   if (needsAppNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'application_number' }
   if (needsDispatchNumber(b)) return { run_id, state: 'waiting_for_human', current_step: null, waiting_for: 'dispatch_number' }
@@ -555,8 +622,33 @@ function storeWrite(key: string, value: string | null) {
   }
 }
 
-function saveSelection(unitId: string, candidateId: string) {
-  storeWrite(selectionKey(unitId), JSON.stringify({ candidate_id: candidateId, written_direction: null, origin: 'human_selected' }))
+function saveSelection(unitId: string, selection: DirectionSelection) {
+  storeWrite(selectionKey(unitId), JSON.stringify(selection))
+}
+
+// 서버처럼: 직접 쓴 방향이면 그 묶음의 초안을 AI가 만들지 않고 보류한다. 후보를 고르면 예시 초안으로 되돌린다
+// (mock 단순화: 보정 청구항만 바꾼다. 서버는 그 묶음의 의견서 칸도 보류한다)
+// 서버 amendment.py HELD_NO_SELECTION과 같은 글 (서버는 직접 쓴 묶음에도 이 글을 준다. 화면이 직접 쓴 묶음은 따로 안내한다)
+const HELD_WRITTEN = '확신이 낮아 방향을 미리 고르지 않은 묶음입니다. 방향을 고르면 초안을 만듭니다.'
+function applyDraftHold(unitId: string, selection: DirectionSelection, persist = false) {
+  for (const d of Object.values(drafts)) {
+    const base = Object.values(exampleDrafts).find((x) => x.draft_id === d.draft_id)
+    for (const c of d.claims) {
+      if (c.unit_id !== unitId) continue
+      if (selection.origin === 'human_written') {
+        c.ai_text = null
+        c.human_text = null
+        c.origin = 'ai_generated'
+        c.held_reason = HELD_WRITTEN
+      } else if (c.held_reason === HELD_WRITTEN) {
+        const orig = base?.claims.find((x) => x.claim === c.claim)
+        if (orig) Object.assign(c, structuredClone(orig))
+      }
+    }
+    recomputeDraftOrigin(d)
+    // 사람이 고친 글을 지웠거나 되돌렸으면 저장도 맞춘다 (불러오는 중에는 저장하지 않는다: 아직 덮지 않은 초안이 있다)
+    if (persist) saveDraft(d)
+  }
 }
 
 // 예시와 human_text가 달라진 칸(= 사람이 바꾼 칸)만 모아 저장. 하나도 없으면 키를 지운다
@@ -609,12 +701,16 @@ function applySaved() {
   for (const key of keys) {
     if (key.startsWith(`${STORE_PREFIX}selection:`)) {
       const unitId = key.slice(`${STORE_PREFIX}selection:`.length)
-      const saved = readJson(key) as { candidate_id?: unknown } | null | undefined
+      const saved = readJson(key) as { candidate_id?: unknown; written_direction?: unknown } | null | undefined
       const unit = allDirections.find((d) => d.unit_id === unitId)
       if (!unit) drop(key, '판단 단위가 예시에 없음')
-      else if (!saved || typeof saved.candidate_id !== 'string') drop(key, '저장된 값을 읽을 수 없음')
+      else if (saved && typeof saved.written_direction === 'string' && saved.written_direction.trim() !== '') {
+        // 직접 쓴 글 (그 묶음 초안은 보류로 보인다)
+        unit.selection = selectionOf({ unitId, candidateId: null, written: saved.written_direction })
+        applyDraftHold(unitId, unit.selection)
+      } else if (!saved || typeof saved.candidate_id !== 'string') drop(key, '저장된 값을 읽을 수 없음')
       else if (!unit.candidates.some((c) => c.candidate_id === saved.candidate_id)) drop(key, '후보가 예시에 없음')
-      else unit.selection = { candidate_id: saved.candidate_id, written_direction: null, origin: 'human_selected' }
+      else unit.selection = selectionOf({ unitId, candidateId: saved.candidate_id, written: null })
     } else if (key.startsWith(`${STORE_PREFIX}draft:`)) {
       const draftId = key.slice(`${STORE_PREFIX}draft:`.length)
       const saved = readJson(key) as Partial<SavedDraft> | null | undefined

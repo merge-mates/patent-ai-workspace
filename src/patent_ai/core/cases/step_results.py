@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from typing import Literal, Protocol
 
 from patent_ai.core.f2_legal_research.run import F2Result
@@ -47,6 +48,16 @@ class StepResultStore(Protocol):
         """그 실행이 낸 단계 결과. 그 단계를 넘겼거나 실패했으면 None."""
         ...
 
+    def update_step_result(
+        self, run_id: str, kind: StepKind, change: Callable[[StepBody], StepBody]
+    ) -> StepBody | None:
+        """저장한 단계 결과를 읽어 change로 바꾼 값으로 덮는다 (사람이 초안을 고칠 때만, #304).
+
+        줄이 없으면 None. change가 예외를 던지면 아무것도 바꾸지 않는다.
+        읽기와 덮기 사이에 다른 요청이 끼지 못하게 한 번에 한다 (고친 것이 사라지지 않게).
+        """
+        ...
+
 
 class DuplicateStepResult(ValueError):
     """같은 실행·같은 단계 결과가 이미 있다."""
@@ -71,3 +82,16 @@ class InMemoryStepResultStore:
         with self._lock:
             row = self._rows.get((run_id, kind))
         return parse_body(kind, row[1]) if row else None
+
+    def update_step_result(
+        self, run_id: str, kind: StepKind, change: Callable[[StepBody], StepBody]
+    ) -> StepBody | None:
+        with self._lock:
+            row = self._rows.get((run_id, kind))
+            if row is None:
+                return None
+            new = change(parse_body(kind, row[1]))
+            if kind_of(new) != kind:
+                raise TypeError(f"{kind} 결과를 다른 단계 결과로 덮을 수 없음")
+            self._rows[(run_id, kind)] = (row[0], new.model_dump(mode="json"))
+        return new

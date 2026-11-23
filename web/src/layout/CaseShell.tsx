@@ -12,7 +12,7 @@ import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
 import { noticeKindLabel, runStateLabel, waitingForLabel } from '../labels'
 import type { OALoaderData } from '../loaders'
-import { refreshRun, isRunEnded } from '../runPoll'
+import { refreshRun, isRunEnded, isSelectionRunActive } from '../runPoll'
 import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../todos'
 import { useRunSnapshot } from '../useRunSnapshot'
 import type { LatestRun } from '../types/provisional/case'
@@ -39,6 +39,7 @@ function stepItems(
   previous: boolean,
   waitingFor: string | null,
   counts: (string | undefined)[],
+  smallRun: boolean,
 ): StepItem[] {
   const doneText = previous ? '이전 결과' : '끝남'
   const ended = run === null || isRunEnded(run.state)
@@ -71,6 +72,10 @@ function stepItems(
       return { ...base, status: 'wait', disabled: true }
     }
     // queued · running
+    // 고르기로 시작한 작은 실행(smallRun)은 초안만 다시 만드니 4단계(초안)만 "다시 만드는 중"으로 보인다.
+    // latest_run에는 실행 종류가 없어서, 그 밖의 실행(전체 다시 돌리기 등)은 4단계도 다른 단계처럼 doneText·finish로 두고
+    // 지금 도는 단계 이름(stepText)을 초안 단계에 붙이지 않는다
+    if (ready[i] && i === 3 && smallRun) return { ...base, description: <>{run.current_step ? stepText : <div>다시 만드는 중</div>}</>, status: 'process' }
     if (ready[i]) return { ...base, description: doneText, status: 'finish' }
     if (i === firstMissing) return { ...base, description: <><div>찾는 중</div>{stepText}</>, status: 'process', disabled: true }
     return { ...base, description: '대기', status: 'wait', disabled: true }
@@ -118,7 +123,8 @@ export function CaseShell() {
   // 실행 상태는 폴링 값 (loader가 준 값에서 시작해 2.5초마다 GET /runs/{id}만 부른다)
   const snap = useRunSnapshot(data.oa.latest_run)
   const run = snap?.run ?? null
-  const previous = isPreviousResult(data.oaResult, data.oa.latest_run)
+  const smallRun = isSelectionRunActive(snap) // 고르기로 시작한 작은 실행이 도는 중: 초안만 다시 만든다
+  const previous = isPreviousResult(data.oaResult, data.oa.latest_run, snap)
   const runError = snap?.error ?? null
   const ready: (boolean | null)[] = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
   const reviewCount = data.reviewItems?.length ?? null
@@ -217,7 +223,7 @@ export function CaseShell() {
               size="small"
               current={stepIdx}
               onChange={(i) => navigate(base + STEPS[i].path)}
-              items={stepItems(run, ready, todoText, previous, snap?.waitingFor ?? null, stepCounts(data))}
+              items={stepItems(run, ready, todoText, previous, snap?.waitingFor ?? null, stepCounts(data), smallRun)}
             />
             {/* 실행이 도는 동안: 상태를 못 받았으면 알리고, 직접 새로 받는 버튼 */}
             {/* 실패·취소는 단계 결과가 다 있어도 보여야 한다 */}
