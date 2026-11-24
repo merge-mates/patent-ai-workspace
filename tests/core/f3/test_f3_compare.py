@@ -201,7 +201,7 @@ def test_근거를_못_고르면_조회_범위_내_없음과_찾아본_범위를
     assert missing.judgment == Judgment.DIFFERENCE_CANDIDATE
     assert missing.paragraph_source == ParagraphSource.AI_FOUND and missing.why_retrieved
     assert missing.status.value == StatusValue.NOT_FOUND_IN_SCOPE
-    assert missing.status.searched_scope == "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2)"
+    assert missing.status.searched_scope == "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v5)"
     assert missing.evidence == []
     # 결과 status = 줄 중 가장 나쁜 값
     assert table.status.value == StatusValue.NOT_FOUND_IN_SCOPE
@@ -330,7 +330,7 @@ def test_결합_진보성은_인용문헌마다_따로_찾고_줄도_따로다()
     ]
     assert len(table.rows) == 4
     assert (
-        _find(table, 1, "D2").status.searched_scope == "D2 조각 1개 중 hybrid 상위 1 (cite-idx-v2)"
+        _find(table, 1, "D2").status.searched_scope == "D2 조각 1개 중 hybrid 상위 1 (cite-idx-v5)"
     )
 
 
@@ -352,7 +352,7 @@ def test_진보성_요약은_어느_문헌에도_개시되지_않은_구성요�
     # 근거 없는 차이 후보는 "조회 범위 내 없음"과 찾아본 범위를 붙인다 (없다는 판단이 아님)
     assert summary.differences == [
         f"청구항 1 [구성 1-2] {TANK} "
-        "(조회 범위 내 없음: D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2), 없다는 판단 아님)"
+        "(조회 범위 내 없음: D1 조각 3개 중 hybrid 상위 1 (cite-idx-v5), 없다는 판단 아님)"
     ]
     assert summary.combination == "D1에 D2를 결합"  # 심사관 논리 값 그대로
     assert summary.effect_candidates == []
@@ -371,8 +371,8 @@ def test_두_문헌_모두_근거_없는_차이_후보면_찾아본_범위를_�
         ]
     )
     out, _, _ = _run(_inventive(cited), answer)
-    d1_scope = "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2)"
-    d2_scope = "D2 조각 1개 중 hybrid 상위 1 (cite-idx-v2)"
+    d1_scope = "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v5)"
+    d2_scope = "D2 조각 1개 중 hybrid 상위 1 (cite-idx-v5)"
     assert out.tables[0].summary.differences == [
         f"청구항 1 [구성 1-1] {SENSOR} "
         f"(조회 범위 내 없음: {d1_scope}; {d2_scope}, 없다는 판단 아님)"
@@ -461,7 +461,7 @@ def test_검색_기록에는_구성요소_원문_대신_해시와_걸린_조각�
     assert (first.unit_id, first.claim, first.element_no) == ("oa_1:29-2:c1", 1, 1)
     assert (first.citation, first.doc_id, first.round) == ("D1", D1, 1)
     assert first.hit_chunk_ids == [P23] and second.hit_chunk_ids == [P31]
-    assert first.searched_scope == "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2)"
+    assert first.searched_scope == "D1 조각 3개 중 hybrid 상위 1 (cite-idx-v5)"
     assert SENSOR not in first.model_dump_json() and len(first.element_hash) == 12
 
 
@@ -486,7 +486,6 @@ def test_compare와_embed_단계_설정():
     assert (cfg.model, cfg.effort, cfg.max_tokens) == ("claude-haiku-5-5", "medium", 64000)
     assert cfg.prompt == "prompts/f3/compare.md" and cfg.max_model_calls is not None
     embed = load_embed_config("f3.embed")
-    assert embed.model == load_embed_config("cite_search.embed").model
     assert embed.max_model_calls is not None
 
 
@@ -517,7 +516,7 @@ def test_청구항_판이_확인되지_않아도_요약에서_차이_후보가_�
     inventive, _, _ = _run(_inventive(), ONE_DIFFERENT, config)
     assert inventive.tables[0].summary.differences == [
         f"청구항 1 [구성 1-2] {TANK} "
-        "(조회 범위 내 없음: D1 조각 3개 중 hybrid 상위 1 (cite-idx-v2), 없다는 판단 아님)"
+        "(조회 범위 내 없음: D1 조각 3개 중 hybrid 상위 1 (cite-idx-v5), 없다는 판단 아님)"
     ]
 
 

@@ -47,7 +47,7 @@ CHUNKS = [
 P23, P31, P40, FIG4 = (c.chunk_id for c in CHUNKS)
 REPO = InMemoryChunkRepository({"cite": CHUNKS})
 RESULT = oa([rejection(1, "29-2", [1], [citation("D1", D1)])])
-FIRST_SCOPE = "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v2)"
+FIRST_SCOPE = "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v5)"
 TEXT40 = "뚜껑 아래 수조가 있다"
 
 

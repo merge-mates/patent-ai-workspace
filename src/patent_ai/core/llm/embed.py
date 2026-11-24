@@ -18,7 +18,11 @@ import yaml
 
 from patent_ai.core.llm.cache import Cache, FileCache
 from patent_ai.core.llm.config import REPO_ROOT
-from patent_ai.core.llm.embed_transport import EmbedTransport, OpenAIEmbedTransport
+from patent_ai.core.llm.embed_transport import (
+    EmbedTransport,
+    GeminiEmbedTransport,
+    OpenAIEmbedTransport,
+)
 from patent_ai.core.llm.errors import (
     ModelCallFailed,
     ModelCallLimitExceeded,
@@ -33,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 KNOWN_KEYS = {
     "model",
+    "provider",
+    "task_type",
+    "dimensions",
     "batch_size",
     "price_per_mtok_input",
     "max_model_calls",
@@ -49,6 +56,9 @@ class EmbedConfig:
     max_model_calls: int | None = None
     max_input_tokens: int | None = None
     max_retries: int | None = None
+    provider: str = "openai"
+    task_type: str | None = None
+    dimensions: int | None = None
 
 
 def load_embed_config(step: str, config_dir: Path | None = None) -> EmbedConfig:
@@ -84,6 +94,20 @@ def load_embed_config(step: str, config_dir: Path | None = None) -> EmbedConfig:
     price = number("price_per_mtok_input", float)
     if price is None:
         logger.warning("%s: price(가격) 설정이 없어 비용을 계산하지 않음", step)
+    provider = section.get("provider", "openai")
+    task_type = section.get("task_type")
+    dimensions = number("dimensions", int)
+    if provider not in ("openai", "gemini"):
+        raise ModelConfigError(f"{step}: 지원하지 않는 임베딩 provider {provider!r}")
+    if provider == "gemini":
+        if not isinstance(task_type, str) or not task_type.strip() or not dimensions:
+            raise ModelConfigError(
+                f"{step}: Gemini 임베딩에는 task_type과 양의 dimensions가 필요함"
+            )
+        if batch > 100:
+            raise ModelConfigError(f"{step}: Gemini 임베딩의 batch_size는 최대 100")
+    elif task_type is not None or dimensions is not None:
+        raise ModelConfigError(f"{step}: task_type과 dimensions는 Gemini 임베딩 설정임")
     return EmbedConfig(
         model=section["model"],
         batch_size=batch,
@@ -91,14 +115,18 @@ def load_embed_config(step: str, config_dir: Path | None = None) -> EmbedConfig:
         max_model_calls=number("max_model_calls", int),
         max_input_tokens=number("max_input_tokens", int),
         max_retries=number("max_retries", int),
+        provider=provider,
+        task_type=task_type,
+        dimensions=dimensions,
     )
 
 
-def _cache_key(step: str, model: str, text: str) -> str:
+def _cache_key(step: str, cfg: EmbedConfig, text: str) -> str:
     # call_model 캐시와 키가 겹치지 않게 kind를 넣는다
-    raw = json.dumps(
-        dict(kind="embed", step=step, model=model, text=text), sort_keys=True, ensure_ascii=False
-    )
+    fields: dict[str, str | int | None] = dict(kind="embed", step=step, model=cfg.model, text=text)
+    if cfg.provider == "gemini":
+        fields.update(provider=cfg.provider, task_type=cfg.task_type, dimensions=cfg.dimensions)
+    raw = json.dumps(fields, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -131,7 +159,7 @@ def embed(
     out: list[list[float] | None] = [None] * len(texts)
     missing: list[int] = []
     for i, text in enumerate(texts):
-        hit = cache.get(_cache_key(step, cfg.model, text)) if cache is not None else None
+        hit = cache.get(_cache_key(step, cfg, text)) if cache is not None else None
         if hit is not None:
             out[i] = hit["vector"]
         else:
@@ -142,7 +170,11 @@ def embed(
             f"{step}: 진짜 임베딩 전송층을 부르는데 설정에 max_model_calls가 없음"
         )
     if missing and transport is None:
-        transport = OpenAIEmbedTransport()
+        if cfg.provider == "gemini":
+            assert cfg.task_type is not None and cfg.dimensions is not None
+            transport = GeminiEmbedTransport(task_type=cfg.task_type, dimensions=cfg.dimensions)
+        else:
+            transport = OpenAIEmbedTransport()
 
     def record(
         n_tokens: int,
@@ -221,7 +253,7 @@ def embed(
         for i, vector in zip(idx, resp.vectors, strict=True):
             out[i] = vector
             if cache is not None:
-                cache.put(_cache_key(step, cfg.model, texts[i]), {"vector": vector})
+                cache.put(_cache_key(step, cfg, texts[i]), {"vector": vector})
 
     lengths = {len(v) for v in out}  # type: ignore[arg-type]
     if len(lengths) != 1 or 0 in lengths:

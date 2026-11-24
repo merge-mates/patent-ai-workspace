@@ -18,7 +18,7 @@ from patent_ai.core.schemas.oa_result import (
 )
 from patent_ai.retrieval.schemas import Chunk, Edition, Location
 
-IV = "cite-idx-v2"
+IV = "cite-idx-v5"
 OK = Status(value=StatusValue.CONFIRMED, checked="테스트")
 
 

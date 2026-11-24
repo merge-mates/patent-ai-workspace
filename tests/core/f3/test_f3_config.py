@@ -5,6 +5,7 @@ import pytest
 from patent_ai.core.f3_claim_compare.config import load_f3_settings
 from patent_ai.core.f3_claim_compare.inputs import F3Config, F3Inputs
 from patent_ai.core.llm.config import load_step_config
+from patent_ai.core.llm.embed import load_embed_config
 from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.schemas.common import Status, StatusValue
 
@@ -15,7 +16,7 @@ def test_config_f3_yaml의_스위치와_검색_값():
     assert settings.second_search is True
     assert settings.use_examiner_paragraphs is True
     assert settings.search.impl == "hybrid"
-    assert settings.search.index_version == "cite-idx-v2"
+    assert settings.search.index_version == "cite-idx-v5"
     assert settings.search.k == 10
     assert settings.search.hybrid.rrf_k == 60
     assert settings.search.hybrid.weights == {"bm25": 0.5, "vector": 0.5}
@@ -23,9 +24,15 @@ def test_config_f3_yaml의_스위치와_검색_값():
 
 def test_검색기에_넘길_settings에는_색인_판과_hybrid_칸이_있다():
     searcher_settings = load_f3_settings().search.searcher_settings()
-    assert searcher_settings["index_version"] == "cite-idx-v2"
+    assert searcher_settings["index_version"] == "cite-idx-v5"
     assert searcher_settings["hybrid"] == {"rrf_k": 60, "weights": {"bm25": 0.5, "vector": 0.5}}
     assert "k" not in searcher_settings and "impl" not in searcher_settings
+
+
+def test_v5_검색에는_Gemini_1536차원_질의_벡터를_쓴다():
+    cfg = load_embed_config("f3.embed")
+    assert (cfg.provider, cfg.model) == ("gemini", "gemini-embedding-001")
+    assert (cfg.task_type, cfg.dimensions) == ("RETRIEVAL_QUERY", 1536)
 
 
 def test_split_elements_단계의_모델_설정():
