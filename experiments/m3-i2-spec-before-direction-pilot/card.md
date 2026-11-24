@@ -32,3 +32,5 @@ PYTHONPATH=. uv run python "$PILOT_SCRIPTS/compare_drafts.py" "$PILOT_RUN" \
 법률 검색 로그에는 질문과 결과 건수, 선택한 근거가 보존됐다. 조문 검색 골드와 전체 순위는 이 파일럿의 기록에 없다. 인용 검색의 구성요소 질의는 저장된 대비와 모델 캐시에서 일치 해시를 찾아 보고서에 복원한다.
 
 [OA 후속 실험 기록](follow-up-results.md)에 실행 순서, 다시 찾기, 다른 검색·초안 평가의 집계와 한계를 모았다.
+
+[명세서 후보 5개·10개 전체 초안 비교](spec-cap-results.md)에 최종 파일럿의 조건, 결과와 재현 명령을 기록했다.
