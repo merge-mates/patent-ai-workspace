@@ -133,7 +133,9 @@ def _prompt_variables(
 ) -> dict[str, str]:
     """프롬프트 변수. 방향은 고른 후보 하나만 싣는다 (다른 후보는 어디에도 넣지 않음)."""
     variables = unit_variables(inp, unit, f3, bundle, max_candidates=1)
-    del variables["max_candidates"]  # 방향 후보 단계에만 있는 자리
+    # 방향 후보 단계에만 있는 자리. 청구항 글자는 보정 범위(ADR 0005) 그대로 둔다:
+    # 고른 방향이 범위만 넓힌 종속항을 합치면 의견서 보정 설명이 그 글자를 봐야 한다
+    del variables["max_candidates"], variables["scope_block"]
     oa = inp.oa
     variables["case_info"] = to_json(
         {

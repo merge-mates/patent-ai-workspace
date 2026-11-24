@@ -19,6 +19,7 @@ from patent_ai.core.f4_response_draft.directions import (
     RANK_NOTICE,
     amendment_limit_of,
     build_directions,
+    unit_scope,
 )
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import build_opinion
@@ -199,6 +200,7 @@ def _drafts_and_checks(
         uncovered=missing,
         coverage_unchecked=unchecked,
         amendment_overlaps=overlaps,
+        amendment_scopes={u.unit_id: unit_scope(inp, u).widened for u in inp.units},
         amendment_limit_applied=bool(limit_note),
         rank_notice=RANK_NOTICE,
         legality_notice=LEGALITY_NOTICE,

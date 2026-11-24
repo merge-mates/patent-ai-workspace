@@ -17,7 +17,8 @@
 - name: 방향을 한 구로. reason: 왜 이 방향인지 한 줄. 변리사가 출원인에게 보고할 요약으로도 읽히게 씁니다.
 - checks: 사람이 확인할 사항. "보정하면 권리범위가 얼마나 줄어드나"를 꼭 넣습니다 (보정이 없으면 그대로임을 적음).
 - per_rejection: 거절이유 번호와 그 대응 한 줄. 이 판단 단위의 거절이유 번호는 꼭 넣습니다.
-- amendment_core: 청구항마다 보정 종류. kind는 `unchanged` / `limit`(한정) / `add`(구성 부가) / `delete` / `correct_error`(오기 정정) / `clarify`(명확화). `add`일 때만 source를 `other_dependent`(다른 종속항) / `spec`(명세서) / `other` 중 하나로 적고, 그 밖에는 source를 적지 않습니다. 청구항 번호는 이 판단 단위의 청구항(과 함께 읽는 청구항) 안에서만 씁니다.
+- amendment_core: 청구항마다 보정 종류. kind는 `unchanged` / `limit`(한정) / `add`(구성 부가) / `delete` / `correct_error`(오기 정정) / `clarify`(명확화). `add`일 때만 source를 `other_dependent`(다른 종속항) / `spec`(명세서) / `other` 중 하나로 적고, 그 밖에는 source를 적지 않습니다. 청구항 번호는 아래 「보정 범위」의 청구항 안에서만 씁니다.
+  - 다른 종속항의 특징을 합칠 때, 합친 종속항은 그대로 두거나 `delete`로만 적습니다. 그 때문에 생기는 다른 청구항의 인용 번호·문구 정리(`clarify`·`correct_error`)는 쓰지 않습니다 (코드가 따로 표시합니다).
   - `argue_only`는 보정이 없거나 모두 `unchanged`. `amend_and_argue`·`amend_only`는 `unchanged`가 아닌 보정이 하나 이상.
 - rebuttal: `argue_only`·`amend_and_argue`는 꼭 적고, `amend_only`는 `null`. type은 거절이유 종류에 맞는 것만:
   - 진보성(inventive_step): `difference` `no_motivation` `combination_difficulty` `remarkable_effect` `hindsight` `other`
@@ -52,7 +53,10 @@ $rejection
 통지 종류와 심사관 힌트
 $oa_context
 
-청구항 글자 (OA 당시)
+보정 범위 (보정 후보에 쓸 수 있는 청구항. 범위만 넓힌 항은 거절 대상이 아니고 인용문헌 대비 결과가 없습니다)
+$scope_block
+
+청구항 글자 (OA 당시, 보정 범위의 청구항)
 $claims_text
 
 청구항–인용문헌 대비·명확성 검토 결과 (앞 단계)

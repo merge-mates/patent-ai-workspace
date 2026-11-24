@@ -325,7 +325,8 @@ def build_amendments(
 
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)
         variables = unit_variables(inp, unit, f3, bundle, max_candidates=1)
-        del variables["max_candidates"], variables["legal"]  # 이 프롬프트에 없는 자리
+        # 이 프롬프트에 없는 자리 (scope_block은 task-4에서 보정 프롬프트에 넣는다)
+        del variables["max_candidates"], variables["legal"], variables["scope_block"]
         variables["selected"] = to_json(
             chosen.model_dump(
                 mode="json", include={"coarse", "name", "reason", "per_rejection", "amendment_core"}

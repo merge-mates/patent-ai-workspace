@@ -22,9 +22,11 @@ from patent_ai.core.bundle_errors import (
     raise_if_all_failed,
     why,
 )
+from patent_ai.core.f4_response_draft.claim_refs import claim_refs
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
+from patent_ai.core.f4_response_draft.scope import AmendmentScope, amendment_scope
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import (
     Candidate,
@@ -257,12 +259,16 @@ def _build(
     extra_flags: list[Flag] | None = None,
     extra_checks: list[str] | None = None,
     candidate_flags: list[Flag] | None = None,
+    allowed: list[int] | None = None,
 ) -> DirectionCandidates:
-    """모델 답 하나를 DirectionCandidates로 만든다. 규칙을 어기면 ValueError(스키마 검사 포함)."""
+    """모델 답 하나를 DirectionCandidates로 만든다. 규칙을 어기면 ValueError(스키마 검사 포함).
+
+    allowed: 보정 후보에 쓸 수 있는 청구항 (ADR 0005 보정 범위). 없으면 묶음 청구항(+함께 읽을 항).
+    """
     if len(out.candidates) > max_candidates:
         raise ValueError(f"후보가 {len(out.candidates)}개로 상한 {max_candidates}개를 넘음")
     known_rejections = {r.no for r in oa.rejections}
-    allowed_claims = {*unit.claims, *unit.read_with}
+    allowed_claims = set(allowed) if allowed is not None else {*unit.claims, *unit.read_with}
     # 후보 목록은 모델이 낸 순서 그대로 둔다 (다시 줄 세우지 않음). candidate_id 번호도 그 순서다.
     # 확신 낮은 후보는 rank가 없어, "모델이 먼저 낸 후보"는 이 순서로만 알 수 있다 (채점이 읽는다).
     # 화면에 보일 순위는 rank 칸이고, 확신 낮음이면 여전히 순위 없음·미리 고르지 않음이다
@@ -282,7 +288,7 @@ def _build(
         if set(claims) - allowed_claims:
             raise ValueError(
                 f"amendment_core의 청구항 {sorted(set(claims) - allowed_claims)}는 "
-                f"이 묶음의 청구항 {sorted(allowed_claims)} 밖"
+                f"이 묶음의 보정 범위 {sorted(allowed_claims)} 밖"
             )
         low = c.confidence == Confidence.LOW
         candidates.append(
@@ -358,14 +364,39 @@ def missing_claim_texts(inp: F4Input, unit: JudgmentUnit) -> list[int]:
     return [n for n in [*unit.claims, *unit.read_with] if n not in have]
 
 
+def unit_scope(inp: F4Input, unit: JudgmentUnit) -> AmendmentScope:
+    """이 묶음의 보정 범위 (ADR 0005). 인용 관계표는 OA 당시 청구항 글자 전체에서 코드로 만든다."""
+    return amendment_scope(unit, inp.units, claim_refs(inp.claims_text))
+
+
+def scope_block(scope: AmendmentScope, inp: F4Input) -> str:
+    """프롬프트의 「보정 범위」 블록: 거절 대상과 범위만 넓힌 항을 나누고 인용 관계를 붙인다."""
+    refs = claim_refs(inp.claims_text)
+    lines = [
+        f"- 이 판단 단위의 거절 대상 항: {scope.targets}",
+        f"- 같은 거절이유의 다른 판단 단위 대상 항: {scope.same_rejection_targets}",
+        f"- 범위만 넓힌 항 (거절 대상 아님, 인용문헌 대비 결과 없음): {scope.widened}",
+        "- 인용 관계 (청구항 → 인용하는 앞 청구항, []는 독립항):",
+    ]
+    lines += [f"  - {n} → {refs[n].depends_on}" for n in scope.claims if n in refs]
+    return "\n".join(lines)
+
+
 def unit_variables(
-    inp: F4Input, unit: JudgmentUnit, f3: list, bundle: LegalEvidenceBundle, max_candidates: int
+    inp: F4Input,
+    unit: JudgmentUnit,
+    f3: list,
+    bundle: LegalEvidenceBundle,
+    max_candidates: int,
+    scope: AmendmentScope | None = None,
 ) -> dict[str, str]:
+    """묶음 하나의 프롬프트 변수. 청구항 글자는 보정 범위(ADR 0005)의 청구항이다."""
     oa, rej = inp.oa, _rejection_of(inp.oa, unit)
-    wanted = [*unit.claims, *unit.read_with]
+    scope = scope or unit_scope(inp, unit)
     texts = {c.claim: c.text for c in inp.claims_text}
-    claims_text = "\n\n".join(f"[청구항 {n}]\n{texts[n]}" for n in wanted if n in texts)
+    claims_text = "\n\n".join(f"[청구항 {n}]\n{texts[n]}" for n in scope.claims if n in texts)
     return {
+        "scope_block": scope_block(scope, inp),
         "max_candidates": str(max_candidates),
         "unit": to_json(
             {
@@ -524,6 +555,8 @@ def build_directions(
             if missing or ask_kind or unlimited_final or gaps.needs_review or legal_review
             else []
         )
+        # 보정 후보에 쓸 수 있는 항 = 보정 범위 (ADR 0005: 같은 거절이유의 독립항 전부 + 종속항)
+        scope = unit_scope(inp, unit)
 
         def build(
             out: DirectionsOut,
@@ -533,6 +566,7 @@ def build_directions(
             flags=flags,
             unit_checks=unit_checks,
             review=review,
+            scope=scope,
         ):
             return _build(
                 out,
@@ -545,13 +579,14 @@ def build_directions(
                 flags,
                 unit_checks,
                 review,
+                allowed=scope.claims,
             )
 
         if unit.unit_id in over_ids:
             # 상한 밖 묶음: 호출 없이 limit_reached 보류 (원문 글자 없이 상한 숫자와 범위만)
             results.append(_over_limit_result(unit, limit, evidence, flags, options.max_units, ids))
             continue
-        variables = unit_variables(inp, unit, f3, bundle, options.max_candidates)
+        variables = unit_variables(inp, unit, f3, bundle, options.max_candidates, scope)
         try:
             out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
         except BUNDLE_ERRORS as e:
