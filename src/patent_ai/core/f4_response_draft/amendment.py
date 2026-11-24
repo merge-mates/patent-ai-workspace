@@ -17,7 +17,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from patent_ai.core.bundle_errors import BUNDLE_ERRORS, failed_status, why
 from patent_ai.core.f1_oa_reader.verify import raw_text_on_page
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
-from patent_ai.core.f4_response_draft.directions import f3_results, to_json, unit_variables
+from patent_ai.core.f4_response_draft.directions import (
+    f3_results,
+    to_json,
+    unit_scope,
+    unit_variables,
+)
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.f4_response_draft.opinion import OpinionPart, drafts_from_opinion, has_amendment
@@ -107,7 +112,7 @@ def _check_output(
         raise ValueError(f"같은 청구항이 두 번 나옴: {nums}")
     if set(nums) - allowed:
         raise ValueError(
-            f"청구항 {sorted(set(nums) - allowed)}는 이 판단 단위의 청구항 {sorted(allowed)} 밖"
+            f"청구항 {sorted(set(nums) - allowed)}는 이 묶음의 보정 범위 {sorted(allowed)} 밖"
         )
     if required - set(nums):
         raise ValueError(f"고른 방향이 고치기로 한 청구항 {sorted(required - set(nums))}가 빠짐")
@@ -321,12 +326,15 @@ def build_amendments(
             }
             hold(_held(unit, texts, reasons))
             continue
-        allowed = {n for n in [*unit.claims, *unit.read_with] if n in texts}
+        # 고칠 수 있는 청구항 = 보정 범위 (ADR 0005: 같은 거절이유의 독립항 전부 + 종속항).
+        # 방향 후보 단계와 같은 범위라, 고른 방향이 범위만 넓힌 종속항을 합치거나 지워도
+        # 초안이 나온다
+        scope = unit_scope(inp, unit)
+        allowed = {n for n in scope.claims if n in texts}
 
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)
-        variables = unit_variables(inp, unit, f3, bundle, max_candidates=1)
-        # 이 프롬프트에 없는 자리 (scope_block은 task-4에서 보정 프롬프트에 넣는다)
-        del variables["max_candidates"], variables["legal"], variables["scope_block"]
+        variables = unit_variables(inp, unit, f3, bundle, max_candidates=1, scope=scope)
+        del variables["max_candidates"], variables["legal"]  # 이 프롬프트에 없는 자리
         variables["selected"] = to_json(
             chosen.model_dump(
                 mode="json", include={"coarse", "name", "reason", "per_rejection", "amendment_core"}
