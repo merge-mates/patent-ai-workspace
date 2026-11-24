@@ -41,6 +41,7 @@
 | m3-i1-f4-spec-excerpt | F4 | `amendment_spec_excerpt.enabled`: false → true (`top_n`: 5) | direction_top1 0.150 | - | $0.20 | [card](m3-i1-f4-spec-excerpt/card.md) |
 | m3-i1-law-bm25-v3 | 검색 (법령, 이슈 #24 24d) | `index_version`: law-idx-v2 → law-idx-v3 (조문 + 심사기준 + 판례·심결 한 표) | hit@5 1.000 | +0.000 | $0.00 | [card](m3-i1-law-bm25-v3/card.md) |
 | m3-i2-f4-amendment-scope | F4 | F4 방향 후보의 보정 범위: 판단 단위 항(거절 대상) → 같은 거절이유의 독립항 전부 + 그 종속항 (ADR 0005 ③) | 점수 없음 | - | - | [card](m3-i2-f4-amendment-scope/card.md) |
+| m3-i2-f4-parallel-independent | F4 | 사건 전체 검사에 "병렬 독립항 맞추기" 코드 규칙 (없음 → 있음) | 점수 없음 | - | - | [card](m3-i2-f4-parallel-independent/card.md) |
 | m3-i2-recheck-a | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | 없음 (기준선: `recheck: none` = 지금 second_search) | selected_recall_rechecked 0.334 | - | $0.00 | [card](m3-i2-recheck-a/card.md) |
 | m3-i2-recheck-b | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `fixed_loop` (LLM 질의 3개 다시 쓰기 → 질의마다 hybrid k=10 → compare 다시 판정) | selected_recall_rechecked 0.114 | - | $0.00 | [card](m3-i2-recheck-b/card.md) |
 | m3-i2-recheck-c | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `agent` (tool use 루프, 판정은 compare) | selected_recall_rechecked 0.136 | - | $0.00 | [card](m3-i2-recheck-c/card.md) |
