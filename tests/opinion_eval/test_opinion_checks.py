@@ -78,3 +78,19 @@ def test_심사관_위치는_초안이_그_문단_하나라도_짚으면_맞음(
     assert (
         examiner_location_hit({"D1": ["도 2"]}, "인용발명 1의 도 2") is None
     )  # 문단 위치 없음 = 셈 밖
+
+
+def test_줄마다_따로인_표는_줄을_마디로_본다():
+    d = draft(amendment="[보정 결과 표]\n- 제12항: 보정\n- 제15항: 삭제", response="")
+    assert draft_treatment(12, d) == "자체 보정"
+    assert draft_treatment(15, d) == "삭제"
+
+
+def test_보정하지_않았다는_말은_자체_보정이_아니다():
+    d = draft(
+        amendment="청구항 1을 한정하였습니다. 청구항 2 내지 4는 보정하지 않았습니다.",
+        response="청구항 1을 인용하는 종속항 역시 진보성이 있습니다.",
+    )
+    assert draft_treatment(3, d) == "묶음 처리"
+    d2 = draft(amendment="제5항은 그대로 두었습니다.", response="")
+    assert draft_treatment(5, d2) == "언급 없음"

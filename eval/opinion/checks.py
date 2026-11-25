@@ -13,6 +13,10 @@ from eval.opinion.text import bundle_covers, clauses, mentioned_claims, squash
 
 _DELETE = re.compile(r"삭제")
 _MERGE = re.compile(r"병합|합쳐|합하|합침|부가|삽입|편입|포함시|추가하|이동|반영")
+# 바꾸지 않았다는 말: 그 항을 언급해도 보정 설명이 아니다
+_NOT_CHANGED = re.compile(
+    r"(보정|변경|수정|정정)(하지|되지|을하지|이)?않|그대로|변경없|보정없|바뀌지않"
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,7 @@ class DraftText:
 def draft_treatment(claim: int, draft: DraftText) -> str:
     """초안이 그 항을 어떻게 처리했나 (삭제 / 합침 / 자체 보정 / 묶음 처리 / 언급 없음)."""
     said = [s for s in clauses(draft.amendment) if claim in mentioned_claims(s)]
+    said = [s for s in said if not _NOT_CHANGED.search(squash(s))]
     flat = [squash(s) for s in said]
     if any(_MERGE.search(s) for s in flat):
         # "제4항을 삭제하고 그 구성을 제1항에 부가" = 합침 (삭제 말이 같이 있어도)

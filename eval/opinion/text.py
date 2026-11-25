@@ -48,7 +48,9 @@ def clauses(text: str) -> list[str]:
     한 문장에 삭제와 부가가 같이 있을 때 항마다 가르려고 쓴다.
     """
     out = []
-    for s in sentences(text):
+    # 줄마다 따로인 표(코드가 만든 보정 결과 표 등)는 줄 하나가 마디다: 줄을 먼저 나눈다
+    lines = [line for line in text.split("\n") if line.strip()]
+    for s in [s for line in lines for s in sentences(line)]:
         out += [
             c.strip()
             for c in re.split(r"(?<=고)\s*,\s*|(?<=며)\s*,?\s+|,\s*(?=(?:청구항\s*)?제?\s*\d)", s)
