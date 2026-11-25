@@ -627,6 +627,7 @@ def test_청구항_줄은_정답_형식_칸을_가진다():
     row = ClaimRow(**row_fields(same_as=["claim:1", "rejection:2"]))
     dumped = row.model_dump(mode="json")
     assert set(dumped) == {
+        "check_failed",  # 11/26 D3: 대조에 떨어진 줄의 떨어진 검사
         "claim",
         "rejection",
         "citations",

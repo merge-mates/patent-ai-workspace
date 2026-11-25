@@ -169,11 +169,14 @@ def test_거절이유_종류가_결과에_붙는다():
     assert kinds == ["novelty", "inventive_step", "clarity", "other"]
 
 
-# ---- 원문 대조 실패: 그 줄만 unverified, 값은 버림 ----
+# ---- 원문 대조 실패: 그 줄만 unverified ----
 def _assert_dropped(row, reason=UnverifiedReason.NOT_EXTRACTED):
+    # 11/26 D3: 값을 버리지 않고 확인 안 된 모델 값으로 남긴다. 확인됨이 아니고, 값이 남았으면
+    # 떨어진 검사(check_failed)가 꼭 적혀 있다 (사람이 "확인 필요"로 보게)
     assert row.status.value == StatusValue.UNVERIFIED and row.status.reason == reason
-    assert (row.citations, row.locations, row.same_as, row.clarity_terms) == ([], {}, [], [])
-    assert row.raw_text is None and row.page is None and row.clarity_reason is None
+    kept = any((row.citations, row.locations, row.same_as, row.clarity_terms)) or row.raw_text
+    assert not kept or (row.check_failed and row.check_failed.strip())
+    assert row.clarity_reason is None
 
 
 def test_판단_원문이_그_쪽에_없으면_그_줄만_확인되지_않음():
@@ -889,3 +892,98 @@ def test_위치_원문이_판단_원문_밖이면_묶지_않은_줄도_애매():
     assert row.status.value == StatusValue.UNVERIFIED
     assert row.status.reason == UnverifiedReason.AMBIGUOUS
     assert row.locations == {"D2": ["[0050]"]} and row.page == 4
+
+
+# ---- 11/26 P4 원인 표: 지나치게 엄한 검사 ----
+def test_쪽_머리_출원번호_숫자가_머리_번호에_붙어도_줄을_버리지_않는다():
+    # 쪽 첫 줄 출원번호 뒤 줄바꿈 없이 이어 읽히면 '…12342-3.'이 되어 머리 번호를 큰 수로 읽었다
+    pages = _pages(replace=("2-3. 청구항 제3항", "10-2099-0001234\n2-3. 청구항 제3항"))
+    row = _row(_read(pages=pages), 3, 2)
+    assert row.status.value == StatusValue.CONFIRMED
+
+
+def test_모델이_청구항_글자를_바꿔_써도_판단_원문의_번호와_같으면_줄을_만든다():
+    # 판단 원문은 '청구항 제2항은…', 모델은 청구항 글자를 '청구항 2'로 줌 (쪽에 그 글자 없음)
+    claims = {"value": None, "raw_text": "청구항 2", "page": 3, "ambiguous": False}
+    row = _row(_read(_with_row(2, claims=claims)), 2, 2)
+    assert row.status.value == StatusValue.CONFIRMED and row.citations
+
+
+def test_판단_원문에_없는_번호를_청구항_글자로_주면_여전히_줄을_만들지_않는다():
+    # 2항 판단 원문에 '9항'이 없으니 그 줄로 9항 줄을 만들지 않고, 2항은 모델이 안 준 빈 줄
+    claims = {"value": None, "raw_text": "청구항 9", "page": 3, "ambiguous": False}
+    result = _read(_with_row(2, claims=claims))
+    assert (_row(result, 9, 2).raw_text or "").startswith("청구항 제9항")
+    assert _row(result, 2, 2).status.value == StatusValue.UNVERIFIED
+
+
+def test_위치_글자가_판단_원문_안이면_그_칸_쪽_번호가_달라도_통과():
+    answer = copy.deepcopy(_answer())
+    answer["claim_rows"][0]["citations"][0]["location"]["page"] = 4  # 판단은 3쪽
+    row = _row(_read(answer), 1, 1)
+    assert row.status.value == StatusValue.CONFIRMED
+    assert row.locations == {"D1": ["[0014]", "[0056]", "도 4b"]}
+
+
+def test_두_곳_위치를_쌍반점으로_이어_줘도_조각마다_대조한다():
+    answer = copy.deepcopy(_answer())
+    answer["claim_rows"][0]["citations"][0]["location"]["raw_text"] = "[0014], [0056]; 도 4b"
+    row = _row(_read(answer), 1, 1)
+    assert row.status.value == StatusValue.CONFIRMED
+    assert row.locations == {"D1": ["[0014]", "[0056]", "도 4b"]}
+
+
+def test_쌍반점으로_이은_조각_하나가_원문에_없으면_여전히_확인되지_않음():
+    answer = copy.deepcopy(_answer())
+    answer["claim_rows"][0]["citations"][0]["location"]["raw_text"] = "[0014]; [0099]"
+    row = _row(_read(answer), 1, 1)
+    assert row.status.value == StatusValue.UNVERIFIED
+
+
+# ---- 11/26 D3: 원문 대조에 떨어진 줄도 모델 값을 남긴다 (status는 unverified + 떨어진 검사) ----
+def test_대조에_떨어진_줄도_모델_값을_남기고_떨어진_검사를_적는다():
+    answer = copy.deepcopy(_answer())
+    answer["claim_rows"][0]["citations"][0]["location"]["raw_text"] = (
+        "[0014]; [0099]"  # [0099]는 원문에 없음
+    )
+    row = _row(_read(answer), 1, 1)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.raw_text.startswith("청구항 제1항은 인용발명 1의") and row.page == 3
+    assert row.citations == ["D1"]
+    assert row.locations == {"D1": ["[0014]", "[0099]"]}  # 모델이 준 위치 (확인 안 됨)
+    assert row.check_failed  # 어느 검사에서 떨어졌나 (사람이 볼 글)
+
+
+def test_확인된_줄에는_떨어진_검사_칸이_없다():
+    row = _row(_read(), 1, 1)
+    assert row.status.value == StatusValue.CONFIRMED and row.check_failed is None
+
+
+def test_모델이_줄을_주지_않은_빈_줄은_값이_없다():
+    answer = copy.deepcopy(_answer())
+    del answer["claim_rows"][6]  # 8항 줄
+    row = _row(_read(answer), 8, 2)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.raw_text is None and row.citations == [] and row.check_failed is None
+
+
+def test_같은_취지_대상_줄이_위치만_애매하면_인용은_물려받아_확인된다():
+    # 5-7항 줄은 인용 언급 없이 위치만 짚어 애매(위치만). 그 줄의 인용은 원문 규칙으로 정해져 있다
+    answer = copy.deepcopy(_answer())
+    answer["claim_rows"][6]["same_as"] = [
+        {"value": None, "raw_text": "제5-7항", "page": 4, "ambiguous": False}
+    ]
+    answer["claim_rows"][6]["judgment"]["raw_text"] = "2-6. 청구항 제8항은 인용발명 1에 비추어"
+    pages = _pages(
+        replace=(
+            "청구항 제8항은 인용발명 1에 비추어",
+            "청구항 제8항은 제5-7항과 같고 인용발명 1에 비추어",
+        )
+    )
+    answer["claim_rows"][6]["judgment"]["raw_text"] = "청구항 제8항은 제5-7항과 같고"
+    answer["claim_rows"][6]["citations"] = []
+    target = _row(_read(answer, pages), 5, 2)
+    row = _row(_read(answer, pages), 8, 2)
+    assert target.status.reason == UnverifiedReason.AMBIGUOUS
+    assert row.status.value == StatusValue.CONFIRMED
+    assert row.citations == target.citations

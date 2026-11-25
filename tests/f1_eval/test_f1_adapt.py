@@ -10,7 +10,13 @@ from eval.f1.adapt import to_pred
 from eval.f1.config import F1EvalConfig
 from eval.f1.gold import F1Gold
 from eval.f1.score import oa_key, score_f1
-from patent_ai.core.schemas.common import Candidate, ExtractedValue, Status, StatusValue
+from patent_ai.core.schemas.common import (
+    Candidate,
+    ExtractedValue,
+    Status,
+    StatusValue,
+    UnverifiedReason,
+)
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "f1_eval"
 CFG = F1EvalConfig(experiment="x", goldset="tune", goldset_version=1, impl="jaea")
@@ -191,3 +197,17 @@ def test_같은_라벨에_확인된_번호가_둘이면_경고(make_oa, caplog):
     assert next(c for c in p.citations if c.label == "D1").key == "KR20990000001A"
     assert "D1" in caplog.text
     assert "KR20990000009A" not in caplog.text  # 번호 글자는 남기지 않는다
+
+
+def test_대조에_떨어져_모델_값만_남은_청구항_줄은_채점에_넣지_않는다(make_oa):
+    # D3(11/26): unverified 줄에 모델 값이 남아도 F1 점수에는 확인된 줄만 들어간다
+    oa = make_oa()
+    first = oa.claim_rows[0]
+    failed = first.model_copy(
+        update={
+            "status": Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),
+            "check_failed": "위치 글자를 원문 쪽에서 못 찾음",
+        }
+    )
+    p = to_pred(oa.model_copy(update={"claim_rows": [failed, *oa.claim_rows[1:]]}))
+    assert (first.claim, first.rejection) not in {(r.claim, r.rejection) for r in p.claim_rows}
