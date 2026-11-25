@@ -10,6 +10,7 @@ import logging
 
 from patent_ai.core.f4_response_draft.amendment import (
     LEGALITY_NOTICE,
+    AmendmentPart,
     assemble_drafts,
     build_amendments,
 )
@@ -23,6 +24,7 @@ from patent_ai.core.f4_response_draft.directions import (
 )
 from patent_ai.core.f4_response_draft.inputs import F4Input
 from patent_ai.core.f4_response_draft.opinion import build_opinion, planned_part
+from patent_ai.core.f4_response_draft.opinion_v2 import build_opinion_v2
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
@@ -111,7 +113,11 @@ def _drafts_and_checks(
     """방향 후보(고른 것 포함)로 의견서 → 보정 → 묶기, 그리고 누락·보류 검사."""
     oa_id = inp.oa.oa_id
     limit_note = final_limit_note(inp.oa, options)
-    if options.opinion_after_amendment:
+    if not options.amendment_enabled:
+        # 의견서만: 보정안 단계를 부르지 않고 바깥 보정 결과로 의견서를 쓴다 (11/26 P5)
+        amendment = AmendmentPart(claims=[], statuses=[], held_units=[])
+        opinion = build_opinion_v2(inp, directions, ctx)
+    elif options.opinion_after_amendment:
         # 보정을 먼저 만들고, 의견서가 그 결과로 보정한 항을 설명한다 (실제 의견서처럼).
         # 보정 단계는 의견서의 based_on·held_units만 보므로 고른 후보로 미리 만든 값을 넘긴다
         amendment = build_amendments(
@@ -214,7 +220,8 @@ def _drafts_and_checks(
         coverage_unchecked=unchecked,
         amendment_overlaps=overlaps,
         amendment_scopes={u.unit_id: unit_scope(inp, u).widened for u in inp.units},
-        amendment_limit_applied=bool(limit_note),
+        amendment_limit_applied=bool(limit_note) and options.amendment_enabled,
+        direction_amendment_mismatch=opinion.mismatch_units,
         rank_notice=RANK_NOTICE,
         legality_notice=LEGALITY_NOTICE,
         status=worst_status(statuses, checked),

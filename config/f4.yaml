@@ -18,6 +18,11 @@ amendment_spec_excerpt: {enabled: false, top_n: 5}
 # 받는다 (아래 opinion_amended 단계). 끄면(기본): 방향 → 의견서(opinion) → 보정 순서 그대로.
 opinion_after_amendment: false
 
+# 끄면: 보정안 단계(amendment)를 부르지 않고, 의견서가 바깥 보정 결과(F4Input.external_amendment)로
+# 묶음마다 반박(opinion_unit) + 사건 전체 한 번(opinion_case)으로 쓴다 (11/26 골 모드 P5, 보정안은 은진 담당).
+# 켜면(기본): 지금 그대로 (방향 → 의견서 → 보정안).
+amendment_enabled: true
+
 direction:
   model: claude-haiku-5-5
   price_per_mtok_input: 0.10
@@ -57,4 +62,28 @@ amendment:
   max_tokens: 64000
   prompt: prompts/f4/amendment.md
   max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
+
+# amendment_enabled false일 때: 묶음 하나의 반박(대응과 근거). 의견서·저지 실험은 model·effort를 실험 설정으로 바꾼다
+opinion_unit:
+  model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/opinion_unit.md
+  system_prompt: prompts/f4/opinion_unit.system.md
+  max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
+
+# amendment_enabled false일 때: 사건 전체 한 번 (지적 요지·보정 설명·마무리)
+opinion_case:
+  model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
+  effort: medium
+  max_tokens: 32000
+  prompt: prompts/f4/opinion_case.md
+  system_prompt: prompts/f4/opinion_case.system.md
+  max_model_calls: 2   # 사건마다 첫 호출 + 출력 검사 실패 때 한 번
   max_retries: 2

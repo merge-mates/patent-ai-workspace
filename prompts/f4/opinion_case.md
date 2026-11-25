@@ -1,0 +1,12 @@
+## 거절이유 (OA에서 정리한 것)
+$rejections
+
+## 판단 단위 (반박은 이 단위마다 따로 씀)
+$units
+
+## 통지 종류와 심사관 힌트
+$oa_context
+
+## 보정 결과 (사건 전체. changed: 바뀐 항, unchanged: 그대로인 항)
+$amendment
+$retry_note

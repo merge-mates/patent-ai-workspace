@@ -89,6 +89,8 @@ class OpinionPart(BaseModel):
     status: Status
     evidence: list[Evidence] = Field(default_factory=list)
     flags: list[Flag] = Field(default_factory=list)
+    # 의견서만 실행에서 고른 방향의 보정 유무가 바깥 보정 결과와 어긋난 묶음 (opinion_v2)
+    mismatch_units: list[str] = Field(default_factory=list)
 
 
 def has_amendment(candidate: DirectionCandidate) -> bool:

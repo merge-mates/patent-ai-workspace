@@ -1,0 +1,27 @@
+## 판단 단위
+$unit
+
+## 이 판단 단위의 거절이유 (OA에서 정리한 것)
+$rejection
+
+## 항별 심사관 근거 (청구항마다 심사관이 든 인용 라벨·위치와 판단 원문. status "확인 필요"는 OA 원문 대조에 떨어진 값)
+$examiner_rows
+
+## 통지 종류와 심사관 힌트
+$oa_context
+
+## 고른 대응 방향의 반박 논점 (보정 내용은 아래 보정 결과를 따른다)
+$rebuttal
+
+## 보정 결과 (이 묶음 청구항. change: amended 보정 / deleted 삭제 / added 신설, unchanged는 그대로)
+$amendment
+
+## 청구항 글자 (OA 당시)
+$claims_text
+
+## 청구항–인용문헌 대비·명확성 검토 결과 (앞 단계)
+$comparison
+
+## 법률 근거 (비어 있으면 아직 조사하지 않은 것이며 "근거가 없다"는 뜻이 아님)
+$legal
+$retry_note
