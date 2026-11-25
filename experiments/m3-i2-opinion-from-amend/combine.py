@@ -73,6 +73,7 @@ def ours(inp, plan, ctx, oa=None):
 def sub_main():
     """셋째 비교 (구독): ours와 OA 전체 글을 더한 ours_oa를 한 번씩. 폴더·회차 뒤에 OA 글자 파일을 준다."""
     import run as R
+
     from patent_ai.core.llm.transport import TransportError, TransportResponse
 
     class Sub:
