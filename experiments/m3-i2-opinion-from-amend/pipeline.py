@@ -1,7 +1,7 @@
 # ruff: noqa: E501
-"""실제 앱 흐름(POST /cases → F1 → F3 → F2 → F4)을 구독으로 한 건 돌리고 F4 입력·결과를 저장한다.
+"""실제 앱 흐름(POST /cases → F1 → F3 → F2 → F4)을 한 건 돌리고 F4 입력·결과를 저장한다 (유료 API).
 
-코드 스냅숏 폴더에서 돈다. API 키가 없어야 하고, DB는 실험 전용이어야 한다.
+서버 이미지 안에서 돈다. DB는 실험 전용이어야 한다. 호출 상한은 앱 설정(config/)의 것을 쓴다.
 """
 
 import json
@@ -11,56 +11,21 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 key, out, dsn = sys.argv[1], Path(sys.argv[2]), os.environ["DATABASE_URL"]
-assert dsn.endswith("/patent_ai_e2e_opinion"), "실험 전용 DB만 쓴다"
-for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_BASE_URL"):
-    assert k not in os.environ, f"{k}가 있으면 유료 호출이 나갈 수 있다"
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import run as R  # noqa: E402
-
+assert dsn.endswith("/patent_ai_e2e_opinion_api"), "실험 전용 DB만 쓴다"
+assert "ANTHROPIC_BASE_URL" not in os.environ
 from patent_ai.api import deps  # noqa: E402
-from patent_ai.core.agents import tools_f4  # noqa: E402
-from patent_ai.core.llm.limits import CallBudget, RunContext  # noqa: E402
-from patent_ai.core.llm.transport import TransportError, TransportResponse  # noqa: E402
-from patent_ai.core.runs.step_log_pg import PostgresCallRecorder  # noqa: E402
-
-
-class SubTransport:
-    """구독 전송층. is_real 표시를 안 해 앱이 진짜로 다뤄 상한·파일 캐시가 켜진다."""
-
-    def complete(self, *, step, model, prompt, effort, max_tokens):
-        try:
-            text, u = R.ask(model, effort, prompt)
-        except RuntimeError as e:
-            raise TransportError(str(e), False) from e
-        print(step, flush=True)
-        n = (
-            u["input_tokens"]
-            + u.get("cache_creation_input_tokens", 0)
-            + u.get("cache_read_input_tokens", 0)
-        )
-        return TransportResponse(text, n, u["output_tokens"], "end_turn")
-
-    def converse(self, **_):
-        raise RuntimeError("tool use 호출은 쓰지 않는다")
+from patent_ai.core.f4_response_draft import run as f4_run  # noqa: E402
 
 
 def main():
     out.mkdir(parents=True, exist_ok=True)
-    from sqlalchemy.orm import sessionmaker
-
-    deps._new_run_context = lambda run_id: RunContext(
-        run_id=run_id,
-        budget=CallBudget(),
-        recorder=PostgresCallRecorder(sessionmaker(deps._engine())),
-        transport=SubTransport(),
-    )
-    orig = tools_f4.run_f4
+    orig = f4_run.run_f4
 
     def saved(inp, *, ctx, **kw):
         (out / "f4_input.json").write_text(inp.model_dump_json(), encoding="utf-8")
         return orig(inp, ctx=ctx, **kw)
 
-    tools_f4.run_f4 = saved
+    f4_run.run_f4 = saved
     from fastapi.testclient import TestClient
 
     from patent_ai.api.main import create_app

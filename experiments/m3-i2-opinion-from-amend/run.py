@@ -165,7 +165,7 @@ class Run:
         self.exp = self.repo / "work/agentic_rag_1123"
         self.root, self.run, self.base = (self.work / x for x in ("root", "run", "baseline"))
         self.cases = J.read_json(self.work / "cases.json")  # [{case, key}]
-        self.workers = a.workers
+        self.workers, self.rep = a.workers, a.rep
 
     def inputs(self, c):
         return J.read_json(self.exp / f"pattern_exp3/inputs_final/{c['key']}.json")
@@ -387,6 +387,114 @@ class Run:
 
         fan(one, [(c, a) for c in self.cases for a in ARMS], self.workers)
 
+    # ---- prep2: 앱 F4와 합친 방식의 초안을 같은 채점 입력으로 ----
+    def prep2(self):
+        runs, rep = self.repo / "work/e2e_opinion_1125/runs_api", self.rep
+        keys = []
+        for c in self.cases:
+            f4 = J.read_json(runs / c["case"] / f"f4_r{rep}.json")
+            mine = J.read_json(runs / c["case"] / f"ours_r{rep}.json")
+            d = f4["drafts"] or {"opinion": [], "claims": []}
+            drafts = {
+                "f4": (
+                    [{"section": x["title"], "text": x["ai_text"]} for x in d["opinion"]],
+                    [
+                        {
+                            "claim": x["claim"],
+                            "original": x["before"],
+                            "draft_text": x["ai_text"],
+                            "basis": [],
+                            "held_reason": x["held_reason"],
+                        }
+                        for x in d["claims"]
+                    ],
+                ),
+                "f4_ours": (
+                    [{"section": t, "text": x} for t, x in mine.items()],
+                    [
+                        {
+                            "claim": q["claim"],
+                            "original": q["before"],
+                            "draft_text": "(삭제)" if q["action"] == "delete" else q["text"],
+                            "basis": [],
+                            "held_reason": None,
+                        }
+                        for q in self.plan(c)["amended"]
+                    ],
+                ),
+            }
+            order = sorted(
+                drafts, key=lambda m: sha256(f"{c['case']}:{rep}:{m}".encode()).hexdigest()
+            )
+            key = {f"초안 {x}": m for x, m in zip("AB", order, strict=True)}
+            J.write_json(
+                self.root / c["case"] / "drafts-blinded.json",
+                [
+                    {"draft": k, "opinion": drafts[m][0], "amendments": drafts[m][1]}
+                    for k, m in key.items()
+                ],
+            )
+            cits = [
+                {"label": x["label"], "number": self.cited_path(c, x).stem}
+                for x in self.f1(c)["citations"]
+            ]
+            claims = [{"claim": n, "text": t} for n, t in self.old_claims(c).items()]
+            J.write_json(
+                self.root / c["case"] / "oa-evidence.json",
+                {
+                    "case": c["case"],
+                    "claims_at_oa": claims,
+                    "resolved_comparison_evidence": [{"citations": cits}],
+                    "resolved_legal_evidence": [],
+                },
+            )
+            keys.append({"case": c["case"], "draft_labels": key})
+        J.write_json(self.root / "condition-key-local.json", keys)
+        J.prepare_responses(self.root, self.run)
+        S.build_corpus(self.repo, self.base, self.root, self.run)
+
+    # ---- plans: combine.py에 줄 E 보정안 ----
+    def plans(self):
+        for c in self.cases:
+            J.write_json(
+                self.repo / "work/e2e_opinion_1125/runs_api" / c["case"] / "plan.json", self.plan(c)
+            )
+
+    # ---- claims: 보정안을 실제 보정과 비교 (코드만) ----
+    def claims(self):
+        sys.path.insert(0, str(self.exp / "pattern_exp"))
+        import common as C
+
+        key = {
+            f"{r['case']}-{k[-1]}": v
+            for r in J.read_json(self.root / "condition-key-local.json")
+            for k, v in r["draft_labels"].items()
+        }
+        tot = {}
+        for n, arm in sorted(key.items()):
+            c = next(x for x in self.cases if x["case"] == n[:3])
+            old = self.old_claims(c)
+            gold = C.answers({"출원번호": c["key"].split("_")[0]})[0]
+            pred = {}
+            for a in J.read_json(self.run / "response-input" / f"{n}.json")["amendments"]:
+                k, t = int(a["anchor"][2:]), a["draft_text"]
+                if t and C.bare(t) != C.bare(old.get(k, "")):
+                    pred[k] = "delete" if t.strip() == "(삭제)" else "amend"
+            hit = sum(pred.get(k, "unchanged") == gold.get(k, "unchanged") for k in old)
+            row = dict(
+                n=len(old),
+                hit=hit,
+                over=sum(k in pred for k in old if k not in gold),
+                keep=sum(k not in gold for k in old),
+                miss=sum(k not in pred for k in old if k in gold),
+                changed=sum(k in gold for k in old),
+            )
+            print(n[:3], arm, row)
+            for k, v in row.items():
+                tot.setdefault(arm, Counter())[k] += v
+        for arm, t in tot.items():
+            print("합", arm, dict(t), f"세 갈래 {t['hit'] / t['n']:.3f}")
+
     # ---- prep: 재아 채점기 입력 만들기 (조건 가림) ----
     def prep(self):
         titles = {
@@ -495,7 +603,7 @@ class Run:
             r["issue_id"]: r for r in J.read_rows(self.root / "01-source-freeze/issues.jsonl")
         }
         out = {}
-        for arm in ARMS:
+        for arm in sorted(set(key.values())):
             for scope in ["all", *[c["case"] for c in self.cases]]:
                 names = [n for n, v in key.items() if v == arm and scope in ("all", n[:3])]
                 r, dep, sup, cov, cross, ph, ln = (Counter() for _ in range(7))
@@ -533,11 +641,24 @@ class Run:
 
 
 def main():
-    steps = ("setup", "freeze", "draft", "prep", "response", "support", "coverage", "report")
+    steps = (
+        "setup",
+        "freeze",
+        "draft",
+        "prep",
+        "response",
+        "support",
+        "coverage",
+        "report",
+        "prep2",
+        "plans",
+        "claims",
+    )
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("step", choices=steps)
     p.add_argument("--repo", type=Path, required=True, help="data/와 work/가 있는 폴더")
     p.add_argument("--work", type=Path, required=True)
+    p.add_argument("--rep", type=int, default=1)
     p.add_argument("--workers", type=int, default=3)
     a = p.parse_args()
     getattr(Run(a), a.step)()
