@@ -53,6 +53,18 @@ def test_논점_id가_빠지면_한_번_다시_부르고_그래도_틀리면_예
     with pytest.raises(ModelOutputInvalid):
         judge_main(MAIN_VARS, ["A", "B"], ctx(fake))
     assert len(fake.calls) == 2
+    assert "검사 오류" in fake.calls[1]["prompt"] and "검사 오류" not in fake.calls[0]["prompt"]
+
+
+def test_모델이_더_붙인_설명_칸은_버리고_읽는다():
+    ans = {
+        "c1": {"score": 2, "reason": "r", "missing": []},
+        "c2": {"score": 1, "reason": "r", "missing": ["x"]},  # c2에는 없는 칸
+        "c3": {"score": 1, "reason": "r", "major": 0, "minor": 2, "unverifiable": 1, "errors": []},
+        "c5": {"score": 2, "reason": "r", "explained": 3, "changed": 3},
+    }
+    fake = FakeTransport({"eval_judge.opinion_aux": resp(ans)})
+    assert judge_aux(AUX_VARS, ctx(fake)).parsed.c2.score == 1
 
 
 def test_반박_논점이_0개면_부르지_않는다():

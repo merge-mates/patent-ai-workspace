@@ -24,3 +24,4 @@ $filed
 <draft>
 $draft
 </draft>
+$retry_note

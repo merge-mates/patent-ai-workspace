@@ -19,3 +19,4 @@ $comparison
 <draft>
 $draft
 </draft>
+$retry_note

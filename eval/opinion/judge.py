@@ -3,7 +3,8 @@
 - 주 점수(opinion_main): 반박 논점마다 0·1·2 (실제 의견서를 정답으로 받음)
 - 보조 점수(opinion_aux): 기준 c1·c2·c3·c5 (실제 의견서 없이)
 설정 config/eval_judge.yaml, 프롬프트 prompts/eval/ (system은 .system.md).
-답 모양이 틀리면(논점 id가 빠지거나 남음 포함) attempt 2로 한 번 더 부른다.
+답 모양이 틀리면(논점 id가 빠지거나 남음 포함) 검사 오류를 붙여 attempt 2로 한 번 더 부른다.
+모르는 칸(모델이 더 붙인 설명 칸)은 버리고 읽는다 (점수 칸만 검사).
 """
 
 from typing import Literal
@@ -20,7 +21,7 @@ Score = Literal[0, 1, 2]
 
 
 class MainIssue(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     id: str
     filed_point: str | None = None
@@ -31,7 +32,7 @@ class MainIssue(BaseModel):
 
 
 class MainOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     issues: list[MainIssue]
 
@@ -52,7 +53,7 @@ def main_schema(ids: list[str]) -> type[MainOut]:
 
 
 class Crit(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     score: Score
     reason: str
@@ -63,7 +64,7 @@ class C1(Crit):
 
 
 class JudgeError(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     kind: Literal["major", "minor"]
     what: str
@@ -82,7 +83,7 @@ class C5(Crit):
 
 
 class AuxOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     c1: C1
     c2: Crit
@@ -90,12 +91,18 @@ class AuxOut(BaseModel):
     c5: C5
 
 
+RETRY_NOTE = (
+    "\n앞 답이 출력 형식 검사에 떨어졌습니다. 같은 형식으로 다시 답하세요. 검사 오류:\n{error}\n"
+)
+
+
 def _call(step: str, variables: dict, schema, ctx: RunContext):
-    """한 번 부르고, 답 모양이 틀리면 attempt 2로 한 번 더 (그래도 틀리면 예외를 올림)."""
+    """한 번 부르고, 답 모양이 틀리면 검사 오류를 붙여 attempt 2로 한 번 더 (그래도 틀리면 예외)."""
     try:
-        return call_model(step, variables, schema, ctx=ctx, attempt=1)
-    except ModelOutputInvalid:
-        return call_model(step, variables, schema, ctx=ctx, attempt=2)
+        return call_model(step, {**variables, "retry_note": ""}, schema, ctx=ctx, attempt=1)
+    except ModelOutputInvalid as e:
+        note = RETRY_NOTE.format(error=str(e)[:1000])
+    return call_model(step, {**variables, "retry_note": note}, schema, ctx=ctx, attempt=2)
 
 
 def judge_main(variables: dict, issue_ids: list[str], ctx: RunContext):
