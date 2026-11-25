@@ -22,6 +22,7 @@ KNOWN_KEYS = {
     "max_input_tokens",
     "max_retries",
     "model_input",
+    "system_prompt",
 }
 
 # effort(output_config.effort)로 쓸 수 있는 값 (anthropic SDK 2.10.0 OutputConfigParam)
@@ -52,6 +53,8 @@ class StepConfig:
     max_retries: int | None = None
     # 모델 입력 모양 (단계마다 다름, 값 검사는 그 단계 코드가 한다. 예: f1.read_oa의 raw·tables_md)
     model_input: str | None = None
+    # system 칸으로 보낼 프롬프트 파일 (저장소 루트 기준). 변수 없이 그대로 보낸다. 없으면 None
+    system_prompt: str | None = None
 
 
 def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
@@ -117,5 +120,6 @@ def load_step_config(step: str, config_dir: Path | None = None) -> StepConfig:
         price_per_mtok_input=price_in,
         price_per_mtok_output=price_out,
         model_input=section.get("model_input"),
+        system_prompt=section.get("system_prompt"),
         **limits,
     )

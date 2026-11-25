@@ -20,10 +20,12 @@ def make_cache_key(
     effort: str,
     max_tokens: int,
     attempt: int,
+    system_template: str | None = None,
 ) -> str:
     """(단계, 모델, 프롬프트 파일 내용 해시, 변수, 설정 값, attempt)의 sha256.
 
-    하나라도 바뀌면 다른 키가 된다.
+    하나라도 바뀌면 다른 키가 된다. system 프롬프트가 있으면 그 해시도 넣는다
+    (없으면 칸을 아예 넣지 않아 system을 쓰기 전 캐시 키와 같다).
     """
     parts = {
         "step": step,
@@ -34,6 +36,8 @@ def make_cache_key(
         "max_tokens": max_tokens,
         "attempt": attempt,
     }
+    if system_template is not None:
+        parts["system_sha256"] = hashlib.sha256(system_template.encode("utf-8")).hexdigest()
     # 변수가 JSON으로 안 바뀌면 TypeError (호출한 쪽에서 설정 오류로 바꿈)
     raw = json.dumps(parts, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
