@@ -117,7 +117,7 @@ def test_끄면_한_번만_찾고_모델도_한_번만_부른다():
     assert [log.round for log in out.search_log] == [1, 1]
     row = _tank_row(out)
     assert row.status.value == StatusValue.NOT_FOUND_IN_SCOPE
-    assert row.status.searched_scope == "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v2)"
+    assert row.status.searched_scope == "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v5)"
 
 
 def test_켜면_못_찾은_구성요소만_다른_문단과_도면으로_한_번_더_찾는다():
@@ -147,7 +147,7 @@ def test_두_번_찾아도_없으면_조회_범위_내_없음과_두_번_찾아�
     scope = row.status.searched_scope
     assert scope == (
         "D1 조각 4개 중 hybrid 상위 1, 이어서 상위 2까지와 도면 설명 조각 1개"
-        " (cite-idx-v2) · 두 번 찾음"
+        " (cite-idx-v5) · 두 번 찾음"
     )
     assert out.search_log[2].searched_scope == scope
     assert out.tables[0].status.value == StatusValue.NOT_FOUND_IN_SCOPE

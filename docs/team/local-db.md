@@ -27,6 +27,9 @@
 ```
 make index-load DUMP=data/index/law-idx-v1.dump
 ```
+
+인용문헌 검색의 기본 색인은 `cite-idx-v5`다. `.env`에 `GEMINI_API_KEY`를 설정하고, 현재 DB 리비전에 맞는 `cite-idx-v5.dump`와 `.revision`·`.fingerprint.json`을 함께 받아 `make index-load DUMP=data/index/cite-idx-v5.dump`로 설치한다. 이 색인의 벡터와 질의 임베딩은 `gemini-embedding-001` 1536차원을 사용한다.
+
 - 덤프를 주고받을 때는 같은 main에서 `make db`로 마이그레이션을 맞춘 뒤 한다 (revision이 정확히 같아야 한다).
 - 덤프는 옆 파일 둘(`.revision`, `.fingerprint.json`)과 같이 받는다. 하나라도 없으면 덜 받은 것이라 멈춘다.
 - 마이그레이션이 main에 머지되면 그 전에 뽑은 덤프는 `.revision`이 달라서 load가 멈춘다. 덤프를 만든 사람이 최신 main에서 `make db`를 돌린 뒤 `make index-dump CORPUS=<말뭉치>`로 다시 뽑고, 드라이브의 `.dump`·`.revision`·`.fingerprint.json`을 함께 바꾼다. `.revision`은 손으로 고치지 않는다.

@@ -1,11 +1,15 @@
-"""임베딩 전송층: 가짜·기록 전송층과 규약. 진짜(OpenAI) 전송층은 SDK가 있는 transport.py에."""
+"""임베딩 전송층 규약, Gemini REST, 가짜·기록 전송층."""
 
 import hashlib
 import json
+import math
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
+
+import httpx
 
 from patent_ai.core.llm.errors import ModelConfigError, RecordingMissing
 from patent_ai.core.llm.transport import (  # noqa: F401 (밖에서 여기로 가져다 씀)
@@ -18,6 +22,70 @@ from patent_ai.core.llm.transport import (  # noqa: F401 (밖에서 여기로 �
 
 class EmbedTransport(Protocol):
     def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse: ...
+
+
+class GeminiEmbedTransport:
+    """Gemini Embedding 001의 검색 작업 유형과 출력 차원을 지정한다."""
+
+    # 2,048 토큰 한도에 모델 프레이밍 여유를 두고 조용한 잘림을 막는다.
+    _MAX_TEXT_TOKENS = 2000
+
+    def __init__(self, *, task_type: str, dimensions: int) -> None:
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ModelConfigError("Gemini 임베딩에 GEMINI_API_KEY가 필요함")
+        self._api_key = api_key
+        self._task_type = task_type
+        self._dimensions = dimensions
+
+    def embed(self, *, step: str, model: str, texts: list[str]) -> EmbedResponse:
+        resource = f"models/{model}"
+        contents = [{"parts": [{"text": text}]} for text in texts]
+        with httpx.Client(
+            base_url="https://generativelanguage.googleapis.com/v1beta/",
+            headers={"x-goog-api-key": self._api_key},
+            timeout=30.0,
+        ) as client:
+            counts = [
+                self._post(client, f"{resource}:countTokens", {"contents": [content]})[
+                    "totalTokens"
+                ]
+                for content in contents
+            ]
+            if any(count > self._MAX_TEXT_TOKENS for count in counts):
+                raise TransportError(
+                    f"{step}: Gemini 임베딩 입력이 {self._MAX_TEXT_TOKENS}토큰을 넘음", False
+                )
+            requests = [
+                {
+                    "model": resource,
+                    "content": content,
+                    "taskType": self._task_type,
+                    "outputDimensionality": self._dimensions,
+                }
+                for content in contents
+            ]
+            response = self._post(client, f"{resource}:batchEmbedContents", {"requests": requests})
+
+        vectors = []
+        for item in response["embeddings"]:
+            vector = item["values"]
+            norm = math.sqrt(math.fsum(value * value for value in vector))
+            if len(vector) != self._dimensions or not math.isfinite(norm) or norm <= 0:
+                raise TransportError(f"{step}: Gemini 임베딩 벡터의 차원 또는 길이가 잘못됨", False)
+            vectors.append([value / norm for value in vector])
+        return EmbedResponse(vectors, sum(counts))
+
+    @staticmethod
+    def _post(client: httpx.Client, path: str, payload: dict) -> dict:
+        try:
+            response = client.post(path, json=payload)
+        except httpx.TransportError as error:
+            raise TransportError(f"Gemini 연결 오류 ({type(error).__name__})", True) from None
+        if not response.is_success:
+            status = response.status_code
+            raise TransportError(f"Gemini HTTP {status}", status == 429 or status >= 500)
+        return response.json()
 
 
 @dataclass

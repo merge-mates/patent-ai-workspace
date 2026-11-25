@@ -42,7 +42,7 @@ effect_search:
 # tokenizer·pos_tags·bm25·hybrid는 experiments/m2-i2-cite-search-hybrid-rrf/config.yaml settings와 같은 값
 search:
   impl: hybrid
-  index_version: cite-idx-v2
+  index_version: cite-idx-v5
   k: 10                  # 구성요소마다 가져올 상위 조각 수
   tokenizer: kiwi
   pos_tags: [NNG, NNP, NNB, NR, VV, VA, XR, SL, SN, SH]
@@ -74,11 +74,14 @@ compare_recall:
   max_model_calls: 240
   max_retries: 2
 
-# 질의(구성요소 글자) 임베딩. 색인 cite-idx-v2와 같은 모델이어야 한다 (config/cite_search.yaml embed와 같은 값)
+# 질의(구성요소 글자)는 v5 문헌 벡터와 같은 모델·차원으로 임베딩한다.
 embed:
-  model: text-embedding-3-small
+  provider: gemini
+  model: gemini-embedding-001
+  task_type: RETRIEVAL_QUERY
+  dimensions: 1536
   batch_size: 100
-  price_per_mtok_input: 0.02      # 달러 / 입력 토큰 100만 [가정]
+  price_per_mtok_input: 0.15      # 표준 유료 요금, 미국 달러 / 입력 토큰 100만
   max_model_calls: 400            # 구성요소 하나에 1번 (같은 글은 실행 안에서 한 번만)
   max_retries: 3
 

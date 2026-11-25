@@ -201,7 +201,7 @@ def test_요약은_부모에서_온_구성요소도_그_종속항의_것으로_�
     out, _, _, _ = _run(MIXED, ANSWERS, unit_index=1)
     differences = out.tables[0].summary.differences
     # 청구항 5에서는 부모의 물통이 차이 후보였다. 청구항 3에서는 개시됨이라 빠진다
-    scope = "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v2)"
+    scope = "D1 조각 4개 중 hybrid 상위 1 (cite-idx-v5)"
     assert (
         f"청구항 1 [구성 1-2] {TANK} (조회 범위 내 없음: {scope}, 없다는 판단 아님)"
         " (청구항 5에서 인용)"

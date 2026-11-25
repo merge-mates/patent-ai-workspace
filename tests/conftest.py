@@ -15,6 +15,8 @@ def _진짜_모델_호출_막기(monkeypatch):
     # 키 환경 변수를 지워 SDK가 키를 못 찾게 한다
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
     # 진짜 전송층을 만드는 순간 예외 (테스트는 가짜·기록된 응답 전송층만 쓴다)
     def blocked(self, *args, **kwargs):
