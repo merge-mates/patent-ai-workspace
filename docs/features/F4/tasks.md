@@ -126,3 +126,10 @@ graph LR
 **목표** (한 줄): 묶음별로 고른 방향의 `amendment_core`를 모아, 삭제된 항을 인용하던 항과 보정된 독립항을 인용하는 종속항을 "확인 필요"로 표시한다 (글자는 고치지 않음).
 - 쓸 것: task-1의 `claim_refs`.
 - 바꿀 곳: `core/cases/case_check.py`의 `NOT_CHECKED`에서 두 규칙을 빼고 검사 항목으로 만든다. API `GET /oas/{oa_id}/case-check` 응답 칸은 design.md 3-2 질문을 정한 뒤 적는다.
+
+## m3-i2-opinion-amend  의견서가 보정 결과와 항별 심사관 근거를 받는다  상태: 진행 (11/26, 설정 스위치 뒤 실험)  (이슈 미정, Refs #345)
+**목표** (한 줄): 설정 `opinion_after_amendment`를 켜면 보정 초안을 먼저 만들고, 의견서(`f4.opinion_amended`)가 그 묶음의 보정 결과(항마다 종류·보정 글자)와 F1 항별 줄(항 × 인용 라벨 × 위치 × 심사관 판단 원문)을 받는다. 끄면(기본) 지금 순서·프롬프트 그대로.
+- 왜: 실제 제출 의견서 4건은 보정한 독립항으로 반박하고 합친 종속항을 설명한다. 지금 의견서는 보정안을 못 보고(문서 간 불일치 10줄), 항별 심사관 근거도 못 받는다(C02 제4항 D1 [0075]가 프롬프트에 없음).
+- task-1: 설정 스위치와 `opinion_amended` 단계 칸 읽기. 확인: `uv run pytest tests/core/f4/test_f4_opinion_after_amendment.py`
+- task-2: 켜면 순서 방향 → 보정 → 의견서, 의견서 변수 `amended_claims`·`examiner_rows`. 같은 확인 명령.
+- task-3: 4건(C01~C04) F1 항별 줄을 tune 정답으로 바꿔 끼운 실행으로 켬/끔 비교 (실험, `work/`). F1 정답 대입은 F1 오류를 빼고 뒷단계를 보려는 실험 조건이고 제품 동작이 아니다.

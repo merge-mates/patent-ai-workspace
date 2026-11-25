@@ -23,6 +23,10 @@ class F4Options:
     # 보정 프롬프트 명세서 글자를 겹치는 문단 상위 N개로 줄이는 스위치 (기본 끔 = 쪽 글자 전체)
     spec_excerpt_enabled: bool = False
     spec_excerpt_top_n: int = 5
+    # 켜면 보정 초안을 먼저 만들고, 의견서(f4.opinion_amended)가 그 보정 결과와
+    # F1 항별 심사관 근거를 받는다. 끄면(기본) 방향 → 의견서 → 보정 순서 그대로
+    # (m3-i2-opinion-amend 실험 스위치)
+    opinion_after_amendment: bool = False
 
 
 def load_f4_options(config_dir: Path | None = None) -> F4Options:
@@ -52,7 +56,7 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
     max_units = positive("max_units")
     # 묶음마다 첫 호출 + 출력 검사 실패 때 한 번. 단계 상한이 이보다 작으면 묶음이 많은 사건이
     # 중간에 끊긴다. 돌리다 끊기지 않게 설정을 읽을 때 멈춘다
-    for step in ("direction", "opinion", "amendment"):
+    for step in ("direction", "opinion", "opinion_amended", "amendment"):
         section = data.get(step)
         limit = section.get("max_model_calls") if isinstance(section, dict) else None
         if isinstance(limit, int) and not isinstance(limit, bool) and limit < 2 * max_units:
@@ -60,6 +64,10 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
                 f"f4.{step}의 max_model_calls {limit}가 2 × max_units({max_units})보다 작음"
             )
     excerpt = _read_spec_excerpt(data.get("amendment_spec_excerpt"))
+    # 칸이 없으면 끔. 있으면 true·false만 받는다 (오타가 조용히 끔이 되지 않게)
+    after = data.get("opinion_after_amendment", False)
+    if not isinstance(after, bool):
+        raise ModelConfigError(f"opinion_after_amendment는 true·false여야 함: {after!r}")
     return F4Options(
         final_rejection_limit=switch,
         max_units=max_units,
@@ -67,6 +75,7 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
         min_basis_chars=positive("min_basis_chars"),
         spec_excerpt_enabled=excerpt[0],
         spec_excerpt_top_n=excerpt[1],
+        opinion_after_amendment=after,
     )
 
 

@@ -14,6 +14,10 @@ max_candidates: 3    # 묶음 하나의 방향 후보 수 상한 (ADR 0001: 설�
 # 명세서 근거 위치 대조는 켜도 원문 전체로 한다.
 amendment_spec_excerpt: {enabled: false, top_n: 5}
 
+# 켜면: 보정 초안을 먼저 만들고, 의견서가 그 묶음의 보정 결과와 F1 항별 심사관 근거(항 × 인용 × 위치)를
+# 받는다 (아래 opinion_amended 단계). 끄면(기본): 방향 → 의견서(opinion) → 보정 순서 그대로.
+opinion_after_amendment: false
+
 direction:
   model: claude-haiku-5-5
   effort: medium
@@ -28,6 +32,15 @@ opinion:
   max_tokens: 64000
   prompt: prompts/f4/opinion.md
   max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
+
+# opinion_after_amendment를 켰을 때만 부르는 의견서 단계 (보정 결과·항별 심사관 근거를 받는 프롬프트)
+opinion_amended:
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 64000
+  prompt: prompts/f4/opinion_amended.md
+  max_model_calls: 40  # 2 × max_units
   max_retries: 2
 
 amendment:

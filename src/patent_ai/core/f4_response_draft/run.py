@@ -22,7 +22,7 @@ from patent_ai.core.f4_response_draft.directions import (
     unit_scope,
 )
 from patent_ai.core.f4_response_draft.inputs import F4Input
-from patent_ai.core.f4_response_draft.opinion import build_opinion
+from patent_ai.core.f4_response_draft.opinion import build_opinion, planned_part
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
@@ -110,11 +110,24 @@ def _drafts_and_checks(
 ) -> F4Output:
     """방향 후보(고른 것 포함)로 의견서 → 보정 → 묶기, 그리고 누락·보류 검사."""
     oa_id = inp.oa.oa_id
-    opinion = build_opinion(inp, directions, ctx, options=options)
     limit_note = final_limit_note(inp.oa, options)
-    amendment = build_amendments(
-        inp, directions, opinion, ctx, options=options, limit_note=limit_note
-    )
+    if options.opinion_after_amendment:
+        # 보정을 먼저 만들고, 의견서가 그 결과로 보정한 항을 설명한다 (실제 의견서처럼).
+        # 보정 단계는 의견서의 based_on·held_units만 보므로 고른 후보로 미리 만든 값을 넘긴다
+        amendment = build_amendments(
+            inp,
+            directions,
+            planned_part(inp, directions),
+            ctx,
+            options=options,
+            limit_note=limit_note,
+        )
+        opinion = build_opinion(inp, directions, ctx, options=options, amendment=amendment)
+    else:
+        opinion = build_opinion(inp, directions, ctx, options=options)
+        amendment = build_amendments(
+            inp, directions, opinion, ctx, options=options, limit_note=limit_note
+        )
     # 모델 호출 실패·상한으로 보류한 묶음의 status: 같은 등급에 가려지지 않게 맨 앞에 둔다.
     # 실행 status와 초안 status가 같은 목록을 쓴다
     lead_statuses = [
