@@ -94,3 +94,72 @@ def test_보정하지_않았다는_말은_자체_보정이_아니다():
     assert draft_treatment(3, d) == "묶음 처리"
     d2 = draft(amendment="제5항은 그대로 두었습니다.", response="")
     assert draft_treatment(5, d2) == "언급 없음"
+
+
+# ---- P6 초안 쪽 10줄 검사에서 틀린 꼴 (11/26) ----
+def test_따옴표_안_청구항_번호는_그_항_언급이_아니다():
+    d = draft(
+        amendment="청구항 9는 인용하는 항이 '청구항 1 내지 청구항 8 중 어느 한 항'에서 "
+        "바뀌었습니다.",
+        response="",
+    )
+    assert draft_treatment(9, d) == "자체 보정"
+    assert draft_treatment(7, d) == "언급 없음"
+
+
+def test_동사_없는_조각은_문장_뒤쪽_말로_정한다():
+    d = draft(amendment="제14항, 제16항 및 제2~10항, 제17항은 보정하지 않았습니다.", response="")
+    assert draft_treatment(6, d) == "언급 없음"
+    d2 = draft(amendment="청구항 4와 5, 청구항 7의 구성은 청구항 1에 합쳤습니다.", response="")
+    assert draft_treatment(7, d2) == "합침"
+
+
+def test_됨으로_끝나는_문장도_나눈다():
+    d = draft(
+        amendment="청구항 1에 구성이 추가됨. 청구항 2 (삭제): 구성은 청구항 1로 합쳐짐. "
+        "청구항 6: 표현을 정정함."
+    )
+    assert draft_treatment(6, d) == "자체 보정"
+    assert draft_treatment(2, d) == "합침"
+
+
+def test_unchanged라고_쓴_항은_바꾸지_않은_것():
+    d = draft(amendment="청구항 2-10, 12는 자료상 unchanged로 정리되어 있습니다.", response="")
+    assert draft_treatment(4, d) == "언급 없음"
+
+
+def test_글자를_지우는_말은_청구항_삭제가_아니다():
+    d = draft(amendment="청구항 2에는 그 말이 없으므로 '상기'를 단순 삭제하면 됩니다.", response="")
+    assert draft_treatment(2, d) != "삭제"
+    d2 = draft(amendment="- 제15항: 삭제\n제3항은 삭제되었습니다.", response="")
+    assert (draft_treatment(15, d2), draft_treatment(3, d2)) == ("삭제", "삭제")
+
+
+def test_여러_항을_나열한_요약보다_그_항만_말한_줄을_따른다():
+    d = draft(
+        amendment="보정으로 바뀐 항은 제1항, 제11항, 제12항(보정)과 제15항(삭제)이다.\n"
+        "- 제12항(보정): 인용항을 정정하였다.",
+        response="",
+    )
+    assert draft_treatment(12, d) == "자체 보정"
+    assert draft_treatment(15, d) == "삭제"
+
+
+def test_변경이_없다는_말은_바꾸지_않은_것():
+    d = draft(amendment="청구항 3~7은 보정 결과상 변경이 없습니다.", response="")
+    assert draft_treatment(4, d) == "언급 없음"
+
+
+def test_종속항_N_꼴_번호도_읽고_합친도_합침():
+    assert mentioned_claims("종속항 2-10, 12는 함께 주장할 수 있습니다") >= {2, 10, 12}
+    d = draft(amendment="이 부분은 보정 전 청구항 4, 5, 7의 구성을 합친 것입니다.", response="")
+    assert draft_treatment(5, d) == "합침"
+
+
+def test_따옴표가_마디를_넘어도_문장째_뺀다():
+    d = draft(
+        amendment="인용항이 '청구항 1 내지 청구항 8 중 어느 한 항'에서 '청구항 3 내지 청구항 8 중 "
+        "어느 한 항'으로 바뀌었습니다.",
+        response="",
+    )
+    assert draft_treatment(4, d) == "언급 없음"

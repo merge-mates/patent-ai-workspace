@@ -9,13 +9,23 @@
 import re
 from dataclasses import dataclass
 
-from eval.opinion.text import bundle_covers, clauses, mentioned_claims, squash
+from eval.opinion.text import (
+    bundle_covers,
+    clauses,
+    mentioned_claims,
+    sentences,
+    squash,
+    strip_quotes,
+)
 
-_DELETE = re.compile(r"삭제")
-_MERGE = re.compile(r"병합|합쳐|합하|합침|부가|삽입|편입|포함시|추가하|이동|반영")
+# 청구항을 지웠다는 말 (글자를 지우는 "'상기'를 단순 삭제하면"은 아님)
+_DELETE = re.compile(
+    r"항(을|은|는|이|도)?(모두)?삭제|\(삭제|:삭제|삭제(하였|했|되었|됐|함|됨|합니다|하고|하며|된|한|처리)"
+)
+_MERGE = re.compile(r"병합|합쳐|합쳤|합친|합하|합침|부가|삽입|편입|포함시|추가하|이동|반영")
 # 바꾸지 않았다는 말: 그 항을 언급해도 보정 설명이 아니다
 _NOT_CHANGED = re.compile(
-    r"(보정|변경|수정|정정)(하지|되지|을하지|이)?않|그대로|변경없|보정없|바뀌지않"
+    r"(보정|변경|수정|정정)(하지|되지|을하지|이)?않|그대로|(변경|보정|수정|바뀐것)이?없|바뀌지않|unchanged"
 )
 
 
@@ -27,18 +37,57 @@ class DraftText:
     response: str  # 대응과 근거 (반박)
 
 
-def draft_treatment(claim: int, draft: DraftText) -> str:
-    """초안이 그 항을 어떻게 처리했나 (삭제 / 합침 / 자체 보정 / 묶음 처리 / 언급 없음)."""
-    said = [s for s in clauses(draft.amendment) if claim in mentioned_claims(s)]
-    said = [s for s in said if not _NOT_CHANGED.search(squash(s))]
-    flat = [squash(s) for s in said]
-    if any(_MERGE.search(s) for s in flat):
-        # "제4항을 삭제하고 그 구성을 제1항에 부가" = 합침 (삭제 말이 같이 있어도)
+_CHANGED = re.compile(r"보정|한정|부가|추가|정정|수정|바뀌|바꾸|변경|명확|고쳤|고침")
+
+
+def _verdict(text: str) -> str | None:
+    """마디 하나의 처리 말: 합침 > 삭제 > 그대로(바꾸지 않음) > 자체 보정. 동사가 없으면 None."""
+    flat = squash(text)
+    if _MERGE.search(flat):
         return "합침"
-    if any(_DELETE.search(s) for s in flat):
+    if _DELETE.search(flat):
         return "삭제"
-    if said:
+    if _NOT_CHANGED.search(flat):
+        return "그대로"
+    if _CHANGED.search(flat):
         return "자체 보정"
+    return None
+
+
+def draft_treatment(claim: int, draft: DraftText) -> str:
+    """초안이 그 항을 어떻게 처리했나 (삭제 / 합침 / 자체 보정 / 묶음 처리 / 언급 없음).
+
+    보정 설명을 줄 → 문장 → 마디로 나눠, 그 항 번호가 (따옴표 밖에) 나온 마디의 말로 정한다.
+    동사 없는 조각("제14항 및 제2~10항,")은 같은 문장 뒤쪽 마디의 말을 따른다.
+    """
+    found: list[tuple[bool, str]] = []  # (그 항만 말한 마디인가, 처리 말)
+    for line in draft.amendment.split("\n"):
+        for sent in sentences(line):
+            # 따옴표 안(청구항 글자 인용)은 문장째 먼저 뺀다 (마디로 나누면 따옴표가 쪼개짐)
+            parts = clauses(strip_quotes(sent))
+            for i, part in enumerate(parts):
+                nums = mentioned_claims(strip_quotes(part))
+                if claim not in nums:
+                    continue
+                # 항 번호 바로 뒤 꼬리표 "제12항(보정)", "청구항 15 (삭제)"가 있으면 그것을 따른다
+                tag = re.search(
+                    rf"(?<!\d){claim}\s*항?\s*[(\[]\s*(보정|정정|수정|바뀜|삭제|합침|병합)", part
+                )
+                v = None
+                if tag:
+                    v = _verdict(tag.group(1))
+                for later in parts[i:] if v is None else []:
+                    v = _verdict(strip_quotes(later))
+                    if v is not None:
+                        break
+                found.append((len(nums) <= 2, v or "자체 보정"))
+    # 여러 항을 나열한 요약 마디보다 그 항만(두 항까지) 말한 마디를 따른다
+    if any(specific for specific, _ in found):
+        found = [f for f in found if f[0]]
+    kinds = [v for _, v in found]
+    for kind in ("합침", "삭제", "자체 보정"):
+        if kind in kinds:
+            return kind
     if bundle_covers(draft.response, claim):
         return "묶음 처리"
     return "언급 없음"

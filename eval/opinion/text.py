@@ -8,6 +8,7 @@ _MENTION = [
     re.compile(rf"(?:청구항\s*)?제\s*({_LIST})\s*항"),
     re.compile(rf"청구항\s*(?:제\s*)?({_LIST})(?!\s*\d)"),
     re.compile(rf"(?<![\d.\-])({_LIST})\s*항(?![목])"),
+    re.compile(rf"(?:종속|독립)\s*(?:청구)?항\s*(?:제\s*)?({_LIST})"),  # "종속항 2-10, 12"
 ]
 
 
@@ -53,15 +54,24 @@ def clauses(text: str) -> list[str]:
     for s in [s for line in lines for s in sentences(line)]:
         out += [
             c.strip()
-            for c in re.split(r"(?<=고)\s*,\s*|(?<=며)\s*,?\s+|,\s*(?=(?:청구항\s*)?제?\s*\d)", s)
+            for c in re.split(r"(?<=고)\s*,\s*|(?<=며)\s*,?\s+|,\s*(?=(?:청구항|제)\s*\d)", s)
             if c.strip()
         ]
     return out
 
 
+_QUOTED = re.compile(r"'[^']*'|‘[^’]*’|\"[^\"]*\"|“[^”]*”|「[^」]*」|『[^』]*』")
+
+
+def strip_quotes(text: str) -> str:
+    """따옴표 안 글자(청구항 글자 인용)를 뺀 글. 그 안의 청구항 번호는 언급으로 세지 않는다."""
+    return _QUOTED.sub(" ", text)
+
+
 def sentences(text: str) -> list[str]:
     flat = re.sub(r"\s*\n\s*", " ", text)
-    parts = re.split(r"(?<=[다요음])\.\s+|(?<=습니다)\.?\s+", flat)
+    # 한글 뒤 마침표에서 나눈다 (…다. …됨. …짐. 모두). 숫자 뒤 마침표(도 4.)는 나누지 않는다
+    parts = re.split(r"(?<=[가-힣])\.\s+|(?<=습니다)\.?\s+", flat)
     return [s.strip() for s in parts if s.strip()]
 
 
