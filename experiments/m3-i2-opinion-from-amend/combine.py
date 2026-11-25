@@ -5,6 +5,7 @@
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,7 +32,7 @@ TITLES = {
 }
 
 
-def ours(inp, plan, ctx):
+def ours(inp, plan, ctx, oa=None):
     """판단 단위마다 앱 의견서 프롬프트를 쓰되, 고른 방향 자리에 E 전략·보정안을, 끝에 점검 지시를 넣는다."""
     note = "".join(
         (HERE / f"prompts/{n}.md").read_text(encoding="utf-8") for n in ("note_amend", "note_check")
@@ -60,11 +61,47 @@ def ours(inp, plan, ctx):
             }
         )
         v["selected"] = to_json({"name": plan["strategy"], "보정안": rows}) + "\n" + note
+        if oa:  # 셋째 비교: 거절이유 자리 뒤에 OA 글자 전체
+            v["rejection"] += "\n\nOA 글자 전체 (원문)\n" + oa
         out = call_with_one_retry(O.STEP, v, O.OpinionOut, ctx)
         for k in TITLES:
             if t := getattr(out, k):
                 parts[k].append(t)
     return {t: "\n\n".join(parts[k][:1] if k == "closing" else parts[k]) for k, t in TITLES.items()}
+
+
+def sub_main():
+    """셋째 비교 (구독): ours와 OA 전체 글을 더한 ours_oa를 한 번씩. 폴더·회차 뒤에 OA 글자 파일을 준다."""
+    import run as R
+    from patent_ai.core.llm.transport import TransportError, TransportResponse
+
+    class Sub:
+        def complete(self, *, step, model, prompt, effort, max_tokens):
+            try:
+                text, u = R.ask(model, effort, prompt)
+            except RuntimeError as e:
+                raise TransportError(str(e), False) from e
+            n = (
+                u["input_tokens"]
+                + u.get("cache_creation_input_tokens", 0)
+                + u.get("cache_read_input_tokens", 0)
+            )
+            return TransportResponse(text, n, u["output_tokens"], "end_turn")
+
+    assert not any(k.endswith("_API_KEY") for k in os.environ), (
+        "키가 있으면 유료 호출이 나갈 수 있다"
+    )
+    inp = F4Input.model_validate_json((folder / "f4_input.json").read_text())
+    plan = json.loads((folder / "plan.json").read_text())
+    oa = json.loads(Path(sys.argv[3]).read_text())["oa"]
+    for name, text in (("ours_sub", None), ("ours_oa_sub", oa)):
+        dest = folder / f"{name}_r{rep}.json"
+        if not dest.exists():
+            ctx = RunContext(
+                f"{name}-{rep}", CallBudget(), MemoryRecorder(), transport=Sub(), cache=False
+            )
+            dest.write_text(json.dumps(ours(inp, plan, ctx, text), ensure_ascii=False, indent=1))
+            print("DONE", folder.name, rep, name, "호출", len(ctx.recorder.records), flush=True)
 
 
 def main():
@@ -96,4 +133,4 @@ def main():
     )
 
 
-main()
+sub_main() if len(sys.argv) > 3 else main()

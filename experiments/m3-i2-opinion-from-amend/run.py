@@ -165,7 +165,7 @@ class Run:
         self.exp = self.repo / "work/agentic_rag_1123"
         self.root, self.run, self.base = (self.work / x for x in ("root", "run", "baseline"))
         self.cases = J.read_json(self.work / "cases.json")  # [{case, key}]
-        self.workers, self.rep = a.workers, a.rep
+        self.workers, self.rep, self.sub = a.workers, a.rep, a.sub
 
     def inputs(self, c):
         return J.read_json(self.exp / f"pattern_exp3/inputs_final/{c['key']}.json")
@@ -387,42 +387,55 @@ class Run:
 
         fan(one, [(c, a) for c in self.cases for a in ARMS], self.workers)
 
+    def opinion_of(self, path):
+        return [{"section": t, "text": x} for t, x in J.read_json(path).items()]
+
+    def e_amends(self, c):
+        return [
+            {
+                "claim": q["claim"],
+                "original": q["before"],
+                "draft_text": "(삭제)" if q["action"] == "delete" else q["text"],
+                "basis": [],
+                "held_reason": None,
+            }
+            for q in self.plan(c)["amended"]
+        ]
+
+    def drafts2(self, c, runs, rep):
+        d = J.read_json(runs / c["case"] / f"f4_r{rep}.json")["drafts"] or {
+            "opinion": [],
+            "claims": [],
+        }
+        return {
+            "f4": (
+                [{"section": x["title"], "text": x["ai_text"]} for x in d["opinion"]],
+                [
+                    {
+                        "claim": x["claim"],
+                        "original": x["before"],
+                        "draft_text": x["ai_text"],
+                        "basis": [],
+                        "held_reason": x["held_reason"],
+                    }
+                    for x in d["claims"]
+                ],
+            ),
+            "f4_ours": (self.opinion_of(runs / c["case"] / f"ours_r{rep}.json"), self.e_amends(c)),
+        }
+
+    def drafts3(self, c, runs, rep):
+        return {
+            m: (self.opinion_of(runs / c["case"] / f"{m}_r{rep}.json"), self.e_amends(c))
+            for m in ("ours_sub", "ours_oa_sub")
+        }
+
     # ---- prep2: 앱 F4와 합친 방식의 초안을 같은 채점 입력으로 ----
     def prep2(self):
         runs, rep = self.repo / "work/e2e_opinion_1125/runs_api", self.rep
         keys = []
         for c in self.cases:
-            f4 = J.read_json(runs / c["case"] / f"f4_r{rep}.json")
-            mine = J.read_json(runs / c["case"] / f"ours_r{rep}.json")
-            d = f4["drafts"] or {"opinion": [], "claims": []}
-            drafts = {
-                "f4": (
-                    [{"section": x["title"], "text": x["ai_text"]} for x in d["opinion"]],
-                    [
-                        {
-                            "claim": x["claim"],
-                            "original": x["before"],
-                            "draft_text": x["ai_text"],
-                            "basis": [],
-                            "held_reason": x["held_reason"],
-                        }
-                        for x in d["claims"]
-                    ],
-                ),
-                "f4_ours": (
-                    [{"section": t, "text": x} for t, x in mine.items()],
-                    [
-                        {
-                            "claim": q["claim"],
-                            "original": q["before"],
-                            "draft_text": "(삭제)" if q["action"] == "delete" else q["text"],
-                            "basis": [],
-                            "held_reason": None,
-                        }
-                        for q in self.plan(c)["amended"]
-                    ],
-                ),
-            }
+            drafts = self.drafts3(c, runs, rep) if self.sub else self.drafts2(c, runs, rep)
             order = sorted(
                 drafts, key=lambda m: sha256(f"{c['case']}:{rep}:{m}".encode()).hexdigest()
             )
@@ -658,6 +671,7 @@ def main():
     p.add_argument("step", choices=steps)
     p.add_argument("--repo", type=Path, required=True, help="data/와 work/가 있는 폴더")
     p.add_argument("--work", type=Path, required=True)
+    p.add_argument("--sub", action="store_true", help="prep2에서 셋째 비교 초안을 쓴다")
     p.add_argument("--rep", type=int, default=1)
     p.add_argument("--workers", type=int, default=3)
     a = p.parse_args()
