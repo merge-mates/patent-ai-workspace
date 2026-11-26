@@ -355,8 +355,8 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
     .join(' · ')
 
   const byNo = new Map(r.rejections.map((x) => [x.no, x]))
-  // 보이는 순서: AI가 다루는 거절이유(진보성·명확성·신규성)를 위에, 다루지 않는 것(기타)은 맨 아래로. 같은 쪽 안에서는 번호순
-  const ordered = [...r.rejections].sort((a, b) => Number(!a.supported) - Number(!b.supported) || a.no - b.no)
+  // 보이는 순서: 통지서 순번 그대로 (오른쪽 원문 PDF와 같은 순서). AI가 다루지 않는 것은 "직접 검토 필요" 표시로 구분한다
+  const ordered = [...r.rejections].sort((a, b) => a.no - b.no)
   const rank = new Map(ordered.map((x, i) => [x.no, i]))
   // 청구항별: 청구항 번호로 모은다 (모름(null)은 맨 뒤)
   const claimNos = [...new Set<number | null>([...r.claim_rows.map((x) => x.claim), ...rejected])].sort(
