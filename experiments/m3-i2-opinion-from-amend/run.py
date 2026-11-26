@@ -167,12 +167,15 @@ class Run:
         self.cases = J.read_json(self.work / "cases.json")  # [{case, key}]
         self.workers, self.rep, self.sub = a.workers, a.rep, a.sub
         self.arms = a.arms.split(",")
+        self.plan_dir = a.plan_dir
 
     def inputs(self, c):
         return J.read_json(self.exp / f"pattern_exp3/inputs_final/{c['key']}.json")
 
     def plan(self, c):
-        """E 추천 1번 안. 글이 정말 달라진 항만 남긴다."""
+        """E 추천 1번 안. 글이 정말 달라진 항만 남긴다. --plan-dir를 주면 그 폴더의 <case>/plan.json을 쓴다."""
+        if self.plan_dir:
+            return J.read_json(self.plan_dir / c["case"] / "plan.json")
         (f,) = (self.exp / "pattern_exp3/out_sub/ours3").glob(f"E_{c['key']}_*.json")
         d = J.read_json(f)["drafts"][0]
         old = self.old_claims(c)
@@ -673,6 +676,7 @@ def main():
     p.add_argument("--repo", type=Path, required=True, help="data/와 work/가 있는 폴더")
     p.add_argument("--work", type=Path, required=True)
     p.add_argument("--sub", action="store_true", help="prep2에서 셋째 비교 초안을 쓴다")
+    p.add_argument("--plan-dir", type=Path, help="보정안 plan.json을 사건 폴더마다 읽을 곳")
     p.add_argument("--arms", default="ours_sub,ours_oa_sub")
     p.add_argument("--rep", type=int, default=1)
     p.add_argument("--workers", type=int, default=3)
