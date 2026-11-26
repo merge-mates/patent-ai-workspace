@@ -387,6 +387,23 @@ def scope_block(scope: AmendmentScope, inp: F4Input) -> str:
     return "\n".join(lines)
 
 
+# 보정을 묶음마다가 아니라 사건 전체에서 한 번 정할 때(amendment_enabled false)
+# 방향 프롬프트에 붙이는 말.
+# 이때 묶음 방향은 의견서의 반박 논점으로 쓰이고, 실제 보정은 사건 단위 보정안이 정한다
+CASE_AMENDMENT_NOTE = (
+    "- 이 사건은 보정을 판단 단위마다가 아니라 사건 전체에서 한 번 정합니다. "
+    "후보의 name·reason·rebuttal은 반박 논점을 중심으로 쓰고, "
+    "특정 청구항을 합치거나 고치는 보정안을 name·reason에 쓰지 않습니다. "
+    "보정이 필요해 보이면 coarse·amendment_core로만 나타내고, "
+    'checks에 "사건 전체 보정에서 검토"라고 한 줄로 적습니다.'
+)
+
+
+def amendment_mode_note(options: F4Options) -> str:
+    """방향 프롬프트의 보정 방식 안내. 묶음별 보정안 모드(기본)면 빈 글."""
+    return "" if options.amendment_enabled else CASE_AMENDMENT_NOTE
+
+
 def unit_variables(
     inp: F4Input,
     unit: JudgmentUnit,
@@ -591,7 +608,10 @@ def build_directions(
             # 상한 밖 묶음: 호출 없이 limit_reached 보류 (원문 글자 없이 상한 숫자와 범위만)
             results.append(_over_limit_result(unit, limit, evidence, flags, options.max_units, ids))
             continue
-        variables = unit_variables(inp, unit, f3, bundle, options.max_candidates, scope)
+        variables = {
+            **unit_variables(inp, unit, f3, bundle, options.max_candidates, scope),
+            "amendment_mode_note": amendment_mode_note(options),
+        }
         try:
             out = call_with_one_retry(STEP, variables, _checked_schema(build), ctx)
         except BUNDLE_ERRORS as e:
