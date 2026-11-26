@@ -1,5 +1,5 @@
 import { Button, Space, Tag, Typography } from 'antd'
-import { heldTaskLabel, lookupResultLabel, unverifiedReasonLabel } from '../labels'
+import { articleLabel, heldTaskLabel, lookupResultLabel, unverifiedReasonLabel } from '../labels'
 import { reviewTargetGo } from '../todos'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { OAResult } from '../types/generated/OAResult'
@@ -40,7 +40,8 @@ function KindTag({ item }: { item: ReviewItem }) {
 // reason이 코드(확인 안 된 이유·빠진 자료 조회 결과)면 한국어로, 글이면 그대로
 const reasonCodes: Record<string, string> = { ...unverifiedReasonLabel, ...lookupResultLabel }
 function reasonText(reason: string): string {
-  return reasonCodes[reason] ?? reason
+  // 글 끝의 조문 코드("… 29-1")도 "특허법 제29조제1항"으로
+  return reasonCodes[reason] ?? reason.replace(/ (\d+-\d+(?:-\d+)?)$/, (_, code: string) => ` (특허법 ${articleLabel(code)})`)
 }
 
 // 정리 단계 아래쪽 "검토할 사항 N건"을 펼쳤을 때 줄들: 사람이 봐야 할 것을 한곳에 모은다 (제목은 바깥 제목 줄이 가진다)
@@ -75,7 +76,8 @@ export function ReviewPanel({ items, r, materials, caseId }: Props) {
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <KindTag item={item} />
                 <span className="body2" style={{ fontWeight: 600, flex: '1 1 200px' }}>
-                  {item.label}
+                  {/* 서버가 조문 코드("29-1")만 줄 때는 "특허법 제29조제1항"으로 */}
+                  {/^\d+(-\d+){0,2}$/.test(item.label) ? `특허법 ${articleLabel(item.label)}` : item.label}
                 </span>
                 <span className="label1 t3" style={{ flex: '1 1 200px' }}>
                   {reasonText(item.reason)}

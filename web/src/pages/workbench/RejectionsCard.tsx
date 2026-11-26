@@ -26,6 +26,13 @@ const isEmptyRow = (row: ClaimRow) =>
   row.status.value !== 'confirmed' && row.citations.length === 0 && row.clarity_terms.length === 0 && row.same_as.length === 0
 
 // "claim:3" → "청구항 3", "rejection:1" → "거절이유 1"
+// 같은 취지 여러 개: 청구항 번호는 "청구항 1–5"처럼 범위로 묶는다 (거절이유 등은 그대로)
+function sameAsList(items: string[]): string {
+  const claims = items.map((x) => /^claim:(\d+)$/.exec(x)?.[1]).filter((n): n is string => n !== undefined).map(Number)
+  const others = items.filter((x) => !/^claim:\d+$/.test(x)).map(sameAsText)
+  return [...(claims.length ? [`청구항 ${claimRange(claims)}`] : []), ...others].join(', ')
+}
+
 const sameAsText = (s: string) =>
   s.replace(/^claim:(\d+)$/, '청구항 $1').replace(/^rejection:(\d+)$/, '거절이유 $1')
 
@@ -68,7 +75,7 @@ const rowColumns = (clarity: boolean): ColumnsType<ClaimRow> => [
       ]),
   {
     title: '같은 취지',
-    render: (_, row) => (row.same_as.length ? row.same_as.map(sameAsText).join(', ') : '—'),
+    render: (_, row) => (row.same_as.length ? sameAsList(row.same_as) : '—'),
   },
   { title: '상태', render: (_, row) => <StatusTag status={row.status} compact /> },
   {

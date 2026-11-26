@@ -367,6 +367,12 @@ export function DraftsPage() {
                         lineHeight: '28px',
                         margin: 0,
                         cursor: 'text',
+                        // 모델이 나눈 문단·목록 줄바꿈을 살린다 (없으면 칸 전체가 한 덩어리로 붙어 보임)
+                        whiteSpace: 'pre-wrap',
+                        // 변리사 확인 사항은 제출할 본문이 아니라 검토 메모: 회색 상자로 구분
+                        ...(s.key === 'review'
+                          ? { background: 'var(--bg-neutral-secondary)', padding: '14px 18px', borderRadius: 8, fontSize: 14, lineHeight: '24px' }
+                          : {}),
                         ...(mism.length > 0 ? { textDecoration: 'underline wavy var(--fg-negative-text)', textUnderlineOffset: 5 } : {}),
                       }}
                     >

@@ -37,6 +37,22 @@ function whyText(why: string): string {
   return `왜 가져왔나: ${why}`
 }
 
+// 짧은 제목: 진보성은 "차이점 후보 N개"까지만 (구성요소 이름은 아래 목록)
+function headlineShort(t: ComparisonTable): string {
+  if (t.summary.kind === 'novelty') return headline(t)
+  const n = diffNames(t).length
+  if (n > 0) return `차이점 후보 ${n}개`
+  return headline(t)
+}
+
+// 차이점 후보 구성요소 이름: 인용발명 어느 하나에서 "같은 구성"으로 찾은 구성요소는 뺀다
+// (같은 구성요소가 D1·D2 줄로 두 번 있어도 한 번만)
+const diffNames = (t: ComparisonTable): string[] => {
+  if (t.summary.kind === 'novelty') return []
+  const found = new Set(t.rows.filter((r) => r.judgment === 'disclosed').map((r) => r.element))
+  return [...new Set(t.rows.filter((r) => r.judgment === 'difference_candidate' && !found.has(r.element)).map((r) => r.element))]
+}
+
 // 구성 대비: 핵심(AI 제안) → 못 본 인용발명 → 구성요소 표(행을 누르면 오른쪽에 근거) → 따지는 순서 펼침
 export function ComparisonView({ t }: { t: ComparisonTable }) {
   const { openCite } = useContext(SourceContext)
@@ -64,7 +80,10 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
       title: '찾은 곳',
       width: 150,
       render: (_, r) =>
-        r.paragraph_source === 'examiner' ? (
+        // 근거 문단이 없는 줄(찾아봤지만 못 찾음)은 "AI가 새로 찾음"이 아니다: 빈칸으로
+        r.evidence.length === 0 ? (
+          <span className="t3">—</span>
+        ) : r.paragraph_source === 'examiner' ? (
           <Tag icon={<AuditOutlined />} bordered={false}>
             심사관 지정
           </Tag>
@@ -95,8 +114,16 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <CoreLabel />
         <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
-          {headline(t)}
+          {headlineShort(t)}
         </h2>
+        {/* 차이점 후보 구성요소 이름은 제목에 다 넣으면 두세 줄이 되어 작게 목록으로 */}
+        {diffNames(t).length > 0 && (
+          <ul className="body2 t2" style={{ margin: 0, paddingLeft: 20 }}>
+            {diffNames(t).map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        )}
         <p className="body1 t2">
           {sentence(t.summary.kind === 'novelty' ? t.summary.reason : t.summary.combination)} 판정은 하지 않아요.
         </p>
