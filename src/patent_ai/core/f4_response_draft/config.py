@@ -30,6 +30,9 @@ class F4Options:
     # 끄면 보정안 단계(f4.amendment)를 부르지 않고, 의견서는 바깥 보정 결과
     # (F4Input.external_amendment)로 묶음마다 반박 + 사건 전체 한 번으로 쓴다 (11/26 P5)
     amendment_enabled: bool = True
+    # amendment_enabled false이고 바깥 보정 결과가 없을 때
+    # 사건 단위 보정안(f4.case_amendment)을 만들지
+    case_amendment_enabled: bool = False
 
 
 def load_f4_options(config_dir: Path | None = None) -> F4Options:
@@ -74,8 +77,12 @@ def load_f4_options(config_dir: Path | None = None) -> F4Options:
     enabled = data.get("amendment_enabled", True)
     if not isinstance(enabled, bool):
         raise ModelConfigError(f"amendment_enabled는 true·false여야 함: {enabled!r}")
+    case = data.get("case_amendment_enabled", False)
+    if not isinstance(case, bool):
+        raise ModelConfigError(f"case_amendment_enabled는 true·false여야 함: {case!r}")
     return F4Options(
         amendment_enabled=enabled,
+        case_amendment_enabled=case,
         final_rejection_limit=switch,
         max_units=max_units,
         max_candidates=positive("max_candidates"),

@@ -88,6 +88,8 @@ class F4Input(BaseModel):
     checked_on: date  # 확인 기준일 (실행한 날. 코드가 오늘 날짜를 몰래 읽지 않게 입력으로 받음)
     # 바깥 보정 결과 (amendment_enabled false일 때 의견서가 씀). 비면 "보정 결과 없음"
     external_amendment: ExternalAmendment | None = None
+    # OA 쪽 글자 (사건 단위 보정안이 OA 전체 글을 읽는다). 없으면 F1 정리만 쓴다
+    oa_pages: PageText | None = None
 
 
 def empty_legal_bundle(oa_id: str, unit: JudgmentUnit, checked_on: date) -> LegalEvidenceBundle:

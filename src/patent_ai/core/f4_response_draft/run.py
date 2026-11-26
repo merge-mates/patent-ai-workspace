@@ -8,12 +8,15 @@
 
 import logging
 
+from patent_ai.core.bundle_errors import BUNDLE_ERRORS, why
 from patent_ai.core.f4_response_draft.amendment import (
+    DELETED_TEXT,
     LEGALITY_NOTICE,
     AmendmentPart,
     assemble_drafts,
     build_amendments,
 )
+from patent_ai.core.f4_response_draft.case_amendment import build_case_amendment
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
 from patent_ai.core.f4_response_draft.coverage import unchecked_rejections, uncovered
 from patent_ai.core.f4_response_draft.directions import (
@@ -29,12 +32,13 @@ from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.llm.config import REPO_ROOT
 from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.llm.limits import RunContext
-from patent_ai.core.schemas.common import Flag, worst_status
+from patent_ai.core.schemas.common import Flag, Status, StatusValue, UnverifiedReason, worst_status
 from patent_ai.core.schemas.direction import (
     AmendmentLimit,
     DirectionCandidates,
     DirectionSelection,
 )
+from patent_ai.core.schemas.drafts import AmendedClaim
 from patent_ai.core.schemas.oa_result import OAResult
 
 logger = logging.getLogger(__name__)
@@ -113,9 +117,18 @@ def _drafts_and_checks(
     """방향 후보(고른 것 포함)로 의견서 → 보정 → 묶기, 그리고 누락·보류 검사."""
     oa_id = inp.oa.oa_id
     limit_note = final_limit_note(inp.oa, options)
+    case = None
     if not options.amendment_enabled:
-        # 의견서만: 보정안 단계를 부르지 않고 바깥 보정 결과로 의견서를 쓴다 (11/26 P5)
-        amendment = AmendmentPart(claims=[], statuses=[], held_units=[])
+        # 의견서만: 보정안 단계를 부르지 않고 바깥 보정 결과로 의견서를 쓴다 (11/26 P5).
+        # 바깥 보정 결과가 없으면 사건 단위 보정안(은진 E 판)을 한 번 만들어 그것을 쓴다 (이 브랜치)
+        if inp.external_amendment is None and options.case_amendment_enabled:
+            try:
+                case = build_case_amendment(inp, ctx, limit_note)
+                inp = inp.model_copy(update={"external_amendment": case.external})
+            except BUNDLE_ERRORS as e:
+                # 보정안이 실패해도 의견서는 "보정 결과 없음"으로 쓴다 (사람이 보정을 직접 정함)
+                logger.warning("f4.case_amendment %s: %s (보정안 없이 의견서만)", oa_id, why(e))
+        amendment = external_claims(inp)
         opinion = build_opinion_v2(inp, directions, ctx)
     elif options.opinion_after_amendment:
         # 보정을 먼저 만들고, 의견서가 그 결과로 보정한 항을 설명한다 (실제 의견서처럼).
@@ -211,6 +224,9 @@ def _drafts_and_checks(
     return F4Output(
         checked_on=inp.checked_on,
         oa_id=oa_id,
+        amendment_strategy=case.strategy if case else None,
+        amendment_alternatives=case.alternatives if case else [],
+        amendment_checks=case.checks if case else [],
         units=list(inp.units),
         directions=directions,
         drafts=drafts,
@@ -226,4 +242,41 @@ def _drafts_and_checks(
         legality_notice=LEGALITY_NOTICE,
         status=worst_status(statuses, checked),
         flags=flags,
+    )
+
+
+def external_claims(inp: F4Input) -> AmendmentPart:
+    """바깥 보정 결과를 초안의 보정 청구항 칸으로 (화면이 보정 전·후를 보인다).
+
+    명세서 근거 위치는 대조하지 않았으므로 status는 확인되지 않음이다. 묶음은 그 항을 보정 범위에 둔
+    첫 묶음 (없으면 첫 묶음)으로 적는다.
+    """
+    ext = inp.external_amendment
+    if ext is None or not inp.units:
+        return AmendmentPart(claims=[], statuses=[], held_units=[])
+    before = {c.claim: c.text for c in inp.claims_text}
+    units = sorted(inp.units, key=lambda u: (u.order, u.unit_id))
+    scopes = [(u.unit_id, set(unit_scope(inp, u).claims) | set(u.claims)) for u in units]
+    claims: list[AmendedClaim] = []
+    for c in sorted(ext.claims, key=lambda c: c.claim):
+        if c.change == "unchanged":
+            continue
+        unit_id = next((uid for uid, sc in scopes if c.claim in sc), units[0].unit_id)
+        text = DELETED_TEXT if c.change == "deleted" else c.after
+        claims.append(
+            AmendedClaim(
+                claim=c.claim,
+                unit_id=unit_id,
+                before=c.before if c.before is not None else before.get(c.claim, ""),
+                ai_text=text or None,
+                spec_basis=[],
+                held_reason=None if text else "보정 뒤 글자가 비어 있음",
+            )
+        )
+    status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED)
+    return AmendmentPart(
+        claims=claims,
+        statuses=[status] * len(claims),
+        held_units=[],
+        flags=[Flag.NEEDS_HUMAN_REVIEW] if claims else [],
     )

@@ -64,6 +64,19 @@ amendment:
   max_model_calls: 40  # 2 × max_units: 묶음마다 첫 호출 + 출력 검사 실패 때 한 번
   max_retries: 2
 
+# amendment_enabled false이고 바깥 보정 결과가 없을 때: 사건 한 번에 보정안 3개를 만들고 1번 안을 쓴다
+# (은진 보정 실험 E 판 v11, 과거 사건·인용문헌 자리는 뺌). 끄면 바깥 보정 결과가 없을 때 "보정 결과 없음"으로 의견서만
+case_amendment_enabled: false  # 시연 서버는 config 덮어쓰기로 켠다 (amendment_enabled false와 함께)
+case_amendment:
+  model: claude-opus-5-5
+  price_per_mtok_input: 4.0
+  price_per_mtok_output: 20.0
+  effort: xhigh
+  max_tokens: 64000
+  prompt: prompts/f4/case_amendment.md
+  max_model_calls: 2   # 사건마다 첫 호출 + 출력 검사 실패 때 한 번
+  max_retries: 2
+
 # amendment_enabled false일 때: 묶음 하나의 반박(대응과 근거). 의견서·저지 실험은 model·effort를 실험 설정으로 바꾼다
 opinion_unit:
   model: claude-haiku-5-5

@@ -15,6 +15,7 @@ from patent_ai.core.f3_claim_compare.recheck.config import load_recheck_settings
 from patent_ai.core.f3_claim_compare.result import F3Result
 from patent_ai.core.f3_claim_compare.run import PreparedUnits
 from patent_ai.core.schemas.case_materials import CaseMaterials
+from patent_ai.core.schemas.document import PageText
 from patent_ai.core.schemas.oa_result import OAResult
 
 
@@ -119,5 +120,7 @@ def f4_input(
             for no, text in sorted(texts.claims_at_oa.items())
         ],
         "spec": texts.spec,
+        # OA 쪽 글자 (사건 단위 보정안이 OA 전체 글을 읽는다). 첫 단계 extract_pages 결과
+        "oa_pages": pages if isinstance(pages := results.get("extract_pages"), PageText) else None,
         "checked_on": checked_on,
     }

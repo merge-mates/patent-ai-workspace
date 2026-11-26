@@ -9,6 +9,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.f4_response_draft.plan_check import PlanIssue
 from patent_ai.core.schemas.common import Flag, Status
 from patent_ai.core.schemas.direction import DirectionCandidates
 from patent_ai.core.schemas.drafts import Drafts
@@ -57,6 +58,12 @@ class F4Output(BaseModel):
     # 이 결과를 만든 확인 기준일 (F4Input.checked_on). 초안만 다시 만드는 실행이 이어 쓴다 (#293).
     # 이 칸이 생기기 전에 저장한 결과는 None
     checked_on: date | None = None
+    # 사건 단위 보정안(case_amendment)을 쓴 실행:
+    # 1번 안의 전략 글, 다른 안의 전략 글, 코드 검사 표시.
+    # 보정 청구항 자체는 drafts.claims에 실린다. 쓰지 않은 실행은 None·빈 목록
+    amendment_strategy: str | None = None
+    amendment_alternatives: list[str] = Field(default_factory=list)
+    amendment_checks: list[PlanIssue] = Field(default_factory=list)
     # 의견서만 실행(amendment_enabled false): 고른 방향의 보정 유무가 바깥 보정 결과와 어긋난 묶음.
     # 의견서는 바깥 보정 결과를 따르고, 방향 품질은 따로 본다 (11/26 D2-1)
     direction_amendment_mismatch: list[str] = Field(default_factory=list)
