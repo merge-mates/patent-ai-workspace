@@ -56,7 +56,8 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
     {
       title: '인용발명 문단',
       width: 130,
-      render: (_, r) => `${r.citation} ${r.evidence.map((e) => e.location).filter(Boolean).join(', ') || '—'}`,
+      // 같은 문단이 근거로 두 번 와도 한 번만 ("[0044], [0044]" 방지)
+      render: (_, r) => `${r.citation} ${[...new Set(r.evidence.map((e) => e.location).filter(Boolean))].join(', ') || '—'}`,
     },
     {
       // 심사관이 짚은 문단과 AI가 새로 찾은 문단은 이 열로만 구분한다 (스키마 값은 둘뿐)

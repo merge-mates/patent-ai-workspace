@@ -51,9 +51,10 @@ function LinkedText({ text, evidence, onOpen }: { text: string; evidence: Eviden
   )
 }
 
-// 청구항이 어떻게 바뀌었나: 지운 글만 남으면 삭제, 같으면 그대로
+// 청구항이 어떻게 바뀌었나: 지운 글만 남거나 "(삭제)"로 적혀 있으면 삭제, 같으면 그대로
+// (사건 단위 보정안은 지운 항을 빈 글 대신 "(삭제)"로 준다)
 function claimKind(before: string, text: string): '보정' | '삭제' | '그대로' {
-  if (text.trim() === '') return '삭제'
+  if (text.trim() === '' || /^\(\s*삭제\s*\)$/.test(text.trim())) return '삭제'
   return text === before ? '그대로' : '보정'
 }
 

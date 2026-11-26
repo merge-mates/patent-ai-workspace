@@ -6,7 +6,7 @@ const tokens = (s: string) => s.match(/\S+|\s+/g) ?? []
 
 // 통지서 PDF에서 읽은 청구항 글자는 줄바꿈 자리에 띄어쓰기가 끼어 있다 ("정 보를", "카메 라들에서").
 // 보정 뒤 글자에는 붙어 있어서, 그대로 비교하면 고치지 않은 단어도 "지우고 더함"으로 보인다.
-// 보정 전 글자에서 [한글 조각][띄어쓰기 하나][한글 조각]을 붙인 단어가 보정 뒤에 있으면 붙여서 비교한다
+// 보정 전 글자에서 [한글 조각][띄어쓰기·줄바꿈 한 글자][한글 조각]을 붙인 단어가 보정 뒤에 있으면 붙여서 비교한다
 const HANGUL = /[가-힣]$/
 const HANGUL_START = /^[가-힣]/
 function joinBrokenWords(a: string[], afterWords: Set<string>): string[] {
@@ -14,7 +14,7 @@ function joinBrokenWords(a: string[], afterWords: Set<string>): string[] {
   for (let k = 0; k < a.length; k++) {
     const x = a[k]
     const y = a[k + 2]
-    if (a[k + 1] === ' ' && y !== undefined && HANGUL.test(x) && HANGUL_START.test(y) && afterWords.has(x + y)) {
+    if (/^\s$/.test(a[k + 1] ?? '') && y !== undefined && HANGUL.test(x) && HANGUL_START.test(y) && afterWords.has(x + y)) {
       out.push(x + y) // 줄바꿈 띄어쓰기를 지우고 한 단어로
       k += 2
     } else out.push(x)
