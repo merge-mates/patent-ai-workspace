@@ -39,6 +39,7 @@ def _ids(location: str) -> list[str]:
         ("도 4", ["fig4", "p0023"]),  # 도면 번호를 담은 조각이면 본문도
         ("도 4c", ["fig4", "p0023"]),  # 가지 글자는 도면 번호로 본다
         ("청구항 9", ["claim9"]),
+        ("청구항 8-10", ["claim9"]),  # 청구항 범위 (통지서 구성 대비표 머리)
         ("요약", ["abs"]),
     ],
 )
@@ -48,7 +49,7 @@ def test_위치를_색인_조각과_맞춘다(location, expected):
     assert match.status.value == StatusValue.CONFIRMED and match.location == location
 
 
-@pytest.mark.parametrize("location", ["[0099]", "도 7", "청구항 2", "3:5-10"])
+@pytest.mark.parametrize("location", ["[0099]", "도 7", "청구항 2", "청구항 1-3", "3:5-10"])
 def test_못_맞춘_위치는_조각_없이_확인되지_않음(location):
     match = match_location(location, CHUNKS)
     assert match.chunk_ids == []
