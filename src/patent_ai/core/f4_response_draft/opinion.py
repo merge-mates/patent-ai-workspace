@@ -8,6 +8,7 @@
 초안 검사(인용 번호·문단·조문이 앞 결과와 맞는지, 이슈 #40)는 여기서 하지 않는다.
 """
 
+import json
 import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -289,3 +290,53 @@ def drafts_from_opinion(
         evidence=part.evidence,
         flags=flags,
     )
+
+
+def build_case_opinion(
+    inp: F4Input, selected: str, ctx: RunContext, *, oa_text: str | None = None
+) -> OpinionOut:
+    """사건 단위 의견서 (합친 흐름 실험, 이 브랜치): 모든 묶음을 한 번의 호출로 쓴다.
+
+    묶음마다 따로 부르면 같은 보정 설명이 겹치고 다른 묶음의 심사관 판단을 못 본다.
+    그래서 앱 의견서 프롬프트의 자리를 사건 전체 값으로 채운다: 묶음·거절이유·F3 결과·법률 근거는
+    목록으로, 청구항은 전체를, OA 원문 글(oa_text)이 있으면 거절이유 뒤에 붙인다.
+    selected는 고른 방향 자리에 넣을 글(보정안과 지시)이다. 보정 설명 칸은 늘 있어야 한다.
+    """
+    units = sorted(inp.units, key=lambda u: (u.order, u.unit_id))
+    if not units:
+        raise ValueError(f"판단 단위가 0개라 사건 단위 의견서를 만들 수 없음: {inp.oa.oa_id}")
+    per_unit = []
+    for unit in units:
+        v = unit_variables(
+            inp, unit, f3_results(inp, unit), legal_bundle_for(inp, unit), max_candidates=1
+        )
+        per_unit.append({k: json.loads(v[k]) for k in ("unit", "rejection", "comparison", "legal")})
+    seen, rejections = set(), []
+    for row in per_unit:  # 같은 거절이유는 한 번만
+        if row["rejection"]["no"] not in seen:
+            seen.add(row["rejection"]["no"])
+            rejections.append(row["rejection"])
+    rejection = to_json(rejections)
+    if oa_text:
+        rejection += "\n\nOA 글자 전체 (원문)\n" + oa_text
+    variables = unit_variables(
+        inp, units[0], f3_results(inp, units[0]), legal_bundle_for(inp, units[0]), 1
+    )
+    del variables["max_candidates"]
+    variables |= {
+        "unit": to_json([r["unit"] for r in per_unit]),
+        "rejection": rejection,
+        "claims_text": "\n\n".join(f"[청구항 {c.claim}]\n{c.text}" for c in inp.claims_text),
+        "comparison": to_json([r["comparison"] for r in per_unit]),
+        "legal": to_json([r["legal"] | {"unit_id": r["unit"]["unit_id"]} for r in per_unit]),
+        "case_info": to_json(
+            {
+                "application_number": None,
+                "dispatch_number": None,
+                "notice_date": None,
+                "response_due": None,
+            }
+        ),
+        "selected": selected,
+    }
+    return call_with_one_retry(STEP, variables, _checked_schema(True), ctx)
