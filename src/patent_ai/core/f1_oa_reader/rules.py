@@ -204,14 +204,15 @@ _LOC_TOKEN = re.compile(
         (?:(?P<pl1>\d+)\s*[-~]\s*(?P<pl2>\d+)\s*라인|(?P<pfull>\d+)\s*쪽\s*전체))
     |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?
         (?:\s*(?:,|및)\s*\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?(?![\d:A-Za-z]|\s*:))*)
-    |청구항\s*제?\s*(?P<claim>\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*)\s*항?
+    |청구항\s*제?\s*(?P<claim>\d+(?:\s*-\s*\d+)?(?:\s*(?:,|및)\s*\d+(?:\s*-\s*\d+)?)*)\s*항?
     |(?P<abstract>요약)
     |(?P<sign>[가-힣A-Za-z]+\s*\(\s*\d+[A-Za-z]?(?:\s*,\s*\d+[A-Za-z]?)*\s*\))
     |(?:col\.?\s*)?(?P<col>\d+)\s*(?::|,\s*ll?\.?)\s*(?P<l1>\d+)(?:\s*[-~]\s*(?P<l2>\d+))?
     """,
     re.VERBOSE,
 )
-_LOC_SEPARATOR = re.compile(r"[\s,;/]|및")
+# 구분 기호: 판단 원문 속 괄호로 감싼 위치("개시하고 있어(청구항 1, 6)")도 읽게 괄호를 넣는다
+_LOC_SEPARATOR = re.compile(r"[\s,;/()（）]|및")
 _MAX_PARAGRAPH = 9999  # 문단 번호는 4자리까지
 
 
@@ -221,7 +222,7 @@ def _cited_claims(body: str) -> list[str] | None:
     `12-24` -> [`청구항 12-24`], `1-2,12` -> [`청구항 1-2`, `청구항 12`].
     """
     out: list[str] = []
-    for part in body.split(","):
+    for part in re.split(r",|및", body):
         m = re.fullmatch(r"\s*(\d+)(?:\s*-\s*(\d+))?\s*", part)
         if not m:
             return None
