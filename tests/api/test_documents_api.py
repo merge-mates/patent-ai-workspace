@@ -95,3 +95,22 @@ def test_원본_파일이_사라졌으면_200_확인되지_않음과_빈_쪽(cli
     assert body["pages"] == []
     assert body["status"]["value"] == "unverified"
     assert body["status"]["reason"] == "lookup_failed"
+
+
+# ---- 원본 PDF 그대로 (GET /documents/{id}/file): 화면 원문 판이 PDF로 보이게 ----
+def test_올린_통지서의_원본_PDF를_그대로_돌려준다(client):
+    data = _pdf(["Notice page one"])
+    doc_id = _upload(client, data)
+    r = client.get(f"/documents/{doc_id}/file")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content == data
+
+
+def test_원본_PDF가_없으면_404(client, tmp_path):
+    assert client.get("/documents/doc_없음/file").status_code == 404
+    doc_id = _upload(client, _pdf(["Notice page one"]))
+    for f in tmp_path.rglob("*.pdf"):
+        f.unlink()
+    r = client.get(f"/documents/{doc_id}/file")
+    assert r.status_code == 404 and r.json()["code"] == "document_file_not_found"

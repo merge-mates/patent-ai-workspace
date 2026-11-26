@@ -1,4 +1,6 @@
-import { Alert, Button } from 'antd'
+import { Alert, Button, Segmented } from 'antd'
+import { useState } from 'react'
+import { PdfView } from './PdfView'
 import { editionText, textKindText } from '../format'
 import { sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
@@ -161,6 +163,10 @@ function CitedFull({ cited, highlight, labels }: { cited: CitedState; highlight:
 // 오른쪽 "참고 원문" 판. 펴면 그 쪽 글자, 접으면 48px 세로 막대.
 // 단계를 옮겨도 사건 틀이 상태를 들고 있어서 접힘이 유지된다
 export function SourcePanel({ open, page, highlight, document, evidence, onToggle, cited = null }: Props) {
+  // 통지서 보기: 원본 PDF(기본) / 뽑은 글자. PDF를 못 그리면 글자 보기로 돌아간다
+  const [view, setView] = useState<'pdf' | 'text'>('pdf')
+  const [pdfFailed, setPdfFailed] = useState(false)
+  const showPdf = view === 'pdf' && !pdfFailed
   if (!open) {
     return (
       <aside
@@ -235,9 +241,30 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
         <Alert type="info" showIcon message="원문을 받지 못했어요" />
       ) : (
         <>
-          <span className="label2 t3">
-            전체 {document.pages.length}쪽 · 스크롤해서 모두 볼 수 있어요
-          </span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="label2 t3" style={{ flex: '1 1 auto' }}>
+              전체 {document.pages.length}쪽 · 스크롤해서 모두 볼 수 있어요
+            </span>
+            <Segmented
+              size="small"
+              value={showPdf ? 'pdf' : 'text'}
+              onChange={(v) => setView(v as 'pdf' | 'text')}
+              options={[
+                { label: '원본 PDF', value: 'pdf', disabled: pdfFailed },
+                { label: '글자', value: 'text' },
+              ]}
+            />
+          </div>
+          {pdfFailed && <span className="label1 t3">원본 PDF를 그리지 못해 뽑은 글자로 보여요</span>}
+          {showPdf ? (
+            <PdfView
+              url={`/api/documents/${encodeURIComponent(document.document_id)}/file`}
+              page={page}
+              highlight={highlight}
+              onFail={() => setPdfFailed(true)}
+            />
+          ) : (
+          <>
           {highlight && text !== null && at < 0 && (
             <Alert type="warning" showIcon message={`근거 글자를 ${page}쪽에서 그대로 찾지 못했습니다`} description={highlight} />
           )}
@@ -280,6 +307,8 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
               </div>
             )
           })}
+          </>
+          )}
         </>
       )}
     </aside>

@@ -41,3 +41,15 @@ def read_document_pages(
             # checked는 confirmed일 때만 채우는 칸이라 이유는 로그에만 남긴다
             status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.LOOKUP_FAILED),
         )
+
+
+def document_file(store: CaseAppStore, document_id: str) -> Path | None:
+    """문서 ID → 원본 PDF 경로 (원문 판이 PDF 그대로 보이게). 문서·파일이 없으면 None."""
+    path = store.get_document_path(document_id)
+    if path is None:
+        return None
+    file = Path(path)
+    if not file.is_file() or file.suffix.lower() != ".pdf":
+        logger.warning("document_file: %s 원본 PDF가 없음", document_id)
+        return None
+    return file
