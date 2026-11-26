@@ -128,7 +128,7 @@ def test_바깥_보정_결과가_반박_프롬프트에_들어간다():
     _, t = _run()
     unit = [c for c in t.calls if c["step"] == "f4.opinion_unit"][0]["prompt"]
     assert "김 서림 방지 막을 둔 가상의 센서 장치" in unit  # 보정 뒤 글자
-    assert "deleted" in unit
+    assert "삭제" in unit
 
 
 def test_묶음_반박은_system_칸을_쓴다():
@@ -180,8 +180,8 @@ def test_항별_심사관_근거에_떨어진_줄은_확인_필요로_값_없는
     _, t = _run()
     unit = [c for c in t.calls if c["step"] == "f4.opinion_unit"][0]["prompt"]
     assert "[0021]" in unit  # 확인된 줄
-    assert "[0033]" in unit and "확인 필요" in unit  # 떨어진 줄 (값 남음)
-    assert '"claim": 3' not in unit.split("항별 심사관 근거")[1].split("##")[0]
+    assert "[0033]" in unit and "대조하지 못함" in unit  # 떨어진 줄 (값 남음)
+    assert '"항": 3' not in unit.split("항별 심사관 근거")[1].split("##")[0]
 
 
 def test_켜면_지금_동작_그대로():
@@ -221,7 +221,7 @@ def test_코드_보정_표와_보정_결과에_합친_곳이_나온다():
     inp = F4Input.model_validate(_case(MERGED))
     assert "- 제3항: 삭제 (제1항에 합침)" in amendment_table(inp)
     rows = json.loads(amendment_rows(inp))
-    assert [r.get("merged_into") for r in rows["changed"] if r["claim"] == 3] == [[1]]
+    assert [r.get("합친 곳") for r in rows["바뀐 항"] if r["항"] == 3] == ["제1항"]
 
 
 def test_묶음_범위_밖에서_바뀐_항은_다른_묶음으로_알린다():
@@ -230,11 +230,11 @@ def test_묶음_범위_밖에서_바뀐_항은_다른_묶음으로_알린다():
 
     inp = F4Input.model_validate(_case(MERGED))
     rows = json.loads(amendment_rows(inp, [2]))
-    assert rows["changed"] == []
-    assert rows["unchanged"] == [2]
-    assert rows["changed_in_other_units"] == [
-        {"claim": 1, "change": "amended"},
-        {"claim": 3, "change": "deleted", "merged_into": [1]},
+    assert rows["바뀐 항"] == []
+    assert rows["바뀌지 않은 항"] == [2]
+    assert rows["다른 묶음에서 바뀐 항"] == [
+        {"항": 1, "바뀜": "보정"},
+        {"항": 3, "바뀜": "삭제", "합친 곳": "제1항"},
     ]
 
 
@@ -249,6 +249,68 @@ def test_모델이_애매_표시한_줄도_값이_있으면_확인_필요로_싣
     inp = F4Input.model_validate(data)
     unit = inp.units[0]  # 진보성, 1·2항
     rows = json.loads(examiner_rows_v2(inp, unit))
-    amb = [r for r in rows if r["claim"] == 1]
-    assert amb and amb[0]["locations"] == {"D1": ["[0033]"]}
-    assert "확인 필요" in amb[0]["status"]
+    amb = [r for r in rows if r["항"] == 1]
+    assert amb and amb[0]["인용 위치"] == {"D1": ["[0033]"]}
+    assert "대조하지 못함" in amb[0]["상태"]
+
+
+# ---- 제출할 글에 내부 말이 섞이지 않게 (11/27 시연 전 화면 점검) ----
+# 입력 JSON의 영어 키·코드 값(supported, initial, merged_into 등)을 모델이 글에 그대로 옮겼고,
+# 검토 표시 [확인 필요]가 제출할 본문에 들어갔다
+CODE_WORDS = (
+    '"supported"', '"merged_into"', '"notice_kind"', '"changed_in_other_units"',
+    '"initial"', '"deleted"', '"amended"', '"unit_id"',
+)  # fmt: skip
+
+
+def _run_units(unit_answers, case_out=CASE_WITH):
+    transport = FakeTransport(
+        {
+            "f4.direction": [_answer("direction_inventive"), _answer("direction_clarity")],
+            "f4.opinion_unit": [_resp(a) for a in unit_answers],
+            "f4.opinion_case": [_resp(case_out)],
+        }
+    )
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    options = dataclasses.replace(load_f4_options(), amendment_enabled=False)
+    out = run_f4(F4Input.model_validate(_case(MERGED)), ctx=ctx, options=options)
+    return out, transport
+
+
+def test_의견서_입력에_영어_키와_코드_값을_넣지_않는다():
+    _, t = _run(amendment=MERGED)
+    for step in ("f4.opinion_unit", "f4.opinion_case"):
+        prompt = [c for c in t.calls if c["step"] == step][0]["prompt"]
+        assert [w for w in CODE_WORDS if w in prompt] == [], step
+
+
+def test_글에_코드_값이나_확인_표시가_있으면_다시_부르고_확인_메모는_따로_칸에_모은다():
+    bad = {
+        "response": "거절이유 1은 supported=false입니다. 위치는 [0033]입니다 [확인 필요].",
+        "checks": [],
+    }
+    good = {
+        "response": "보정한 청구항 1은 인용발명 1과 다르다고 주장합니다.",
+        "checks": ["[0033] 위치를 통지서 원문과 대조해 주세요"],
+    }
+    out, t = _run_units([bad, good, UNIT_OUT])
+    assert [c["step"] for c in t.calls].count("f4.opinion_unit") == 3  # 첫 묶음만 한 번 더
+    sections = {s.key: s.ai_text for s in out.drafts.opinion}
+    body = sections[OpinionKey.RESPONSE]
+    assert "[확인 필요]" not in body and "supported" not in body
+    assert "[0033] 위치를 통지서 원문과 대조해 주세요" in sections[OpinionKey.REVIEW]
+    assert [s.key for s in out.drafts.opinion][-1] == OpinionKey.REVIEW  # 맨 끝 칸
+
+
+def test_다시_불러도_확인_표시가_남으면_표시만_지우고_묶음은_살린다():
+    bad = {"response": "위치는 [0033]입니다 [확인 필요].", "checks": []}
+    out, _ = _run_units([bad, bad, UNIT_OUT])
+    body = {s.key: s.ai_text for s in out.drafts.opinion}[OpinionKey.RESPONSE]
+    assert "위치는 [0033]입니다." in body and "[확인 필요]" not in body
+
+
+def test_확인_메모가_없으면_확인_칸을_만들지_않는다():
+    out, _ = _run_units([UNIT_OUT, UNIT_OUT])
+    assert OpinionKey.REVIEW not in {s.key for s in out.drafts.opinion}

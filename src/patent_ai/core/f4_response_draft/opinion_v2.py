@@ -10,8 +10,9 @@
 """
 
 import logging
+import re
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.bundle_errors import BUNDLE_ERRORS, failed_status, why
 from patent_ai.core.f4_response_draft.directions import (
@@ -22,13 +23,15 @@ from patent_ai.core.f4_response_draft.directions import (
     unit_variables,
 )
 from patent_ai.core.f4_response_draft.inputs import ExternalAmendment, F4Input, legal_bundle_for
-from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
+from patent_ai.core.f4_response_draft.llm_call import MAX_ERROR_CHARS, RETRY_NOTE
 from patent_ai.core.f4_response_draft.opinion import (
     SECTION_TITLES,
     OpinionPart,
     has_amendment,
     selected_candidate,
 )
+from patent_ai.core.llm.client import call_model
+from patent_ai.core.llm.errors import ModelOutputInvalid
 from patent_ai.core.llm.limits import RunContext
 from patent_ai.core.schemas.common import Evidence, Flag, Status, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.direction import DirectionCandidates
@@ -47,35 +50,67 @@ KIND_KO = {"inventive_step": "진보성", "novelty": "신규성", "clarity": "�
 
 
 class UnitOut(BaseModel):
-    """묶음 하나의 반박 (대응과 근거)."""
+    """묶음 하나의 반박 (대응과 근거) + 변리사가 확인할 점(본문과 따로)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     response: str
+    checks: list[str] = Field(default_factory=list)
 
 
 class CaseOut(BaseModel):
-    """사건 전체 칸: 지적 요지, 보정 설명(보정이 없으면 null), 마무리."""
+    """사건 전체 칸: 지적 요지, 보정 설명(보정이 없으면 null), 마무리 + 확인할 점."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     points: str
     amendment: str | None
     closing: str
+    checks: list[str] = Field(default_factory=list)
 
 
-def _checked_unit() -> type[UnitOut]:
+# 제출할 글에 들어가면 안 되는 것: 입력 자료의 영어 키·코드 값과 검토 표시.
+# 있으면 출력 검사에 떨어뜨려 한 번 다시 부른다 (확인할 점은 checks 칸에 따로 쓰게 한다)
+_INTERNAL = re.compile(
+    r"\b(supported|initial|final|merged_into|changed_in_other_units|unit_id|notice_kind|"
+    r"amended|deleted|added|unchanged|clarity|inventive_step|novelty|difference_candidate|"
+    r"disclosed|not_found_in_scope|unverified|confirmed|ai_found)\b"
+    r"|\[(법률 근거 )?확인 필요[^\]]*\]|조문 표기",
+    re.IGNORECASE,
+)
+_MARK = re.compile(r"\s*\[(법률 근거 )?확인 필요[^\]]*\]")
+
+
+def internal_words(text: str | None) -> list[str]:
+    """글에 섞인 내부 말 (중복 없이, 나온 순서)."""
+    return list(dict.fromkeys(m.group(0) for m in _INTERNAL.finditer(text or "")))
+
+
+def _strip_marks(text: str) -> str:
+    """다시 불러도 남은 검토 표시만 지운다 (글은 살린다). 남은 코드 값은 경고로만 남긴다."""
+    cleaned = _MARK.sub("", text)
+    if left := internal_words(cleaned):
+        logger.warning("f4.opinion: 다시 불러도 글에 내부 말이 남음: %s", left)
+    return cleaned
+
+
+def _checked_unit(strict: bool = True) -> type[UnitOut]:
     class CheckedUnitOut(UnitOut):
         @model_validator(mode="after")
         def _반박이_비지_않는다(self) -> CheckedUnitOut:
             if not self.response.strip():
                 raise ValueError("response(대응과 근거)가 비어 있음")
+            if strict and (found := internal_words(self.response)):
+                raise ValueError(
+                    f"response에 입력 키·코드 값이나 검토 표시가 들어감: {found}. "
+                    "한국어 특허 실무 말로 풀어 쓰고, 확인할 점은 checks에 따로 적을 것"
+                )
             return self
 
     return CheckedUnitOut
 
 
-def _checked_case(amended: bool) -> type[CaseOut]:
+def _checked_case(amended: bool, strict: bool = True) -> type[CaseOut]:
     """보정 설명 유무는 바깥 보정 결과로 정한다 (D2-1).
 
     어긋나면 출력 검사 실패 -> 한 번 다시 부름.
@@ -90,9 +125,35 @@ def _checked_case(amended: bool) -> type[CaseOut]:
                 raise ValueError("보정 결과에 바뀐 항이 있는데 amendment(보정 설명)가 비어 있음")
             if not amended and self.amendment is not None:
                 raise ValueError("보정 결과가 없으면 amendment는 null이어야 함")
+            text = " ".join(x for x in (self.points, self.amendment, self.closing) if x)
+            if strict and (found := internal_words(text)):
+                raise ValueError(
+                    f"글에 입력 키·코드 값이나 검토 표시가 들어감: {found}. "
+                    "한국어 특허 실무 말로 풀어 쓰고, 확인할 점은 checks에 따로 적을 것"
+                )
             return self
 
     return CheckedCaseOut
+
+
+def _call_clean[T: BaseModel](
+    step: str, variables: dict[str, str], strict: type[T], lenient: type[T], ctx: RunContext
+) -> T:
+    """첫 답은 내부 말 검사까지(strict). 떨어지면 오류를 붙여 한 번 더 부르고,
+    그 답은 내부 말 검사 없이(lenient) 받는다.
+
+    두 번째에도 내부 말이 남으면 묶음을 보류하지 않고 표시만 지운다(_strip_marks).
+    다른 검사(빈 칸·보정 설명 유무)는 두 번째에도 그대로라 떨어지면 지금처럼 그 묶음만 보류된다.
+    """
+    try:
+        first = call_model(step, {**variables, "retry_note": ""}, strict, ctx=ctx, attempt=1)
+        return first.parsed  # type: ignore[return-value]
+    except ModelOutputInvalid as e:
+        error = str(e)[:MAX_ERROR_CHARS]
+        logger.warning("%s: 모델 답이 검사에 떨어져 검사 오류를 붙여 한 번 더 부름", step)
+    retry = {**variables, "retry_note": RETRY_NOTE.format(error=error)}
+    second = call_model(step, retry, lenient, ctx=ctx, attempt=2)
+    return second.parsed  # type: ignore[return-value]
 
 
 def _changed(ext: ExternalAmendment | None) -> list:
@@ -111,32 +172,59 @@ def amendment_rows(inp: F4Input, claims: list[int] | None = None) -> str:
     wanted = set(claims) if claims is not None else None
     rows = []
     others = []  # 이 묶음 범위 밖에서 바뀐 항 (번호·종류만)
+    # 모델이 키 이름·코드 값을 글에 옮겨 쓰지 않게 키와 값을 한국어로 준다
     for c in sorted(_changed(ext), key=lambda c: c.claim):
-        merged = {"merged_into": c.merged_into} if c.merged_into else {}
+        merged = {"합친 곳": _claims_ko(c.merged_into)} if c.merged_into else {}
+        kind = CHANGE_KO.get(c.change, c.change)
         if wanted is not None and c.claim not in wanted:
-            others.append({"claim": c.claim, "change": c.change, **merged})
+            others.append({"항": c.claim, "바뀜": kind, **merged})
             continue
         rows.append(
             {
-                "claim": c.claim,
-                "change": c.change,
-                "before": c.before if c.before is not None else before.get(c.claim),
-                "after": c.after,
+                "항": c.claim,
+                "바뀜": kind,
+                "보정 전": c.before if c.before is not None else before.get(c.claim),
+                "보정 후": c.after,
                 **merged,
             }
         )
     changed = {c.claim for c in _changed(ext)}
     scope = sorted(wanted) if wanted is not None else sorted(before)
     data = {
-        "source": ext.source,
-        "changed": rows,
-        "unchanged": [n for n in scope if n not in changed],
+        "출처": ext.source,
+        "바뀐 항": rows,
+        "바뀌지 않은 항": [n for n in scope if n not in changed],
     }
     if wanted is not None:
         # 범위 밖 보정 항을 모델이 "보정 결과에 없다"고 쓰지 않게
         # → 다른 묶음에서 다루는 항으로 알린다
-        data["changed_in_other_units"] = others
+        data["다른 묶음에서 바뀐 항"] = others
     return to_json(data)
+
+
+def _without_unit_id(data):
+    """대비 결과 안의 묶음 ID(unit_id)를 모든 깊이에서 뺀다."""
+    if isinstance(data, dict):
+        return {k: _without_unit_id(v) for k, v in data.items() if k != "unit_id"}
+    if isinstance(data, list):
+        return [_without_unit_id(v) for v in data]
+    return data
+
+
+def _claims_ko(claims: list[int]) -> str:
+    return ", ".join(f"제{n}항" for n in claims)
+
+
+def _same_as_ko(target: str) -> str:
+    """같은 취지 값("claim:3", "rejection:1") → 글자."""
+    kind, _, number = target.partition(":")
+    return (
+        f"청구항 {number}"
+        if kind == "claim"
+        else f"거절이유 {number}"
+        if kind == "rejection"
+        else target
+    )
 
 
 def examiner_rows_v2(inp: F4Input, unit: JudgmentUnit) -> str:
@@ -154,21 +242,20 @@ def examiner_rows_v2(inp: F4Input, unit: JudgmentUnit) -> str:
         if not confirmed and not has_value:
             continue
         row = {
-            "claim": r.claim,
-            "rejection": r.rejection,
-            "citations": r.citations,
-            "locations": r.locations,
-            "same_as": r.same_as,
-            "examiner_text": r.raw_text,
+            "항": r.claim,
+            "거절이유": r.rejection,
+            "인용": r.citations,
+            "인용 위치": r.locations,
+            "같은 취지": [_same_as_ko(x) for x in r.same_as],
+            "심사관 원문": r.raw_text,
         }
         if r.clarity_terms:
-            row["clarity_terms"] = r.clarity_terms
+            row["지적 표현"] = r.clarity_terms
         if not confirmed:
-            reason = r.status.reason.value if r.status.reason else "미확인"
-            why_not = r.check_failed or f"모델 표시: {reason}"
-            row["status"] = f"확인 필요 ({why_not})"
+            # 내부 사유 코드(ambiguous 등)는 넣지 않는다: 모델이 글에 옮겨 쓴다
+            row["상태"] = "통지서 원문과 대조하지 못함 (이 줄을 쓰면 checks에 확인할 점을 적는다)"
         rows.append(row)
-    rows.sort(key=lambda x: (x["claim"], x["rejection"] or 0))
+    rows.sort(key=lambda x: (x["항"], x["거절이유"] or 0))
     if not rows:
         logger.warning("f4.opinion_unit %s: 항별 심사관 근거가 0개", unit.unit_id)
         return "(항별 심사관 근거 없음: 거절이유 단위 자료만 있음)"
@@ -191,11 +278,20 @@ def _unit_variables(inp: F4Input, unit: JudgmentUnit, chosen, f3, bundle) -> dic
     base = unit_variables(inp, unit, f3, bundle, max_candidates=1)
     scope = unit_scope(inp, unit).claims
     return {
-        "unit": base["unit"],
-        "rejection": base["rejection"],
-        "oa_context": base["oa_context"],
+        "unit": to_json(
+            {
+                "거절이유": unit.rejection,
+                "종류": KIND_KO.get(unit.rejection_kind.value, unit.rejection_kind.value),
+                "대표 청구항": unit.representative_claim,
+                "청구항": unit.claims,
+                "함께 읽을 청구항": unit.read_with,
+            }
+        ),
+        "rejection": _rejection_ko(_rejection_of(inp.oa, unit)),
+        "oa_context": _oa_context_ko(inp),
         "claims_text": base["claims_text"],
-        "comparison": base["comparison"],
+        # 묶음 ID(unit_id)는 모델이 글에 옮겨 써서 뺀다 (나머지 코드 값은 출력 검사가 잡는다)
+        "comparison": to_json([_without_unit_id(r.model_dump(mode="json")) for r in f3]),
         "legal": base["legal"],
         "examiner_rows": examiner_rows_v2(inp, unit),
         "rebuttal": _rebuttal_of(chosen),
@@ -203,11 +299,62 @@ def _unit_variables(inp: F4Input, unit: JudgmentUnit, chosen, f3, bundle) -> dic
     }
 
 
+FAILED_AMENDMENT = "(보정 설명 생성 실패: 직접 작성)"
+NOTICE_KO = {
+    "initial": "최초거절이유통지",
+    "final": "최후거절이유통지",
+    "unknown": "통지 종류 모름",
+}
+
+
+def _article_ko(code: str | None) -> str | None:
+    """조문 코드("29-2", "42-4-2") → "특허법 제29조제2항". 모양이 다르면 그대로."""
+    if not code or not re.fullmatch(r"\d+(-\d+){0,2}", code):
+        return code
+    jo, *rest = code.split("-")
+    tail = "".join(f"제{n}{u}" for n, u in zip(rest, ("항", "호"), strict=False))
+    return f"특허법 제{jo}조{tail}"
+
+
+def _rejection_ko(rej) -> str:
+    return to_json(
+        {
+            "번호": rej.no,
+            "종류": KIND_KO.get(rej.kind.value, rej.kind.value),
+            "조문": _article_ko(rej.article.value) or rej.article.raw_text,
+            "대상 청구항": rej.claims.value,
+            "인용문헌": [
+                {
+                    "라벨": c.label,
+                    "번호": c.number.value or c.number.raw_text,
+                    "인용 문단": c.cited_paragraphs.value,
+                }
+                for c in rej.citations
+            ],
+            "심사관 판단": {
+                "요지": rej.examiner_reasoning.value,
+                "원문": rej.examiner_reasoning.raw_text,
+            },
+        }
+    )
+
+
+def _oa_context_ko(inp: F4Input) -> str:
+    oa = inp.oa
+    return to_json(
+        {
+            "통지 종류": NOTICE_KO.get(oa.notice_kind.value, oa.notice_kind.value),
+            "특허 가능한 청구항": oa.examiner_hints.allowable_claims.value,
+            "보정 참고사항": oa.examiner_hints.amendment_note.raw_text,
+        }
+    )
+
+
 def _case_info(inp: F4Input) -> str:
     oa = inp.oa
 
     def show(v) -> str:
-        return v.raw_text if v.raw_text else "[확인 필요]"
+        return v.raw_text if v.raw_text else "(통지서에서 확인 필요)"
 
     return (
         f"출원번호: {show(oa.application_number)}\n"
@@ -234,27 +381,19 @@ def _case_variables(inp: F4Input, units: list[JudgmentUnit]) -> dict[str, str]:
         "rejections": to_json(
             [
                 {
-                    "no": r.no,
-                    "kind": r.kind.value,
-                    "article": r.article.value or r.article.raw_text,
-                    "claims": r.claims.value,
-                    "supported": r.supported,
-                    "examiner_reasoning": r.examiner_reasoning.value,
+                    "번호": r.no,
+                    "종류": KIND_KO.get(r.kind.value, r.kind.value),
+                    "조문": _article_ko(r.article.value) or r.article.raw_text,
+                    "대상 청구항": r.claims.value,
+                    "이 초안": "다룸" if r.supported else "다루지 않음 (직접 검토 필요)",
+                    "심사관 판단": r.examiner_reasoning.value,
                 }
                 for r in oa.rejections
             ]
         ),
-        "units": to_json(
-            [{"unit_id": u.unit_id, "rejection": u.rejection, "claims": u.claims} for u in units]
-        ),
+        "units": to_json([{"거절이유": u.rejection, "청구항": u.claims} for u in units]),
         "amendment": amendment_rows(inp),
-        "oa_context": to_json(
-            {
-                "notice_kind": oa.notice_kind.value,
-                "allowable_claims": oa.examiner_hints.allowable_claims.value,
-                "amendment_note": oa.examiner_hints.amendment_note.raw_text,
-            }
-        ),
+        "oa_context": _oa_context_ko(inp),
     }
 
 
@@ -276,6 +415,7 @@ def build_opinion_v2(
     statuses: list[Status] = []
     evidence: list[Evidence] = []
     legal_unverified = False
+    checks: list[str] = []
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         chosen = selected_candidate(by_unit[unit.unit_id])
         if chosen is None:
@@ -287,8 +427,12 @@ def build_opinion_v2(
             mismatch.append(unit.unit_id)  # 방향 품질은 이번 범위 밖: 표시만 남긴다
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)
         try:
-            out = call_with_one_retry(
-                STEP_UNIT, _unit_variables(inp, unit, chosen, f3, bundle), _checked_unit(), ctx
+            out = _call_clean(
+                STEP_UNIT,
+                _unit_variables(inp, unit, chosen, f3, bundle),
+                _checked_unit(),
+                _checked_unit(strict=False),
+                ctx,
             )
         except BUNDLE_ERRORS as e:
             logger.warning("f4.opinion_unit %s: %s (이 묶음만 보류)", unit.unit_id, why(e))
@@ -300,7 +444,10 @@ def build_opinion_v2(
         # 의견서에 들어가는 글이라 거절이유 종류를 한국어로 (전에는 clarity 같은 코드 값이 나갔다)
         kind = KIND_KO.get(rej.kind.value, rej.kind.value)
         title = f"[거절이유 {rej.no} ({kind}) · 청구항 {', '.join(map(str, unit.claims))}]"
-        responses.append(f"{title}\n{out.response}")
+        responses.append(f"{title}\n{_strip_marks(out.response)}")
+        # 확인할 점은 본문과 따로 모은다 (어느 묶음 것인지 앞에 붙임)
+        claims_head = f"청구항 {', '.join(map(str, unit.claims))}"
+        checks += [f"[{claims_head}] {c.strip()}" for c in out.checks if c.strip()]
         based_on.append(BasedOn(unit_id=unit.unit_id, candidate_id=chosen.candidate_id))
         statuses += [chosen.status, bundle.status]
         legal_unverified = legal_unverified or bundle.status.value != StatusValue.CONFIRMED
@@ -310,26 +457,40 @@ def build_opinion_v2(
     if responses:
         amended = bool(ext_changed)
         try:
-            case = call_with_one_retry(
-                STEP_CASE, _case_variables(inp, list(inp.units)), _checked_case(amended), ctx
+            case = _call_clean(
+                STEP_CASE,
+                _case_variables(inp, list(inp.units)),
+                _checked_case(amended),
+                _checked_case(amended, strict=False),
+                ctx,
             )
         except BUNDLE_ERRORS as e:
             # 사건 칸이 실패해도 반박은 살린다: 요지·마무리 자리는 확인 필요로 둔다
             logger.warning("f4.opinion_case %s: %s (요지·마무리는 비움)", inp.oa.oa_id, why(e))
             failed_statuses.append(failed_status(e))
             case = CaseOut(
-                points="[확인 필요: 지적 요지 생성 실패]", amendment=None, closing="[확인 필요]"
+                points="(지적 요지 생성 실패: 직접 작성)",
+                amendment=None,
+                closing="(마무리 생성 실패: 직접 작성)",
             )
         texts = {
             OpinionKey.CASE_INFO: _case_info(inp),
-            OpinionKey.POINTS: case.points,
+            OpinionKey.POINTS: _strip_marks(case.points),
             OpinionKey.RESPONSE: "\n\n".join(responses),
             OpinionKey.AMENDMENT: (
-                f"{case.amendment or '[확인 필요: 보정 설명 생성 실패]'}\n\n{amendment_table(inp)}"
+                f"{_strip_marks(case.amendment) if case.amendment else FAILED_AMENDMENT}"
+                f"\n\n{amendment_table(inp)}"
                 if amended
                 else None
             ),
-            OpinionKey.CLOSING: case.closing,
+            OpinionKey.CLOSING: _strip_marks(case.closing),
+            # 변리사 확인 사항: 제출할 본문과 따로 맨 끝 칸 (없으면 칸을 만들지 않음)
+            OpinionKey.REVIEW: (
+                "\n".join(
+                    f"- {c}" for c in [*checks, *(x.strip() for x in case.checks if x.strip())]
+                )
+                or None
+            ),
         }
         sections = [
             OpinionSection(key=k, title=SECTION_TITLES[k], ai_text=t)

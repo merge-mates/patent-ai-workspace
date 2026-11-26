@@ -7,6 +7,6 @@ $units
 ## 통지 종류와 심사관 힌트
 $oa_context
 
-## 보정 결과 (사건 전체. changed: 바뀐 항, unchanged: 그대로인 항. merged_into: 지운 항의 구성이 들어간 항)
+## 보정 결과 (사건 전체. "바뀐 항", "바뀌지 않은 항". "합친 곳": 지운 항의 구성이 들어간 항)
 $amendment
 $retry_note

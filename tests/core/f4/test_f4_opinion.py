@@ -67,7 +67,8 @@ def _basic():
 def test_의견서_칸은_정해진_순서이고_AI_원문이_비지_않는다():
     part, calls, _ = _basic()
     assert len(calls) == 2  # 묶음마다 한 번
-    assert [s.key for s in part.sections] == list(OpinionKey)
+    # 변리사 확인 사항(review)은 의견서만 흐름(opinion_v2)에서 메모가 있을 때만 붙는다
+    assert [s.key for s in part.sections] == [k for k in OpinionKey if k != OpinionKey.REVIEW]
     for s in part.sections:
         assert s.ai_text.strip() and s.title.strip()
 

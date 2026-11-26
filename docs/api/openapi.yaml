@@ -3060,6 +3060,7 @@ components:
       - response
       - amendment
       - closing
+      - review
       title: OpinionKey
       description: 의견서 칸. 선언 순서가 의견서 순서다.
     OpinionSection:

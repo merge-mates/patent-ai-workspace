@@ -19,6 +19,8 @@ class OpinionKey(StrEnum):
     RESPONSE = "response"  # 대응과 근거
     AMENDMENT = "amendment"  # 보정 설명
     CLOSING = "closing"  # 마무리
+    # 변리사 확인 사항: 제출할 본문과 따로 모은 검토 메모 (제출 전에 지운다). 메모가 없으면 칸 없음
+    REVIEW = "review"
 
 
 _OPINION_ORDER = list(OpinionKey)

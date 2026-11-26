@@ -58,6 +58,7 @@ SECTION_TITLES: dict[OpinionKey, str] = {
     OpinionKey.RESPONSE: "대응과 근거",
     OpinionKey.AMENDMENT: "보정 설명",
     OpinionKey.CLOSING: "마무리",
+    OpinionKey.REVIEW: "변리사 확인 사항 (제출 전 지울 것)",
 }
 # 사건 전체에 한 번만 쓰는 칸: 첫 묶음 것만 쓴다. 나머지 칸은 묶음 순서대로 이어 붙인다
 _ONCE = (OpinionKey.CASE_INFO, OpinionKey.CLOSING)

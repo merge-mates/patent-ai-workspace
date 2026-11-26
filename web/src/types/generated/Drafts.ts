@@ -39,7 +39,7 @@ export type BasedOn = BasedOn1[]
 /**
  * 의견서 칸. 선언 순서가 의견서 순서다.
  */
-export type OpinionKey = 'case_info' | 'points' | 'response' | 'amendment' | 'closing'
+export type OpinionKey = 'case_info' | 'points' | 'response' | 'amendment' | 'closing' | 'review'
 export type Title = string
 export type AiText = string
 export type HumanText = string | null
