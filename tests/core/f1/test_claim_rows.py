@@ -1032,3 +1032,39 @@ def test_겹친_줄은_앞이_확인되지_않음이고_뒤가_확인됨이면_�
     answer["claim_rows"].insert(0, first)
     row = _row(_read(answer), 7, 3)
     assert row.status.value == StatusValue.CONFIRMED
+
+
+# ---- "동 항": 앞 줄 청구항을 가리키는 말 (11/27) ----
+# 통지서가 번호 대신 "동 항"(앞에서 말한 그 청구항)으로 가리키면 모델이 번호를 채우고
+# 애매 표시를 붙인다. 판단 원문에 "동 항을 인용하는"이 있고 모델 번호가 같은 거절이유
+# 바로 앞 줄 청구항이면 같은 취지로 확인한다
+_DONG = "동 항을 인용하는 청구항 제3항도 동일한 거절이유가 있습니다."
+
+
+def _dong_answer(value: str, judgment: str = _DONG) -> dict:
+    return _with_row(
+        3,
+        judgment={"value": None, "raw_text": judgment, "page": 3, "ambiguous": False},
+        same_as=[{"value": value, "raw_text": "동 항", "page": 3, "ambiguous": True}],
+    )
+
+
+def _dong_pages(judgment: str = _DONG) -> PageText:
+    return _pages(("청구항 제3항은 제1항과 동일한 취지의 거절이유가 있습니다.", judgment))
+
+
+def test_동_항이_바로_앞_줄_청구항을_가리키면_같은_취지로_확인한다():
+    row = _row(_read(_dong_answer("청구항 2"), _dong_pages()), 3, 2)
+    assert row.status.value == StatusValue.CONFIRMED
+    assert row.same_as == ["claim:2"]
+
+
+def test_동_항_번호가_바로_앞_줄_청구항과_다르면_애매로_남긴다():
+    row = _row(_read(_dong_answer("청구항 1"), _dong_pages()), 3, 2)
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS
+
+
+def test_인용한다는_말_없이_동_항만_있으면_애매로_남긴다():
+    plain = "청구항 제3항은 동 항과 동일한 거절이유가 있습니다."
+    row = _row(_read(_dong_answer("청구항 2", plain), _dong_pages(plain)), 3, 2)
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS

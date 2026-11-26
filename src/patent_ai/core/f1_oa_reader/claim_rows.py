@@ -97,6 +97,32 @@ def _all_items(r: ClaimRowExtraction) -> list[Item | None]:
     return items
 
 
+# "동 항"(앞에서 말한 그 청구항)처럼 앞 줄 청구항을 번호 없이 가리키는 말 (공백 없앤 꼴)
+_BACK_REFERENCES = ("동항", "상기항", "해당항")
+
+
+def _back_reference(
+    item: Item, judgment: str | None, previous: list[int] | None
+) -> list[str] | None:
+    """번호 없이 앞 줄 청구항을 가리킨 같은 취지 값을 그 청구항으로 읽는다. 못 정하면 None.
+
+    통지서 "동 항을 인용하는 청구항 2-6, 8-10 발명에도 … 동일하게"처럼 번호 대신 "동 항"으로
+    쓰면 모델이 번호를 채우고 애매 표시를 붙인다.
+    아래가 다 맞을 때만 같은 취지로 확인한다 (지어내지 않음):
+    - 값 원문이 "동 항"류이고, 판단 원문에 "동 항을 인용하는"처럼 그 말이 인용 관계로 쓰였다
+    - 모델이 채운 번호가 같은 거절이유 바로 앞 줄의 청구항과 같다
+    """
+    raw = _squash(item.raw_text or "")
+    if raw not in _BACK_REFERENCES or previous is None or item.value is None:
+        return None
+    if f"{raw}을인용하는" not in _squash(judgment or ""):
+        return None
+    found = parse_same_as(str(item.value))
+    if found is None or found != [f"claim:{n}" for n in previous]:
+        return None
+    return found
+
+
 def _labels_of(rejections: list[dict]) -> dict[str, str]:
     """거절이유 표의 인용문헌: 번호 글자(공백 없앰)·키 -> 라벨. 라벨 자체도 키로 둔다."""
     known: dict[str, str] = {}
@@ -178,18 +204,37 @@ def _mentioned(judgment: str, rej: dict) -> set[str]:
     return found
 
 
-def _content(r: ClaimRowExtraction, kind: RejectionKind, rej: dict, pages: PageText) -> dict:
+def _content(
+    r: ClaimRowExtraction,
+    kind: RejectionKind,
+    rej: dict,
+    pages: PageText,
+    previous: list[int] | None = None,
+) -> dict:
     """줄 안 값을 원문과 맞춰 뽑는다. 하나라도 못 맞추면 _Fail (그 줄을 통째로 버림)."""
     if _has_bare_string(r):
         # 원문·쪽 없는 문자열은 대조할 수 없다: 그 줄을 확인되지 않음으로 (확인됨으로 새지 않게)
         logger.warning("청구항 줄 목록 칸에 원문·쪽 없는 문자열: 그 줄은 확인되지 않음")
         raise _Fail(detail="목록 칸에 원문·쪽 없는 글자")
-    if _is_ambiguous(r):
+    # "동 항"처럼 앞 줄 청구항을 가리킨 같은 취지 값은 그 청구항으로 읽고 애매 표시를 푼다
+    # (previous: 같은 거절이유 바로 앞 줄 청구항)
+    judgment_raw = r.judgment.raw_text if r.judgment is not None else None
+    resolved = {
+        id(i): _back_reference(i, judgment_raw, previous)
+        for i in r.same_as
+        if isinstance(i, Item) and i.ambiguous
+    }
+    if any(i is not None and i.ambiguous and resolved.get(id(i)) is None for i in _all_items(r)):
         raise _Fail(UnverifiedReason.AMBIGUOUS, "모델이 애매 표시를 붙임")
     judgment = _need(r.judgment, pages)  # 이 줄 판단 원문이 그 쪽에 있어야 확인됨
     assert r.judgment is not None and r.judgment.page is not None
     same_as: list[str] = []
     for item in r.same_as:
+        back = resolved.get(id(item))
+        if back is not None:
+            _need_in(item, pages, judgment)  # "동 항" 글자가 판단 원문에 있어야 한다
+            same_as += back
+            continue
         found = parse_same_as(_need_in(item, pages, judgment))
         if found is None:
             raise _Fail(detail="같은 취지 대상을 못 읽음")
@@ -527,6 +572,8 @@ def build_claim_rows(
     pending: dict[int, dict[str, list[str]]] = {}
     fallback: list[tuple[int, int, UnverifiedReason]] = []  # 값 없이 남길 줄 (다른 줄이 없을 때만)
     seen: dict[tuple[int, int], int] = {}  # (청구항, 거절이유) -> made 안 번호
+    # 거절이유마다 바로 앞 줄(모델 줄 순서)의 청구항: "동 항"이 가리키는 대상을 정할 때 쓴다
+    previous_claims: dict[int, list[int]] = {}
     # 위치만 애매한 줄 (made 안 번호): 인용은 판단 원문 규칙으로 정해져 있어
     # 같은 취지 줄이 물려받을 수 있다
     cite_ok: set[int] = set()
@@ -589,13 +636,15 @@ def build_claim_rows(
         else:
             kind = kind_of_article(rej["article"].value)
             try:
-                content = _content(r, kind, rej, pages)
+                content = _content(r, kind, rej, pages, previous_claims.get(no))
                 if number_outside:
                     why_not = "청구항 번호가 판단 원문 앞 문장에만 있음"
                     raise _Fail(UnverifiedReason.AMBIGUOUS, why_not)
             except _Fail as fail:
                 reason, failed = fail.reason, fail.detail
                 raw_values = _model_values(r, rej, kind)
+        if no is not None:  # 다음 줄의 "동 항"이 가리킬 수 있는 앞 줄 청구항
+            previous_claims[no] = [c for c in claims if c is not None]
 
         targets = rej["claims"].value if rej is not None else None
         for claim in claims:
