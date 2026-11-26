@@ -243,17 +243,20 @@ export interface DirectionsLoaderData {
   caseCheck: CaseCheck | null
   // 대응 방향 목록이 빈 이유 (서버 empty_reason). 목록이 있으면 null
   directionsEmptyReason: string | null
+  // 사건 단위 보정안이 있으면 보정은 사건 전체에서 정한 것 (대응 방향의 묶음별 보정 칸은 숨긴다)
+  hasCasePlan: boolean
 }
 
 // 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
 // 실행 중이라 결과가 아직 없으면 null (화면은 "아직 결과가 없어요"를 보인다)
 export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<DirectionsLoaderData | null> {
   const oaId = params.oaId!
-  const [units, directions, comparisons, caseCheck] = await Promise.all([
+  const [units, directions, comparisons, caseCheck, plan] = await Promise.all([
     api.getUnits(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getComparisons(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
+    api.getAmendmentPlan(oaId).catch(() => null),
   ])
   if (units === null || directions === null) return null
   return {
@@ -262,6 +265,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
     comparisons: comparisons?.items ?? [],
     caseCheck,
     directionsEmptyReason: reasonOf(directions),
+    hasCasePlan: plan !== null,
   }
 }
 

@@ -14,7 +14,6 @@ import { claimRange, claimsText, sentence, unsupportedRejectionNos } from '../..
 import {
   addedSourceLabel,
   amendmentKindLabel,
-  amendmentLimitLabel,
   confidenceLabel,
   rebuttalTypeLabel,
   rejectionKindLabel,
@@ -124,12 +123,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // 고른 후보의 칸들: 데이터에 있는 것만 (없는 칸은 그리지 않는다)
-function Fields({ c }: { c: DirectionCandidate }) {
+// hideAmendment: 보정을 사건 전체에서 한 번 정했으면(사건 단위 보정안) 묶음별 보정 칸은 그리지 않는다.
+// 묶음은 처음 분석하는 틀이고, 실제 보정은 초안의 보정 전략을 따른다
+function Fields({ c, hideAmendment = false }: { c: DirectionCandidate; hideAmendment?: boolean }) {
   // 보정하는 청구항: 그대로(unchanged)인 청구항은 빼고 센다 (argue_only는 칸이 안 그려짐. F4 opinion.py has_amendment와 같은 기준)
   const claims = [...new Set(c.amendment_core.filter((a) => a.kind !== 'unchanged').map((a) => a.claim))]
   return (
     <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-      <Field label="보정 핵심">
+      {!hideAmendment && <Field label="보정 핵심">
         {c.amendment_core.length === 0
           ? '보정 없음'
           : c.amendment_core.map((a) => (
@@ -138,8 +139,8 @@ function Fields({ c }: { c: DirectionCandidate }) {
                 {a.source && ` (출처: ${addedSourceLabel[a.source]})`}
               </div>
             ))}
-      </Field>
-      {claims.length > 0 && <Field label="보정하는 청구항">청구항 {claimRange(claims)}</Field>}
+      </Field>}
+      {!hideAmendment && claims.length > 0 && <Field label="보정하는 청구항">청구항 {claimRange(claims)}</Field>}
       {c.per_rejection.length > 0 && (
         <Field label="거절이유별 대응">
           {c.per_rejection.map((r) => (
@@ -188,7 +189,7 @@ const unitHead = (u: JudgmentUnit | undefined, unitId: string) =>
 // 4 대응 방향: 묶음마다 고른 후보(AI 기본값 또는 직접 고름)를 크게, 근거·칸을 줄로, 다른 후보로 바꾸기.
 // 최종 선택은 사람이 한다 (AI는 기본값만)
 export function DirectionsPage() {
-  const { units, directions, comparisons, caseCheck, directionsEmptyReason } = useLoaderData() as DirectionsLoaderData
+  const { units, directions, comparisons, caseCheck, directionsEmptyReason, hasCasePlan } = useLoaderData() as DirectionsLoaderData
   const { oa, oaResult, legal } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
   const revalidator = useRevalidator()
@@ -297,6 +298,21 @@ export function DirectionsPage() {
           }
         />
       )}
+      {/* 보정은 묶음마다가 아니라 사건 전체에서 한 번 정한다: 묶음별 방향은 반박 논점을 고르는 데 쓴다 */}
+      {hasCasePlan && directions.length > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          message={
+            <span>
+              보정은 묶음마다가 아니라 사건 전체에서 한 번 정해요. 여기서 고르는 방향은 의견서의 반박 논점으로 쓰여요.{' '}
+              <Link to="../drafts" relative="path">
+                초안의 보정 전략 보기
+              </Link>
+            </span>
+          }
+        />
+      )}
       {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
       {directions.length === 0 &&
         (directionsEmptyReason ? (
@@ -339,7 +355,12 @@ export function DirectionsPage() {
               )}
               {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만) */}
               <span className="label1 t3">
-                보정 제한{d.amendment_limit.value ? `: ${amendmentLimitLabel[d.amendment_limit.value]}` : ''}
+                {/* "보정 제한: 최초"는 뜻이 안 읽혀 보정할 수 있는 범위로 풀어 쓴다 */}
+                {d.amendment_limit.value === 'initial'
+                  ? '보정 범위: 최초 명세서 범위 안 (최초거절이유통지)'
+                  : d.amendment_limit.value === 'final'
+                    ? '보정 범위: 제47조제3항 제한 (최후거절이유통지)'
+                    : '보정 범위'}
               </span>
               {/* 값이 있어도 확인되지 않았으면(애매 등) 상태를 같이 보인다 */}
               {d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
@@ -371,7 +392,7 @@ export function DirectionsPage() {
                   names={citeNames}
                   noticeId={oa.document_id}
                 />
-                <Fields c={picked} />
+                <Fields c={picked} hideAmendment={hasCasePlan} />
               </>
             ) : d.candidates.length === 0 ? (
               // 후보가 0개면 실패한 것이다 (이유는 머리의 상태 꼬리표). 확신이 낮아서라고 말하지 않는다

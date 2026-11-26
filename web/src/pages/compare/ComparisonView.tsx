@@ -58,9 +58,20 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
   const { openCite } = useContext(SourceContext)
   const [orderOpen, setOrderOpen] = useState(false)
 
+  // 같은 구성요소가 인용발명마다(D1·D2) 줄이 따로 있어 글이 반복된다: 이어진 같은 구성요소는 첫 줄에만 쓰고 칸을 합친다
+  const elementKey = (r: ComparisonRow) => `${r.claim}|${r.element_location}|${r.element}`
+  const span = (i: number): number => {
+    const k = elementKey(t.rows[i])
+    if (i > 0 && elementKey(t.rows[i - 1]) === k) return 0
+    let n = 1
+    while (i + n < t.rows.length && elementKey(t.rows[i + n]) === k) n++
+    return n
+  }
+
   const columns: ColumnsType<ComparisonRow> = [
     {
       title: '구성요소',
+      onCell: (_, i) => ({ rowSpan: i === undefined ? 1 : span(i) }),
       render: (_, r) => (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span>{r.element}</span>
