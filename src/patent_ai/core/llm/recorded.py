@@ -8,9 +8,22 @@ from patent_ai.core.llm.errors import RecordingMissing
 from patent_ai.core.llm.transport import TransportResponse
 
 
-def recording_key(*, step: str, model: str, prompt: str, effort: str, max_tokens: int) -> str:
-    """전송층이 받는 값(채워진 프롬프트 포함)의 sha256. 글자 하나만 달라도 다른 키."""
+def recording_key(
+    *,
+    step: str,
+    model: str,
+    prompt: str,
+    effort: str,
+    max_tokens: int,
+    system: str | None = None,
+) -> str:
+    """전송층이 받는 값(채워진 프롬프트 포함)의 sha256. 글자 하나만 달라도 다른 키.
+
+    system은 있을 때만 넣는다 (없으면 system을 쓰기 전 기록 파일 키와 같다).
+    """
     parts = dict(step=step, model=model, prompt=prompt, effort=effort, max_tokens=max_tokens)
+    if system is not None:
+        parts["system"] = system
     raw = json.dumps(parts, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -56,10 +69,22 @@ class RecordedTransport:
         self.directory = Path(directory)
 
     def complete(
-        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
+        self,
+        *,
+        step: str,
+        model: str,
+        prompt: str,
+        effort: str,
+        max_tokens: int,
+        system: str | None = None,
     ) -> TransportResponse:
         key = recording_key(
-            step=step, model=model, prompt=prompt, effort=effort, max_tokens=max_tokens
+            step=step,
+            model=model,
+            prompt=prompt,
+            effort=effort,
+            max_tokens=max_tokens,
+            system=system,
         )
         path = self.directory / f"{key}.json"
         if not path.is_file():

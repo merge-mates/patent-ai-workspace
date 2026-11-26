@@ -1,0 +1,22 @@
+# 의견서 저지 (11/26 골 모드 P2). 의견서를 쓴 모델(Haiku·Sonnet)과 다른 모델로 둔다 (지시문 D6).
+# 가격 키: 1M 토큰당 미국 달러 (Opus 5.5 $4/$20). 기준 판은 prompts/eval/의 파일 (rubric_v0 → v1).
+opinion_main:   # ④ 반박 논리: 실제 의견서를 정답으로 받아 반박 논점마다 0·1·2
+  model: claude-opus-5-5
+  price_per_mtok_input: 4.0
+  price_per_mtok_output: 20.0
+  effort: high
+  max_tokens: 32000
+  prompt: prompts/eval/opinion_judge_main.md
+  system_prompt: prompts/eval/opinion_judge_main.system.md
+  max_model_calls: 2   # 사건 × 초안 하나당 1호출 + 출력 검사 실패 때 1번
+  max_retries: 2
+opinion_aux:    # 보조 점수 #336 기준 1~3 + 기준 5 (실제 의견서 없이)
+  model: claude-opus-5-5
+  price_per_mtok_input: 4.0
+  price_per_mtok_output: 20.0
+  effort: high
+  max_tokens: 32000
+  prompt: prompts/eval/opinion_judge_aux.md
+  system_prompt: prompts/eval/opinion_judge_aux.system.md
+  max_model_calls: 2
+  max_retries: 2

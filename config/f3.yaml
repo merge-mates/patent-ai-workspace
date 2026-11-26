@@ -1,5 +1,5 @@
 # F3 청구항–인용문헌 대비 설정. 단계 칸(split_elements 등)은 core/llm이, 나머지는 f3_claim_compare/config.py가 읽는다.
-# 가격 키는 모르니 넣지 않는다 (비용 계산 안 함 경고가 남음).
+# 가격 키: 1M 토큰당 미국 달러 (11/26 지시문 값. Haiku 5.5 $0.10/$0.50).
 
 # 대비 방식 (전략 패턴). 지금은 split_search 하나: 구성요소 나누기 → 구성요소마다 검색 → 판정
 impl: split_search
@@ -19,6 +19,8 @@ min_quote_chars: 10
 # 단계: 청구항 하나를 구성요소로 나누기
 split_elements:
   model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/split_elements.md
@@ -28,6 +30,8 @@ split_elements:
 # 단계: 진보성 차이점의 효과 문장 뽑기 (최초 명세서만)
 effect:
   model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/effect.md
@@ -54,6 +58,8 @@ search:
 # 단계: 청구항 하나의 구성요소 × 후보 문단 대비 판정
 compare:
   model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/compare.md
@@ -68,6 +74,8 @@ compare_recall:
   # max_model_calls·max_retries는 compare 칸과 같은 근거(판단 단위 × 청구항 + 검사 실패 재시도, second_search 두 배).
   # compare_variant가 하나만 돌아 두 칸 합계가 아니라 한쪽 상한만 쓰인다
   model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/compare_recall.md
@@ -88,6 +96,8 @@ embed:
 # 단계: 명확성 문구 검토 (청구항 하나의 짚은 문구들 × 명세서 후보 조각)
 clarity:
   model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/clarity.md

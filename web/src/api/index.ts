@@ -7,7 +7,7 @@ import type { JudgmentUnit } from '../types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle } from '../types/generated/LegalEvidenceBundle'
 import type { CaseListExtra } from '../types/provisional/caseListExtra'
 import type { Drafts } from '../types/generated/Drafts'
-import type { CaseCheck, DraftsWithCheck } from '../types/provisional/pending'
+import type { CaseCheck, DraftPatch } from '../types/provisional/pending'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { PageText } from '../types/generated/PageText'
 import type { ReviewItem } from '../types/generated/ReviewItem'
@@ -28,7 +28,6 @@ import type {
   NumberEnteredOut,
   ConfirmationOut,
 } from '../types/provisional/case'
-import { requireDraftCheck } from './draftCheck'
 import { ApiError } from './errors'
 import type { ResultList } from './resultList'
 import { getJson, postForm, postJson, sendJson } from './http'
@@ -60,18 +59,22 @@ const getResult = async <T>(path: string): Promise<ResultList<T>> => {
 }
 
 // 초안 받기: 초안이 없으면(모든 묶음 보류·F4 넘김) 지어내지 않고 "아직 없음"으로 알리며 이유를 싣는다
-// 서버 Drafts에는 check 칸이 없으므로 형변환하지 않고 가드로 본다. 없으면 오류 화면 ("초안 검사 결과 없음")
-const getDraftsResult = async (oaId: string): Promise<DraftsWithCheck> => {
+const getDraftsResult = async (oaId: string): Promise<Drafts> => {
   const body = await getJson<ResultEnvelope<Drafts | null>>(`/oas/${oaId}/drafts`)
   if (body.result === null) {
     // 서버 계약 위반(초안 없음인데 이유 없음)은 경고를 남긴다
     if (!body.empty_reason) console.warn(`[api] /oas/${oaId}/drafts: 초안이 없는데 empty_reason이 없음`)
     throw new ApiError('result_not_ready', body.empty_reason ?? '초안이 없습니다', 200)
   }
-  return requireDraftCheck(body.result)
+  return body.result
 }
 
-const httpApi: typeof mockApi = {
+type FrontendApi = Omit<typeof mockApi, 'getDrafts' | 'patchDraft'> & {
+  getDrafts: (oaId: string) => Promise<Drafts>
+  patchDraft: (draftId: string, patch: DraftPatch) => Promise<Drafts>
+}
+
+const httpApi: FrontendApi = {
   listCases: () => getJson<CaseSummary[]>('/cases'),
   // API v0 사건 목록에 제출기일 글자·단계·직접 할 일 칸이 없다. 빈 목록 = 모든 사건의 칸이 "모름"
   listCaseExtras: async (): Promise<CaseListExtra[]> => [],
@@ -104,8 +107,7 @@ const httpApi: typeof mockApi = {
     sendJson<SelectionResult>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, body),
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
   getDrafts: (oaId) => getDraftsResult(oaId),
-  // 고친 뒤 받은 초안도 같은 가드를 거친다
-  patchDraft: async (draftId, patch) => requireDraftCheck(await sendJson<Drafts>('PATCH', `/drafts/${draftId}`, patch)),
+  patchDraft: (draftId, patch) => sendJson<Drafts>('PATCH', `/drafts/${draftId}`, patch),
   getRun: (runId) => getJson<RunStatus>(`/runs/${encodeURIComponent(runId)}`),
   cancelRun: (runId) => postJson<RunStatus>(`/runs/${encodeURIComponent(runId)}/cancel`, {}),
   createCase: (file) => {
@@ -145,4 +147,4 @@ const httpApi: typeof mockApi = {
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }
 
-export const api = API_MODE === 'mock' ? mockApi : httpApi
+export const api: FrontendApi = API_MODE === 'mock' ? mockApi : httpApi

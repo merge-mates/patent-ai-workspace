@@ -36,7 +36,7 @@
 | F1 OA 읽기·거절이유별 정리 | 재아 | M1 | 문서 초안, 구현 계획 승인 | [requirements](features/F1/requirements.md) | [design](features/F1/design.md) | [tasks](features/F1/tasks.md) · [tasks-2](features/F1/tasks-2.md) |
 | F2 법률 근거 조사 | 은진 | M2 | 문서 승인, m2-i3 걷는 뼈대 구현, #24 law-idx-v3 | [requirements](features/F2/requirements.md) | [design](features/F2/design.md) | [tasks](features/F2/tasks.md) |
 | F3 청구항–인용문헌 대비 | 재아 | M2 | 문서 초안 | [requirements](features/F3/requirements.md) | [design](features/F3/design.md) | |
-| F4 대응 방향 후보와 초안 | 재아 | M3 | 문서 초안 | [requirements](features/F4/requirements.md) | [design](features/F4/design.md) | |
+| F4 대응 방향 후보와 초안 | 재아 | M3 | 문서 초안, ADR 0005 보정 범위 구현 계획 초안 | [requirements](features/F4/requirements.md) | [design](features/F4/design.md) | [tasks](features/F4/tasks.md) |
 | F5 근거·상태 표시와 진행·보류 | 은진 | M1 | 문서 초안, 구현 계획 초안 | [requirements](features/F5/requirements.md) | [design](features/F5/design.md) | [tasks](features/F5/tasks.md) |
 | 근거 다시 찾기 (F3 다시 찾기 + F4 보정 근거, 이슈 #309) | 재아 | M3 | requirements·design 초안, ADR 0004 제안 (A/B/C 비교 중) | [requirements](features/recheck/requirements.md) | [design](features/recheck/design.md) | [tasks](features/recheck/tasks.md) |
 | F2·F3 공통 검색 계약 (이슈 #65) | 재아 | M2 | requirements·design 초안 | [requirements](features/retrieval/requirements.md) | [design](features/retrieval/design.md) | |
@@ -51,3 +51,4 @@
 | [0002](decisions/0002-first-build-scope.md) | 3주 첫 구현 범위 | 확정 (11/16 보완, 11/18 보완: 그래프는 M3 조건부·범위 안 줄임, 11/22 보완: CQ 보고 그래프는 `cite`부터 M3 켬/끔, `law`에는 안 넣음) | 11/13 |
 | [0003](decisions/0003-tech-stack.md) | 기술 구조 (앱·AI 코어·DB·에이전트·모델) | 확정 (11/23 보완: 묶음 밖 호출 상한 예외, #241) | 11/17 |
 | [0004](decisions/0004-code-flow-agent-recheck.md) | 진행은 코드, 근거 다시 찾기만 에이전트 | 제안(비교 중, 이슈 #309) | 11/23 |
+| [0005](decisions/0005-f4-amendment-scope.md) | 대비 단위와 보정 범위를 나눈다 (F4가 거절 대상 밖 종속항을 보정에 씀) | 확정 (11/24, 결정 1~7 본체. 병렬 독립항·힌트 규칙은 미정, 이슈 #345) | 11/24 |

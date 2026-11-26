@@ -9,11 +9,12 @@ import type { ReviewItem } from './types/generated/ReviewItem'
 import type { ClarityReview } from './types/generated/ClarityReview'
 import type { ComparisonTable } from './types/generated/ComparisonTable'
 import type { DirectionCandidates } from './types/generated/DirectionCandidates'
+import type { Drafts } from './types/generated/Drafts'
 import type { JudgmentUnit } from './types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle } from './types/generated/LegalEvidenceBundle'
 import type { CaseSummary, ConfirmationOut, OADetail, OAResultResponse } from './types/provisional/case'
 import type { CaseListExtra } from './types/provisional/caseListExtra'
-import type { CaseCheck, DraftsWithCheck } from './types/provisional/pending'
+import type { CaseCheck } from './types/provisional/pending'
 import { seedRun } from './runPoll'
 import { directTodos, pickFocusCase } from './todos'
 
@@ -88,7 +89,6 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
-  let draftCheckMissing = false
   const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(notReadyAsNull),
     // 정리 확인: 결과가 아직 없으면 null, 그 밖의 오류는 모름(null) + 경고 (화면을 막지 않는다)
@@ -108,19 +108,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     probe(api.getLegalEvidence(oa.oa_id).then(itemsOf)),
     // 대비·초안 단계에 결과가 있는지만 알려고 부른다 (값은 쓰지 않고, 없는 것을 지어내지 않는다)
     probe(api.getUnits(oa.oa_id).then(itemsOf)),
-    // 초안은 있는데 검사 결과(check)만 없으면(draft_check_missing) 초안 단계는 "있음"으로 보고 경고만 따로 단다
-    probe(
-      api.getDrafts(oa.oa_id).then(
-        () => true,
-        (e: unknown) => {
-          if (e instanceof ApiError && e.code === 'draft_check_missing') {
-            draftCheckMissing = true
-            return true
-          }
-          throw e
-        },
-      ),
-    ),
+    probe(api.getDrafts(oa.oa_id).then(() => true)),
     // 단계 막대 "차이점 후보 N": 대비표를 받아 센다 (결과가 아직 없으면 null)
     probe(api.getComparisons(oa.oa_id).then(itemsOf)),
   ])
@@ -139,7 +127,6 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const units = known(unitsP, '인용발명 대비')
   const drafts = known(draftsP, '초안')
   const comparisons = known(comparisonsP, '대비표')
-  if (draftCheckMissing) warnings.push('초안 검사 결과가 없어요: 누락 검사·번호 불일치를 보일 수 없어요')
   const ready = {
     summary: oaResult !== null,
     compare: unitsP.unknown ? null : units !== null,
@@ -242,7 +229,7 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
 
 export interface DraftsLoaderData {
   // 초안이 아직 없으면 null (404 result_not_ready)
-  drafts: DraftsWithCheck | null
+  drafts: Drafts | null
   // 지금 선택: 초안이 바탕으로 삼은 선택과 다른지 본다
   directions: DirectionCandidates[]
   caseCheck: CaseCheck | null

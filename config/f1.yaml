@@ -1,6 +1,8 @@
-# F1 단계별 모델 설정 (core/llm이 읽는다). 가격 키는 모르니 넣지 않는다 (비용 계산 안 함 경고가 남음).
+# F1 단계별 모델 설정 (core/llm이 읽는다). 가격 키: 1M 토큰당 미국 달러 (11/26 지시문 값. Haiku 5.5 $0.10/$0.50).
 read_oa:
   model: claude-haiku-5-5
+  price_per_mtok_input: 0.10
+  price_per_mtok_output: 0.50
   effort: medium       # output_config.effort. claude-haiku-5-5 기본과 같게 적어 둠 (#134)
   max_tokens: 64000    # 11/21: 16000에서도 답(JSON)이 잘려 예측 없음이 남 → 올림. 길어도 끊기지 않게 전송층은 스트리밍으로 받음 (#172, 값은 tune 점수 뒤 다시 봄)
   prompt: prompts/f1/read_oa.md

@@ -5,8 +5,9 @@
 
 import logging
 from datetime import date
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.schemas.case_materials import HeldTask
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
@@ -35,6 +36,41 @@ class ClaimText(BaseModel):
     document_id: str  # 이 글자를 읽은 문서 (OA 당시 청구항이 담긴 판)
 
 
+class ExternalClaimChange(BaseModel):
+    """바깥에서 받은 보정 결과의 청구항 하나 (의견서만 쓰는 실행: amendment_enabled false).
+
+    change: amended(보정 뒤 글자 after) / deleted / added(신설, after) / unchanged.
+    before가 비면 OA 당시 청구항 글자(claims_text)를 쓴다.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim: int = Field(ge=1)
+    change: Literal["amended", "deleted", "added", "unchanged"]
+    before: str | None = None
+    after: str | None = None
+    # 지운 항의 구성이 들어간 항 (독립항에 합친 종속항). 지운 항에만 적는다. 비면 그냥 삭제
+    merged_into: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _합친_곳은_지운_항만(self) -> ExternalClaimChange:
+        if self.merged_into and self.change != "deleted":
+            raise ValueError(f"merged_into는 지운 항(deleted)에만 적는다: 제{self.claim}항")
+        return self
+
+
+class ExternalAmendment(BaseModel):
+    """바깥 보정 결과 (보정안 담당 단계·사람이 만든 것, 실험에서는 실제 보정서 oracle).
+
+    여기 없는 항은 그대로다. 어디서 왔는지는 source에 적는다 (예: "보정서 접수번호 …").
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str
+    claims: list[ExternalClaimChange] = Field(default_factory=list)
+
+
 class F4Input(BaseModel):
     """F4 한 번 실행의 입력. OA 하나와 그 판단 단위들, 앞 단계(F3·F2) 결과, 글자."""
 
@@ -50,6 +86,8 @@ class F4Input(BaseModel):
     claims_text: list[ClaimText]
     spec: PageText | None = None  # 최초 명세서 쪽 글자. 없으면 보정 근거 위치는 보류
     checked_on: date  # 확인 기준일 (실행한 날. 코드가 오늘 날짜를 몰래 읽지 않게 입력으로 받음)
+    # 바깥 보정 결과 (amendment_enabled false일 때 의견서가 씀). 비면 "보정 결과 없음"
+    external_amendment: ExternalAmendment | None = None
 
 
 def empty_legal_bundle(oa_id: str, unit: JudgmentUnit, checked_on: date) -> LegalEvidenceBundle:

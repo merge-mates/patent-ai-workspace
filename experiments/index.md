@@ -40,10 +40,12 @@
 | m3-i1-f4-rank-first | F4 | `prompts/f4/direction.md` 목록 순서 규칙 (순위 있는 후보 먼저, 보류 묶음은 low 후보 순서 그대로, f3de1ae). 채점기는 주 지표를 AI 기본 선택(순위 1, 없으면 목록 첫째)으로 셈 (5384320) | direction_top1 0.417 | -0.061 | $0.00 | [card](m3-i1-f4-rank-first/card.md) |
 | m3-i1-f4-spec-excerpt | F4 | `amendment_spec_excerpt.enabled`: false → true (`top_n`: 5) | direction_top1 0.150 | - | $0.20 | [card](m3-i1-f4-spec-excerpt/card.md) |
 | m3-i1-law-bm25-v3 | 검색 (법령, 이슈 #24 24d) | `index_version`: law-idx-v2 → law-idx-v3 (조문 + 심사기준 + 판례·심결 한 표) | hit@5 1.000 | +0.000 | $0.00 | [card](m3-i1-law-bm25-v3/card.md) |
+| m3-i2-f4-amendment-scope | F4 | F4 방향 후보의 보정 범위: 판단 단위 항(거절 대상) → 같은 거절이유의 독립항 전부 + 그 종속항 (ADR 0005 ③) | 점수 없음 | - | - | [card](m3-i2-f4-amendment-scope/card.md) |
+| m3-i2-f4-parallel-independent | F4 | 사건 전체 검사에 "병렬 독립항 맞추기" 코드 규칙 (없음 → 있음) | 점수 없음 | - | - | [card](m3-i2-f4-parallel-independent/card.md) |
 | m3-i2-oa-draft-judge-pilot | F4 | OA 논점별 의견서 초안 LLM 채점기 (논점 고정, 논점 응답·근거 지지 판정) | 점수 없음 | - | - | [card](m3-i2-oa-draft-judge-pilot/card.md) |
 | m3-i2-opinion-from-amend | F4 | 의견서 입력에 보정안(항 번호·고침/삭제·문구·이유)을 넣음 | 점수 없음 | - | - | [card](m3-i2-opinion-from-amend/card.md) |
 | m3-i2-recheck-a | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | 없음 (기준선: `recheck: none` = 지금 second_search) | selected_recall_rechecked 0.334 | - | $0.00 | [card](m3-i2-recheck-a/card.md) |
 | m3-i2-recheck-b | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `fixed_loop` (LLM 질의 3개 다시 쓰기 → 질의마다 hybrid k=10 → compare 다시 판정) | selected_recall_rechecked 0.114 | - | $0.00 | [card](m3-i2-recheck-b/card.md) |
 | m3-i2-recheck-c | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `agent` (tool use 루프, 판정은 compare) | selected_recall_rechecked 0.136 | - | $0.00 | [card](m3-i2-recheck-c/card.md) |
 | m3-i2-recheck-c-judge | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `agent`, `recheck_judge: compare` → `agent` (판정·인용 글자까지 에이전트, 코드는 원문 대조) | selected_recall_rechecked 0.222 | - | $0.00 | [card](m3-i2-recheck-c-judge/card.md) |
-| m3-i2-spec-before-direction-pilot | F4 | 대응 방향 선택 전 최초 명세서 문단 제공 (기존 / BM25 / 확인된 원문) | 점수 없음 | - | - | [card](m3-i2-spec-before-direction-pilot/card.md) |
+| m3-i2-spec-before-direction-pilot | F4 | 대응 방향 선택 전에 최초 명세서 문단 제공 (없음 → BM25 문단 / 확인된 원문 문단) | 점수 없음 | - | - | [card](m3-i2-spec-before-direction-pilot/card.md) |

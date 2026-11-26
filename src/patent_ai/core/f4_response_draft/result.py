@@ -40,6 +40,10 @@ class F4Output(BaseModel):
     # 같은 청구항을 여러 묶음이 고쳐 뒤 묶음 초안을 싣지 않은 기록 (Drafts.flags는 늘 붙어 있어
     # 구분이 안 되므로 따로 남긴다). 의견서 쪽 겹침은 이 단계에서 다루지 않는다
     amendment_overlaps: list[AmendmentOverlap] = Field(default_factory=list)
+    # 묶음(unit_id)마다 보정 범위로 넓힌 항 = 거절 대상이 아닌데 보정 후보에 쓸 수 있는 항
+    # (ADR 0005).
+    # 화면·채점이 "AI가 거절 대상 밖 항을 제안했다"를 가르게 남긴다. 결과 스키마에는 칸이 없다
+    amendment_scopes: dict[str, list[int]] = Field(default_factory=dict)
     # 최후거절이유통지 보정 제한을 보정 프롬프트에 넣었나 (스위치 켬 + 통지 종류 final일 때만 true).
     # 제한을 지켰다는 판정이 아니다: 넣었다는 사실만 적는다
     amendment_limit_applied: bool = False
@@ -53,3 +57,6 @@ class F4Output(BaseModel):
     # 이 결과를 만든 확인 기준일 (F4Input.checked_on). 초안만 다시 만드는 실행이 이어 쓴다 (#293).
     # 이 칸이 생기기 전에 저장한 결과는 None
     checked_on: date | None = None
+    # 의견서만 실행(amendment_enabled false): 고른 방향의 보정 유무가 바깥 보정 결과와 어긋난 묶음.
+    # 의견서는 바깥 보정 결과를 따르고, 방향 품질은 따로 본다 (11/26 D2-1)
+    direction_amendment_mismatch: list[str] = Field(default_factory=list)

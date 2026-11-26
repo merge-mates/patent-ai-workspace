@@ -290,3 +290,38 @@ def test_건너뛴_종속항도_검색_기록이_남고_모델_대비_호출은_
     assert {r.claim for r in out.tables[0].rows} == {1}  # 대비표 줄은 만들지 않음
     held = _held(out, HELD)
     assert "검색은 함" in held.waiting_for and "대비는 생략" in held.waiting_for
+
+
+# ---- 11/26 P5 task 5: 건너뛰지 않을 종속항 목록 (실제 보정이 합치거나 한정한 종속항) ----
+def _run_with(compare_claims):
+    result = oa([rejection(1, "29-2", [1, 3], [citation("D1", D1)])])
+    settings = load_f3_settings().model_copy(update={"second_search": False})
+    inputs = F3Inputs(
+        claims_at_oa=CLAIMS,
+        claims_status=OK,
+        claims_document_id="d_c",
+        compare_claims=compare_claims,
+    )
+    two = _answer(1, (1, "disclosed", (P23, FULL23)), (2, "difference_candidate"))
+    transport = FakeTransport({STEP: [two, LID_ANSWER]})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    units, _ = build_units(result, SPLITS)
+    out = compare_unit(units[0], result, SPLITS, F3Config(settings=settings, inputs=inputs),
+                       ctx=ctx, searcher=_searcher(), repo=REPO)  # fmt: skip
+    return out, transport.calls
+
+
+def test_건너뛰지_않을_종속항은_독립항에_차이가_있어도_대비한다():
+    out, calls = _run_with([3])
+    assert len(calls) == 2
+    (table,) = out.tables
+    assert {r.claim for r in table.rows} == {1, 3}
+    assert _held(out, HELD) is None
+
+
+def test_목록이_비면_지금_그대로_건너뛴다():
+    out, calls = _run_with([])
+    assert len(calls) == 1
+    assert _held(out, HELD) is not None

@@ -183,6 +183,9 @@ def call_model(
         raise ModelConfigError("실행마다 CallBudget을 넘겨야 함 (budget=None)")
     cfg = load_step_config(step, config_dir)
     prompt = render_prompt(cfg.prompt, variables, root)
+    # system 칸 (설정에 system_prompt가 있을 때만). 변수 없는 고정 글이라 빈 변수로 채운다:
+    # 자리표시자가 있으면 render_prompt가 "변수가 빠짐" 설정 오류로 멈춘다
+    system = render_prompt(cfg.system_prompt, {}, root) if cfg.system_prompt else None
 
     # 진짜 전송층(AnthropicTransport)이면 기본 파일 캐시를 쓴다 (과금 방지). 끄려면 cache=False
     # 가짜 등 그 밖의 전송층은 cache=None이면 캐시를 안 쓴다
@@ -201,6 +204,7 @@ def call_model(
             effort=cfg.effort,
             max_tokens=cfg.max_tokens,
             attempt=attempt,
+            system_template=system,
         )
     except TypeError as e:
         raise ModelConfigError(f"변수를 JSON으로 바꿀 수 없음: {e}") from e
@@ -293,12 +297,15 @@ def call_model(
                 raise
             try_start = time.monotonic()
             try:
+                # system은 있을 때만 넘긴다 (system을 모르는 옛 전송층·테스트 가짜도 그대로 돈다)
+                extra = {"system": system} if system is not None else {}
                 resp = transport.complete(
                     step=step,
                     model=cfg.model,
                     prompt=prompt,
                     effort=cfg.effort,
                     max_tokens=cfg.max_tokens,
+                    **extra,
                 )
             except RecordingMissing, ModelConfigError:
                 raise  # 기록된 응답 없음·설정 잘못은 감싸지 않고 그대로 멈춘다

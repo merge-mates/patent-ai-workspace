@@ -20,6 +20,8 @@ python 등)와 Read·Grep·Glob·Write·Edit 입력의 경로 글자를 보고 �
 어떤 예외가 나도 exit 2로 막는다 (조용히 통과시키지 않는다).
 """
 
+from __future__ import annotations
+
 import fnmatch
 import json
 import os

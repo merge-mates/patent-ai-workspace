@@ -349,3 +349,52 @@ def test_따옴표_안_글자만_모은다():
     assert quoted_segments(text) == ["상기 프리뷰 이미지", "약"]
     assert quoted_segments("모듈들은 장치 구성을 특정할 수 없다") == []
     assert quoted_segments("‘가’와 “나”와 「다」") == ["가", "나", "다"]
+
+
+# ---- 11/26 P4 원인 표: 정답 꼴에 있는데 못 읽던 위치 글자 (docs/evaluation/f1-oa-gold.md 2.4) ----
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("청구항 12-24", ["청구항 12-24"]),  # 인용문헌 청구항 범위는 정답도 한 조각
+        ("청구항 1-2,12항", ["청구항 1-2", "청구항 12"]),
+        ("청구항 10,14,15항 참조", ["청구항 10", "청구항 14", "청구항 15"]),
+        ("청구항 7항 참조", ["청구항 7"]),
+        ("도 3-5", ["도 3-5"]),  # 도면 범위도 정답 꼴 그대로
+        (
+            "[0058-0084] 단락, 청구항 12-24, 도 3-5 참조",
+            ["[0058]-[0084]", "청구항 12-24", "도 3-5"],
+        ),
+        # 논문 위치: 정답 꼴 `3쪽 3.1절 1-5줄`
+        ("페이지 3P, 섹션 3.1, 1-5 라인", ["3쪽 3.1절 1-5줄"]),
+        ("도 4, 페이지 5P, 섹션 3.2, 1쪽 전체", ["도 4", "5쪽 3.2절 1쪽 전체"]),
+        ("페이지 8P, 섹션 4.3, 14-19 라인", ["8쪽 4.3절 14-19줄"]),
+    ],
+)
+def test_인용문헌_청구항_범위와_논문_위치를_정답_꼴로(raw, expected):
+    assert parse_cited_locations(raw) == expected
+
+
+def test_도면_범위라도_내지_꼴은_여전히_None():
+    assert parse_cited_locations("도 4c 내지 도 4f") is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"), [("청구항 1 발명", [1]), ("청구항 8 내지 10 발명", [8, 9, 10])]
+)
+def test_청구항_글자_끝의_발명은_넘긴다(text, expected):
+    assert expand_claims(text) == expected
+
+
+def test_같은_취지_살펴본_바와():
+    assert parse_same_as("상기 1-1.에서 살펴본 바와 같이") == ["rejection:1"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("단락 [16, 38, 78] 등", ["[0016]", "[0038]", "[0078]"]),  # 끝의 '등'
+        ("도 1-2 및 관련 설명 부분 참조", ["도 1-2"]),
+    ],
+)
+def test_위치_뒤_군더더기_말은_넘긴다(raw, expected):
+    assert parse_cited_locations(raw) == expected

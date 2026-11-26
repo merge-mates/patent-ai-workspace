@@ -132,8 +132,9 @@ _SAME_AS_FORM = re.compile(r"(claim|rejection):[1-9]\d*")  # 같은 취지 대�
 class ClaimRow(BaseModel):
     """청구항 줄 하나 = 청구항 x 거절이유 (정답 형식 2.4, 채점 단위).
 
-    값은 원문 대조를 통과했을 때만 둔다. 대조에 떨어지면 status가 unverified이고 값은 비어 있다
-    (청구항·거절이유 번호만 어느 줄인지 알리려고 남길 수 있음).
+    확인됨 줄의 값은 원문 대조를 통과한 값이다. 대조에 떨어진 줄은 status가 unverified이고,
+    모델이 준 값(판단 원문·쪽·인용·위치)을 check_failed(떨어진 검사)와 함께 남길 수 있다 (11/26 D3:
+    사람이 "확인 필요"로 보게). 모델이 줄을 주지 않은 빈 줄은 번호만 남긴다.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -152,9 +153,16 @@ class ClaimRow(BaseModel):
     raw_text: str | None = None  # 이 줄 판단이 적힌 원문 글자
     page: int | None = None
     status: Status
+    # 원문 대조에 떨어진 줄: 어느 검사에서 떨어졌나 (사람이 보는 글). 있으면 값은 확인 안 된 모델 값
+    check_failed: str | None = None
 
     @model_validator(mode="after")
     def _검사(self) -> ClaimRow:
+        if self.check_failed is not None:
+            if self.status.value != StatusValue.UNVERIFIED or not self.check_failed.strip():
+                raise ValueError("check_failed는 unverified 줄에만, 비우지 않고 둔다")
+            if self.claim is None or self.rejection is None:
+                raise ValueError("check_failed 줄은 청구항·거절이유 번호가 있어야 함")
         if self.page is not None and (self.raw_text is None or not self.raw_text.strip()):
             raise ValueError("page가 있으면 raw_text는 비어 있지 않아야 함")
         if any(not _SAME_AS_FORM.fullmatch(x) for x in self.same_as):
@@ -189,9 +197,11 @@ class ClaimRow(BaseModel):
                 # 사람이 보게 한다 (ExtractedValue의 ambiguous 규칙과 같게). 어느 줄인지는 알아야 함
                 if has_values and (self.claim is None or self.rejection is None):
                     raise ValueError("값을 남긴 애매한 줄은 청구항·거절이유 번호가 있어야 함")
-            elif has_values:
-                # 대조에 떨어진 줄은 값을 남기지 않는다 (지어내지 않음)
-                raise ValueError("unverified 줄은 값·원문 글자·쪽을 비워 둬야 함 (애매 제외)")
+            elif has_values and self.check_failed is None:
+                # 대조에 떨어진 줄의 값은 떨어진 검사(check_failed)와 함께만 남긴다
+                raise ValueError(
+                    "unverified 줄에 값을 남기려면 check_failed가 있어야 함 (애매 제외)"
+                )
         else:
             raise ValueError("청구항 줄 status는 confirmed 또는 unverified")
         return self
