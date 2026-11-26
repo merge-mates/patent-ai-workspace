@@ -59,7 +59,7 @@ function claimKind(before: string, text: string): '보정' | '삭제' | '그대�
 
 // 5 초안 단계: 대응 현황 표 → 제출 전에 고칠 곳 → 초안 본문(의견서 / 보정 청구항)
 export function DraftsPage() {
-  const { drafts: initial, directions, caseCheck, draftsEmptyReason } = useLoaderData() as DraftsLoaderData
+  const { drafts: initial, directions, caseCheck, draftsEmptyReason, plan } = useLoaderData() as DraftsLoaderData
   const { oaResult, oa } = useRouteLoaderData('oa') as OALoaderData
   // 그 OA의 최근 실행이 아직 도는 동안 보이는 초안은 옛것이다 (방향을 고르면 초안만 다시 만드는 작은 실행이 생긴다)
   const runState = useRunSnapshot(oa.latest_run)?.run.state
@@ -233,6 +233,21 @@ export function DraftsPage() {
             )}
           </>,
         )}
+        {/* 사건 단위 보정안의 코드 검사 표시 (고치지 않고 알리기만, 적법성 판단 아님) */}
+        {(plan?.checks ?? [])
+          .filter((x) => x.claim === c.claim)
+          .map((x, i) => (
+            <Alert
+              key={i}
+              type="warning"
+              showIcon
+              message={
+                x.kind === 'dangling_reference'
+                  ? `지운 청구항 ${x.detail}을(를) 아직 인용해요 · 인용 번호를 확인해 주세요`
+                  : `명세서·원래 청구항에서 찾지 못한 문구 · 명세서 근거를 확인해 주세요: ${x.detail}`
+              }
+            />
+          ))}
         {note === 'written' && (
           <Alert type="warning" showIcon message="직접 쓴 방향으로 바뀜 · 이 초안은 이전 방향으로 만든 것이에요. AI는 이 묶음 초안을 다시 만들지 않으니 직접 대응해 주세요" />
         )}
@@ -377,6 +392,28 @@ export function DraftsPage() {
         ) : (
           <>
             <span className="label2 t3">검토용 초안이에요. 보정이 적법한지는 판단하지 않아요. AI가 바꾼 곳은 파랑, 지운 곳은 줄을 그었어요. 사람이 고친 곳은 검정 밑줄이에요.</span>
+            {plan && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 16px', border: '1px solid var(--line-neutral-tertiary)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className="headline2" style={{ fontWeight: 600 }}>보정 전략</span>
+                  <AiTag>AI 추천 · 방향이 다른 3안 중 1번</AiTag>
+                </div>
+                <span className="body1">{plan.strategy}</span>
+                {plan.alternatives.length > 0 && (
+                  <details>
+                    <summary className="label1">다른 안 {plan.alternatives.length}개 보기</summary>
+                    <ol style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+                      {plan.alternatives.map((a, i) => (
+                        <li key={i} className="body2">{a}</li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+                <span className="label2 t3">
+                  {`청구항 ${drafts.claims.length}개를 고치거나 지워요 · 코드 검사 표시 ${plan.checks.length}건`}
+                </span>
+              </div>
+            )}
             {drafts.claims.map(claimView)}
           </>
         )}

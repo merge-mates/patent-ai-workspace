@@ -8,6 +8,7 @@ web/scripts/gen-types.mjs가 불러 json-schema-to-typescript로 TS 타입을 �
 
 import json
 
+from patent_ai.core.f4_response_draft.plan_check import PlanIssue
 from patent_ai.core.schemas.case_materials import CaseMaterials
 from patent_ai.core.schemas.comparison import ClarityReview, ComparisonTable
 from patent_ai.core.schemas.direction import DirectionCandidates
@@ -31,6 +32,8 @@ MODELS = {
     "CaseMaterials": CaseMaterials,
     "ReviewItem": ReviewItem,
     "PageText": PageText,
+    # 사건 단위 보정안의 코드 검사 표시 (초안 API amendment_checks, 이 브랜치)
+    "PlanIssue": PlanIssue,
 }
 
 

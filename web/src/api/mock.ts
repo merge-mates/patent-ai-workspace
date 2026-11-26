@@ -254,6 +254,10 @@ export const mockApi = {
     if (!check) throw new ApiError('result_not_ready', '사건 전체 검사 결과가 아직 없습니다', 404)
     return check
   },
+  // 사건 단위 보정안 정보 (서버 모드만): 예시 초안에는 없다
+  async getAmendmentPlan(_oaId: string): Promise<null> {
+    return null
+  },
   async getDrafts(oaId: string): Promise<DraftsWithCheck> {
     const b = await byOA(oaId)
     flushPending(b)

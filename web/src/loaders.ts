@@ -1,5 +1,6 @@
 // 화면에 들어가기 전에 데이터를 받는 곳 (react-router loader). 화면 부품 안에서 따로 부르지 않는다.
 import { redirect, type LoaderFunctionArgs } from 'react-router'
+import type { AmendmentPlanInfo } from './api'
 import { api } from './api'
 import { ApiError, isNotReady } from './api/errors'
 import type { ResultList } from './api/resultList'
@@ -235,13 +236,15 @@ export interface DraftsLoaderData {
   caseCheck: CaseCheck | null
   // 초안이 없는 이유 (서버가 result: null과 함께 준 empty_reason: 모든 묶음 보류·F4 넘김 등). 모르면 null
   draftsEmptyReason: string | null
+  // 사건 단위 보정안의 전략 글·다른 안·코드 검사 (이 브랜치). 그 보정안을 쓰지 않은 실행이면 null
+  plan: AmendmentPlanInfo | null
 }
 
 // 5 의견서·보정 초안
 export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData | null> {
   const oaId = params.oaId!
   let draftsEmptyReason: string | null = null
-  const [drafts, directions, caseCheck] = await Promise.all([
+  const [drafts, directions, caseCheck, plan] = await Promise.all([
     api.getDrafts(oaId).catch((e: unknown) => {
       // 실행이 끝났는데 초안이 없으면 서버는 200 + empty_reason을 준다 (api가 result_not_ready·httpStatus 200으로 바꿔 던짐)
       if (isNotReady(e) && e instanceof ApiError && e.httpStatus === 200) draftsEmptyReason = e.message
@@ -249,8 +252,9 @@ export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<Draf
     }),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
+    api.getAmendmentPlan(oaId).catch(() => null),
   ])
   // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
   if (directions === null) return null
-  return { drafts, directions: directions.items, caseCheck, draftsEmptyReason }
+  return { drafts, directions: directions.items, caseCheck, draftsEmptyReason, plan }
 }

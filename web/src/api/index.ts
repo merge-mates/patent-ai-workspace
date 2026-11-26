@@ -10,6 +10,7 @@ import type { Drafts } from '../types/generated/Drafts'
 import type { CaseCheck, DraftPatch } from '../types/provisional/pending'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { PageText } from '../types/generated/PageText'
+import type { PlanIssue } from '../types/generated/PlanIssue'
 import type { ReviewItem } from '../types/generated/ReviewItem'
 import type {
   CaseDetail,
@@ -69,8 +70,26 @@ const getDraftsResult = async (oaId: string): Promise<Drafts> => {
   return body.result
 }
 
-type FrontendApi = Omit<typeof mockApi, 'getDrafts' | 'patchDraft'> & {
+// 사건 단위 보정안(이 브랜치): 초안 API가 함께 주는 1번 안 전략 글·다른 안·코드 검사 표시.
+// 보정 청구항 자체는 Drafts.claims에 있다. 이 보정안을 쓰지 않은 실행이면 null
+export interface AmendmentPlanInfo {
+  strategy: string
+  alternatives: string[]
+  checks: PlanIssue[]
+}
+interface DraftsExtra {
+  amendment_strategy: string | null
+  amendment_alternatives: string[]
+  amendment_checks: PlanIssue[]
+}
+const getAmendmentPlanResult = async (oaId: string): Promise<AmendmentPlanInfo | null> => {
+  const body = await getJson<ResultEnvelope<Drafts | null> & DraftsExtra>(`/oas/${oaId}/drafts`)
+  if (body.amendment_strategy === null || body.amendment_strategy === undefined) return null
+  return { strategy: body.amendment_strategy, alternatives: body.amendment_alternatives ?? [], checks: body.amendment_checks ?? [] }
+}
+type FrontendApi = Omit<typeof mockApi, 'getDrafts' | 'patchDraft' | 'getAmendmentPlan'> & {
   getDrafts: (oaId: string) => Promise<Drafts>
+  getAmendmentPlan: (oaId: string) => Promise<AmendmentPlanInfo | null>
   patchDraft: (draftId: string, patch: DraftPatch) => Promise<Drafts>
 }
 
@@ -107,6 +126,7 @@ const httpApi: FrontendApi = {
     sendJson<SelectionResult>('PUT', `/directions/${encodeURIComponent(unitId)}/selection`, body),
   getCaseCheck: (oaId) => getJson<CaseCheck>(`/oas/${oaId}/case-check`),
   getDrafts: (oaId) => getDraftsResult(oaId),
+  getAmendmentPlan: (oaId) => getAmendmentPlanResult(oaId),
   patchDraft: (draftId, patch) => sendJson<Drafts>('PATCH', `/drafts/${draftId}`, patch),
   getRun: (runId) => getJson<RunStatus>(`/runs/${encodeURIComponent(runId)}`),
   cancelRun: (runId) => postJson<RunStatus>(`/runs/${encodeURIComponent(runId)}/cancel`, {}),
