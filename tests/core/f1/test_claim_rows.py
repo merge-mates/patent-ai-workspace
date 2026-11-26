@@ -1004,6 +1004,11 @@ def test_청구항_번호가_판단_원문_바로_앞_문장에_있으면_줄을
                 "ambiguous": False}  # fmt: skip
     row = _row(_read(_with_row(12, judgment=judgment), pages), 7, 3)
     assert row.raw_text == "상기 모듈들은 장치 구성을 특정할 수 없다."
+    # 번호가 판단 원문 밖이라 그 항의 줄인지 원문으로 확실히 정하지 못함: 확인됨으로 올리지 않고
+    # 값은 남긴다 (의견서는 '확인 필요'로 받음)
+    assert row.status.value == StatusValue.UNVERIFIED
+    assert row.status.reason == UnverifiedReason.AMBIGUOUS
+    assert row.check_failed and "앞 문장" in row.check_failed
 
 
 def test_번호가_두_문장_넘어_앞에_있으면_맞는_줄이_아니다():

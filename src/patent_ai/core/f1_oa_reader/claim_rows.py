@@ -564,6 +564,14 @@ def build_claim_rows(
             # 번호 없는 줄은 만들지 않는다 (그 청구항은 끝에서 번호 있는 빈 줄로 채워짐)
             logger.warning("청구항 번호를 못 읽은 줄은 만들지 않음 (거절이유 %s)", no)
             continue
+        # 청구항 번호가 판단 원문 밖(바로 앞 문장)에만 있는 줄: 만들되 확인됨으로 올리지 않는다
+        # (그 항의 줄인지 원문으로 확실히 정하지 못함. 값은 남겨 의견서가 '확인 필요'로 씀)
+        number_outside = (
+            rej is not None
+            and _on_page(r.judgment, pages)
+            and _squash(r.claims.raw_text or "") not in _squash(r.judgment.raw_text or "")
+            and not _numbers_in_judgment(claims, r.judgment)
+        )
         if rej is not None and not _fits(r, rej, pages, claims):
             # 대상 청구항이면 끝에서 번호 있는 빈 줄로 채워진다 (대상 밖 청구항 줄은 만들지 않음)
             logger.warning("청구항·순번이 판단 원문과 안 맞는 줄은 번호 없이 만들지 않음")
@@ -582,6 +590,9 @@ def build_claim_rows(
             kind = kind_of_article(rej["article"].value)
             try:
                 content = _content(r, kind, rej, pages)
+                if number_outside:
+                    why_not = "청구항 번호가 판단 원문 앞 문장에만 있음"
+                    raise _Fail(UnverifiedReason.AMBIGUOUS, why_not)
             except _Fail as fail:
                 reason, failed = fail.reason, fail.detail
                 raw_values = _model_values(r, rej, kind)
