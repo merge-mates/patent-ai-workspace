@@ -314,3 +314,31 @@ def test_다시_불러도_확인_표시가_남으면_표시만_지우고_묶음�
 def test_확인_메모가_없으면_확인_칸을_만들지_않는다():
     out, _ = _run_units([UNIT_OUT, UNIT_OUT])
     assert OpinionKey.REVIEW not in {s.key for s in out.drafts.opinion}
+
+
+def test_대비_결과_입력의_코드_값을_한국어로_준다():
+    # 대비 결과의 판정·출처 코드(difference_candidate, ai_found 등)를 모델이 확인 메모에 옮겨 썼다
+    _, t = _run(amendment=MERGED)
+    unit = [c for c in t.calls if c["step"] == "f4.opinion_unit"][0]["prompt"]
+    for code in ('"difference_candidate"', '"disclosed"', '"ai_found"', '"examiner"'):
+        assert code not in unit, code
+    assert "차이점 후보" in unit and "같은 구성" in unit
+
+
+def test_확인_메모는_같은_말을_한_번만_내부_코드는_한국어로_묶음마다_많아도_다섯_개():
+    noisy = {
+        "response": UNIT_OUT["response"],
+        "checks": [
+            "D1 [0041]은 대비 판정이 「unclear」였습니다. 확인해 주세요.",
+            "D1 [0041]은 대비 판정이 「unclear」였습니다. 확인해 주세요.",
+            "구성 1-1은 조회 범위(D1 상위 20 및 도면 설명)에서 확인되지 않았습니다.",
+            *[f"확인할 점 {n}" for n in range(1, 7)],
+        ],
+    }
+    out, _ = _run_units([noisy, UNIT_OUT])
+    review = {s.key: s.ai_text for s in out.drafts.opinion}[OpinionKey.REVIEW]
+    lines = review.splitlines()
+    assert len(lines) == 5  # 묶음 하나에 많아도 다섯 줄
+    assert sum("[0041]" in x for x in lines) == 1  # 같은 말은 한 번
+    assert "unclear" not in review and "판단 어려움" in review
+    assert "상위 20" not in review

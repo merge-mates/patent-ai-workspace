@@ -202,13 +202,58 @@ def amendment_rows(inp: F4Input, claims: list[int] | None = None) -> str:
     return to_json(data)
 
 
+# 대비 결과의 코드 값 → 한국어 (모델이 확인 메모·본문에 코드 값을 옮겨 쓰지 않게)
+CODE_KO = {
+    "disclosed": "같은 구성",
+    "difference_candidate": "차이점 후보",
+    "unclear": "판단 어려움",
+    "confirmed": "확인됨",
+    "unverified": "확인되지 않음",
+    "not_found_in_scope": "조회 범위 내 없음",
+    "conflict": "충돌",
+    "examiner": "심사관 지정",
+    "ai_found": "AI가 찾음",
+}
+# 검색 범위 글("D1 조각 105개 중 hybrid 상위 10 … (cite-idx-v5)")은 검색 내부라 짧게
+_SCOPE = re.compile(r"\b(D\d+) 조각 \d+개 중 .*")
+
+
 def _without_unit_id(data):
-    """대비 결과 안의 묶음 ID(unit_id)를 모든 깊이에서 뺀다."""
+    """대비 결과에서 묶음 ID(unit_id)를 빼고 코드 값·검색 범위 글을 한국어로 (모든 깊이)."""
     if isinstance(data, dict):
-        return {k: _without_unit_id(v) for k, v in data.items() if k != "unit_id"}
+        out = {}
+        for k, v in data.items():
+            if k == "unit_id":
+                continue
+            if k == "searched_scope" and isinstance(v, str):
+                v = _SCOPE.sub(r"\1 본문 일부", v)
+            out[k] = _without_unit_id(v)
+        return out
     if isinstance(data, list):
         return [_without_unit_id(v) for v in data]
+    if isinstance(data, str):
+        return CODE_KO.get(data, data)
     return data
+
+
+MAX_CHECKS_PER_UNIT = 5  # 확인 메모가 길면 아무도 안 읽는다: 묶음 하나에 많아도 다섯 줄
+_SEARCH_DETAIL = re.compile(r"\s*\([^()]*상위 \d+[^()]*\)")
+_CODE_WORD = re.compile(r"\b(" + "|".join(CODE_KO) + r")\b")
+
+
+def _clean_checks(checks: list[str]) -> list[str]:
+    """확인 메모 정리: 코드 값은 한국어로, 검색 내부 글("(D1 상위 20 …)")은 빼고,
+    같은 말은 한 번만, 묶음 하나에 많아도 MAX_CHECKS_PER_UNIT개
+    (앞에서부터: 모델에게 중요한 것부터 쓰라고 시킨다)."""
+    out: list[str] = []
+    for c in checks:
+        text = _CODE_WORD.sub(lambda m: CODE_KO[m.group(1)], c)
+        text = _SEARCH_DETAIL.sub("", text).strip()
+        if text and text not in out:
+            out.append(text)
+    if len(out) > MAX_CHECKS_PER_UNIT:
+        logger.info("f4.opinion: 확인 메모 %d개 중 앞 %d개만 싣는다", len(out), MAX_CHECKS_PER_UNIT)
+    return out[:MAX_CHECKS_PER_UNIT]
 
 
 def _claims_ko(claims: list[int]) -> str:
@@ -447,7 +492,7 @@ def build_opinion_v2(
         responses.append(f"{title}\n{_strip_marks(out.response)}")
         # 확인할 점은 본문과 따로 모은다 (어느 묶음 것인지 앞에 붙임)
         claims_head = f"청구항 {', '.join(map(str, unit.claims))}"
-        checks += [f"[{claims_head}] {c.strip()}" for c in out.checks if c.strip()]
+        checks += [f"[{claims_head}] {c}" for c in _clean_checks(out.checks)]
         based_on.append(BasedOn(unit_id=unit.unit_id, candidate_id=chosen.candidate_id))
         statuses += [chosen.status, bundle.status]
         legal_unverified = legal_unverified or bundle.status.value != StatusValue.CONFIRMED
@@ -486,10 +531,7 @@ def build_opinion_v2(
             OpinionKey.CLOSING: _strip_marks(case.closing),
             # 변리사 확인 사항: 제출할 본문과 따로 맨 끝 칸 (없으면 칸을 만들지 않음)
             OpinionKey.REVIEW: (
-                "\n".join(
-                    f"- {c}" for c in [*checks, *(x.strip() for x in case.checks if x.strip())]
-                )
-                or None
+                "\n".join(f"- {c}" for c in [*checks, *_clean_checks(case.checks)]) or None
             ),
         }
         sections = [
