@@ -141,6 +141,7 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
     )
   }
 
+  // 원문은 쪽마다 끊지 않고 전체를 이어서 보인다. 강조는 가리킨 쪽(page)에서만 찾는다
   const text = document?.pages.find((p) => p.page === page)?.text ?? null
   const at = text && highlight ? text.indexOf(highlight) : -1
 
@@ -162,7 +163,7 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span className="label2 t3">참고 원문</span>
-          <span className="headline2">{evidence ? (evidence.kind === 'legal' ? evidence.source.identifier : evidence.ref.title) : `통지서 ${page}쪽`}</span>
+          <span className="headline2">{evidence ? (evidence.kind === 'legal' ? evidence.source.identifier : evidence.ref.title) : '의견제출통지서'}</span>
         </div>
         {!evidence && document && document.status.value !== 'confirmed' && <StatusTag status={document.status} detail={false} />}
         <Button type="text" onClick={onToggle}>
@@ -181,36 +182,50 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
       ) : (
         <>
           <span className="label2 t3">
-            의견제출통지서 · 전체 {document.pages.length}쪽
+            전체 {document.pages.length}쪽 · 스크롤해서 모두 볼 수 있어요
           </span>
-          {text === null ? (
-            <Alert type="info" showIcon message="이 쪽의 원문 글자를 받지 못했습니다" />
-          ) : (
-            <>
-              {highlight && at < 0 && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="근거 글자를 이 쪽에서 그대로 찾지 못했습니다"
-                  description={highlight}
-                />
-              )}
-              <p
-                className="body2r"
-                style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--fg-neutral-secondary)', overflowWrap: 'anywhere' }}
-              >
-                {at < 0 || !highlight ? (
-                  text
-                ) : (
-                  <>
-                    {text.slice(0, at)}
-                    <span id="source-highlight" style={highlightStyle}>{highlight}</span>
-                    {text.slice(at + highlight.length)}
-                  </>
-                )}
-              </p>
-            </>
+          {highlight && text !== null && at < 0 && (
+            <Alert type="warning" showIcon message={`근거 글자를 ${page}쪽에서 그대로 찾지 못했습니다`} description={highlight} />
           )}
+          {document.pages.map((pg) => {
+            // 가리킨 쪽에서만 근거 글자를 강조한다
+            const mark = pg.page === page && highlight && at >= 0
+            return (
+              <div key={pg.page} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {/* 쪽 머리: 쪽 링크를 누르면 여기로 내려온다 */}
+                <span
+                  id={`source-page-${pg.page}`}
+                  className="label2"
+                  style={{
+                    fontWeight: 600,
+                    color: pg.page === page ? 'var(--fg-neutral-primary)' : 'var(--fg-neutral-tertiary)',
+                    borderTop: '1px solid var(--line-neutral-tertiary)',
+                    paddingTop: 8,
+                  }}
+                >
+                  {pg.page}쪽
+                </span>
+                {pg.text ? (
+                  <p
+                    className="body2r"
+                    style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--fg-neutral-secondary)', overflowWrap: 'anywhere' }}
+                  >
+                    {mark ? (
+                      <>
+                        {pg.text.slice(0, at)}
+                        <span id="source-highlight" style={highlightStyle}>{highlight}</span>
+                        {pg.text.slice(at + highlight.length)}
+                      </>
+                    ) : (
+                      pg.text
+                    )}
+                  </p>
+                ) : (
+                  <span className="label1 t3">이 쪽의 원문 글자를 받지 못했어요</span>
+                )}
+              </div>
+            )
+          })}
         </>
       )}
     </aside>

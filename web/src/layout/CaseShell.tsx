@@ -134,13 +134,16 @@ export function CaseShell() {
   const shown = source ?? { page: defaultPage, text: null }
 
   // 쪽 링크를 누르면 판을 펴고 그 쪽으로. 쪽을 모르면(null) 판만 편다
-  const scrollToPanel = () =>
-    // 판 안에서는 강조 줄(없으면 판)로, 좁은 화면에서 판이 본문 아래면 화면도 거기로 (effect 없이 그린 뒤 한 번)
-    requestAnimationFrame(() =>
-      (document.getElementById('source-highlight') ?? document.getElementById('source-panel'))?.scrollIntoView({
-        block: 'nearest',
-      }),
-    )
+  const scrollToPanel = (page: number | null = null) =>
+    // 판 안에서는 강조 줄 → 그 쪽 머리 → 판 순서로 찾아 내린다. 원문은 전체 쪽을 한 판에 이어 보이므로
+    // 강조가 없으면 그 쪽 머리로 간다 (effect 없이 그린 뒤 한 번)
+    requestAnimationFrame(() => {
+      const hl = document.getElementById('source-highlight')
+      const pageHead = page !== null ? document.getElementById(`source-page-${page}`) : null
+      ;(hl ?? pageHead ?? document.getElementById('source-panel'))?.scrollIntoView({
+        block: hl ? 'center' : 'start',
+      })
+    })
   const openPage: OpenPage = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
     setEvidenceAt(null)
@@ -148,7 +151,7 @@ export function CaseShell() {
     // 쪽 링크·근거 링크를 직접 누를 때(scroll=true)만 편다
     if (scroll) {
       setSrcOpen(true)
-      scrollToPanel()
+      scrollToPanel(page)
     }
   }
   // 법률 근거 열기: 근거 글(raw_text)을 판에 보인다
@@ -286,7 +289,8 @@ export function CaseShell() {
             style={{
               flex: '999 1 560px',
               minWidth: 0,
-              maxWidth: 920,
+              // 원문 판을 접으면 본문이 남은 폭을 다 쓴다 (펴 있을 때만 읽기 좋은 폭으로 묶음)
+              maxWidth: srcOpen ? 920 : 'none',
               padding: '32px 40px 80px',
               display: 'flex',
               flexDirection: 'column',
