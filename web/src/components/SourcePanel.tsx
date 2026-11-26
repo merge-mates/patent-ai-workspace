@@ -286,6 +286,8 @@ export function SourcePanel({
           {citeFailed.includes(tab) && <span className="label1 t3">원본 PDF를 그리지 못해 색인 문단으로 보여요</span>}
           {citeShowPdf ? (
             <PdfView
+              // 문서가 바뀌면 새로 만든다: 앞 문서의 쪽 수가 남으면 없는 쪽을 그리다 화면 전체가 멈춘다
+              key={`cite:${tab}`}
               url={`/api/citations/${encodeURIComponent(tab)}/file?application_number=${encodeURIComponent(applicationNumber ?? '')}`}
               page={null}
               targets={{
@@ -326,6 +328,7 @@ export function SourcePanel({
           {pdfFailed && <span className="label1 t3">원본 PDF를 그리지 못해 뽑은 글자로 보여요</span>}
           {showPdf ? (
             <PdfView
+              key={`oa:${document.document_id}`}
               url={`/api/documents/${encodeURIComponent(document.document_id)}/file`}
               page={page}
               targets={{ texts: highlight ? [highlight] : [], labels: [] }}
