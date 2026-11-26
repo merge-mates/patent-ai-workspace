@@ -2125,6 +2125,23 @@ components:
           - type: string
           - type: 'null'
           title: Legality Notice
+        amendment_strategy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Amendment Strategy
+        amendment_alternatives:
+          items:
+            type: string
+          type: array
+          title: Amendment Alternatives
+          default: []
+        amendment_checks:
+          items:
+            $ref: '#/components/schemas/PlanIssue'
+          type: array
+          title: Amendment Checks
+          default: []
       type: object
       required:
       - oa_id
@@ -3093,6 +3110,24 @@ components:
       - examiner
       - ai_found
       title: ParagraphSource
+    PlanIssue:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        claim:
+          type: integer
+          title: Claim
+        detail:
+          type: string
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - claim
+      - detail
+      title: PlanIssue
     QuestionSource:
       type: string
       enum:

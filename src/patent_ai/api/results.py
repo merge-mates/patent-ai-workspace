@@ -22,6 +22,7 @@ from patent_ai.api.errors import AppError
 from patent_ai.core.cases.result_views import ResultName, ResultView, result_view
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.step_results import StepResultStore
+from patent_ai.core.f4_response_draft.plan_check import PlanIssue
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.runs.store import RunStatusStore
 from patent_ai.core.schemas.comparison import ClarityReview, ComparisonTable
@@ -67,6 +68,10 @@ class DraftsOut(BaseModel):
     empty_reason: str | None
     held_units: list[str]  # 초안을 보류한 묶음
     legality_notice: str | None  # 보정 초안은 검토용이고 적법성은 판단하지 않음
+    # 사건 단위 보정안(이 브랜치)을 쓴 실행: 1번 안 전략 글, 다른 안 전략 글, 코드 검사 표시
+    amendment_strategy: str | None = None
+    amendment_alternatives: list[str] = []
+    amendment_checks: list[PlanIssue] = []
 
 
 Results = Annotated[OAResultStore, Depends(get_oa_result_store)]
@@ -138,4 +143,7 @@ def get_drafts(oa_id: str, unit: Unit, results: Results, steps: Steps, runs: Run
         empty_reason=view.empty_reason,
         held_units=f4.held_units if f4 else [],
         legality_notice=f4.legality_notice if f4 else None,
+        amendment_strategy=f4.amendment_strategy if f4 else None,
+        amendment_alternatives=f4.amendment_alternatives if f4 else [],
+        amendment_checks=f4.amendment_checks if f4 else [],
     )
