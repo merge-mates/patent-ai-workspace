@@ -129,7 +129,7 @@ function Fields({ c, hideAmendment = false }: { c: DirectionCandidate; hideAmend
   // 보정하는 청구항: 그대로(unchanged)인 청구항은 빼고 센다 (argue_only는 칸이 안 그려짐. F4 opinion.py has_amendment와 같은 기준)
   const claims = [...new Set(c.amendment_core.filter((a) => a.kind !== 'unchanged').map((a) => a.claim))]
   return (
-    <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!hideAmendment && <Field label="보정 핵심">
         {c.amendment_core.length === 0
           ? '보정 없음'
@@ -148,11 +148,6 @@ function Fields({ c, hideAmendment = false }: { c: DirectionCandidate; hideAmend
               거절이유 {r.rejection}: {r.response}
             </div>
           ))}
-        </Field>
-      )}
-      {c.rebuttal && (
-        <Field label="반박 논리">
-          {rebuttalTypeLabel[c.rebuttal.type]} — {c.rebuttal.summary}
         </Field>
       )}
       {c.checks.length > 0 && (
@@ -229,6 +224,8 @@ export function DirectionsPage() {
   // 누르기 막기: 실행이 막는 동안 + 어느 묶음이든 저장(PUT)이 오가는 동안 (그 사이 다른 묶음을 누르면 서버가 409)
   const locked = blocked || Object.values(saving).some(Boolean)
   const [checkOpen, setCheckOpen] = useState(false)
+  // 묶음마다 "자세히"(근거·거절이유별 대응·확인 사항)를 펼쳤는지. 기본은 접어 요지와 후보 고르기만 보인다
+  const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({})
   // 문서 번호 → 인용발명 이름 (대비표 줄의 근거와 citation 이름으로 맞춘다)
   const citeNames = new Map<string, string>()
   for (const t of comparisons)
@@ -284,7 +281,7 @@ export function DirectionsPage() {
     .join(', ')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {/* 서버는 작은 실행이 끝날 때까지 옛 선택을 돌려준다: 끝나면 고른 선택이 여기에 보인다 */}
       {blocked && (
@@ -322,7 +319,7 @@ export function DirectionsPage() {
         ) : (
           <span className="body2 t3">대응 방향 후보가 아직 없습니다</span>
         ))}
-      {directions.map((d, idx) => {
+      {directions.map((d) => {
         const sel = d.selection
         const mine = justChosen[d.unit_id]
         const mineSnap = mine !== undefined ? snapOf(mine.runId) : null // 그 선택이 묶인 실행 (아직 latest_run이 아니어도 찾는다)
@@ -333,10 +330,21 @@ export function DirectionsPage() {
         const justName = d.candidates.find((c) => c.candidate_id === just?.candidate_id)?.name
         const picked = d.candidates.find((c) => c.candidate_id === sel?.candidate_id)
         return (
-          <div key={d.unit_id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {idx > 0 && <hr className="hr" style={{ width: '100%', margin: 0 }} />}
+          // 묶음 하나 = 카드 하나: 머리 → 고른 방향 → 반박 요지 → 후보 고르기 → (자세히) 근거·대응·확인 사항
+          <div
+            key={d.unit_id}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              padding: '20px 24px',
+              border: '1px solid var(--line-neutral-tertiary)',
+              borderRadius: 12,
+              background: 'var(--bg-neutral-primary, #fff)',
+            }}
+          >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className="label1 t3">
+              <span className="label1" style={{ fontWeight: 600 }}>
                 {unitHead(
                   units.find((u) => u.unit_id === d.unit_id),
                   d.unit_id,
@@ -355,17 +363,18 @@ export function DirectionsPage() {
               ) : (
                 <HumanCheckTag>{LOW_CONFIDENCE_TEXT} · 고를 때까지 초안 없음</HumanCheckTag>
               )}
-              {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만) */}
-              <span className="label1 t3">
+              {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만).
+                  보정을 사건 전체에서 한 번 정하면 묶음 카드에서는 빼고 위 안내로 본다 */}
+              {!hasCasePlan && <span className="label1 t3">
                 {/* "보정 제한: 최초"는 뜻이 안 읽혀 보정할 수 있는 범위로 풀어 쓴다 */}
                 {d.amendment_limit.value === 'initial'
                   ? '보정 범위: 최초 명세서 범위 안 (최초거절이유통지)'
                   : d.amendment_limit.value === 'final'
                     ? '보정 범위: 제47조제3항 제한 (최후거절이유통지)'
                     : '보정 범위'}
-              </span>
+              </span>}
               {/* 값이 있어도 확인되지 않았으면(애매 등) 상태를 같이 보인다 */}
-              {d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
+              {!hasCasePlan && d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
             </div>
 
             {sel?.written_direction ? (
@@ -377,24 +386,24 @@ export function DirectionsPage() {
               </>
             ) : picked ? (
               <>
-                <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
+                <h2 className="heading2" style={{ margin: 0 }}>
                   {picked.rank === null ? picked.name : `${rankText(picked)} · ${picked.name}`}
                 </h2>
-                <p className="body1 t2">
+                <p className="body2 t2" style={{ margin: 0 }}>
                   {sentence(picked.reason)} 확신도 {confidenceLabel[picked.confidence]}.
                 </p>
+                {/* 반박 요지: 의견서에 쓰일 논점을 한눈에 (왼쪽 선으로 구분) */}
+                {picked.rebuttal && (
+                  <div style={{ padding: '10px 14px', borderLeft: '3px solid var(--fg-accent-primary, #0066ff)', background: 'var(--bg-neutral-secondary)', borderRadius: 4 }}>
+                    <span className="label2 t3">반박 요지 · {rebuttalTypeLabel[picked.rebuttal.type]}</span>
+                    <div className="body2">{picked.rebuttal.summary}</div>
+                  </div>
+                )}
                 {picked.status.value !== 'confirmed' && (
                   <div>
                     <StatusTag status={picked.status} />
                   </div>
                 )}
-                <BasisLines
-                  c={picked}
-                  legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)}
-                  names={citeNames}
-                  noticeId={oa.document_id}
-                />
-                <Fields c={picked} hideAmendment={hasCasePlan} />
               </>
             ) : d.candidates.length === 0 ? (
               // 후보가 0개면 실패한 것이다 (이유는 머리의 상태 꼬리표). 확신이 낮아서라고 말하지 않는다
@@ -410,7 +419,8 @@ export function DirectionsPage() {
             {d.candidates.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
               <span className="label1 t2">
-                {picked ? '다른 후보로 바꾸기' : '후보 고르기'} · 순위는 검토 순서 제안이고 등록을 보증하지 않아요
+                {picked ? '다른 후보로 바꾸기' : '후보 고르기'}
+                <span className="label2 t3"> · 순위는 검토 순서 제안이고 등록을 보증하지 않아요</span>
               </span>
               <Radio.Group
                 value={just ? just.candidate_id : (sel?.candidate_id ?? null)}
@@ -431,10 +441,31 @@ export function DirectionsPage() {
             </div>
             )}
 
+            {/* 자세히: 근거 · 거절이유별 대응 · 확인 사항 (개수만 보이고 누르면 펼친다) */}
+            {picked && !sel?.written_direction && (
+              <>
+                <Button type="link" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setDetailOpen((prev) => ({ ...prev, [d.unit_id]: !prev[d.unit_id] }))}>
+                  {`근거 ${picked.evidence.length}개 · 확인할 것 ${checkLines(picked.checks).length}개 ${detailOpen[d.unit_id] ? '접기' : '자세히 보기'}`}
+                </Button>
+                {detailOpen[d.unit_id] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingLeft: 16, borderLeft: '2px solid var(--line-neutral-tertiary)' }}>
+                    <BasisLines
+                      c={picked}
+                      legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)}
+                      names={citeNames}
+                      noticeId={oa.document_id}
+                    />
+                    <Fields c={picked} hideAmendment={hasCasePlan} />
+                  </div>
+                )}
+              </>
+            )}
+
             {/* 직접 쓰기: 모든 묶음에 둔다. 아직 안 골랐고 확신이 낮은 묶음은 눈에 띄게(primary) */}
             {writing[d.unit_id] === undefined ? (
               <div>
                 <Button
+                  size="small"
                   type={!sel && !just && d.flags.includes('needs_human_judgment') ? 'primary' : 'default'}
                   disabled={locked}
                   onClick={() => setWriting((prev) => ({ ...prev, [d.unit_id]: sel?.written_direction ?? '' }))}

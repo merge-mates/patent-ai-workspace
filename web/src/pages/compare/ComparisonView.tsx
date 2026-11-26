@@ -1,5 +1,5 @@
 import { AuditOutlined, CheckOutlined, DiffOutlined, EllipsisOutlined, RobotOutlined } from '@ant-design/icons'
-import { Button, Table, Tag } from 'antd'
+import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { type ReactNode, useContext, useState } from 'react'
 import { claimLocationText, scopeText, sentence } from '../../format'
@@ -136,8 +136,17 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
           <Tag color={judgmentTag[r.judgment].color} icon={judgmentTag[r.judgment].icon} bordered={false}>
             {judgmentTag[r.judgment].text}
           </Tag>
-          {/* 확인됨은 꼬리표를 달지 않는다. 확인되지 않음·조회 범위 내 없음·충돌만 */}
-          {r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
+          {/* 확인됨은 꼬리표를 달지 않는다. 확인되지 않음·조회 범위 내 없음·충돌만.
+              차이점 후보인데 조회 범위 내 없음이면 "검색 실패"처럼 읽히지 않게 왜 차이점 후보인지를 쓴다 (상태 이름은 툴팁에) */}
+          {r.judgment === 'difference_candidate' && r.status.value === 'not_found_in_scope' ? (
+            <Tooltip title={`상태: 조회 범위 내 없음${r.status.searched_scope ? ` · ${scopeText(r.status.searched_scope)}` : ''} · 없다고 단정하지 않아요`}>
+              <Tag bordered={false} style={{ background: '#f0f0f0', color: 'rgba(0,0,0,0.65)', whiteSpace: 'normal' }}>
+                대응 문단 못 찾음
+              </Tag>
+            </Tooltip>
+          ) : (
+            r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />
+          )}
         </div>
       ),
     },
