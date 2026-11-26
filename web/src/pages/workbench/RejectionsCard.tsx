@@ -8,6 +8,7 @@ import { candidatesText } from '../../components/extracted'
 import { RejectionLaw } from '../../components/RejectionLaw'
 import { HintsCard } from './HintsCard'
 import { SourceLink } from '../../components/SourceLink'
+import { CiteSpotButton } from '../../components/CiteSpotButtons'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
 import { claimRange, claimsText } from '../../format'
@@ -53,8 +54,43 @@ function locationText(row: ClaimRow): string {
   return parts.length > 0 ? parts.join(' / ') : '—'
 }
 
-// 청구항 줄 표의 열 (거절이유별·청구항별 둘이 같이 쓴다)
-const rowColumns = (clarity: boolean): ColumnsType<ClaimRow> => [
+// 인용문헌·위치 한 칸: 인용문헌마다 위치 버튼 (위치가 없으면 문헌 버튼). 누르면 원문에서 그 문단 강조
+function CiteCell({ row, numbers }: { row: ClaimRow; numbers: Record<string, string> }) {
+  if (row.no_location) return <span className="body2 t2">{row.no_location}</span>
+  if (row.citations.length === 0) return <span className="t3">—</span>
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {row.citations.flatMap((label) => {
+        const locs = row.locations[label] ?? []
+        return locs.length > 0
+          ? locs.map((loc) => <CiteSpotButton key={`${label}-${loc}`} label={label} number={numbers[label] ?? null} location={loc} />)
+          : [<CiteSpotButton key={label} label={label} number={numbers[label] ?? null} location={null} />]
+      })}
+    </div>
+  )
+}
+
+// 같은 내용(인용·위치·같은 취지·상태)인 이어진 청구항 줄을 한 줄로 합친다 ("제6–10항")
+type ShownRow = ClaimRow & { claimsShown: number[] }
+function mergeRows(rows: ClaimRow[]): ShownRow[] {
+  const key = (r: ClaimRow) =>
+    JSON.stringify([r.citations, r.locations, r.same_as, r.status.value, r.status.reason, r.no_location, r.clarity_terms, r.clarity_reason])
+  const out: ShownRow[] = []
+  for (const r of rows) {
+    const last = out.at(-1)
+    if (last && r.claim !== null && key(last) === key(r)) last.claimsShown.push(r.claim)
+    else out.push({ ...r, claimsShown: r.claim === null ? [] : [r.claim] })
+  }
+  return out
+}
+const claimCell = (row: ClaimRow) => {
+  const shown = (row as ShownRow).claimsShown
+  if (shown && shown.length > 1) return `제${claimRange(shown)}항`
+  return row.claim === null ? '모름' : `제${row.claim}항`
+}
+
+// 청구항 줄 표의 열 (거절이유별·청구항별 둘이 같이 쓴다). numbers: 인용 라벨 → 문헌 번호 (버튼으로 원문을 연다)
+const rowColumns = (clarity: boolean, numbers: Record<string, string> = {}): ColumnsType<ClaimRow> => [
   ...(clarity
     ? [
         {
@@ -70,8 +106,8 @@ const rowColumns = (clarity: boolean): ColumnsType<ClaimRow> => [
         },
       ]
     : [
-        { title: '인용', render: (_: unknown, row: ClaimRow) => (row.citations.length ? row.citations.join(' + ') : '—') },
-        { title: '인용 위치', render: (_: unknown, row: ClaimRow) => locationText(row) },
+        // 인용과 인용 위치를 한 칸으로: 위치 버튼을 누르면 오른쪽 판에 인용문헌 원문을 열고 그 문단을 강조
+        { title: '인용문헌 · 위치', render: (_: unknown, row: ClaimRow) => <CiteCell row={row} numbers={numbers} /> },
       ]),
   {
     title: '같은 취지',
@@ -150,11 +186,18 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
           size="small"
           rowKey={(row, i) => `${row.claim}-${row.rejection}-${i}`}
           columns={[
-            { title: '청구항', render: (_, row) => (row.claim === null ? '모름' : `제${row.claim}항`) },
-            ...rowColumns(rej.kind === 'clarity'),
+            { title: '청구항', width: 90, render: (_, row) => claimCell(row) },
+            ...rowColumns(
+              rej.kind === 'clarity',
+              Object.fromEntries(
+                rej.citations
+                  .map((c) => [c.label, c.number.value ?? c.number.raw_text] as const)
+                  .filter((x): x is readonly [string, string] => !!x[1]),
+              ),
+            ),
           ]}
-          // 값이 다 빈 줄은 표에 늘어놓지 않고 아래 한 줄로 묶는다
-          dataSource={rows.filter((x) => !isEmptyRow(x))}
+          // 값이 다 빈 줄은 표에 늘어놓지 않고 아래 한 줄로 묶고, 같은 내용 줄은 합친다
+          dataSource={mergeRows(rows.filter((x) => !isEmptyRow(x)))}
           pagination={false}
           scroll={{ x: 640 }}
           locale={{ emptyText: '청구항 줄 없음' }}
@@ -248,7 +291,8 @@ function ClaimDetail({ rows, byNo }: { rows: ClaimRow[]; byNo: Map<number, Rejec
           ? row.clarity_terms.map((t) => `'${t}'`).join(', ')
           : `${row.citations.join(' + ') || '—'} ${locationText(row) === '—' ? '' : `· ${locationText(row)}`}`,
     },
-    ...rowColumns(false).slice(2),
+    // 인용문헌·위치 칸은 위에서 따로 그려서 뺀다
+    ...rowColumns(false).slice(1),
   ]
   return (
     <div className="row-detail">
