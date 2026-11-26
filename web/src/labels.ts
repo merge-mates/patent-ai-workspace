@@ -14,7 +14,7 @@ export const unverifiedReasonLabel: Record<UnverifiedReason, string> = {
   evidence_rejected: '근거 빠짐',
   limit_reached: '상한 도달',
   edition_unknown: '판본 미확인',
-  input_unverified: '앞 단계 결과 확인 필요',
+  input_unverified: '바탕 결과에 확인할 곳 있음',
 }
 
 export const noticeKindLabel: Record<NoticeKind, string> = {

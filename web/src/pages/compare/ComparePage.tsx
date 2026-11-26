@@ -7,7 +7,7 @@ import { RejectionLaw } from '../../components/RejectionLaw'
 import { isRunEnded } from '../../runPoll'
 import { useRunSnapshot } from '../../useRunSnapshot'
 import { StatusTag } from '../../components/StatusTag'
-import { claimRange } from '../../format'
+import { claimRange, josaAfterNumber } from '../../format'
 import { articleLabel, COMPARE_UNVERIFIED_TEXT, rejectionKindLabel } from '../../labels'
 import type { CompareLoaderData, OALoaderData } from '../../loaders'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
@@ -69,6 +69,10 @@ export function ComparePage() {
   const table = comparisons.find((t) => t.unit_id === unit.unit_id)
   const review = clarity.find((c) => c.unit_id === unit.unit_id)
   const unitReason = unit.rejection_kind === 'clarity' ? emptyReasons.clarity : emptyReasons.comparisons
+  // 함께 읽을 앞 청구항(인용하는 청구항)의 검토가 있는 묶음: 명확성 종속항이 따를 곳
+  const sameReasonUnit = units.find(
+    (u) => u.unit_id !== unit.unit_id && unit.read_with.includes(u.representative_claim) && clarity.some((c) => c.unit_id === u.unit_id),
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
@@ -93,7 +97,18 @@ export function ComparePage() {
       {review && <ClarityView c={review} unit={unit} />}
       {/* 이 묶음에 맞는 목록(명확성 묶음은 명확성 문구 검토, 그 밖은 인용발명 대비)이 통째로 비었으면 서버가 준 이유를,
           목록은 있는데 이 묶음 줄만 없으면 지금 글자 */}
-      {!table && !review && (unitReason ? (
+      {/* 명확성 종속항: 앞 청구항과 같은 이유라 따로 검토가 없다. "결과 없음" 대신 그 청구항 검토로 보낸다 */}
+      {!table && !review && unit.rejection_kind === 'clarity' && sameReasonUnit && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="body1 t2">
+            {`${josaAfterNumber(`청구항 ${unit.representative_claim}`, '은', '는')} ${josaAfterNumber(`청구항 ${claimRange(unit.read_with)}`, '을', '를')} 인용해 같은 이유로 지적됐어요. 따로 검토하지 않고 청구항 ${sameReasonUnit.representative_claim} 검토를 따라요.`}
+          </span>
+          <Button size="small" onClick={() => setParams({ unit: sameReasonUnit.unit_id })}>
+            청구항 {sameReasonUnit.representative_claim} 검토 보기
+          </Button>
+        </div>
+      )}
+      {!table && !review && !(unit.rejection_kind === 'clarity' && sameReasonUnit) && (unitReason ? (
         <EmptyReason what={unit.rejection_kind === 'clarity' ? '명확성 문구 검토' : '인용발명 대비'} reason={unitReason} />
       ) : (
         <Empty description="이 청구항들의 대비 결과가 아직 없습니다" />

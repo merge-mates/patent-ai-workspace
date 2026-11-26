@@ -82,3 +82,14 @@ export function claimLocationText(claim: number | null, location: string): strin
 export function termText(term: string): string {
   return term.replace(/^[\s~～]+|[\s~～]+$/g, '')
 }
+
+// 숫자로 끝나는 말 뒤 조사: 끝 숫자의 읽는 소리에 받침이 있으면 앞 것(은·을), 없으면 뒤 것(는·를)
+// 일·삼·육·칠·팔·영(0)과 십 단위는 받침이 있다
+export function josaAfterNumber(text: string, withBatchim: string, without: string): string {
+  const m = /(\d+)\D*$/.exec(text)
+  if (!m) return withBatchim
+  const n = m[1]
+  const last = n[n.length - 1]
+  const batchim = last === '0' ? true : '136780'.includes(last)
+  return `${text}${batchim ? withBatchim : without}`
+}

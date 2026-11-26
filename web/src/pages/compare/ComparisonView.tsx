@@ -70,15 +70,29 @@ const diffNames = (t: ComparisonTable): string[] => (t.summary.kind === 'novelty
 function examinerSpots(oa: OAResult | null, unit: JudgmentUnit, t: ComparisonTable) {
   const rej = oa?.rejections.find((r) => r.no === unit.rejection)
   if (!oa || !rej) return []
-  const out: { label: string; number: string; location: string; labels: string[]; claims: number[]; used: boolean }[] = []
+  const out: { label: string; number: string; location: string; labels: string[]; claims: number[]; used: boolean; viaSame: boolean }[] = []
   for (const c of rej.citations) {
     const number = c.number.value ?? c.number.raw_text
     if (!number) continue
     // 위치 글자 → 그 위치를 짚은 청구항들
     const byLoc = new Map<string, number[]>()
-    for (const row of oa.claim_rows) {
-      if (row.rejection !== unit.rejection || row.claim === null || !unit.claims.includes(row.claim)) continue
-      for (const loc of row.locations[c.label] ?? []) byLoc.set(loc.trim(), [...(byLoc.get(loc.trim()) ?? []), row.claim])
+    const viaSame = new Set<string>() // 같은 이유로 빌려 온 위치
+    const sameRejection = oa.claim_rows.filter((row) => row.rejection === unit.rejection)
+    for (const row of sameRejection) {
+      if (row.claim === null || !unit.claims.includes(row.claim)) continue
+      // 그 청구항 줄에 위치가 없고 "같은 이유"(같은 거절이유의 다른 청구항)면 그 청구항의 위치를 쓴다
+      // (F3 examiner_locations와 같은 순서: 청구항 줄 → 같은 취지 줄 → 인용문헌 칸)
+      const own = row.locations[c.label] ?? []
+      const targets = row.same_as.flatMap((x) => (x.startsWith('claim:') ? [Number(x.slice(6))] : []))
+      for (const loc of own) byLoc.set(loc.trim(), [...(byLoc.get(loc.trim()) ?? []), row.claim])
+      if (own.length > 0) continue
+      // 빌려 온 위치는 심사관이 실제로 짚은 청구항(같은 이유의 대상) 번호로 적고 따로 표시한다
+      for (const src of sameRejection)
+        if (src.claim !== null && targets.includes(src.claim))
+          for (const loc of src.locations[c.label] ?? []) {
+            byLoc.set(loc.trim(), [...(byLoc.get(loc.trim()) ?? []), src.claim])
+            viaSame.add(loc.trim())
+          }
     }
     if (byLoc.size === 0) for (const loc of c.cited_paragraphs.value ?? []) byLoc.set(loc.trim(), [])
     // AI가 이 표에서 근거로 쓴 그 인용문헌의 문단 표기
@@ -86,7 +100,15 @@ function examinerSpots(oa: OAResult | null, unit: JudgmentUnit, t: ComparisonTab
     for (const [loc, claims] of byLoc) {
       const labels = locationLabels(loc)
       if (labels)
-        out.push({ label: c.label, number, location: loc, labels, claims: [...new Set(claims)].sort((x, y) => x - y), used: labels.some((l) => usedLabels.has(l)) })
+        out.push({
+          label: c.label,
+          number,
+          location: loc,
+          labels,
+          claims: [...new Set(claims)].sort((x, y) => x - y),
+          used: labels.some((l) => usedLabels.has(l)),
+          viaSame: viaSame.has(loc),
+        })
     }
   }
   return out
@@ -337,7 +359,7 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
                 {s.label} {s.location}
                 {/* 어느 청구항에 대해 짚었는지 · AI가 이 표에서 근거로 썼는지 */}
                 <span className="label2 t3" style={{ marginLeft: 6 }}>
-                  {s.claims.length > 0 ? `청구항 ${claimRange(s.claims)} · ` : ''}
+                  {s.claims.length > 0 ? `청구항 ${claimRange(s.claims)}${s.viaSame ? '에 짚음(같은 이유)' : ''} · ` : ''}
                   {s.used ? 'AI 근거로 씀' : 'AI 근거에 없음'}
                 </span>
               </Button>
