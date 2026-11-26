@@ -20,6 +20,7 @@ from patent_ai.core.cases.case_source.filler import SourceCaseFiller
 from patent_ai.core.cases.case_source.local_folder import load_case_source
 from patent_ai.core.cases.human_inputs import HumanInputStore
 from patent_ai.core.cases.human_inputs_pg import PostgresHumanInputStore
+from patent_ai.core.cases.local_citations import configured_local_citations
 from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
@@ -195,7 +196,8 @@ def _run_case_executor() -> RunCaseExecutor:
         oa_results=get_oa_result_store(),
         step_results=get_step_result_store(),
         # F1 뒤 사건 출원번호·발송번호와 사건 자료(⑥) (#261)
-        case_fill=PostgresCaseFill(factory, _latest_oa_result),
+        # 로컬 인용문헌 폴더(config/cite_search.yaml raw_root)에 있는 인용문헌은 받은 것으로 센다
+        case_fill=PostgresCaseFill(factory, _latest_oa_result, configured_local_citations),
         # F3·F4 글자: OA 당시 청구항 판 + 최초 명세서 (#205)
         # 못 찾으면 F3·F4는 넘긴 이유와 함께 빈다
         inputs=PostgresRunInputSource(factory, texts=texts),
