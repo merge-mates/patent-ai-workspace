@@ -57,12 +57,6 @@ function rejectionSub(rej: Rejection, rows: ClaimRow[]): string {
   return `${claimsText(rej.claims)} · 특허법 ${articleLabel(rej.article.value)}`
 }
 
-function locationText(row: ClaimRow): string {
-  if (row.no_location) return row.no_location
-  const parts = Object.entries(row.locations).map(([label, locs]) => `${label} ${locs.join(', ')}`)
-  return parts.length > 0 ? parts.join(' / ') : '—'
-}
-
 // 인용문헌·위치 한 칸: 인용문헌마다 위치 버튼 (위치가 없으면 문헌 버튼). 누르면 원문에서 그 문단 강조
 function CiteCell({ row, numbers }: { row: ClaimRow; numbers: Record<string, string> }) {
   if (row.no_location) return <span className="body2 t2">{row.no_location}</span>
@@ -293,37 +287,64 @@ function Row({
   )
 }
 
-// 청구항별 줄 안: 그 청구항에 걸린 거절이유 줄들 (지금까지 청구항별 표의 정보)
-function ClaimDetail({ rows, byNo }: { rows: ClaimRow[]; byNo: Map<number, Rejection> }) {
-  const columns: ColumnsType<ClaimRow> = [
-    {
-      title: '거절이유',
-      render: (_, row) => {
-        const rej = row.rejection === null ? undefined : byNo.get(row.rejection)
-        return rej ? `${rej.no} · ${rejectionKindLabel[rej.kind]}` : '모름'
-      },
-    },
-    {
-      title: '인용·위치 / 문제 표현',
-      render: (_, row) =>
-        row.clarity_terms.length > 0
-          ? row.clarity_terms.map((t) => `'${termText(t)}'`).join(', ')
-          : `${row.citations.join(' + ') || '—'} ${locationText(row) === '—' ? '' : `· ${locationText(row)}`}`,
-    },
-    // 인용문헌·위치 칸은 위에서 따로 그려서 뺀다
-    ...rowColumns(false).slice(1),
-  ]
+// 청구항별 줄 안: 그 청구항에 걸린 거절이유마다 한 덩어리 (거절이유별 펼침과 같은 칸·같은 버튼).
+// 넓은 표 대신 덩어리로 둬 좁은 판에서도 잘리지 않게 한다. AI가 다루지 않는 거절이유도 빼지 않고 보인다
+function ClaimDetail({ rows, nos, byNo }: { rows: ClaimRow[]; nos: (number | null)[]; byNo: Map<number, Rejection> }) {
   return (
-    <div className="row-detail">
-      <Table<ClaimRow>
-        size="small"
-        rowKey={(row, i) => `${row.claim}-${row.rejection}-${i}`}
-        columns={columns}
-        dataSource={rows}
-        pagination={false}
-        scroll={{ x: 640 }}
-        locale={{ emptyText: '청구항 줄 없음 (AI가 다루지 않는 거절이유예요)' }}
-      />
+    <div className="row-detail" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {nos.map((n) => {
+        const rej = n === null ? undefined : byNo.get(n)
+        const mine = rows.filter((x) => x.rejection === n)
+        // 인용 라벨 → 문헌 번호 (버튼으로 그 인용문헌 원문을 연다)
+        const numbers = Object.fromEntries(
+          (rej?.citations ?? []).flatMap((c) => {
+            const num = c.number.value ?? c.number.raw_text
+            return num ? [[c.label, num]] : []
+          }),
+        )
+        return (
+          <div
+            key={n ?? 'none'}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 12px', border: '1px solid var(--line-neutral-tertiary)', borderRadius: 8 }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className="body2" style={{ fontWeight: 600 }}>
+                {rej ? `거절이유 ${rej.no} · ${rejectionKindLabel[rej.kind]}` : '거절이유 모름'}
+              </span>
+              {rej && !rej.supported && <HumanCheckTag>AI가 다루지 않음 · 직접 검토</HumanCheckTag>}
+              {mine.map((row, i) => (
+                <span key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {row.status.value !== 'confirmed' && <StatusTag status={row.status} compact />}
+                  <SourceLink page={row.page} rawText={row.raw_text} candidate={row.status.value !== 'confirmed'} />
+                </span>
+              ))}
+              {/* 줄이 없는 거절이유(AI가 다루지 않음 등)는 조문 원문으로 */}
+              {mine.length === 0 && rej && <SourceLink page={rej.article.page} rawText={rej.article.raw_text} />}
+            </div>
+            {mine.map((row, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {row.clarity_terms.length > 0 ? (
+                  <span className="body2">
+                    <span className="label2 t3">문제 표현 </span>
+                    {row.clarity_terms.map((t) => `'${termText(t)}'`).join(', ')}
+                  </span>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="label2 t3">인용문헌 · 위치</span>
+                    <CiteCell row={row} numbers={numbers} />
+                  </div>
+                )}
+                {row.same_as.length > 0 && (
+                  <span className="body2 t2">{`${withWa(sameAsList(row.same_as))} 같은 이유`}</span>
+                )}
+              </div>
+            ))}
+            {mine.length === 0 && rej && !rej.supported && (
+              <span className="label1 t3">특허법 {articleLabel(rej.article.value)} · 통지서 원문을 직접 확인해 주세요</span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -462,7 +483,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                   open={cur.open.includes(id)}
                   onToggle={() => toggle(id)}
                 >
-                  <ClaimDetail rows={rows} byNo={byNo} />
+                  <ClaimDetail rows={rows} nos={nos} byNo={byNo} />
                 </Row>
               )
             })}
