@@ -12,6 +12,15 @@ import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '.
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 import type { OAResult } from '../../types/generated/OAResult'
 
+// 표 한 줄 = 구성요소 하나 (그 구성요소의 인용발명별 대비 줄을 모은 것)
+interface ElementLine {
+  key: string
+  claim: number
+  element: string
+  element_location: string
+  rows: ComparisonRow[]
+}
+
 // 대비 결과 글자 (상태 네 가지와 다른 축). 색만으로 나누지 않게 아이콘도 붙인다
 const judgmentTag: Record<Judgment, { color: string; text: string; icon: ReactNode }> = {
   disclosed: { color: 'green', text: '같은 구성', icon: <CheckOutlined /> },
@@ -82,76 +91,123 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
   const { openCite } = useContext(SourceContext)
   const [orderOpen, setOrderOpen] = useState(false)
 
-  // 같은 구성요소가 인용발명마다(D1·D2) 줄이 따로 있어 글이 반복된다: 이어진 같은 구성요소는 첫 줄에만 쓰고 칸을 합친다
+  // 구성요소 한 줄에 인용발명(D1·D2)을 나란히 둔다 (심사관 구성 대비표처럼).
+  // 데이터는 구성요소 × 인용발명마다 줄이 따로라서, 같은 구성요소의 줄을 모아 한 줄로 만든다
   const elementKey = (r: ComparisonRow) => `${r.claim}|${r.element_location}|${r.element}`
-  const span = (i: number): number => {
-    const k = elementKey(t.rows[i])
-    if (i > 0 && elementKey(t.rows[i - 1]) === k) return 0
-    let n = 1
-    while (i + n < t.rows.length && elementKey(t.rows[i + n]) === k) n++
-    return n
+  const elements: ElementLine[] = []
+  for (const r of t.rows) {
+    const k = elementKey(r)
+    let line = elements.find((x) => x.key === k)
+    if (!line) {
+      line = { key: k, claim: r.claim, element: r.element, element_location: r.element_location, rows: [] }
+      elements.push(line)
+    }
+    line.rows.push(r)
+  }
+  // 표에 둘 인용발명 칸: 대비한 인용발명 순서대로 (줄에만 있는 이름도 뒤에 붙인다)
+  const citeLabels = [...new Set([...t.citations.filter((c) => c.compared).map((c) => c.label), ...t.rows.map((r) => r.citation)])]
+
+  // 줄 하나(구성요소 × 인용발명)를 오른쪽 판에 연다. 근거 문단이 없는 줄도 상태·찾아본 범위를 보인다
+  const openRow = (r: ComparisonRow) =>
+    openCite({
+      title: `${r.citation} ${r.evidence[0]?.location ?? r.element_location}`.trim(),
+      items: r.evidence,
+      status: r.status,
+      // 검색 순위·방식(hybrid, 몇 위)은 개발용이라 쉬운 말로 바꾼다
+      note: r.why_retrieved ? whyText(r.why_retrieved) : null,
+      unverifiedText: COMPARE_UNVERIFIED_TEXT,
+      // 근거 문단이 없는 줄도 그 인용문헌 원문 전체는 열 수 있게 (표의 인용발명 번호)
+      docId: r.evidence[0]?.document_id ?? t.citations.find((c) => c.label === r.citation)?.number ?? null,
+    })
+
+  // 인용발명 칸 하나: 그 인용발명 줄마다 대비 결과 + 문단(누르면 오른쪽에) + 심사관 지정 표시
+  const citeCell = (line: ElementLine, label: string) => {
+    const rows = line.rows.filter((r) => r.citation === label)
+    if (rows.length === 0) return <span className="t3">—</span>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {rows.map((r, i) => {
+          const where = [...new Set(r.evidence.map((e) => e.location).filter(Boolean))].join(', ')
+          return (
+            <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Tag color={judgmentTag[r.judgment].color} icon={judgmentTag[r.judgment].icon} bordered={false}>
+                {judgmentTag[r.judgment].text}
+              </Tag>
+              <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => openRow(r)}>
+                {/* 근거 문단이 없으면 "검색 실패"처럼 읽히지 않게 왜 차이점 후보인지를 쓴다 (상태 이름은 툴팁에) */}
+                {where || (r.judgment === 'difference_candidate' ? '대응 문단 못 찾음' : '문단 없음')}
+              </Button>
+              {r.evidence.length > 0 && r.paragraph_source === 'examiner' && (
+                <Tooltip title="통지서에서 심사관이 짚은 문단">
+                  <AuditOutlined style={{ color: 'var(--fg-neutral-tertiary)' }} />
+                </Tooltip>
+              )}
+              {r.evidence.length > 0 && r.paragraph_source !== 'examiner' && (
+                <Tooltip title="통지서에 없던 문단을 AI가 찾음">
+                  <RobotOutlined style={{ color: '#722ed1' }} />
+                </Tooltip>
+              )}
+              {r.status.value !== 'confirmed' && !(r.judgment === 'difference_candidate' && r.status.value === 'not_found_in_scope') && (
+                <StatusTag status={r.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
-  const columns: ColumnsType<ComparisonRow> = [
+  // 결론 칸: 어느 인용발명에든 같은 구성이 있으면 "인용발명에 있음", 없고 차이점 후보가 있으면 "차이점 후보",
+  // 모두 판단 어려움이면 "판단 어려움" (diffNames와 같은 기준)
+  const conclusion = (line: ElementLine) => {
+    const found = line.rows.filter((r) => r.judgment === 'disclosed')
+    if (found.length > 0) {
+      const where = found.map((r) => `${r.citation} ${[...new Set(r.evidence.map((e) => e.location).filter(Boolean))].join(', ')}`.trim())
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Tag color="green" icon={<CheckOutlined />} bordered={false} style={{ alignSelf: 'flex-start' }}>
+            인용발명에 있음
+          </Tag>
+          <span className="label2 t3">{[...new Set(where)].join(' · ')}</span>
+        </div>
+      )
+    }
+    const diff = line.rows.some((r) => r.judgment === 'difference_candidate')
+    return diff ? (
+      <Tag color="orange" icon={<DiffOutlined />} bordered={false}>
+        차이점 후보
+      </Tag>
+    ) : (
+      <Tag icon={<EllipsisOutlined />} bordered={false}>
+        판단 어려움
+      </Tag>
+    )
+  }
+
+  const columns: ColumnsType<ElementLine> = [
     {
       title: '구성요소',
-      onCell: (_, i) => ({ rowSpan: i === undefined ? 1 : span(i) }),
-      render: (_, r) => (
+      render: (_, line) => (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span>{r.element}</span>
+          <span>{line.element}</span>
           {/* "청구항 1 · 청구항 1 [구성 1-1]"처럼 겹치지 않게 위치 글자를 정리 */}
-          <span className="label2 t3">{claimLocationText(r.claim, r.element_location)}</span>
+          <span className="label2 t3">{claimLocationText(line.claim, line.element_location)}</span>
         </div>
       ),
     },
+    ...citeLabels.map((label) => ({
+      title: label,
+      width: 190,
+      render: (_: unknown, line: ElementLine) => citeCell(line, label),
+    })),
     {
-      title: '인용발명 문단',
-      width: 130,
-      // 같은 문단이 근거로 두 번 와도 한 번만 ("[0044], [0044]" 방지)
-      render: (_, r) => `${r.citation} ${[...new Set(r.evidence.map((e) => e.location).filter(Boolean))].join(', ') || '—'}`,
-    },
-    {
-      // 심사관이 짚은 문단과 AI가 새로 찾은 문단은 이 열로만 구분한다 (스키마 값은 둘뿐)
-      title: '찾은 곳',
+      title: '결론',
       width: 150,
-      render: (_, r) =>
-        // 근거 문단이 없는 줄(찾아봤지만 못 찾음)은 "AI가 새로 찾음"이 아니다: 빈칸으로
-        r.evidence.length === 0 ? (
-          <span className="t3">—</span>
-        ) : r.paragraph_source === 'examiner' ? (
-          <Tag icon={<AuditOutlined />} bordered={false}>
-            심사관 지정
-          </Tag>
-        ) : (
-          <Tag icon={<RobotOutlined />} color="purple" bordered={false}>
-            AI가 새로 찾음
-          </Tag>
-        ),
-    },
-    {
-      title: '대비 결과',
-      width: 230,
-      render: (_, r) => (
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Tag color={judgmentTag[r.judgment].color} icon={judgmentTag[r.judgment].icon} bordered={false}>
-            {judgmentTag[r.judgment].text}
-          </Tag>
-          {/* 확인됨은 꼬리표를 달지 않는다. 확인되지 않음·조회 범위 내 없음·충돌만.
-              차이점 후보인데 조회 범위 내 없음이면 "검색 실패"처럼 읽히지 않게 왜 차이점 후보인지를 쓴다 (상태 이름은 툴팁에) */}
-          {r.judgment === 'difference_candidate' && r.status.value === 'not_found_in_scope' ? (
-            <Tooltip title={`상태: 조회 범위 내 없음${r.status.searched_scope ? ` · ${scopeText(r.status.searched_scope)}` : ''} · 없다고 단정하지 않아요`}>
-              <Tag bordered={false} style={{ background: '#f0f0f0', color: 'rgba(0,0,0,0.65)', whiteSpace: 'normal' }}>
-                대응 문단 못 찾음
-              </Tag>
-            </Tooltip>
-          ) : (
-            r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />
-          )}
-        </div>
-      ),
+      render: (_, line) => conclusion(line),
     },
   ]
 
+  // 대비하지 않은 인용발명 (지원 안 하는 나라 등): 위에 따로 알린다
   const skipped = t.citations.filter((c) => !c.compared)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
@@ -176,9 +232,10 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {/* 표 전체가 "조회 범위 내 없음"이어도 같은 구성을 찾은 줄이 있으면 "일부"라고 말한다 (머리와 줄이 어긋나 보이지 않게) */}
             {t.status.value === 'not_found_in_scope' && t.rows.some((r) => r.judgment === 'disclosed') ? (
+              // 표가 구성요소 한 줄씩이라 개수도 구성요소로 센다: 어느 인용발명에서도 같은 구성을 못 찾은 구성요소
               <span className="label1 t2">
-                구성요소 {t.rows.filter((r) => r.status.value === 'not_found_in_scope').length}줄은 인용발명에서 대응 문단을 찾지
-                못했어요{t.status.searched_scope ? ` (찾아본 범위: ${scopeText(t.status.searched_scope)})` : ''}. 없다고 단정하지는 않아요.
+                구성요소 {diffNames(t).length}개는 {citeLabels.join('·')} 어디에서도 같은 구성을 찾지 못해 차이점 후보예요. 없다고
+                단정하지는 않아요.
               </span>
             ) : (
               <>
@@ -233,33 +290,18 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h3 className="headline1">구성요소 · 행을 누르면 오른쪽에 그 문단</h3>
-        <Table<ComparisonRow>
+        <h3 className="headline1">구성요소 · 문단을 누르면 오른쪽에 원문</h3>
+        <Table<ElementLine>
           size="middle"
-          rowKey={(r) => `${r.claim}-${r.element_location}-${r.citation}-${r.paragraph_source}-${r.evidence[0]?.location ?? ''}-${r.element}`}
+          rowKey={(line) => line.key}
           columns={columns}
-          dataSource={t.rows}
+          dataSource={elements}
           pagination={false}
           scroll={{ x: 640 }}
           locale={{ emptyText: '대비한 줄이 없습니다 (인용문헌 본문을 받으면 대비)' }}
-          onRow={(r) => ({
-            // 모든 줄이 누르면 오른쪽 판에 열린다. 근거 위치가 없는 줄(찾아봤지만 못 찾음)도 상태·찾아본 범위·왜 가져왔나를 보인다
-            onClick: () =>
-              openCite({
-                title: `${r.citation} ${r.evidence[0]?.location ?? r.element_location}`.trim(),
-                items: r.evidence,
-                status: r.status,
-                // 검색 순위·방식(hybrid, 몇 위)은 개발용이라 쉬운 말로 바꾼다
-                note: r.why_retrieved ? whyText(r.why_retrieved) : null,
-                unverifiedText: COMPARE_UNVERIFIED_TEXT,
-                // 근거 문단이 없는 줄도 그 인용문헌 원문 전체는 열 수 있게 (표의 인용발명 번호)
-                docId: r.evidence[0]?.document_id ?? t.citations.find((c) => c.label === r.citation)?.number ?? null,
-              }),
-            style: { cursor: 'pointer' },
-          })}
         />
         <span className="label2 t3">
-          “심사관 지정”은 통지서에 적힌 문단, “AI가 새로 찾음”은 통지서에 없던 문단이에요. 왜 가져왔는지는 행을 누르면 오른쪽에 보여요.
+          결론은 인용발명 어느 하나에 같은 구성이 있으면 “인용발명에 있음”, 없으면 “차이점 후보”예요. 문단 옆 표시는 심사관 지정(통지서에 적힌 문단)과 AI가 새로 찾은 문단을 나눠요.
         </span>
       </div>
 
