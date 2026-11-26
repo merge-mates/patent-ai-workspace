@@ -13,11 +13,13 @@ import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 import { ClarityView } from './ClarityView'
 import { ComparisonView } from './ComparisonView'
 
-// 판단 단위(묶음) 이름: "거절이유 1 · 진보성". 같은 거절이유에 묶음이 둘 이상이면 대표 청구항으로 가른다
-const unitLabel = (u: JudgmentUnit, all: JudgmentUnit[]) =>
-  `거절이유 ${u.rejection} · ${rejectionKindLabel[u.rejection_kind]}${
-    all.filter((x) => x.rejection === u.rejection).length > 1 ? ` · 청구항 ${u.representative_claim}` : ''
-  }`
+// 판단 단위(묶음) 이름: "거절이유 1 · 진보성". 같은 거절이유에 묶음이 둘 이상이면 대표 청구항으로 가른다.
+// 모든 묶음이 같은 거절이유면(명확성 사건에서 청구항마다 10개 등) 앞말을 빼고 "청구항 N"만 (탭이 길게 반복되지 않게)
+const unitLabel = (u: JudgmentUnit, all: JudgmentUnit[]) => {
+  const same = all.filter((x) => x.rejection === u.rejection).length
+  if (same > 1 && same === all.length) return `청구항 ${u.representative_claim}`
+  return `거절이유 ${u.rejection} · ${rejectionKindLabel[u.rejection_kind]}${same > 1 ? ` · 청구항 ${u.representative_claim}` : ''}`
+}
 
 // 3 인용발명 대비: 묶음을 고르면 그 묶음의 핵심(AI 제안) → 구성요소 표(또는 명확성 줄) → 대응 방향으로
 export function ComparePage() {
