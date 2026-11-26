@@ -80,7 +80,8 @@ MERGED_MIN = 0.5
 def to_external(old: dict[int, str], plan: list[dict], *, source: str) -> ExternalAmendment:
     """E 보정안 → 앱 바깥 보정 결과(F4Input.external_amendment). 글이 그대로인 정정은 뺀다.
 
-    지운 항의 merged_into는 E가 준 값(plan 항목의 merged_into)이 있으면 그것을 쓰고, 없으면 코드가 어림한다: 지운 항과 뿌리 독립항이 같은 고친 항 가운데
+    지운 항의 merged_into는 E가 준 값(plan 항목의 merged_into)이 있으면 그것을 쓰고,
+    없으면 코드가 어림한다: 지운 항과 뿌리 독립항이 같은 고친 항 가운데
     지운 항 글(인용 머리말 뺌)의 6글자 묶음이 절반 넘게 새로 들어간 항. 짝 독립항(장치·방법)에
     비슷한 글이 들어가도 가족이 다르면 넣지 않는다. 못 찾으면 비워 둔다 (그냥 삭제로 보인다).
     """
