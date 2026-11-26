@@ -168,7 +168,9 @@ function Fields({ c, hideAmendment = false }: { c: DirectionCandidate; hideAmend
 
 // 확인 사항 줄 정리: "F3 보류: 청구항 N: 대표 청구항 …에 차이 후보·불명 구성요소가 있어 종속항을 대비하지 않음 …"이
 // 종속항마다 반복되므로 한 줄로 묶고 쉬운 말로 바꾼다. 그 밖의 줄은 그대로
-function checkLines(checks: string[]): string[] {
+function checkLines(all: string[]): string[] {
+  // "법률 근거: … 직접 검토 필요"는 묶음마다 늘 같은 줄이라 화면에서 뺀다 (재아 결정 11/27, 데이터에는 남음)
+  const checks = all.filter((x) => !x.startsWith('법률 근거:'))
   const held = checks.filter((x) => x.startsWith('F3 보류:'))
   if (held.length === 0) return checks
   const claims = held.map((x) => /청구항 (\d+)/.exec(x)?.[1]).filter((n): n is string => n !== undefined)
