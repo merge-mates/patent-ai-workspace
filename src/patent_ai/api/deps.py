@@ -188,8 +188,14 @@ def _run_case_executor() -> RunCaseExecutor:
     취소 표시·결과 저장소는 취소 API·결과 API가 쓰는 것과 같은 것을 넘긴다.
     """
     factory = sessionmaker(_engine())
-    texts = PostgresTextsSource(factory)
     source = load_case_source()  # config/case_source.yaml (지금은 받아 둔 폴더, #54)
+
+    def claim_history(app_no: str, dispatch: str) -> str | None:
+        # F3·F4 청구항 글자를 줄바꿈 끊김 없는 청구항이력 글자로 정리하려고 읽는다 (못 받으면 None)
+        got = source.fetch(app_no, dispatch).claim_history
+        return got if isinstance(got, str) else None
+
+    texts = PostgresTextsSource(factory, claim_history=claim_history)
     return RunCaseExecutor(
         store=get_run_status_store(),
         registry=get_cancel_registry(),
