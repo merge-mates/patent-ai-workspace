@@ -2,6 +2,7 @@ import { AuditOutlined, CheckOutlined, DiffOutlined, EllipsisOutlined, RobotOutl
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { type ReactNode, useContext, useState } from 'react'
+import { useRouteLoaderData } from 'react-router'
 import { claimLocationText, claimRange, scopeText, sentence } from '../../format'
 import { CoreLabel, HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
@@ -12,6 +13,8 @@ import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
 import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '../../types/generated/ComparisonTable'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 import type { OAResult } from '../../types/generated/OAResult'
+import type { PageText } from '../../types/generated/PageText'
+import type { OALoaderData } from '../../loaders'
 
 // 표 한 줄 = 구성요소 하나 (그 구성요소의 인용발명별 대비 줄을 모은 것)
 interface ElementLine {
@@ -89,10 +92,23 @@ function examinerSpots(oa: OAResult | null, unit: JudgmentUnit, t: ComparisonTab
   return out
 }
 
+// 통지서 원문에서 심사관 구성 대비표의 자리: "나. 구성 대비" 머리가 있는 쪽과 머리부터 다음 줄까지의 글자.
+// 원문 판에서 그 글자를 강조해 표로 바로 간다. 못 찾으면 null (버튼을 그리지 않음)
+function oaCompareTable(doc: PageText | null): { page: number; text: string } | null {
+  for (const p of doc?.pages ?? []) {
+    const m = /[가-힣]\.\s*구성\s*대비\s*\n[^\n]*/.exec(p.text ?? '')
+    if (m) return { page: p.page, text: m[0] }
+  }
+  return null
+}
+
 // 구성 대비: 핵심(AI 제안) → 못 본 인용발명 → 구성요소 표(행을 누르면 오른쪽에 근거) → 따지는 순서 펼침
 export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResult | null; unit: JudgmentUnit }) {
   const spots = examinerSpots(oa, unit, t)
-  const { openCite } = useContext(SourceContext)
+  const { openCite, openPage } = useContext(SourceContext)
+  // 심사관 대비 칸(진보성): 지금은 통지서 구성 대비표 원문으로 잇는다. 구성요소별 심사관 판단은 다음 단계에서 붙인다
+  const { document: oaDoc } = useRouteLoaderData('oa') as OALoaderData
+  const oaTable = oaCompareTable(oaDoc)
   const [orderOpen, setOrderOpen] = useState(false)
 
   // 구성요소 한 줄에 인용발명(D1·D2)을 나란히 둔다 (심사관 구성 대비표처럼).
@@ -218,6 +234,24 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
       width: 150,
       render: (_, line) => conclusion(line),
     },
+    // 진보성: 심사관이 통지서 구성 대비표에서 이 구성요소를 어떻게 봤는지 둘 자리.
+    // 값은 아직 데이터에 없어 지어내지 않고, 통지서 표 원문으로 가는 링크만 둔다 (다음 단계: F1이 표를 구성요소별로 읽음)
+    ...(inventive
+      ? [
+          {
+            title: '심사관 대비 (통지서)',
+            width: 150,
+            render: () =>
+              oaTable ? (
+                <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => openPage(oaTable.page, oaTable.text)}>
+                  통지서 표에서 보기
+                </Button>
+              ) : (
+                <span className="t3">—</span>
+              ),
+          },
+        ]
+      : []),
   ]
 
   // 대비하지 않은 인용발명 (지원 안 하는 나라 등): 위에 따로 알린다
@@ -324,6 +358,19 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
           scroll={{ x: 640 }}
           locale={{ emptyText: '대비한 줄이 없습니다 (인용문헌 본문을 받으면 대비)' }}
         />
+        {inventive && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Tag color="blue" bordered={false}>다음 단계</Tag>
+            <span className="label2 t2">
+              심사관 대비 칸에는 통지서 구성 대비표에서 심사관이 구성요소마다 본 판단(예: 일부 차이, 실질적 동일)을 읽어 붙여요. 지금은 통지서 표 원문으로 연결해요.
+            </span>
+            {oaTable && (
+              <Button size="small" onClick={() => openPage(oaTable.page, oaTable.text)}>
+                통지서 구성 대비표 보기 ({oaTable.page}쪽)
+              </Button>
+            )}
+          </div>
+        )}
         <span className="label2 t3">
           결론은 인용발명 어느 하나에 같은 구성이 있으면 “인용발명에 있음”, 없으면 “차이점 후보”예요. 문단 옆 표시는 심사관 지정(통지서에 적힌 문단)과 AI가 새로 찾은 문단을 나눠요.
         </span>
