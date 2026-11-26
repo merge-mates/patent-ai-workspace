@@ -11,7 +11,7 @@ import type { CiteRef } from './sourceContext'
 import type { CitedDocument } from '../types/provisional/citedDocument'
 
 export interface PanelTab {
-  key: string // 'oa' 또는 인용문헌 번호
+  key: string // 'oa'(통지서), 'spec'(이 출원 명세서) 또는 인용문헌 번호
   label: string
 }
 
@@ -52,6 +52,8 @@ interface Props {
   onTab?: (key: string) => void
   // 인용문헌 PDF를 찾을 사건 출원번호 (로컬 인용문헌 폴더가 출원번호별)
   applicationNumber?: string | null
+  // 이 출원의 명세서(출원서) 문서 ID. 있으면 '명세서' 탭에서 원본 PDF를 보인다
+  specDocumentId?: string | null
   onToggle: () => void
 }
 
@@ -176,6 +178,7 @@ export function SourcePanel({
   tab = 'oa',
   onTab = () => {},
   applicationNumber = null,
+  specDocumentId = null,
 }: Props) {
   // 통지서 보기: 원본 PDF(기본) / 뽑은 글자. PDF를 못 그리면 글자 보기로 돌아간다
   const [view, setView] = useState<'pdf' | 'text'>('pdf')
@@ -281,6 +284,22 @@ export function SourcePanel({
       </div>
       {legal ? (
         <EvidenceBody s={legal.source} checkedOn={legal.checkedOn} />
+      ) : tab === 'spec' ? (
+        // 명세서 탭: 이 출원의 명세서(출원서) 원본 PDF 전체 (강조 없이 처음부터)
+        specDocumentId ? (
+          <>
+            <span className="label2 t3">출원 당시 명세서 원본 · 스크롤해서 모두 볼 수 있어요</span>
+            <PdfView
+              key={`spec:${specDocumentId}`}
+              url={`/api/documents/${encodeURIComponent(specDocumentId)}/file`}
+              page={null}
+              targets={{ texts: [], labels: [] }}
+              onFail={() => {}}
+            />
+          </>
+        ) : (
+          <Alert type="info" showIcon message="명세서 원본을 받지 못했어요" />
+        )
       ) : tab !== 'oa' ? (
         // 인용문헌 탭: (누른 줄이 있으면) 근거 줄 → 원문 PDF(기본) 또는 글자(문단)
         <>

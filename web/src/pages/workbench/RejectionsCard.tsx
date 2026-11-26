@@ -355,6 +355,9 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
     .join(' · ')
 
   const byNo = new Map(r.rejections.map((x) => [x.no, x]))
+  // 보이는 순서: AI가 다루는 거절이유(진보성·명확성·신규성)를 위에, 다루지 않는 것(기타)은 맨 아래로. 같은 쪽 안에서는 번호순
+  const ordered = [...r.rejections].sort((a, b) => Number(!a.supported) - Number(!b.supported) || a.no - b.no)
+  const rank = new Map(ordered.map((x, i) => [x.no, i]))
   // 청구항별: 청구항 번호로 모은다 (모름(null)은 맨 뒤)
   const claimNos = [...new Set<number | null>([...r.claim_rows.map((x) => x.claim), ...rejected])].sort(
     (a, b) => (a ?? 9999) - (b ?? 9999),
@@ -386,7 +389,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
       </div>
       {r.rejections.length === 0 && <Empty description="거절이유를 찾지 못했습니다 (확인되지 않음)" />}
       {cur.view === 'rejection'
-        ? r.rejections.map((rej) => {
+        ? ordered.map((rej) => {
             const id = `r${rej.no}`
             const isOpen = cur.open.includes(id)
             return (
@@ -425,13 +428,13 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
             {claimNos.map((no) => {
               const id = `c${no}`
               const rows = r.claim_rows.filter((row) => row.claim === no)
-              // 걸린 거절이유 = 청구항 줄의 거절이유 + 대상 청구항에 이 청구항이 든 거절이유 (합쳐서 번호순)
+              // 걸린 거절이유 = 청구항 줄의 거절이유 + 대상 청구항에 이 청구항이 든 거절이유 (위 거절이유별과 같은 순서)
               const nos = [
                 ...new Set<number | null>([
                   ...rows.map((x) => x.rejection),
                   ...(no === null ? [] : r.rejections.filter((x) => x.claims.value?.includes(no)).map((x) => x.no)),
                 ]),
-              ].sort((a, b) => (a ?? 9999) - (b ?? 9999))
+              ].sort((a, b) => (a === null ? 9999 : (rank.get(a) ?? 9998)) - (b === null ? 9999 : (rank.get(b) ?? 9998)))
               const rejs = nos.map((n) => (n === null ? undefined : byNo.get(n)))
               // 거절이유가 둘 이상이거나 AI가 다루지 않는 것이 걸렸으면 직접 검토
               const warn = nos.length >= 2 || rejs.some((x) => !x || !x.supported)

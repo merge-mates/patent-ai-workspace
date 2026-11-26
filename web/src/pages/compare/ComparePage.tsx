@@ -1,8 +1,9 @@
 import { Button, Empty, Result, Segmented } from 'antd'
-import { useLoaderData, useNavigate, useRouteLoaderData, useSearchParams, Link } from 'react-router'
+import { useLoaderData, useNavigate, useRouteLoaderData, useSearchParams } from 'react-router'
 import { API_MODE } from '../../api'
 import { EmptyReason } from '../../components/EmptyReason'
 import { HumanCheckTag } from '../../components/Marks'
+import { RejectionLaw } from '../../components/RejectionLaw'
 import { isRunEnded } from '../../runPoll'
 import { useRunSnapshot } from '../../useRunSnapshot'
 import { StatusTag } from '../../components/StatusTag'
@@ -67,13 +68,10 @@ export function ComparePage() {
   }
   const table = comparisons.find((t) => t.unit_id === unit.unit_id)
   const review = clarity.find((c) => c.unit_id === unit.unit_id)
-  // 법리는 정리 단계 거절이유 줄 안에 있다. 그 거절이유에 법률 근거 묶음이 있을 때만 링크
-  const hasLaw = legal.some((b) => b.rejection === unit.rejection)
   const unitReason = unit.rejection_kind === 'clarity' ? emptyReasons.clarity : emptyReasons.comparisons
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
-      {unsupportedRows}
       {/* 좁은 화면에서는 이 줄만 옆으로 밀린다 */}
       <div style={{ overflowX: 'auto' }}>
         <Segmented
@@ -103,11 +101,10 @@ export function ComparePage() {
       {/* 법률 근거 목록이 비었으면 이유를 (예: F2 넘김) */}
       {emptyReasons.legal && <EmptyReason what="법률 근거" reason={emptyReasons.legal} />}
 
-      {hasLaw && (
-        <Link to={`/oas/${oa.oa_id}#rejection-${unit.rejection}`} className="label1">
-          이 거절이유의 법리 보기
-        </Link>
-      )}
+      {/* 이 거절이유의 법리: 정리 단계로 돌아가지 않고 이 자리에서 본다 (줄을 누르면 오른쪽 판에 근거 글) */}
+      <RejectionLaw rejection={unit.rejection} legal={legal} />
+      {/* AI가 다루지 않는 거절이유(기타)는 다루는 것 아래에 */}
+      {unsupportedRows}
       <div>
         <Button type="primary" size="large" disabled={!ready.directions} onClick={() => navigate(`/oas/${oa.oa_id}/directions`)}>
           {/* 결과가 없을 때 왜 못 가는지 글자로 (실행 중 / 멈춤·취소 / 모름) */}

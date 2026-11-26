@@ -109,6 +109,8 @@ export interface OALoaderData {
   ready: { summary: boolean; compare: boolean | null; directions: boolean | null; drafts: boolean | null }
   // 결과 유무만 보려던 호출이 실패했을 때 화면에 작게 보일 경고 ("<단계> 결과를 받지 못했어요")
   warnings: string[]
+  // 이 출원의 명세서(출원서) 문서 ID: 사건의 출원 때 청구항 판이 나온 문서. 모르면 null (원문 판에 명세서 탭을 두지 않음)
+  specDocumentId: string | null
 }
 
 export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> {
@@ -127,7 +129,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
-  const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
+  const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP, caseDetail] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(notReadyAsNull),
     // 정리 확인: 결과가 아직 없으면 null, 그 밖의 오류는 모름(null) + 경고 (화면을 막지 않는다)
     probe(api.getOAResultConfirmation(oa.oa_id)),
@@ -149,6 +151,8 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     probe(api.getDrafts(oa.oa_id).then(() => true)),
     // 단계 막대 "차이점 후보 N": 대비표를 받아 센다 (결과가 아직 없으면 null)
     probe(api.getComparisons(oa.oa_id).then(itemsOf)),
+    // 명세서 탭용 사건 정보: 못 받아도 화면을 막지 않는다 (탭만 빠짐)
+    api.getCase(oa.case_id).catch(() => null),
   ])
   // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
   const warnings: string[] = []
@@ -171,7 +175,9 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     directions: directionsP.unknown ? null : directions !== null,
     drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, confirmation, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings }
+  // 출원 때 판(application)을 뽑은 문서 = 명세서(출원서)
+  const specDocumentId = caseDetail?.claim_versions?.find((v) => v.source_kind === 'application')?.document_id ?? null
+  return { oa, oaResult, confirmation, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings, specDocumentId }
 }
 
 // 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)

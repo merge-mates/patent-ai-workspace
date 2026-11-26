@@ -196,7 +196,7 @@ export function CaseShell() {
   const selectTab = (key: string) => {
     if (evidence?.kind === 'legal') setEvidenceAt(null)
     setTab(key)
-    if (key !== 'oa') loadCited(key, false)
+    if (key !== 'oa' && key !== 'spec') loadCited(key, false)
   }
   // 탭 목록: 의견제출통지서 + 이 통지서가 인용한 문헌 (번호가 있는 것만, 처음 나온 라벨로)
   const citeTabs = (() => {
@@ -208,6 +208,8 @@ export function CaseShell() {
       }
     return [...seen].map(([no, label]) => ({ key: no, label: `${label} ${no}` }))
   })()
+  // 이 출원의 명세서(출원서) 문서: 있으면 '명세서' 탭을 둔다
+  const specDocumentId = data.specDocumentId
   // 강조한 근거 문단(없으면 판)으로 판 안에서 내린다
   const scrollToCited = () =>
     requestAnimationFrame(() =>
@@ -348,10 +350,15 @@ export function CaseShell() {
           <SourcePanel
             open={srcOpen}
             cited={cited}
-            tabs={[{ key: 'oa', label: '의견제출통지서' }, ...citeTabs]}
+            tabs={[
+              { key: 'oa', label: '의견제출통지서' },
+              ...(specDocumentId ? [{ key: 'spec', label: '명세서' }] : []),
+              ...citeTabs,
+            ]}
             tab={tab}
             onTab={selectTab}
             applicationNumber={r?.application_number.value ?? null}
+            specDocumentId={specDocumentId}
             page={shown.page}
             highlight={shown.text}
             document={data.document}
