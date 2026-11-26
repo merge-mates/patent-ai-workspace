@@ -97,6 +97,7 @@ export const materialKindLabel: Record<string, string> = {
 export const sourceLabel: Record<string, string> = {
   uploaded: '올림',
   api: '자동 조회',
+  local: '로컬 인용문헌 폴더',
 }
 
 export const sourceKindLabel: Record<LegalSourceKind, string> = {

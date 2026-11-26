@@ -37,6 +37,8 @@ export function MaterialRows({
           <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span className="body2" style={{ fontWeight: 600 }}>
               {materialKindLabel[d.kind] ?? d.kind}
+              {/* 인용문헌은 어느 문헌인지 번호까지 */}
+              {d.citation_key ? ` ${d.citation_key}` : ''}
             </span>
             <span className="label1 t3">
               {/* 통지서는 어느 판인지 발송번호로 (날짜만으로 합치지 않음) */}

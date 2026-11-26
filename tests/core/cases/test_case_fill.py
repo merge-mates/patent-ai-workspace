@@ -131,6 +131,21 @@ def test_로컬_폴더에_있는_인용문헌은_받은_것으로_보고_올려_
         (US, LookupResult.LOOKUP_FAILED)
     ]
     assert [h.task for h in m.held_tasks] == ["f3_compare:oa_1:D2"]
+    # 받은 인용문헌도 사건 자료 목록에 한 줄 (로컬 자료). "자료 1건(통지서만)"으로 안 보이게
+    citations = [d for d in m.documents if d.kind == "citation"]
+    assert [(d.citation_key, d.source, d.status.value) for d in citations] == [
+        (KR, "local", StatusValue.CONFIRMED)
+    ]
+
+
+def test_다시_실행해도_로컬_인용문헌_줄이_불어나지_않는다():
+    first = case_materials_after_f1(
+        "c_1", APP, "doc_1", _oa(), [_oa()], None, None, local_citations={KR}
+    )
+    again = case_materials_after_f1(
+        "c_1", APP, "doc_1", _oa(), [_oa()], first, None, local_citations={KR}
+    )
+    assert [d.citation_key for d in again.documents if d.kind == "citation"] == [KR]
 
 
 def test_앞서_못_가져온_인용문헌도_로컬에_생기면_받은_것으로_바뀐다():

@@ -41,7 +41,7 @@ from patent_ai.core.f1_oa_reader.case_grouping import (
     group_materials,
 )
 from patent_ai.core.f1_oa_reader.case_repository import DEFAULT_USER_ID
-from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult
+from patent_ai.core.schemas.case_materials import CaseDocument, CaseMaterials, LookupResult
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.core.schemas.propagation import finalize_case_materials
@@ -171,10 +171,42 @@ def case_materials_after_f1(
     statuses = {oa_document_id: text_status} if text_status is not None else {}
     built = build_case_materials(case_id, new, case_oas, received, failures, statuses)
     merged = CaseMaterials.model_validate(
-        built.model_dump() | {"documents": [*kept, *built.documents]}
+        built.model_dump()
+        | {"documents": [*kept, *built.documents, *_local_rows(case_oas, kept, local_citations)]}
     )
     # 문서 줄을 합쳤으니 검토할 사항을 다시 모은다 (개수 = 줄 수 검사도 다시)
     return finalize_case_materials(case_oas, merged)
+
+
+def _local_rows(
+    case_oas: list[OAResult], kept: list[CaseDocument], local: set[str] | frozenset[str]
+) -> list[CaseDocument]:
+    """로컬 폴더에서 받은 인용문헌을 사건 자료 목록의 줄로 (사건 OA가 인용한 것만, OA 인용 순서).
+
+    문서 id는 DB 문서가 아니라 "local:<인용문헌 번호>"다. 이미 줄이 있으면(다시 실행) 더하지 않는다.
+    """
+    have = {d.citation_key for d in kept if d.kind == "citation" and d.citation_key}
+    rows: list[CaseDocument] = []
+    for oa in case_oas:
+        for rej in oa.rejections:
+            for c in rej.citations:
+                key = c.number.value
+                if not key or key not in local or key in have:
+                    continue
+                have.add(key)
+                rows.append(
+                    CaseDocument(
+                        document_id=f"local:{key}",
+                        kind="citation",
+                        source="local",
+                        status=Status(
+                            value=StatusValue.CONFIRMED,
+                            checked="로컬 인용문헌 폴더에 본문 PDF 있음",
+                        ),
+                        citation_key=key,
+                    )
+                )
+    return rows
 
 
 def _warn_not_merged(case_id: str, target: str) -> None:
