@@ -27,8 +27,16 @@ export interface CasesLoaderData {
   focus: { case: CaseSummary; titles: string[] } | null
 }
 
+// 시연 등에서 사건 목록에 보일 사건만 고른다: VITE_SHOWN_CASES="출원번호,출원번호" (git 밖 web/.env.local).
+// 비어 있으면 모든 사건. 데이터는 지우지 않고 목록에서만 뺀다 (주소로 직접 열면 그대로 열림)
+const SHOWN_CASES = (import.meta.env.VITE_SHOWN_CASES ?? '')
+  .split(',')
+  .map((x: string) => x.trim())
+  .filter(Boolean)
+
 export async function casesLoader(): Promise<CasesLoaderData> {
-  const [cases, extraList] = await Promise.all([api.listCases(), api.listCaseExtras()])
+  const [allCases, extraList] = await Promise.all([api.listCases(), api.listCaseExtras()])
+  const cases = SHOWN_CASES.length > 0 ? allCases.filter((c) => SHOWN_CASES.includes(c.case_name)) : allCases
   const extras: Record<string, CaseListExtra> = Object.fromEntries(extraList.map((e) => [e.case_id, e]))
   // 서버 모드는 목록 API에 제출기일·단계·할 일 칸이 없어 빈 목록이 온다.
   // 그 사건들만 작업대 데이터를 받아 사건 화면과 같은 계산으로 채운다 (목록과 사건 화면 숫자가 어긋나지 않게)
