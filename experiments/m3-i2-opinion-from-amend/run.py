@@ -166,6 +166,7 @@ class Run:
         self.root, self.run, self.base = (self.work / x for x in ("root", "run", "baseline"))
         self.cases = J.read_json(self.work / "cases.json")  # [{case, key}]
         self.workers, self.rep, self.sub = a.workers, a.rep, a.sub
+        self.arms = a.arms.split(",")
 
     def inputs(self, c):
         return J.read_json(self.exp / f"pattern_exp3/inputs_final/{c['key']}.json")
@@ -427,7 +428,7 @@ class Run:
     def drafts3(self, c, runs, rep):
         return {
             m: (self.opinion_of(runs / c["case"] / f"{m}_r{rep}.json"), self.e_amends(c))
-            for m in ("ours_sub", "ours_oa_sub")
+            for m in self.arms
         }
 
     # ---- prep2: 앱 F4와 합친 방식의 초안을 같은 채점 입력으로 ----
@@ -672,6 +673,7 @@ def main():
     p.add_argument("--repo", type=Path, required=True, help="data/와 work/가 있는 폴더")
     p.add_argument("--work", type=Path, required=True)
     p.add_argument("--sub", action="store_true", help="prep2에서 셋째 비교 초안을 쓴다")
+    p.add_argument("--arms", default="ours_sub,ours_oa_sub")
     p.add_argument("--rep", type=int, default=1)
     p.add_argument("--workers", type=int, default=3)
     a = p.parse_args()

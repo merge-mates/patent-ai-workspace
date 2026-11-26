@@ -32,7 +32,7 @@ TITLES = {
 }
 
 
-def ours(inp, plan, ctx, oa=None):
+def ours(inp, plan, ctx, oa=None, before=False):
     """판단 단위마다 앱 의견서 프롬프트를 쓰되, 고른 방향 자리에 E 전략·보정안을, 끝에 점검 지시를 넣는다."""
     note = "".join(
         (HERE / f"prompts/{n}.md").read_text(encoding="utf-8") for n in ("note_amend", "note_check")
@@ -44,6 +44,7 @@ def ours(inp, plan, ctx, oa=None):
             "이유": q["reason"],
             "보정 뒤 글": q["text"] or "(삭제)",
         }
+        | ({"보정 전 글": q["before"]} if before else {})
         for q in plan["amended"]
     ]
     parts = {k: [] for k in TITLES}
@@ -95,13 +96,20 @@ def sub_main():
     inp = F4Input.model_validate_json((folder / "f4_input.json").read_text())
     plan = json.loads((folder / "plan.json").read_text())
     oa = json.loads(Path(sys.argv[3]).read_text())["oa"]
-    for name, text in (("ours_sub", None), ("ours_oa_sub", oa)):
+    # 판 이름에 든 낱말로 켠다: oa = OA 전체 글, before = 보정 전 글
+    arms = sys.argv[4].split(",") if len(sys.argv) > 4 else ["ours_sub", "ours_oa_sub"]
+    for name in arms:
+        text = oa if "_oa" in name else None
         dest = folder / f"{name}_r{rep}.json"
         if not dest.exists():
             ctx = RunContext(
                 f"{name}-{rep}", CallBudget(), MemoryRecorder(), transport=Sub(), cache=False
             )
-            dest.write_text(json.dumps(ours(inp, plan, ctx, text), ensure_ascii=False, indent=1))
+            dest.write_text(
+                json.dumps(
+                    ours(inp, plan, ctx, text, "before" in name), ensure_ascii=False, indent=1
+                )
+            )
             print("DONE", folder.name, rep, name, "호출", len(ctx.recorder.records), flush=True)
 
 
