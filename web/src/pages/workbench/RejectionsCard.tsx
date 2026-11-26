@@ -23,7 +23,7 @@ function TypeTag({ rej }: { rej: Rejection }) {
 
 // 청구항 줄이 모두 "못 뽑음"(인용·위치·원문이 다 빈 줄)인지: 빈 줄 여러 개 대신 한 줄 안내로 바꾼다
 const isEmptyRow = (row: ClaimRow) =>
-  row.status.value !== 'confirmed' && row.citations.length === 0 && !row.raw_text && row.clarity_terms.length === 0
+  row.status.value !== 'confirmed' && row.citations.length === 0 && row.clarity_terms.length === 0 && row.same_as.length === 0
 
 // "claim:3" → "청구항 3", "rejection:1" → "거절이유 1"
 const sameAsText = (s: string) =>
@@ -138,6 +138,7 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
         />
       )}
       {rej.supported && !(rows.length > 0 && rows.every(isEmptyRow)) && (
+        <>
         <Table<ClaimRow>
           size="small"
           rowKey={(row, i) => `${row.claim}-${row.rejection}-${i}`}
@@ -145,14 +146,34 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
             { title: '청구항', render: (_, row) => (row.claim === null ? '모름' : `제${row.claim}항`) },
             ...rowColumns(rej.kind === 'clarity'),
           ]}
-          dataSource={rows}
+          // 값이 다 빈 줄은 표에 늘어놓지 않고 아래 한 줄로 묶는다
+          dataSource={rows.filter((x) => !isEmptyRow(x))}
           pagination={false}
           scroll={{ x: 640 }}
           locale={{ emptyText: '청구항 줄 없음' }}
         />
+        <EmptyRowsLine rows={rows.filter(isEmptyRow)} />
+        </>
       )}
       {/* 법리는 따로 단계가 아니라 이 거절이유 안에 */}
       <RejectionLaw rejection={rej.no} legal={legal} />
+    </div>
+  )
+}
+
+// 빈 청구항 줄 묶음 한 줄: "청구항 2–6, 8–10은 항마다 따로 적힌 내용을 통지서에서 찾지 못했어요" + 후보 위치
+// (값이 없는 줄을 같은 모양으로 여러 개 늘어놓지 않는다. 숨기지는 않고 번호는 다 보인다)
+function EmptyRowsLine({ rows }: { rows: ClaimRow[] }) {
+  if (rows.length === 0) return null
+  const nos = rows.map((x) => x.claim).filter((c): c is number => c !== null)
+  const first = rows.find((x) => x.page !== null)
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <StatusTag status={rows[0].status} compact />
+      <span className="label1 t2">
+        청구항 {claimRange(nos)}은 항마다 따로 적힌 내용을 통지서에서 찾지 못했어요. 통지서 원문을 직접 확인해 주세요.
+      </span>
+      {first && <SourceLink page={first.page} rawText={first.raw_text} candidate />}
     </div>
   )
 }
