@@ -116,6 +116,15 @@ def test_같은_OA가_이미_있으면_failed와_기존_ID(tmp_path):
     )
 
 
+def test_같은_OA를_다시_돌리면_중복이_아니라_끝까지_돈다(tmp_path):
+    # 저장소가 찾은 OA가 지금 돌리는 OA 자신(oa_1)이면 다시 돌리기다 (POST /oas/{oa_id}/runs)
+    out = _go(tmp_path, store=FakeStore(oa=("c_old", "oa_1")))
+    assert out.state == "succeeded"
+    assert out.error is None
+    assert out.case_id == "c_old"
+    assert all(r.outcome != "failed" for r in out_steps)
+
+
 def test_기존_사건의_다음_OA면_최종_case_id가_기존_사건(tmp_path):
     out = _go(tmp_path, store=FakeStore(oa=None, case="c_old"))
     assert out.state == "succeeded"
