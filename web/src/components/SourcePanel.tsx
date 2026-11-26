@@ -241,6 +241,21 @@ export function SourcePanel({
         gap: 14,
       }}
     >
+      {/* 머리(제목·접기)와 문서 탭은 판을 내려도 위에 붙어 있게 한다 (문서를 바꾸려고 다시 올리지 않게) */}
+      <div
+        style={{
+          position: 'sticky',
+          top: -24,
+          zIndex: 2,
+          margin: '-24px -28px 0',
+          padding: '24px 28px 10px',
+          background: 'var(--bg-neutral-secondary)',
+          borderBottom: '1px solid var(--line-neutral-tertiary)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span className="label2 t3">참고 원문</span>
@@ -263,6 +278,7 @@ export function SourcePanel({
           style={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}
         />
       )}
+      </div>
       {legal ? (
         <EvidenceBody s={legal.source} checkedOn={legal.checkedOn} />
       ) : tab !== 'oa' ? (
