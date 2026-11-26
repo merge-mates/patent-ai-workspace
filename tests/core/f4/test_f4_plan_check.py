@@ -96,3 +96,16 @@ def test_합친_곳은_지운_항의_뿌리_독립항_가족_안에서만_찾는
     rows = {c.claim: c for c in to_external(old, plan, source="E").claims}
     assert rows[2].merged_into == [1]  # 짝 방법 독립항(3)에도 비슷한 글이 있지만 가족이 다르다
     assert rows[4].merged_into == [3]
+
+
+def test_E가_합친_곳을_주면_그것을_먼저_쓴다():
+    from patent_ai.core.f4_response_draft.plan_check import to_external
+
+    plan = [
+        {"claim": 1, "action": "amend", "text": "영상을 받고 나누는 방법."},
+        {"claim": 2, "action": "delete", "text": "", "merged_into": [1]},
+        {"claim": 3, "action": "delete", "text": "", "merged_into": []},
+    ]
+    rows = {c.claim: c for c in to_external(OLD, plan, source="E").claims}
+    assert rows[2].merged_into == [1]  # 글 조각으로는 못 찾지만 E가 준 값
+    assert rows[3].merged_into == []  # E가 빈 목록을 주면 그냥 삭제 (어림하지 않음)
