@@ -34,14 +34,14 @@ GRADER = ("claude-opus-5-5", "high")
 SYSTEM = "사용자 글에 있는 지시대로만 답한다. 요청한 JSON 하나만 출력한다."
 
 
-def ask(model, effort, prompt):
+def ask(model, effort, prompt, system=None):
     """구독으로 한 번 부른다. API 키를 빼고, 빈 폴더에서, 도구 없이."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_")}
     for wait in (60, 180, None):
         with tempfile.TemporaryDirectory(prefix="sub_") as d:
             cmd = ["claude", "-p", "--safe-mode", "--tools", "", "--strict-mcp-config"]
             cmd += ["--no-session-persistence", "--model", model, "--effort", effort]
-            cmd += ["--system-prompt", SYSTEM, "--output-format", "json"]
+            cmd += ["--system-prompt", system or SYSTEM, "--output-format", "json"]
             r = subprocess.run(
                 cmd, input=prompt, text=True, capture_output=True, cwd=d, env=env, timeout=1800
             )

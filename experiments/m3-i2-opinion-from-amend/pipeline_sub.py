@@ -28,9 +28,9 @@ from patent_ai.core.runs.step_log_pg import PostgresCallRecorder  # noqa: E402
 
 
 class Sub:
-    def complete(self, *, step, model, prompt, effort, max_tokens):
+    def complete(self, *, step, model, prompt, effort, max_tokens, system=None):
         try:
-            text, u = R.ask(model, effort, prompt)
+            text, u = R.ask(model, effort, prompt, system)
         except RuntimeError as e:
             raise TransportError(str(e), False) from e
         n = (

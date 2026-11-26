@@ -57,6 +57,7 @@ def ours(inp, plan, ctx, oa=None, before=False, case=False):
             inp, unit, f3_results(inp, unit), legal_bundle_for(inp, unit), max_candidates=1
         )
         del v["max_candidates"]
+        v.pop("scope_block", None)  # 의견서 프롬프트에 없는 자리 (재아 #349)
         v["case_info"] = to_json(
             {
                 "application_number": None,
@@ -82,9 +83,9 @@ def sub_main():
     from patent_ai.core.llm.transport import TransportError, TransportResponse
 
     class Sub:
-        def complete(self, *, step, model, prompt, effort, max_tokens):
+        def complete(self, *, step, model, prompt, effort, max_tokens, system=None):
             try:
-                text, u = R.ask(model, effort, prompt)
+                text, u = R.ask(model, effort, prompt, system)
             except RuntimeError as e:
                 raise TransportError(str(e), False) from e
             n = (
