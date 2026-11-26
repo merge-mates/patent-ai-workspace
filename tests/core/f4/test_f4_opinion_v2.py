@@ -189,3 +189,66 @@ def test_켜면_지금_동작_그대로():
     steps = [c["step"] for c in t.calls]
     assert "f4.opinion_unit" not in steps and "f4.opinion_case" not in steps
     assert "f4.amendment" in steps and "f4.opinion" in steps
+
+
+# ---- 11/26 골 모드 뒤 고침 (원인 표 work/opinion-goal-1126/followup_cause_table.md ②③④) ----
+
+
+def test_합친_곳은_지운_항에만_적을_수_있다():
+    import pytest
+    from pydantic import ValidationError
+
+    from patent_ai.core.f4_response_draft.inputs import ExternalClaimChange
+
+    assert ExternalClaimChange(claim=3, change="deleted", merged_into=[1]).merged_into == [1]
+    assert ExternalClaimChange(claim=3, change="deleted").merged_into == []
+    with pytest.raises(ValidationError):
+        ExternalClaimChange(claim=1, change="amended", after="글자", merged_into=[2])
+
+
+MERGED = {
+    "source": "보정서 접수번호 1",
+    "claims": [
+        {"claim": 1, "change": "amended", "after": AMENDED_1},
+        {"claim": 3, "change": "deleted", "merged_into": [1]},
+    ],
+}
+
+
+def test_코드_보정_표와_보정_결과에_합친_곳이_나온다():
+    from patent_ai.core.f4_response_draft.opinion_v2 import amendment_rows, amendment_table
+
+    inp = F4Input.model_validate(_case(MERGED))
+    assert "- 제3항: 삭제 (제1항에 합침)" in amendment_table(inp)
+    rows = json.loads(amendment_rows(inp))
+    assert [r.get("merged_into") for r in rows["changed"] if r["claim"] == 3] == [[1]]
+
+
+def test_묶음_범위_밖에서_바뀐_항은_다른_묶음으로_알린다():
+    # 묶음 범위(2항)만 주면 1항 보정·3항 삭제를 모델이 "보정 결과에 없다"고 썼다
+    from patent_ai.core.f4_response_draft.opinion_v2 import amendment_rows
+
+    inp = F4Input.model_validate(_case(MERGED))
+    rows = json.loads(amendment_rows(inp, [2]))
+    assert rows["changed"] == []
+    assert rows["unchanged"] == [2]
+    assert rows["changed_in_other_units"] == [
+        {"claim": 1, "change": "amended"},
+        {"claim": 3, "change": "deleted", "merged_into": [1]},
+    ]
+
+
+def test_모델이_애매_표시한_줄도_값이_있으면_확인_필요로_싣는다():
+    # 독립항 줄이 ambiguous(값 있음, check_failed 없음)라 빠져 모델이 "위치를 특정 안 했다"고 썼다
+    from patent_ai.core.f4_response_draft.opinion_v2 import examiner_rows_v2
+
+    data = _case()
+    row = data["oa"]["claim_rows"][1]  # 1항 × 거절이유 1 (값 있음)
+    row.pop("check_failed")
+    row["status"] = {"value": "unverified", "reason": "ambiguous"}
+    inp = F4Input.model_validate(data)
+    unit = inp.units[0]  # 진보성, 1·2항
+    rows = json.loads(examiner_rows_v2(inp, unit))
+    amb = [r for r in rows if r["claim"] == 1]
+    assert amb and amb[0]["locations"] == {"D1": ["[0033]"]}
+    assert "확인 필요" in amb[0]["status"]

@@ -13,7 +13,7 @@ $oa_context
 ## 고른 대응 방향의 반박 논점 (보정 내용은 아래 보정 결과를 따른다)
 $rebuttal
 
-## 보정 결과 (이 묶음 청구항. change: amended 보정 / deleted 삭제 / added 신설, unchanged는 그대로)
+## 보정 결과 (이 묶음 청구항. change: amended 보정 / deleted 삭제 / added 신설, unchanged는 그대로. merged_into: 지운 항의 구성이 들어간 항. changed_in_other_units: 이 묶음 밖에서 바뀐 항, 다른 묶음에서 다룬다)
 $amendment
 
 ## 청구항 글자 (OA 당시)

@@ -108,8 +108,11 @@ def amendment_rows(inp: F4Input, claims: list[int] | None = None) -> str:
     before = {c.claim: c.text for c in inp.claims_text}
     wanted = set(claims) if claims is not None else None
     rows = []
+    others = []  # 이 묶음 범위 밖에서 바뀐 항 (번호·종류만)
     for c in sorted(_changed(ext), key=lambda c: c.claim):
+        merged = {"merged_into": c.merged_into} if c.merged_into else {}
         if wanted is not None and c.claim not in wanted:
+            others.append({"claim": c.claim, "change": c.change, **merged})
             continue
         rows.append(
             {
@@ -117,6 +120,7 @@ def amendment_rows(inp: F4Input, claims: list[int] | None = None) -> str:
                 "change": c.change,
                 "before": c.before if c.before is not None else before.get(c.claim),
                 "after": c.after,
+                **merged,
             }
         )
     changed = {c.claim for c in _changed(ext)}
@@ -126,6 +130,10 @@ def amendment_rows(inp: F4Input, claims: list[int] | None = None) -> str:
         "changed": rows,
         "unchanged": [n for n in scope if n not in changed],
     }
+    if wanted is not None:
+        # 범위 밖 보정 항을 모델이 "보정 결과에 없다"고 쓰지 않게
+        # → 다른 묶음에서 다루는 항으로 알린다
+        data["changed_in_other_units"] = others
     return to_json(data)
 
 
@@ -138,7 +146,10 @@ def examiner_rows_v2(inp: F4Input, unit: JudgmentUnit) -> str:
         if r.claim not in scope:
             continue
         confirmed = r.status.value == StatusValue.CONFIRMED
-        if not confirmed and not r.check_failed:
+        has_value = bool(r.citations or r.locations or r.raw_text)
+        # 값이 없는 빈 줄만 뺀다. 원문 대조 실패(check_failed)뿐 아니라 모델이 애매 표시를 붙인 줄도
+        # 값이 있으면 "확인 필요"로 싣는다 (빠지면 모델이 "심사관이 위치를 특정 안 했다"고 단정함)
+        if not confirmed and not has_value:
             continue
         row = {
             "claim": r.claim,
@@ -151,7 +162,9 @@ def examiner_rows_v2(inp: F4Input, unit: JudgmentUnit) -> str:
         if r.clarity_terms:
             row["clarity_terms"] = r.clarity_terms
         if not confirmed:
-            row["status"] = f"확인 필요 (OA 원문 대조 실패: {r.check_failed})"
+            reason = r.status.reason.value if r.status.reason else "미확인"
+            why_not = r.check_failed or f"모델 표시: {reason}"
+            row["status"] = f"확인 필요 ({why_not})"
         rows.append(row)
     rows.sort(key=lambda x: (x["claim"], x["rejection"] or 0))
     if not rows:
@@ -206,7 +219,10 @@ def amendment_table(inp: F4Input) -> str:
     """보정 결과 표 (코드가 만든다): 바뀐·지운·새 항 번호와 종류."""
     lines = ["[보정 결과 표]"]
     for c in sorted(_changed(inp.external_amendment), key=lambda c: c.claim):
-        lines.append(f"- 제{c.claim}항: {CHANGE_KO.get(c.change, c.change)}")
+        into = ""
+        if c.merged_into:
+            into = f" ({', '.join(f'제{n}항' for n in c.merged_into)}에 합침)"
+        lines.append(f"- 제{c.claim}항: {CHANGE_KO.get(c.change, c.change)}{into}")
     return "\n".join(lines)
 
 

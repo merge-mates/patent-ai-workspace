@@ -7,7 +7,7 @@ import logging
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.schemas.case_materials import HeldTask
 from patent_ai.core.schemas.common import Status, StatusValue, UnverifiedReason
@@ -49,6 +49,14 @@ class ExternalClaimChange(BaseModel):
     change: Literal["amended", "deleted", "added", "unchanged"]
     before: str | None = None
     after: str | None = None
+    # 지운 항의 구성이 들어간 항 (독립항에 합친 종속항). 지운 항에만 적는다. 비면 그냥 삭제
+    merged_into: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _합친_곳은_지운_항만(self) -> ExternalClaimChange:
+        if self.merged_into and self.change != "deleted":
+            raise ValueError(f"merged_into는 지운 항(deleted)에만 적는다: 제{self.claim}항")
+        return self
 
 
 class ExternalAmendment(BaseModel):
