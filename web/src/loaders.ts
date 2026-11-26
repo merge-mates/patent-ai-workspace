@@ -29,13 +29,50 @@ export interface CasesLoaderData {
 
 export async function casesLoader(): Promise<CasesLoaderData> {
   const [cases, extraList] = await Promise.all([api.listCases(), api.listCaseExtras()])
-  const extras = Object.fromEntries(extraList.map((e) => [e.case_id, e]))
+  const extras: Record<string, CaseListExtra> = Object.fromEntries(extraList.map((e) => [e.case_id, e]))
+  // 서버 모드는 목록 API에 제출기일·단계·할 일 칸이 없어 빈 목록이 온다.
+  // 그 사건들만 작업대 데이터를 받아 사건 화면과 같은 계산으로 채운다 (목록과 사건 화면 숫자가 어긋나지 않게)
+  const missing = cases.filter((c) => !extras[c.case_id])
+  const loaded = new Map<string, OALoaderData>()
+  const settled = await Promise.allSettled(missing.map((c) => loadOA(c.latest_oa.oa_id)))
+  settled.forEach((s, i) => {
+    const c = missing[i]
+    if (s.status === 'fulfilled') {
+      loaded.set(c.case_id, s.value)
+      extras[c.case_id] = extraFromOA(c.case_id, s.value)
+    } else {
+      // 한 사건을 못 받아도 목록은 그린다: 그 사건 칸만 "모름"
+      console.warn('사건 목록: 작업대 데이터를 받지 못함', c.case_id, s.reason)
+    }
+  })
   const top = pickFocusCase(cases, new Map(Object.entries(extras)))
   if (top === null) return { cases, extras, focus: null }
-  // 한 건만 제목이 필요해서 그 사건만 작업대 데이터를 받는다
-  const d = await loadOA(top.latest_oa.oa_id)
+  // 위에서 받은 것이 있으면 다시 받지 않는다
+  const d = loaded.get(top.case_id) ?? (await loadOA(top.latest_oa.oa_id))
   const todos = directTodos(d)?.todos ?? []
   return { cases, extras, focus: { case: top, titles: todos.slice(0, 3).map((t) => t.title) } }
+}
+
+// 작업대 데이터 → 목록 표 칸 (제출기일 원문 글자 · 지금 단계 · 직접 할 일 개수)
+function extraFromOA(caseId: string, d: OALoaderData): CaseListExtra {
+  // 지금 단계: 결과가 있는 가장 뒤 단계 (모름(null)은 건너뛰지 않고 그 앞에서 멈추지도 않는다)
+  const stage = d.ready.drafts
+    ? 'drafts'
+    : d.ready.directions
+      ? 'directions'
+      : d.ready.compare
+        ? 'compare'
+        : d.ready.summary
+          ? 'summary'
+          : null
+  // 직접 할 일: 방향 고르기를 못 셌으면 개수가 "이 이상"이라 모름(null)으로 둔다 (적게 보이지 않게)
+  const list = directTodos(d)
+  return {
+    case_id: caseId,
+    response_due_raw: d.oaResult?.result.response_due.raw_text ?? null,
+    stage,
+    todo_count: list && list.directionsKnown ? list.todos.length : null,
+  }
 }
 
 // /cases/:caseId → 그 사건의 가장 최근 OA 작업대로
