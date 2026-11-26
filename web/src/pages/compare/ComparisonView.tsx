@@ -8,6 +8,8 @@ import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
 import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
 import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '../../types/generated/ComparisonTable'
+import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
+import type { OAResult } from '../../types/generated/OAResult'
 
 // 대비 결과 글자 (상태 네 가지와 다른 축). 색만으로 나누지 않게 아이콘도 붙인다
 const judgmentTag: Record<Judgment, { color: string; text: string; icon: ReactNode }> = {
@@ -53,8 +55,48 @@ const diffNames = (t: ComparisonTable): string[] => {
   return [...new Set(t.rows.filter((r) => r.judgment === 'difference_candidate' && !found.has(r.element)).map((r) => r.element))]
 }
 
+// 심사관이 짚은 위치 표기 → 원문 문단 라벨들 ("[0080]-[0081]" → [0080],[0081], "청구항 1-3" → 청구항 1·2·3)
+function locationLabels(loc: string): string[] | null {
+  const para = /^\[(\d{1,4})\](?:\s*-\s*\[(\d{1,4})\])?$/.exec(loc)
+  if (para) {
+    const a = Number(para[1])
+    const b = para[2] ? Number(para[2]) : a
+    const width = para[1].length
+    return Array.from({ length: Math.max(0, b - a) + 1 }, (_, i) => `[${String(a + i).padStart(width, '0')}]`)
+  }
+  const claim = /^청구항\s*(\d+)(?:\s*-\s*(\d+))?$/.exec(loc)
+  if (claim) {
+    const a = Number(claim[1])
+    const b = claim[2] ? Number(claim[2]) : a
+    return Array.from({ length: Math.max(0, b - a) + 1 }, (_, i) => `청구항 ${a + i}`)
+  }
+  if (/^도\s*\d+/.test(loc) || loc === '요약') return [loc]
+  return null // 모양을 모르는 표기("(청구항 1, 6)" 등)는 문단으로 짐작하지 않는다
+}
+
+// 이 묶음 청구항에 대해 심사관이 짚은 인용 위치: 청구항 줄의 위치가 있으면 그것, 없으면 거절이유 인용문헌 칸
+function examinerSpots(oa: OAResult | null, unit: JudgmentUnit) {
+  const rej = oa?.rejections.find((r) => r.no === unit.rejection)
+  if (!oa || !rej) return []
+  const out: { label: string; number: string; location: string; labels: string[] }[] = []
+  for (const c of rej.citations) {
+    const number = c.number.value ?? c.number.raw_text
+    if (!number) continue
+    const fromRows = oa.claim_rows
+      .filter((row) => row.rejection === unit.rejection && row.claim !== null && unit.claims.includes(row.claim))
+      .flatMap((row) => row.locations[c.label] ?? [])
+    const locations = fromRows.length > 0 ? fromRows : (c.cited_paragraphs.value ?? [])
+    for (const loc of [...new Set(locations)]) {
+      const labels = locationLabels(loc.trim())
+      if (labels) out.push({ label: c.label, number, location: loc.trim(), labels })
+    }
+  }
+  return out
+}
+
 // 구성 대비: 핵심(AI 제안) → 못 본 인용발명 → 구성요소 표(행을 누르면 오른쪽에 근거) → 따지는 순서 펼침
-export function ComparisonView({ t }: { t: ComparisonTable }) {
+export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResult | null; unit: JudgmentUnit }) {
+  const spots = examinerSpots(oa, unit)
   const { openCite } = useContext(SourceContext)
   const [orderOpen, setOrderOpen] = useState(false)
 
@@ -170,6 +212,34 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
           </div>
         ))}
       </div>
+
+      {/* 심사관이 통지서에서 짚은 인용 문단: AI가 근거로 골랐든 아니든 늘 보이고, 누르면 원문 전체에서 그 문단을 연다 */}
+      {spots.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <h3 className="headline1" style={{ margin: 0 }}>심사관이 짚은 문단</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {spots.map((s) => (
+              <Button
+                key={`${s.label}-${s.location}`}
+                size="small"
+                icon={<AuditOutlined />}
+                onClick={() =>
+                  openCite({
+                    title: `${s.label} ${s.location} · 심사관 지정`,
+                    items: [],
+                    status: { value: 'confirmed', reason: null, checked: '통지서에 적힌 인용 위치', searched_scope: null },
+                    note: '통지서에서 심사관이 짚은 문단이에요. 아래 원문 전체에서 강조해 보여요.',
+                    docId: s.number,
+                    highlightLabels: s.labels,
+                  })
+                }
+              >
+                {s.label} {s.location}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 className="headline1">구성요소 · 행을 누르면 오른쪽에 그 문단</h3>

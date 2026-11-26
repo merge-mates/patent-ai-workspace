@@ -91,7 +91,7 @@ export function ComparePage() {
         {unit.status.value !== 'confirmed' && <StatusTag status={unit.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}
       </div>
 
-      {table && <ComparisonView t={table} />}
+      {table && <ComparisonView t={table} oa={oaResult?.result ?? null} unit={unit} />}
       {review && <ClarityView c={review} unit={unit} />}
       {/* 이 묶음에 맞는 목록(명확성 묶음은 명확성 문구 검토, 그 밖은 인용발명 대비)이 통째로 비었으면 서버가 준 이유를,
           목록은 있는데 이 묶음 줄만 없으면 지금 글자 */}

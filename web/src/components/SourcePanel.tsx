@@ -110,7 +110,11 @@ function CiteBody({ r, cited }: { r: CiteRef; cited: CitedState | null }) {
       {r.items.length === 0 && <Alert type="info" showIcon message="이 줄에 연결된 근거 위치가 없어요" />}
       {r.note && <span className="label1 t2">{r.note}</span>}
       {cited ? (
-        <CitedFull cited={cited} highlight={new Set(r.items.map((e) => e.chunk_id).filter((x): x is string => !!x))} />
+        <CitedFull
+          cited={cited}
+          highlight={new Set(r.items.map((e) => e.chunk_id).filter((x): x is string => !!x))}
+          labels={new Set(r.highlightLabels ?? [])}
+        />
       ) : (
         <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
       )}
@@ -119,24 +123,27 @@ function CiteBody({ r, cited }: { r: CiteRef; cited: CitedState | null }) {
 }
 
 // 인용문헌 원문 전체: 요약 → 청구항 → 본문 문단 → 도면 설명. 근거 문단은 강조하고 첫 근거로 판이 내려간다
-function CitedFull({ cited, highlight }: { cited: CitedState; highlight: Set<string> }) {
+function CitedFull({ cited, highlight, labels }: { cited: CitedState; highlight: Set<string>; labels: Set<string> }) {
+  // 근거 조각(chunk_id)이거나 심사관이 짚은 표기(라벨)인 문단을 강조한다
+  const isOn = (p: { chunk_id: string; label: string }) => highlight.has(p.chunk_id) || labels.has(p.label)
   if (cited.failed) return <Alert type="info" showIcon message={`${cited.docId} 원문을 받지 못했어요`} />
   if (!cited.doc) return <span className="label1 t3">{cited.docId} 원문을 불러오는 중이에요…</span>
   // 첫 근거 문단에만 id를 달아 판이 그리로 내려가게 한다
-  const firstId = cited.doc.parts.find((p) => highlight.has(p.chunk_id))?.chunk_id
+  const firstId = cited.doc.parts.find(isOn)?.chunk_id
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--line-neutral-tertiary)', paddingTop: 12 }}>
       <span className="label2 t3">
         {cited.docId} 원문 전체 · {cited.doc.parts.length}개 문단 · 스크롤해서 모두 볼 수 있어요
       </span>
       {cited.doc.parts.map((p) => {
-        const on = highlight.has(p.chunk_id)
+        const on = isOn(p)
         const id = p.chunk_id === firstId ? 'cited-highlight' : undefined
         return (
           <div key={p.chunk_id} id={id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span className="label2" style={{ fontWeight: 600, color: on ? 'var(--fg-neutral-primary)' : 'var(--fg-neutral-tertiary)' }}>
               {p.label}
-              {on ? ' · 근거' : ''}
+              {/* AI가 근거로 고른 문단 / 심사관이 짚은 문단을 다르게 부른다 */}
+              {highlight.has(p.chunk_id) ? ' · 근거' : labels.has(p.label) ? ' · 심사관 지정' : ''}
             </span>
             <p
               className="body2r"

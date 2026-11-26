@@ -22,6 +22,8 @@ export interface CiteRef {
   unverifiedText?: string
   // 인용문헌 번호 (KR…A). 있으면 판이 그 인용문헌 원문 전체를 받아 이어 보이고 근거 문단을 강조한다
   docId?: string | null
+  // 원문 전체에서 이 표기의 문단도 강조한다 (심사관이 짚은 "[0032]", "청구항 1" 등)
+  highlightLabels?: string[]
 }
 export type OpenCite = (ref: CiteRef) => void
 
