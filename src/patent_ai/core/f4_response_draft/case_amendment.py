@@ -50,6 +50,21 @@ class CaseAmendmentOut(BaseModel):
     drafts: list[PlanDraft]
 
 
+class ExtraClaim(BaseModel):
+    """1번 안은 그대로 두지만 2·3번 안이 고친 항 (변리사가 "검토해 볼 항"으로 본다).
+
+    1번 안이 놓친 실제 보정 항의 대부분이 다른 안에 있었다
+    (검사 17건 16개 중 14개, 예비 39개 중 24개).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim: int
+    action: Literal["amend", "delete", "add"]
+    drafts: list[int]  # 이 항을 고친 안 번호 (2·3)
+    reason: str  # 처음 고친 안의 이유 글
+
+
 class CaseAmendment(BaseModel):
     """사건 단위 보정안 결과: 쓴 1번 안, 바깥 보정 결과, 코드 검사 표시."""
 
@@ -59,6 +74,7 @@ class CaseAmendment(BaseModel):
     external: ExternalAmendment
     checks: list[PlanIssue]
     alternatives: list[str]  # 2·3번 안의 전략 글 (사람이 다른 방향을 볼 수 있게)
+    extra: list[ExtraClaim]  # 2·3번 안에서만 고친 항
 
 
 def _checked(old: set[int]) -> type[CaseAmendmentOut]:
@@ -137,7 +153,32 @@ def build_case_amendment(inp: F4Input, ctx: RunContext, limit_note: str = "") ->
     spec = "\n".join(p.text for p in inp.spec.pages) if inp.spec else ""
     return CaseAmendment(
         strategy=first.strategy,
+        extra=_extra_claims(old, out.drafts),
         external=to_external(old, plan, source=SOURCE),
         checks=check_plan(old, plan, spec),
         alternatives=[d.strategy for d in out.drafts[1:]],
     )
+
+
+def _changed(old: dict[int, str], draft: PlanDraft) -> dict[int, PlannedClaim]:
+    """그 안이 실제로 바꾸는 항 (글이 그대로인 정정은 뺀다)."""
+    bare = "".join
+    return {
+        q.claim: q
+        for q in draft.amended
+        if q.action != "amend" or bare(q.text.split()) != bare(old.get(q.claim, "").split())
+    }
+
+
+def _extra_claims(old: dict[int, str], drafts: list[PlanDraft]) -> list[ExtraClaim]:
+    first = set(_changed(old, drafts[0]))
+    found: dict[int, ExtraClaim] = {}
+    for i, d in enumerate(drafts[1:], 2):
+        for n, q in _changed(old, d).items():
+            if n in first:
+                continue
+            if n in found:
+                found[n] = found[n].model_copy(update={"drafts": [*found[n].drafts, i]})
+            else:
+                found[n] = ExtraClaim(claim=n, action=q.action, drafts=[i], reason=q.reason)
+    return [found[n] for n in sorted(found)]

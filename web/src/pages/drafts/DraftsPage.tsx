@@ -412,6 +412,20 @@ export function DraftsPage() {
                 <span className="label2 t3">
                   {`청구항 ${drafts.claims.length}개를 고치거나 지워요 · 코드 검사 표시 ${plan.checks.length}건`}
                 </span>
+                {plan.extra.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                    <span className="label1" style={{ fontWeight: 600 }}>{`검토해 볼 항 ${plan.extra.length}개`}</span>
+                    <span className="label2 t3">추천 안은 그대로 두지만 다른 방향의 안은 고친 항이에요. 실제 보정에서 자주 함께 바뀌니 넣을지 한 번 봐 주세요.</span>
+                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                      {plan.extra.map((x) => (
+                        <li key={x.claim} className="body2">
+                          {`청구항 ${x.claim} · ${x.action === 'delete' ? '삭제' : x.action === 'add' ? '추가' : '고침'} (${x.drafts.map((d) => `${d}번 안`).join(', ')})`}
+                          {x.reason && <span className="t3">{` — ${x.reason}`}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
             {drafts.claims.map(claimView)}

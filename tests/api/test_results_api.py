@@ -57,6 +57,7 @@ def test_results_api_실행이_끝나면_F3_F4_결과가_같은_실행에서_열
     assert body["drafts"]["amendment_strategy"] is None
     assert body["drafts"]["amendment_alternatives"] == []
     assert body["drafts"]["amendment_checks"] == []
+    assert body["drafts"]["amendment_extra"] == []
     assert body["directions"]["rank_notice"]
 
 

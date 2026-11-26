@@ -227,6 +227,7 @@ def _drafts_and_checks(
         amendment_strategy=case.strategy if case else None,
         amendment_alternatives=case.alternatives if case else [],
         amendment_checks=case.checks if case else [],
+        amendment_extra=case.extra if case else [],
         units=list(inp.units),
         directions=directions,
         drafts=drafts,

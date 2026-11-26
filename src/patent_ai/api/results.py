@@ -22,6 +22,7 @@ from patent_ai.api.errors import AppError
 from patent_ai.core.cases.result_views import ResultName, ResultView, result_view
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.step_results import StepResultStore
+from patent_ai.core.f4_response_draft.case_amendment import ExtraClaim
 from patent_ai.core.f4_response_draft.plan_check import PlanIssue
 from patent_ai.core.f4_response_draft.result import F4Output
 from patent_ai.core.runs.store import RunStatusStore
@@ -72,6 +73,7 @@ class DraftsOut(BaseModel):
     amendment_strategy: str | None = None
     amendment_alternatives: list[str] = []
     amendment_checks: list[PlanIssue] = []
+    amendment_extra: list[ExtraClaim] = []  # 2·3번 안에서만 고친 항 ("검토해 볼 항")
 
 
 Results = Annotated[OAResultStore, Depends(get_oa_result_store)]
@@ -146,4 +148,5 @@ def get_drafts(oa_id: str, unit: Unit, results: Results, steps: Steps, runs: Run
         amendment_strategy=f4.amendment_strategy if f4 else None,
         amendment_alternatives=f4.amendment_alternatives if f4 else [],
         amendment_checks=f4.amendment_checks if f4 else [],
+        amendment_extra=f4.amendment_extra if f4 else [],
     )

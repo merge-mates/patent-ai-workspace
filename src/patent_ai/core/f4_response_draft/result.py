@@ -9,6 +9,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from patent_ai.core.f4_response_draft.case_amendment import ExtraClaim
 from patent_ai.core.f4_response_draft.plan_check import PlanIssue
 from patent_ai.core.schemas.common import Flag, Status
 from patent_ai.core.schemas.direction import DirectionCandidates
@@ -64,6 +65,8 @@ class F4Output(BaseModel):
     amendment_strategy: str | None = None
     amendment_alternatives: list[str] = Field(default_factory=list)
     amendment_checks: list[PlanIssue] = Field(default_factory=list)
+    # 2·3번 안에서만 고친 항 ("검토해 볼 항"). 놓침을 줄이려고 1번 안과 따로 보인다
+    amendment_extra: list[ExtraClaim] = Field(default_factory=list)
     # 의견서만 실행(amendment_enabled false): 고른 방향의 보정 유무가 바깥 보정 결과와 어긋난 묶음.
     # 의견서는 바깥 보정 결과를 따르고, 방향 품질은 따로 본다 (11/26 D2-1)
     direction_amendment_mismatch: list[str] = Field(default_factory=list)

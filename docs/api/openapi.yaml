@@ -2142,6 +2142,12 @@ components:
           type: array
           title: Amendment Checks
           default: []
+        amendment_extra:
+          items:
+            $ref: '#/components/schemas/ExtraClaim'
+          type: array
+          title: Amendment Extra
+          default: []
       type: object
       required:
       - oa_id
@@ -2213,6 +2219,40 @@ components:
       - allowable_claims
       - amendment_note
       title: ExaminerHints
+    ExtraClaim:
+      properties:
+        claim:
+          type: integer
+          title: Claim
+        action:
+          type: string
+          enum:
+          - amend
+          - delete
+          - add
+          title: Action
+        drafts:
+          items:
+            type: integer
+          type: array
+          title: Drafts
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - claim
+      - action
+      - drafts
+      - reason
+      title: ExtraClaim
+      description: '1번 안은 그대로 두지만 2·3번 안이 고친 항 (변리사가 "검토해 볼 항"으로 본다).
+
+
+        1번 안이 놓친 실제 보정 항의 대부분이 다른 안에 있었다
+
+        (검사 17건 16개 중 14개, 예비 39개 중 24개).'
     ExtractedValue_AmendmentLimit_:
       properties:
         value:

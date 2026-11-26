@@ -50,7 +50,14 @@ DRAFT = {
         },
     ],
 }
-E_OUT = {"table": [], "drafts": [DRAFT, DRAFT, DRAFT]}
+DRAFT_2 = {
+    "strategy": "제2항을 제1항에 합친다.",
+    "amended": [
+        {"claim": 1, "action": "amend", "text": NEW_1, "confidence": 60, "reason": "합침"},
+        {"claim": 2, "action": "delete", "text": "", "confidence": 60, "reason": "1항에 합침"},
+    ],
+}
+E_OUT = {"table": [], "drafts": [DRAFT, DRAFT_2, DRAFT]}
 
 
 def _run(with_external=False):
@@ -95,3 +102,12 @@ def test_보정안이_의견서_입력과_보정_청구항_칸에_들어간다()
 def test_바깥_보정_결과를_받았으면_보정안_단계를_부르지_않는다():
     _, t = _run(with_external=True)
     assert not [c for c in t.calls if c["step"] == "f4.case_amendment"]
+
+
+def test_다른_안에서만_고친_항은_검토해_볼_항으로_남는다():
+    """1번 안이 놓친 항을 2·3번 안이 잡는 경우가 많아 (검사 17건 16개 중 14개) 따로 보인다."""
+    out, _ = _run()
+    extra = {x.claim: x for x in out.amendment_extra}
+    assert set(extra) == {2}  # 1·3항은 1번 안에도 있어 빠진다
+    assert extra[2].action == "delete" and extra[2].drafts == [2]
+    assert extra[2].reason == "1항에 합침"

@@ -11,6 +11,7 @@ import type { CaseCheck, DraftPatch } from '../types/provisional/pending'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { PageText } from '../types/generated/PageText'
 import type { PlanIssue } from '../types/generated/PlanIssue'
+import type { ExtraClaim } from '../types/generated/ExtraClaim'
 import type { ReviewItem } from '../types/generated/ReviewItem'
 import type {
   CaseDetail,
@@ -76,16 +77,19 @@ export interface AmendmentPlanInfo {
   strategy: string
   alternatives: string[]
   checks: PlanIssue[]
+  // 2·3번 안에서만 고친 항 (검토해 볼 항)
+  extra: ExtraClaim[]
 }
 interface DraftsExtra {
   amendment_strategy: string | null
   amendment_alternatives: string[]
   amendment_checks: PlanIssue[]
+  amendment_extra: ExtraClaim[]
 }
 const getAmendmentPlanResult = async (oaId: string): Promise<AmendmentPlanInfo | null> => {
   const body = await getJson<ResultEnvelope<Drafts | null> & DraftsExtra>(`/oas/${oaId}/drafts`)
   if (body.amendment_strategy === null || body.amendment_strategy === undefined) return null
-  return { strategy: body.amendment_strategy, alternatives: body.amendment_alternatives ?? [], checks: body.amendment_checks ?? [] }
+  return { strategy: body.amendment_strategy, alternatives: body.amendment_alternatives ?? [], checks: body.amendment_checks ?? [], extra: body.amendment_extra ?? [] }
 }
 type FrontendApi = Omit<typeof mockApi, 'getDrafts' | 'patchDraft' | 'getAmendmentPlan'> & {
   getDrafts: (oaId: string) => Promise<Drafts>
