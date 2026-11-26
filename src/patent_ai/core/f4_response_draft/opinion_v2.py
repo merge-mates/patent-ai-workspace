@@ -42,6 +42,8 @@ STEP_UNIT = "f4.opinion_unit"
 STEP_CASE = "f4.opinion_case"
 NO_AMENDMENT = "(보정 결과 없음: OA 당시 청구항 그대로 반박한다)"
 CHANGE_KO = {"amended": "보정", "deleted": "삭제", "added": "신설"}
+# 거절이유 종류 코드 → 의견서 글자
+KIND_KO = {"inventive_step": "진보성", "novelty": "신규성", "clarity": "명확성", "other": "기타"}
 
 
 class UnitOut(BaseModel):
@@ -295,9 +297,9 @@ def build_opinion_v2(
             failed_statuses.append(failed_status(e))
             continue
         rej = _rejection_of(inp.oa, unit)
-        title = (
-            f"[거절이유 {rej.no} ({rej.kind.value}) · 청구항 {', '.join(map(str, unit.claims))}]"
-        )
+        # 의견서에 들어가는 글이라 거절이유 종류를 한국어로 (전에는 clarity 같은 코드 값이 나갔다)
+        kind = KIND_KO.get(rej.kind.value, rej.kind.value)
+        title = f"[거절이유 {rej.no} ({kind}) · 청구항 {', '.join(map(str, unit.claims))}]"
         responses.append(f"{title}\n{out.response}")
         based_on.append(BasedOn(unit_id=unit.unit_id, candidate_id=chosen.candidate_id))
         statuses += [chosen.status, bundle.status]
