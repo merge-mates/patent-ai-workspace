@@ -11,6 +11,8 @@ import re
 
 from pydantic import BaseModel, ConfigDict
 
+from patent_ai.core.f4_response_draft.inputs import ExternalAmendment, ExternalClaimChange
+
 GRAM = 6  # 글자 조각 길이 (띄어쓰기 뺌)
 MIN_CHARS = 10  # 이보다 짧은 문구 조각은 어디든 맞아 보지 않는다
 MIN_FOUND = 0.5  # 조각의 6글자 묶음 중 원문에서 찾은 비율이 이보다 낮으면 표시
@@ -63,3 +65,39 @@ def check_plan(old: dict[int, str], plan: list[dict], spec_text: str) -> list[Pl
                     PlanIssue(kind="not_in_source", claim=q["claim"], detail=piece.strip())
                 )
     return issues
+
+
+# 지운 항 글의 6글자 묶음 중 이 비율 넘게 새로 들어간 고친 항을 합친 곳으로 본다
+MERGED_MIN = 0.5
+
+
+def to_external(old: dict[int, str], plan: list[dict], *, source: str) -> ExternalAmendment:
+    """E 보정안 → 앱 바깥 보정 결과(F4Input.external_amendment). 글이 그대로인 정정은 뺀다.
+
+    지운 항의 merged_into는 코드가 어림한다: 지운 항 글(인용 머리말 뺌)의 6글자 묶음이
+    절반 넘게 새로 들어간 고친 항. 못 찾으면 비워 둔다 (그냥 삭제로 보인다).
+    """
+    rows: list[ExternalClaimChange] = []
+    amended = {
+        q["claim"]: q["text"]
+        for q in plan
+        if q["action"] == "amend" and _bare(q["text"]) != _bare(old.get(q["claim"], ""))
+    }
+    for q in sorted(plan, key=lambda q: q["claim"]):
+        n = q["claim"]
+        if q["action"] == "add":
+            rows.append(ExternalClaimChange(claim=n, change="added", after=q["text"]))
+        elif q["action"] == "amend" and n in amended:
+            rows.append(ExternalClaimChange(claim=n, change="amended", after=q["text"]))
+        elif q["action"] == "delete":
+            own = _grams(_bare(_REF.sub("", old.get(n, "").split(",", 1)[-1])))
+            into = [
+                m
+                for m, text in amended.items()
+                if own
+                and sum(g in _grams(_bare(text)) - _grams(_bare(old.get(m, ""))) for g in own)
+                / len(own)
+                > MERGED_MIN
+            ]
+            rows.append(ExternalClaimChange(claim=n, change="deleted", merged_into=sorted(into)))
+    return ExternalAmendment(source=source, claims=rows)

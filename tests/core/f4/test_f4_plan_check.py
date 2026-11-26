@@ -46,3 +46,33 @@ def test_짧은_조각은_어디든_맞아_보지_않는다():
 def test_인용_머리말은_새_문구로_보지_않는다():
     text = "제 1 항 또는 제 2 항에 있어서, 상기 경계선은 곡선인 방법."
     assert check_plan(OLD, [{"claim": 3, "action": "amend", "text": text}], SPEC) == []
+
+
+# ---- E 보정안 → 앱 바깥 보정 결과 (amendment_enabled false 모드 입력) ----
+def test_E_보정안을_바깥_보정_결과로_옮기고_합친_곳을_찾는다():
+    from patent_ai.core.f4_response_draft.plan_check import to_external
+
+    plan = [
+        {
+            "claim": 1,
+            "action": "amend",
+            "text": (
+                "영상을 받는 단계; 영상을 나누는 단계; 및 상기 나누는 단계는 경계선을 쓰는 방법."
+            ),
+        },
+        {"claim": 2, "action": "delete", "text": ""},
+        {"claim": 3, "action": "amend", "text": "제1항에 있어서, 상기 경계선은 곡선인 방법."},
+    ]
+    ext = to_external(OLD, plan, source="E 1번 안")
+    rows = {c.claim: c for c in ext.claims}
+    assert ext.source == "E 1번 안"
+    assert rows[1].change == "amended" and rows[1].after == plan[0]["text"]
+    assert rows[2].change == "deleted" and rows[2].merged_into == [1]
+    assert rows[3].change == "amended" and rows[3].merged_into == []
+
+
+def test_글이_그대로인_정정은_바깥_보정_결과에서_뺀다():
+    from patent_ai.core.f4_response_draft.plan_check import to_external
+
+    ext = to_external(OLD, [{"claim": 1, "action": "amend", "text": OLD[1]}], source="E")
+    assert ext.claims == []
