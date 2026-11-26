@@ -76,3 +76,23 @@ def test_글이_그대로인_정정은_바깥_보정_결과에서_뺀다():
 
     ext = to_external(OLD, [{"claim": 1, "action": "amend", "text": OLD[1]}], source="E")
     assert ext.claims == []
+
+
+def test_합친_곳은_지운_항의_뿌리_독립항_가족_안에서만_찾는다():
+    from patent_ai.core.f4_response_draft.plan_check import to_external
+
+    old = {
+        1: "영상을 받는 장치.",
+        2: "제1항에 있어서, 경계선을 곡선으로 나누는 장치.",
+        3: "영상을 받는 방법.",
+        4: "제3항에 있어서, 경계선을 곡선으로 나누는 방법.",
+    }
+    plan = [
+        {"claim": 1, "action": "amend", "text": "영상을 받고, 경계선을 곡선으로 나누는 장치."},
+        {"claim": 2, "action": "delete", "text": ""},
+        {"claim": 3, "action": "amend", "text": "영상을 받고, 경계선을 곡선으로 나누는 방법."},
+        {"claim": 4, "action": "delete", "text": ""},
+    ]
+    rows = {c.claim: c for c in to_external(old, plan, source="E").claims}
+    assert rows[2].merged_into == [1]  # 짝 방법 독립항(3)에도 비슷한 글이 있지만 가족이 다르다
+    assert rows[4].merged_into == [3]

@@ -11,7 +11,13 @@ import re
 
 from pydantic import BaseModel, ConfigDict
 
-from patent_ai.core.f4_response_draft.inputs import ExternalAmendment, ExternalClaimChange
+from patent_ai.core.f4_response_draft.claim_refs import claim_refs
+from patent_ai.core.f4_response_draft.inputs import (
+    ClaimText,
+    ExternalAmendment,
+    ExternalClaimChange,
+)
+from patent_ai.core.f4_response_draft.scope import _roots
 
 GRAM = 6  # 글자 조각 길이 (띄어쓰기 뺌)
 MIN_CHARS = 10  # 이보다 짧은 문구 조각은 어디든 맞아 보지 않는다
@@ -74,8 +80,9 @@ MERGED_MIN = 0.5
 def to_external(old: dict[int, str], plan: list[dict], *, source: str) -> ExternalAmendment:
     """E 보정안 → 앱 바깥 보정 결과(F4Input.external_amendment). 글이 그대로인 정정은 뺀다.
 
-    지운 항의 merged_into는 코드가 어림한다: 지운 항 글(인용 머리말 뺌)의 6글자 묶음이
-    절반 넘게 새로 들어간 고친 항. 못 찾으면 비워 둔다 (그냥 삭제로 보인다).
+    지운 항의 merged_into는 코드가 어림한다: 지운 항과 뿌리 독립항이 같은 고친 항 가운데
+    지운 항 글(인용 머리말 뺌)의 6글자 묶음이 절반 넘게 새로 들어간 항. 짝 독립항(장치·방법)에
+    비슷한 글이 들어가도 가족이 다르면 넣지 않는다. 못 찾으면 비워 둔다 (그냥 삭제로 보인다).
     """
     rows: list[ExternalClaimChange] = []
     amended = {
@@ -83,6 +90,9 @@ def to_external(old: dict[int, str], plan: list[dict], *, source: str) -> Extern
         for q in plan
         if q["action"] == "amend" and _bare(q["text"]) != _bare(old.get(q["claim"], ""))
     }
+    texts = [ClaimText(claim=k, text=v, document_id="plan_check") for k, v in sorted(old.items())]
+    refs = claim_refs(texts)
+    family = {k: _roots(k, refs) or set() for k in old}  # 인용을 못 읽은 항은 빈 집합
     for q in sorted(plan, key=lambda q: q["claim"]):
         n = q["claim"]
         if q["action"] == "add":
@@ -95,6 +105,7 @@ def to_external(old: dict[int, str], plan: list[dict], *, source: str) -> Extern
                 m
                 for m, text in amended.items()
                 if own
+                and family.get(m, set()) & family.get(n, set())  # 같은 뿌리 독립항 가족만
                 and sum(g in _grams(_bare(text)) - _grams(_bare(old.get(m, ""))) for g in own)
                 / len(own)
                 > MERGED_MIN
