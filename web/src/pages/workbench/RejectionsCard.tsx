@@ -34,6 +34,15 @@ function sameAsList(items: string[]): string {
   return [...(claims.length ? [`청구항 ${claimRange(claims)}`] : []), ...others].join(', ')
 }
 
+// 끝 숫자 읽는 소리에 맞춰 "와/과" (1 일·3 삼·6 육·7 칠·8 팔·0 영·10 십 → 과, 그 밖 → 와)
+function withWa(text: string): string {
+  const last = /(\d+)\s*$/.exec(text)?.[1]
+  if (!last) return `${text}와`
+  const n = Number(last)
+  const batchim = n % 10 === 0 ? n !== 0 : [1, 3, 6, 7, 8].includes(n % 10)
+  return `${text}${batchim || n === 0 ? '과' : '와'}`
+}
+
 const sameAsText = (s: string) =>
   s.replace(/^claim:(\d+)$/, '청구항 $1').replace(/^rejection:(\d+)$/, '거절이유 $1')
 
@@ -110,8 +119,9 @@ const rowColumns = (clarity: boolean, numbers: Record<string, string> = {}): Col
         { title: '인용문헌 · 위치', render: (_: unknown, row: ClaimRow) => <CiteCell row={row} numbers={numbers} /> },
       ]),
   {
-    title: '같은 취지',
-    render: (_, row) => (row.same_as.length ? sameAsList(row.same_as) : '—'),
+    // 통지서의 "동일한 취지로 / ~에서 기술한 바와 같이"를 칸 이름이 아니라 뜻으로 보인다
+    title: '같은 이유로 본 청구항',
+    render: (_, row) => (row.same_as.length ? `${withWa(sameAsList(row.same_as))} 같은 이유` : '—'),
   },
   { title: '상태', render: (_, row) => <StatusTag status={row.status} compact /> },
   {
