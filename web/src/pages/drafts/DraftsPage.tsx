@@ -61,7 +61,7 @@ function claimKind(before: string, text: string): '보정' | '삭제' | '그대�
 // 5 초안 단계: 대응 현황 표 → 제출 전에 고칠 곳 → 초안 본문(의견서 / 보정 청구항)
 export function DraftsPage() {
   const { drafts: initial, directions, caseCheck, draftsEmptyReason, plan } = useLoaderData() as DraftsLoaderData
-  const { oaResult, oa } = useRouteLoaderData('oa') as OALoaderData
+  const { oaResult, oa, specDocumentId } = useRouteLoaderData('oa') as OALoaderData
   // 그 OA의 최근 실행이 아직 도는 동안 보이는 초안은 옛것이다 (방향을 고르면 초안만 다시 만드는 작은 실행이 생긴다)
   const runState = useRunSnapshot(oa.latest_run)?.run.state
   const rebuilding = runState === 'queued' || runState === 'running'
@@ -154,8 +154,15 @@ export function DraftsPage() {
 
   // 근거 링크는 의견서·보정 청구항 근거 목록에서 같은 위치를 찾아 원문 판으로
   const allEvidence = [...drafts.evidence, ...drafts.claims.flatMap((c) => c.spec_basis)]
+  // 근거 문서의 이름: 출원 명세서면 "최초 명세서", 인용문헌이면 통지서의 인용 이름(D1 등). 모르면 "근거"
+  // (문단 표기 "[0044]"만 보고 명세서라고 하면 인용문헌 문단도 "최초 명세서"로 잘못 보인다)
+  const docName = (documentId: string): string => {
+    if (specDocumentId !== null && documentId === specDocumentId) return '최초 명세서'
+    for (const r of rejections) for (const c of r.citations) if ((c.number.value ?? c.number.raw_text) === documentId) return c.label
+    return '근거'
+  }
   const openBasis = (token: string, e: Evidence1) =>
-    openCite({ title: `최초 명세서 ${token}`, items: [e], status: drafts.status, note: null })
+    openCite({ title: `${docName(e.document_id)} ${token}`, items: [e], status: drafts.status, note: null })
 
   const claimView = (c: AmendedClaim) => {
     const key = `c:${c.claim}`
@@ -183,7 +190,7 @@ export function DraftsPage() {
               type="info"
               showIcon
               message="직접 쓴 방향이라 AI가 초안을 만들지 않아요 · 직접 대응해 주세요"
-              description={rebuilding ? '실행이 끝나면 이 묶음이 보류로 바뀌어요' : undefined}
+              description={rebuilding ? '실행이 끝나면 이 청구항들이 보류로 바뀌어요' : undefined}
             />
           ) : note === 'picked' ? (
             <Alert
@@ -192,7 +199,7 @@ export function DraftsPage() {
               message={
                 rebuilding
                   ? '고른 방향으로 초안을 만드는 중 · 끝나면 보여요'
-                  : '방향을 골랐어요. 이 묶음의 초안은 아직 없어요 · 다시 만들어야 함'
+                  : '방향을 골랐어요. 이 청구항들의 초안은 아직 없어요 · 다시 만들어야 함'
               }
               description={
                 API_MODE === 'mock'
@@ -250,7 +257,7 @@ export function DraftsPage() {
             />
           ))}
         {note === 'written' && (
-          <Alert type="warning" showIcon message="직접 쓴 방향으로 바뀜 · 이 초안은 이전 방향으로 만든 것이에요. AI는 이 묶음 초안을 다시 만들지 않으니 직접 대응해 주세요" />
+          <Alert type="warning" showIcon message="직접 쓴 방향으로 바뀜 · 이 초안은 이전 방향으로 만든 것이에요. AI는 이 청구항들의 초안을 다시 만들지 않으니 직접 대응해 주세요" />
         )}
         {note === 'changed' && (
           <Alert type="warning" showIcon message="선택이 바뀜 · 다시 만들어야 함. 이 초안은 이전 방향으로 만든 것이라 다시 확인이 필요해요" />
@@ -283,9 +290,9 @@ export function DraftsPage() {
                 key={`${b.document_id}-${where}`}
                 type="link"
                 size="small"
-                onClick={() => openCite({ title: `근거 ${where}`, items: [b], status: drafts.status, note: null })}
+                onClick={() => openCite({ title: `${docName(b.document_id)} ${where}`, items: [b], status: drafts.status, note: null })}
               >
-                {where.startsWith('[') ? `최초 명세서 ${where}` : where}
+                {`${docName(b.document_id)} ${where}`}
               </Button>
             )
           })}

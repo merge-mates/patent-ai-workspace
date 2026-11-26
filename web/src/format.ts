@@ -77,3 +77,8 @@ export function claimLocationText(claim: number | null, location: string): strin
   const head = claim !== null ? `청구항 ${claim}` : ''
   return [head, cleaned].filter(Boolean).join(' · ')
 }
+
+// 명확성 문제 표현: 심사관이 통지서에서 물결표(~)로 감싸 쓴 것을 떼고 보인다 ("~상기 이미지 처리 과정~" → "상기 이미지 처리 과정")
+export function termText(term: string): string {
+  return term.replace(/^[\s~～]+|[\s~～]+$/g, '')
+}

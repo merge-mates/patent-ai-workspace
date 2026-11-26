@@ -20,7 +20,7 @@ import { RejectionsCard } from './RejectionsCard'
 // 통지 정보는 사건 틀 머리의 "사건 정보"로, 원문은 오른쪽 판으로 옮겼다
 export function WorkbenchPage() {
   const data = useRouteLoaderData('oa') as OALoaderData
-  const { oa, oaResult, materials, reviewItems } = data
+  const { oa, oaResult, materials, reviewItems, specDocumentId } = data
   const location = useLocation()
   const navigate = useNavigate()
   const { message } = App.useApp()
@@ -137,7 +137,7 @@ export function WorkbenchPage() {
       />
       <RejectionsCard r={r} legal={data.legal} />
       {materials ? (
-        <MaterialsCard m={materials} r={r} caseId={oa.case_id} />
+        <MaterialsCard m={materials} r={r} caseId={oa.case_id} specDocumentId={specDocumentId} />
       ) : (
         <div id="materials" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <h2 className="heading2">사건 자료 (모름)</h2>

@@ -304,7 +304,7 @@ export function DirectionsPage() {
           showIcon
           message={
             <span>
-              보정은 묶음마다가 아니라 사건 전체에서 한 번 정해요. 여기서 고르는 방향은 의견서의 반박 논점으로 쓰여요.{' '}
+              보정은 청구항마다가 아니라 사건 전체에서 한 번 정해요. 여기서 고르는 방향은 의견서의 반박 논점으로 쓰여요.{' '}
               <Link to="../drafts" relative="path">
                 초안의 보정 전략 보기
               </Link>
@@ -382,7 +382,7 @@ export function DirectionsPage() {
               <>
                 <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>직접 쓴 방향</h2>
                 <p className="body1" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{sel.written_direction}</p>
-                <span className="label2 t3">직접 쓴 방향이라 AI가 이 묶음의 초안을 만들지 않아요. 직접 대응해 주세요.</span>
+                <span className="label2 t3">직접 쓴 방향이라 AI가 이 청구항들의 초안을 만들지 않아요. 직접 대응해 주세요.</span>
               </>
             ) : picked ? (
               <>
@@ -407,13 +407,13 @@ export function DirectionsPage() {
               </>
             ) : d.candidates.length === 0 ? (
               // 후보가 0개면 실패한 것이다 (이유는 머리의 상태 꼬리표). 확신이 낮아서라고 말하지 않는다
-              <Alert type="warning" showIcon message="후보를 만들지 못했어요. 이 묶음은 직접 대응해 주세요." />
+              <Alert type="warning" showIcon message="후보를 만들지 못했어요. 이 청구항들은 직접 대응해 주세요." />
             ) : d.flags.includes('needs_human_judgment') && !d.candidates.some((c) => c.rank !== null) ? (
               <p className="body1 t2">
-                확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 묶음의 초안은 만들지 않아요.
+                확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 청구항들의 초안은 만들지 않아요.
               </p>
             ) : (
-              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 묶음의 초안은 만들지 않아요.</p>
+              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 청구항들의 초안은 만들지 않아요.</p>
             )}
 
             {d.candidates.length > 0 && (
@@ -475,7 +475,7 @@ export function DirectionsPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span className="label1 t2">후보 밖 방향을 직접 써요. 저장하면 AI는 이 묶음의 초안을 만들지 않아요</span>
+                <span className="label1 t2">후보 밖 방향을 직접 써요. 저장하면 AI는 이 청구항들의 초안을 만들지 않아요</span>
                 <Input.TextArea
                   autoSize={{ minRows: 3, maxRows: 10 }}
                   value={writing[d.unit_id]}

@@ -4,7 +4,7 @@ import { CoreLabel } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
 import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
-import { claimRange, sentence, claimLocationText } from '../../format'
+import { claimRange, sentence, claimLocationText, termText } from '../../format'
 import type { ClarityReview } from '../../types/generated/ClarityReview'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 
@@ -41,7 +41,7 @@ export function ClarityView({ c, unit }: { c: ClarityReview; unit: JudgmentUnit 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <CoreLabel />
         <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
-          청구항 {c.claim}의 “{c.term}”
+          청구항 {c.claim}의 “{termText(c.term)}”
         </h2>
         <p className="body1 t2">{sentence(c.note)} 판정은 하지 않아요.</p>
         {c.status.value !== 'confirmed' && (

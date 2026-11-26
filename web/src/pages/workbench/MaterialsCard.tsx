@@ -8,12 +8,14 @@ import type { OAResult } from '../../types/generated/OAResult'
 
 // 사건 자료: "사건 자료 N건" 제목 줄. 찾아온 자료(documents) · 못 가져온 자료(missing) · 보류한 작업(held_tasks)을 줄로.
 // 빠진 자료가 있으면 펼쳐서 보이고, 없으면 접고 "자세히". 직접 누른 것이 그 뒤를 이긴다
-export function MaterialsCard({ m, r, caseId }: { m: CaseMaterials; r: OAResult; caseId: string }) {
+export function MaterialsCard({ m, r, caseId, specDocumentId = null }: { m: CaseMaterials; r: OAResult; caseId: string; specDocumentId?: string | null }) {
   // 펼침: 누른 것은 그때의 주소 key와 묶는다. 새 주소(#materials, 직접 할 일 "자료 보기")로 오면 펼쳐서 보인다 (effect 없이 계산)
   const location = useLocation()
   const [pressed, setPressed] = useState<{ key: string; open: boolean } | null>(null)
   const open = pressed?.key === location.key ? pressed.open : location.hash === '#materials' || m.missing.length > 0
-  const count = m.documents.length + m.missing.length
+  // 명세서가 사건 자료 목록에 없으면 사건 정보에서 찾은 명세서도 센다 (MaterialRows와 같은 기준)
+  const extraSpec = specDocumentId !== null && !m.documents.some((d) => d.document_id === specDocumentId)
+  const count = m.documents.length + m.missing.length + (extraSpec ? 1 : 0)
 
   return (
     <div id="materials" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -28,7 +30,7 @@ export function MaterialsCard({ m, r, caseId }: { m: CaseMaterials; r: OAResult;
       </div>
       {open && (
         <>
-          <MaterialRows m={m} r={r} caseId={caseId} />
+          <MaterialRows m={m} r={r} caseId={caseId} specDocumentId={specDocumentId} />
           {/* 보류한 작업: 기다리는 자료가 오면 이어서 한다. 나머지 작업은 진행 */}
           {m.held_tasks.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '12px 0' }}>

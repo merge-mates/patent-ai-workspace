@@ -23,14 +23,28 @@ export function MaterialRows({
   r,
   caseId,
   showRetry = false,
+  specDocumentId = null,
 }: {
   m: CaseMaterials
   r: OAResult | null
   caseId: string
   showRetry?: boolean
+  // 사건 정보에서 찾은 출원 명세서 문서 ID. 사건 자료 목록에 없으면 줄을 하나 더해 보인다 (원문 판의 명세서 탭과 맞춘다)
+  specDocumentId?: string | null
 }) {
+  const extraSpec = specDocumentId !== null && !m.documents.some((d) => d.document_id === specDocumentId)
   return (
     <>
+      {extraSpec && (
+        <div style={lineStyle}>
+          <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span className="body2" style={{ fontWeight: 600 }}>
+              명세서 (출원서)
+            </span>
+            <span className="label1 t3">출원 때 판 · 오른쪽 원문 판의 명세서 탭에서 볼 수 있어요</span>
+          </div>
+        </div>
+      )}
       {/* 찾아온 자료. 상태는 "받음"이 아니라 묶기 상태 (다른 출원번호 문서가 묻히지 않게). 확인됨은 꼬리표 없음 */}
       {m.documents.map((d) => (
         <div key={d.document_id} style={lineStyle}>

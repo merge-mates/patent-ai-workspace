@@ -96,7 +96,7 @@ export function ComparePage() {
       {!table && !review && (unitReason ? (
         <EmptyReason what={unit.rejection_kind === 'clarity' ? '명확성 문구 검토' : '인용발명 대비'} reason={unitReason} />
       ) : (
-        <Empty description="이 묶음의 대비 결과가 아직 없습니다" />
+        <Empty description="이 청구항들의 대비 결과가 아직 없습니다" />
       ))}
       {/* 법률 근거 목록이 비었으면 이유를 (예: F2 넘김) */}
       {emptyReasons.legal && <EmptyReason what="법률 근거" reason={emptyReasons.legal} />}

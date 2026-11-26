@@ -11,7 +11,7 @@ import { SourceLink } from '../../components/SourceLink'
 import { CiteSpotButton } from '../../components/CiteSpotButtons'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
-import { claimRange, claimsText } from '../../format'
+import { claimRange, claimsText, termText } from '../../format'
 import { articleLabel, rejectionKindLabel } from '../../labels'
 import type { LegalEvidenceBundle } from '../../types/generated/LegalEvidenceBundle'
 import type { ClaimRow, OAResult, Rejection } from '../../types/generated/OAResult'
@@ -50,7 +50,7 @@ const sameAsText = (s: string) =>
 // 문구가 하나도 없으면 조문을 그대로 둔다 (지어내지 않음)
 function rejectionSub(rej: Rejection, rows: ClaimRow[]): string {
   if (rej.kind === 'clarity') {
-    const terms = [...new Set(rows.filter((x) => x.rejection === rej.no).flatMap((x) => x.clarity_terms))]
+    const terms = [...new Set(rows.filter((x) => x.rejection === rej.no).flatMap((x) => x.clarity_terms.map(termText)))]
     if (terms.length > 0)
       return `${claimsText(rej.claims)} · “${terms[0]}”${terms.length > 1 ? ` 외 ${terms.length - 1}개` : ''}`
   }
@@ -105,7 +105,7 @@ const rowColumns = (clarity: boolean, numbers: Record<string, string> = {}): Col
         {
           title: '문제 표현',
           render: (_: unknown, row: ClaimRow) =>
-            row.clarity_terms.length > 0 ? row.clarity_terms.map((t) => `'${t}'`).join(', ') : '—',
+            row.clarity_terms.length > 0 ? row.clarity_terms.map((t) => `'${termText(t)}'`).join(', ') : '—',
         },
         {
           title: '이유 (AI 참고)',
@@ -168,8 +168,17 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
                   <Tag>{c.label}</Tag>
                   <FieldValue v={c.number}>{c.number.value ?? c.number.raw_text ?? '번호 모름'}</FieldValue>
                   {!c.country_supported && <HumanCheckTag>지원 안 하는 나라 · 직접 확인</HumanCheckTag>}
+                  {/* 인용 위치도 아래 청구항 표처럼 버튼: 누르면 그 인용문헌 원문에서 그 위치를 강조 */}
                   <FieldValue v={c.cited_paragraphs}>
-                    {c.cited_paragraphs.value?.join(', ') ?? c.cited_paragraphs.raw_text ?? '위치 없음'}
+                    {c.cited_paragraphs.value && c.cited_paragraphs.value.length > 0 ? (
+                      <Space size={4} wrap>
+                        {c.cited_paragraphs.value.map((loc) => (
+                          <CiteSpotButton key={loc} label={c.label} number={c.number.value ?? c.number.raw_text} location={loc} />
+                        ))}
+                      </Space>
+                    ) : (
+                      (c.cited_paragraphs.raw_text ?? '위치 없음')
+                    )}
                   </FieldValue>
                 </Space>
               ))}
@@ -298,7 +307,7 @@ function ClaimDetail({ rows, byNo }: { rows: ClaimRow[]; byNo: Map<number, Rejec
       title: '인용·위치 / 문제 표현',
       render: (_, row) =>
         row.clarity_terms.length > 0
-          ? row.clarity_terms.map((t) => `'${t}'`).join(', ')
+          ? row.clarity_terms.map((t) => `'${termText(t)}'`).join(', ')
           : `${row.citations.join(' + ') || '—'} ${locationText(row) === '—' ? '' : `· ${locationText(row)}`}`,
     },
     // 인용문헌·위치 칸은 위에서 따로 그려서 뺀다

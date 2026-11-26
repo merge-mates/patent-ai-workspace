@@ -147,9 +147,15 @@ export function CaseShell() {
     requestAnimationFrame(() => {
       const hl = document.getElementById('source-highlight')
       const pageHead = page !== null ? document.getElementById(`source-page-${page}`) : null
-      ;(hl ?? pageHead ?? document.getElementById('source-panel'))?.scrollIntoView({
-        block: hl ? 'center' : 'start',
-      })
+      if (hl ?? pageHead) {
+        ;(hl ?? pageHead)?.scrollIntoView({ block: hl ? 'center' : 'start' })
+        return
+      }
+      // 판 자체로 갈 때: 판이 이미 화면에 보이면(넓은 화면에서 본문 옆) 왼쪽 화면을 움직이지 않는다.
+      // 좁은 화면에서 판이 본문 아래로 내려가 안 보일 때만 판으로 내린다
+      const panel = document.getElementById('source-panel')
+      const top = panel?.getBoundingClientRect().top ?? 0
+      if (panel && (top < 0 || top > window.innerHeight * 0.8)) panel.scrollIntoView({ block: 'start' })
     })
   const openPage: OpenPage = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
@@ -247,7 +253,8 @@ export function CaseShell() {
             )}
             {r && <HumanCheckTag />}
             {r && r.response_due.status.value !== 'confirmed' && <StatusTag status={r.response_due.status} />}
-            {r && r.status.value !== 'confirmed' && <StatusTag status={r.status} />}
+            {/* 정리 결과 전체의 상태: 무엇이 확인되지 않았는지 읽히게 글을 바꾸고, 원래 상태·이유는 툴팁에 */}
+            {r && r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} unverifiedText="정리에 확인할 곳 있음" />}
             {r && (
               <Button type="text" size="small" onClick={() => setInfoOpen(!infoOpen)}>
                 {infoOpen ? '사건 정보 접기' : '사건 정보'}
