@@ -1,12 +1,13 @@
 import { Button, Steps } from 'antd'
 import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
+import { api } from '../api'
 import { NumberInputForm } from '../components/NumberInputForm'
 import { CaseInfo } from '../components/CaseInfo'
 import { currentRunText, isPreviousResult } from '../previousResult'
 import { HumanCheckTag } from '../components/Marks'
 import { type OpenCite, type OpenEvidence, type OpenPage, SourceContext } from '../components/sourceContext'
-import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
+import { type CitedState, type PanelEvidence, SourcePanel } from '../components/SourcePanel'
 import { RunNotice } from '../components/RunNotice'
 import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
@@ -114,6 +115,8 @@ export function CaseShell() {
   const [evidenceAt, setEvidenceAt] = useState<{ data: PanelEvidence; owner: string } | null>(null)
   const owner = `${sub}|${new URLSearchParams(location.search).get('unit') ?? ''}`
   const evidence = evidenceAt && evidenceAt.owner === owner ? evidenceAt.data : null
+  // 판에 연 인용문헌의 원문 전체 (대비 줄을 누를 때 받는다). loading/실패도 판에 그대로 보인다
+  const [cited, setCited] = useState<CitedState | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
 
@@ -166,7 +169,28 @@ export function CaseShell() {
     setEvidenceAt({ data: { kind: 'cite', ref }, owner })
     setSrcOpen(true)
     scrollToPanel()
+    // 인용문헌 번호를 알면 원문 전체를 받아 판에 잇는다 (같은 문헌이면 다시 받지 않음).
+    // 받은 뒤 근거 문단으로 내린다 (effect 없이 누른 그 자리에서 받는다)
+    const docId = ref.docId
+    if (!docId) return
+    if (cited?.docId === docId && cited.doc) {
+      scrollToCited()
+      return
+    }
+    setCited({ docId, doc: null, failed: false })
+    api
+      .getCitedDocument(docId)
+      .then((doc) => {
+        setCited({ docId, doc, failed: false })
+        scrollToCited()
+      })
+      .catch(() => setCited({ docId, doc: null, failed: true }))
   }
+  // 강조한 근거 문단(없으면 판)으로 판 안에서 내린다
+  const scrollToCited = () =>
+    requestAnimationFrame(() =>
+      (document.getElementById('cited-highlight') ?? document.getElementById('source-panel'))?.scrollIntoView({ block: 'center' }),
+    )
 
   return (
     <SourceContext value={{ openPage, openEvidence, openCite }}>
@@ -301,6 +325,7 @@ export function CaseShell() {
           </section>
           <SourcePanel
             open={srcOpen}
+            cited={evidence?.kind === 'cite' ? cited : null}
             page={shown.page}
             highlight={shown.text}
             document={data.document}

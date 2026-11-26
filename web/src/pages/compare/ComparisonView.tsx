@@ -191,6 +191,8 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
                 // 검색 순위·방식(hybrid, 몇 위)은 개발용이라 쉬운 말로 바꾼다
                 note: r.why_retrieved ? whyText(r.why_retrieved) : null,
                 unverifiedText: COMPARE_UNVERIFIED_TEXT,
+                // 근거 문단이 없는 줄도 그 인용문헌 원문 전체는 열 수 있게 (표의 인용발명 번호)
+                docId: r.evidence[0]?.document_id ?? t.citations.find((c) => c.label === r.citation)?.number ?? null,
               }),
             style: { cursor: 'pointer' },
           })}

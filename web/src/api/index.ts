@@ -1,6 +1,7 @@
 // 서버를 부르는 곳은 여기 한 곳이다. 화면은 이 api 객체만 쓴다.
 // VITE_API_MODE=mock 이면 fixture(mock.ts), 아니면 서버(/api/*).
 import type { ClarityReview } from '../types/generated/ClarityReview'
+import type { CitedDocument } from '../types/provisional/citedDocument'
 import type { ComparisonTable } from '../types/generated/ComparisonTable'
 import type { DirectionCandidates } from '../types/generated/DirectionCandidates'
 import type { JudgmentUnit } from '../types/generated/JudgmentUnit'
@@ -95,6 +96,8 @@ type FrontendApi = Omit<typeof mockApi, 'getDrafts' | 'patchDraft' | 'getAmendme
   getDrafts: (oaId: string) => Promise<Drafts>
   getAmendmentPlan: (oaId: string) => Promise<AmendmentPlanInfo | null>
   patchDraft: (draftId: string, patch: DraftPatch) => Promise<Drafts>
+  // 인용문헌 원문 전체 (색인 조각을 문헌 순서로). mock에는 없다
+  getCitedDocument: (docId: string) => Promise<CitedDocument>
 }
 
 const httpApi: FrontendApi = {
@@ -112,6 +115,7 @@ const httpApi: FrontendApi = {
     throw new ApiError('not_in_api_v0', '검토할 사항 목록은 API v0에 아직 없음', 0)
   },
   getDocument: (documentId) => getJson<PageText>(`/documents/${documentId}`),
+  getCitedDocument: (docId) => getJson<CitedDocument>(`/citations/${encodeURIComponent(docId)}`),
   getUnits: (oaId) => getResult<JudgmentUnit>(`/oas/${oaId}/units`),
   getComparisons: (oaId) => getResult<ComparisonTable>(`/oas/${oaId}/comparisons`),
   getClarityReviews: (oaId) => getResult<ClarityReview>(`/oas/${oaId}/clarity-reviews`),
@@ -171,4 +175,9 @@ const httpApi: FrontendApi = {
   getLegalChat: (chatId) => getJson<LegalChatView>(`/legal-chats/${encodeURIComponent(chatId)}`),
 }
 
-export const api: FrontendApi = API_MODE === 'mock' ? mockApi : httpApi
+// mock에는 인용문헌 원문 API가 없다: 판은 "원문을 받지 못했어요"로 보인다
+const mockWithCited: FrontendApi = {
+  ...mockApi,
+  getCitedDocument: () => Promise.reject(new Error('mock에는 인용문헌 원문이 없습니다')),
+}
+export const api: FrontendApi = API_MODE === 'mock' ? mockWithCited : httpApi

@@ -20,6 +20,8 @@ export interface CiteRef {
   note: string | null
   // 확인되지 않음을 판에 보일 글자 (대비 줄은 "원문 확인 필요", D15). 없으면 "확인되지 않음"
   unverifiedText?: string
+  // 인용문헌 번호 (KR…A). 있으면 판이 그 인용문헌 원문 전체를 받아 이어 보이고 근거 문단을 강조한다
+  docId?: string | null
 }
 export type OpenCite = (ref: CiteRef) => void
 

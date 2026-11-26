@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from patent_ai.api import (
     cases,
+    citations,
     deps,
     directions,
     documents,
@@ -46,6 +47,7 @@ def create_app(startup_store: RunStatusStore | None = None) -> FastAPI:
     app.include_router(cases.router)
     app.include_router(oas.router)
     app.include_router(documents.router)
+    app.include_router(citations.router)
     app.include_router(runs.router)
     app.include_router(results.router)
     app.include_router(directions.router)

@@ -293,6 +293,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /citations/{doc_id}:
+    get:
+      summary: Get Cited Document
+      operationId: get_cited_document_citations__doc_id__get
+      parameters:
+      - name: doc_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Doc Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitedDocument'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /oas/{oa_id}/runs:
     post:
       summary: Create Run
@@ -1386,6 +1410,49 @@ components:
       - country_supported
       - cited_paragraphs
       title: Citation
+    CitedDocument:
+      properties:
+        doc_id:
+          type: string
+          title: Doc Id
+        index_version:
+          type: string
+          title: Index Version
+        parts:
+          items:
+            $ref: '#/components/schemas/CitedPart'
+          type: array
+          title: Parts
+      additionalProperties: false
+      type: object
+      required:
+      - doc_id
+      - index_version
+      - parts
+      title: CitedDocument
+    CitedPart:
+      properties:
+        chunk_id:
+          type: string
+          title: Chunk Id
+        kind:
+          type: string
+          title: Kind
+        label:
+          type: string
+          title: Label
+        text:
+          type: string
+          title: Text
+      additionalProperties: false
+      type: object
+      required:
+      - chunk_id
+      - kind
+      - label
+      - text
+      title: CitedPart
+      description: 문헌 조각 하나 (화면에서 한 문단).
     ClaimRow:
       properties:
         claim:

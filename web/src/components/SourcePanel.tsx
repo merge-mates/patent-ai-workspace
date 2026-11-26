@@ -6,6 +6,14 @@ import type { PageText } from '../types/generated/PageText'
 import { StatusLine } from './StatusLine'
 import { StatusTag } from './StatusTag'
 import type { CiteRef } from './sourceContext'
+import type { CitedDocument } from '../types/provisional/citedDocument'
+
+// 판에 연 인용문헌 원문 전체 상태: 받는 중(doc null, failed false) / 받음 / 못 받음
+export interface CitedState {
+  docId: string
+  doc: CitedDocument | null
+  failed: boolean
+}
 
 // 근거 글자를 찾으면 왼쪽 파란 선 + 옅은 파랑 바탕 (디자인 B 고친 판)
 const highlightStyle = {
@@ -29,6 +37,8 @@ interface Props {
   document: PageText | null
   // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다
   evidence: PanelEvidence | null
+  // 대비 줄을 열었을 때 그 인용문헌 원문 전체 (없으면 근거 문단만)
+  cited?: CitedState | null
   onToggle: () => void
 }
 
@@ -70,7 +80,7 @@ function EvidenceBody({ s, checkedOn }: { s: LegalSource; checkedOn: string }) {
 }
 
 // 공통 근거 위치 하나(들)의 판 안 모양: 상태 → 근거 글(강조) → 위치 → 덧붙임
-function CiteBody({ r }: { r: CiteRef }) {
+function CiteBody({ r, cited }: { r: CiteRef; cited: CitedState | null }) {
   return (
     <>
       <div>
@@ -99,14 +109,51 @@ function CiteBody({ r }: { r: CiteRef }) {
       ))}
       {r.items.length === 0 && <Alert type="info" showIcon message="이 줄에 연결된 근거 위치가 없어요" />}
       {r.note && <span className="label1 t2">{r.note}</span>}
-      <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
+      {cited ? (
+        <CitedFull cited={cited} highlight={new Set(r.items.map((e) => e.chunk_id).filter((x): x is string => !!x))} />
+      ) : (
+        <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
+      )}
     </>
+  )
+}
+
+// 인용문헌 원문 전체: 요약 → 청구항 → 본문 문단 → 도면 설명. 근거 문단은 강조하고 첫 근거로 판이 내려간다
+function CitedFull({ cited, highlight }: { cited: CitedState; highlight: Set<string> }) {
+  if (cited.failed) return <Alert type="info" showIcon message={`${cited.docId} 원문을 받지 못했어요`} />
+  if (!cited.doc) return <span className="label1 t3">{cited.docId} 원문을 불러오는 중이에요…</span>
+  // 첫 근거 문단에만 id를 달아 판이 그리로 내려가게 한다
+  const firstId = cited.doc.parts.find((p) => highlight.has(p.chunk_id))?.chunk_id
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--line-neutral-tertiary)', paddingTop: 12 }}>
+      <span className="label2 t3">
+        {cited.docId} 원문 전체 · {cited.doc.parts.length}개 문단 · 스크롤해서 모두 볼 수 있어요
+      </span>
+      {cited.doc.parts.map((p) => {
+        const on = highlight.has(p.chunk_id)
+        const id = p.chunk_id === firstId ? 'cited-highlight' : undefined
+        return (
+          <div key={p.chunk_id} id={id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span className="label2" style={{ fontWeight: 600, color: on ? 'var(--fg-neutral-primary)' : 'var(--fg-neutral-tertiary)' }}>
+              {p.label}
+              {on ? ' · 근거' : ''}
+            </span>
+            <p
+              className="body2r"
+              style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: 'var(--fg-neutral-secondary)', ...(on ? highlightStyle : {}) }}
+            >
+              {p.text}
+            </p>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
 // 오른쪽 "참고 원문" 판. 펴면 그 쪽 글자, 접으면 48px 세로 막대.
 // 단계를 옮겨도 사건 틀이 상태를 들고 있어서 접힘이 유지된다
-export function SourcePanel({ open, page, highlight, document, evidence, onToggle }: Props) {
+export function SourcePanel({ open, page, highlight, document, evidence, onToggle, cited = null }: Props) {
   if (!open) {
     return (
       <aside
@@ -174,7 +221,7 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
         evidence.kind === 'legal' ? (
           <EvidenceBody s={evidence.source} checkedOn={evidence.checkedOn} />
         ) : (
-          <CiteBody r={evidence.ref} />
+          <CiteBody r={evidence.ref} cited={cited && cited.docId === evidence.ref.docId ? cited : null} />
         )
       ) : document === null ? (
         // 원문이 없어도 빈 판으로 두지 않는다
