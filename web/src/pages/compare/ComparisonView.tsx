@@ -2,11 +2,12 @@ import { AuditOutlined, CheckOutlined, DiffOutlined, EllipsisOutlined, RobotOutl
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { type ReactNode, useContext, useState } from 'react'
-import { claimLocationText, scopeText, sentence } from '../../format'
+import { claimLocationText, claimRange, scopeText, sentence } from '../../format'
 import { CoreLabel, HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { locationLabels } from '../../components/citeLabels'
 import { StatusTag } from '../../components/StatusTag'
+import { differenceElements } from './differences'
 import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
 import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '../../types/generated/ComparisonTable'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
@@ -37,8 +38,8 @@ const noveltyVerdictText: Record<NoveltySummary['verdict'], string> = {
 // 핵심 한 덩어리의 한 줄 요약: 표 값으로 만들 수 있는 만큼만 (진보성: 차이점 후보 개수 + 첫 구성요소)
 function headline(t: ComparisonTable): string {
   if (t.summary.kind === 'novelty') return `${t.summary.citation} 하나와 대비 · ${noveltyVerdictText[t.summary.verdict]}`
-  const diffs = t.rows.filter((r) => r.judgment === 'difference_candidate')
-  if (diffs.length > 0) return `차이점 후보 ${diffs.length}개 · “${diffs[0].element}”${diffs.length > 1 ? ` 외 ${diffs.length - 1}개` : ''}`
+  const diffs = differenceElements(t)
+  if (diffs.length > 0) return `차이점 후보 ${diffs.length}개 · “${diffs[0]}”${diffs.length > 1 ? ` 외 ${diffs.length - 1}개` : ''}`
   if (t.rows.length === 0) return '대비한 구성요소 줄이 아직 없어요'
   return '차이점 후보를 찾지 못했어요'
 }
@@ -57,29 +58,32 @@ function headlineShort(t: ComparisonTable): string {
   return headline(t)
 }
 
-// 차이점 후보 구성요소 이름: 인용발명 어느 하나에서 "같은 구성"으로 찾은 구성요소는 뺀다
-// (같은 구성요소가 D1·D2 줄로 두 번 있어도 한 번만)
-const diffNames = (t: ComparisonTable): string[] => {
-  if (t.summary.kind === 'novelty') return []
-  const found = new Set(t.rows.filter((r) => r.judgment === 'disclosed').map((r) => r.element))
-  return [...new Set(t.rows.filter((r) => r.judgment === 'difference_candidate' && !found.has(r.element)).map((r) => r.element))]
-}
+// 차이점 후보 구성요소 이름 (진보성만 목록으로 보인다. 신규성은 제목에 판정이 있다)
+const diffNames = (t: ComparisonTable): string[] => (t.summary.kind === 'novelty' ? [] : differenceElements(t))
 
-// 이 묶음 청구항에 대해 심사관이 짚은 인용 위치: 청구항 줄의 위치가 있으면 그것, 없으면 거절이유 인용문헌 칸
-function examinerSpots(oa: OAResult | null, unit: JudgmentUnit) {
+// 이 묶음 청구항에 대해 심사관이 짚은 인용 위치: 청구항 줄의 위치가 있으면 그것, 없으면 거절이유 인용문헌 칸.
+// 위치마다 어느 청구항에 대해 짚었는지(claims)와, AI가 이 표에서 그 문단을 근거로 썼는지(used)를 같이 둔다.
+// 구성요소와의 연결은 데이터에 없어 붙이지 않는다 (지어내지 않음)
+function examinerSpots(oa: OAResult | null, unit: JudgmentUnit, t: ComparisonTable) {
   const rej = oa?.rejections.find((r) => r.no === unit.rejection)
   if (!oa || !rej) return []
-  const out: { label: string; number: string; location: string; labels: string[] }[] = []
+  const out: { label: string; number: string; location: string; labels: string[]; claims: number[]; used: boolean }[] = []
   for (const c of rej.citations) {
     const number = c.number.value ?? c.number.raw_text
     if (!number) continue
-    const fromRows = oa.claim_rows
-      .filter((row) => row.rejection === unit.rejection && row.claim !== null && unit.claims.includes(row.claim))
-      .flatMap((row) => row.locations[c.label] ?? [])
-    const locations = fromRows.length > 0 ? fromRows : (c.cited_paragraphs.value ?? [])
-    for (const loc of [...new Set(locations)]) {
-      const labels = locationLabels(loc.trim())
-      if (labels) out.push({ label: c.label, number, location: loc.trim(), labels })
+    // 위치 글자 → 그 위치를 짚은 청구항들
+    const byLoc = new Map<string, number[]>()
+    for (const row of oa.claim_rows) {
+      if (row.rejection !== unit.rejection || row.claim === null || !unit.claims.includes(row.claim)) continue
+      for (const loc of row.locations[c.label] ?? []) byLoc.set(loc.trim(), [...(byLoc.get(loc.trim()) ?? []), row.claim])
+    }
+    if (byLoc.size === 0) for (const loc of c.cited_paragraphs.value ?? []) byLoc.set(loc.trim(), [])
+    // AI가 이 표에서 근거로 쓴 그 인용문헌의 문단 표기
+    const usedLabels = new Set(t.rows.flatMap((r) => r.evidence.filter((e) => e.document_id === number).map((e) => e.location)))
+    for (const [loc, claims] of byLoc) {
+      const labels = locationLabels(loc)
+      if (labels)
+        out.push({ label: c.label, number, location: loc, labels, claims: [...new Set(claims)].sort((x, y) => x - y), used: labels.some((l) => usedLabels.has(l)) })
     }
   }
   return out
@@ -87,7 +91,7 @@ function examinerSpots(oa: OAResult | null, unit: JudgmentUnit) {
 
 // 구성 대비: 핵심(AI 제안) → 못 본 인용발명 → 구성요소 표(행을 누르면 오른쪽에 근거) → 따지는 순서 펼침
 export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResult | null; unit: JudgmentUnit }) {
-  const spots = examinerSpots(oa, unit)
+  const spots = examinerSpots(oa, unit, t)
   const { openCite } = useContext(SourceContext)
   const [orderOpen, setOrderOpen] = useState(false)
 
@@ -120,6 +124,7 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
       docId: r.evidence[0]?.document_id ?? t.citations.find((c) => c.label === r.citation)?.number ?? null,
     })
 
+  const inventive = t.summary.kind === 'inventive_step'
   // 인용발명 칸 하나: 그 인용발명 줄마다 대비 결과 + 문단(누르면 오른쪽에) + 심사관 지정 표시
   const citeCell = (line: ElementLine, label: string) => {
     const rows = line.rows.filter((r) => r.citation === label)
@@ -130,12 +135,20 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
           const where = [...new Set(r.evidence.map((e) => e.location).filter(Boolean))].join(', ')
           return (
             <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Tag color={judgmentTag[r.judgment].color} icon={judgmentTag[r.judgment].icon} bordered={false}>
-                {judgmentTag[r.judgment].text}
-              </Tag>
+              {/* 진보성은 인용발명을 결합해서 보므로 한 문헌에 없다고 차이점이 아니다:
+                  인용문헌 칸에서는 "대응 기재 못 찾음"(회색)으로, 차이점 후보는 결론 칸에서만 말한다 */}
+              {inventive && r.judgment === 'difference_candidate' ? (
+                <Tag bordered={false} style={{ background: '#f0f0f0', color: 'rgba(0,0,0,0.65)' }}>
+                  대응 기재 못 찾음
+                </Tag>
+              ) : (
+                <Tag color={judgmentTag[r.judgment].color} icon={judgmentTag[r.judgment].icon} bordered={false}>
+                  {judgmentTag[r.judgment].text}
+                </Tag>
+              )}
               <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => openRow(r)}>
-                {/* 근거 문단이 없으면 "검색 실패"처럼 읽히지 않게 왜 차이점 후보인지를 쓴다 (상태 이름은 툴팁에) */}
-                {where || (r.judgment === 'difference_candidate' ? '대응 문단 못 찾음' : '문단 없음')}
+                {/* 근거 문단이 없으면 찾아본 범위를 오른쪽에 연다 */}
+                {where || (r.judgment === 'difference_candidate' ? (inventive ? '찾아본 범위' : '대응 문단 못 찾음') : '문단 없음')}
               </Button>
               {r.evidence.length > 0 && r.paragraph_source === 'examiner' && (
                 <Tooltip title="통지서에서 심사관이 짚은 문단">
@@ -216,6 +229,13 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
         <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
           {headlineShort(t)}
         </h2>
+        {/* 진보성: 차이점만이 아니라 심사관이 그 차이를 어떻게 메웠는지(결합 논리)를 바로 아래 한 줄로 */}
+        {t.summary.kind === 'inventive_step' && t.summary.combination && (
+          <div style={{ padding: '10px 14px', borderLeft: '3px solid var(--fg-neutral-tertiary)', background: 'var(--bg-neutral-secondary)', borderRadius: 4 }}>
+            <span className="label2 t3">심사관은 이 차이를 이렇게 봤어요 (AI 요약 · 판정은 하지 않아요)</span>
+            <div className="body2">{sentence(t.summary.combination)}</div>
+          </div>
+        )}
         {/* 차이점 후보 구성요소 이름은 제목에 다 넣으면 두세 줄이 되어 작게 목록으로 */}
         {diffNames(t).length > 0 && (
           <ul className="body2 t2" style={{ margin: 0, paddingLeft: 20 }}>
@@ -224,9 +244,7 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
             ))}
           </ul>
         )}
-        <p className="body1 t2">
-          {sentence(t.summary.kind === 'novelty' ? t.summary.reason : t.summary.combination)} 판정은 하지 않아요.
-        </p>
+        {t.summary.kind === 'novelty' && <p className="body1 t2">{sentence(t.summary.reason)} 판정은 하지 않아요.</p>}
         {/* 표가 "조회 범위 내 없음"이면 그 꼬리표와 찾아본 범위를 같이 */}
         {t.status.value !== 'confirmed' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -283,9 +301,15 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
                 }
               >
                 {s.label} {s.location}
+                {/* 어느 청구항에 대해 짚었는지 · AI가 이 표에서 근거로 썼는지 */}
+                <span className="label2 t3" style={{ marginLeft: 6 }}>
+                  {s.claims.length > 0 ? `청구항 ${claimRange(s.claims)} · ` : ''}
+                  {s.used ? 'AI 근거로 씀' : 'AI 근거에 없음'}
+                </span>
               </Button>
             ))}
           </div>
+          <span className="label2 t3">“AI 근거에 없음”은 심사관은 짚었지만 아래 표에 근거로 나오지 않은 문단이에요. 직접 확인해 주세요.</span>
         </div>
       )}
 

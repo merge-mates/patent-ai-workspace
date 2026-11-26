@@ -17,6 +17,7 @@ import { refreshRun, isRunEnded, isSelectionRunActive } from '../runPoll'
 import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../todos'
 import { useRunSnapshot } from '../useRunSnapshot'
 import type { LatestRun } from '../types/provisional/case'
+import { differenceElements } from '../pages/compare/differences'
 
 // 사건 안의 단계 4개 (디자인 B 고친 판). 단계마다 주소가 있어 새로고침·뒤로 가기가 된다
 const STEPS = [
@@ -83,13 +84,14 @@ function stepItems(
   })
 }
 
-// 단계 막대 설명의 개수 (디자인 B): 대비 "차이점 후보 N" = 대비표 줄 가운데 차이점 후보,
+// 단계 막대 설명의 개수 (디자인 B): 대비 "차이점 후보 N" = 대비표마다 차이점 후보 구성요소 수의 합,
 // 방향 "고를 것 N" = 직접 판단이 필요한데 아직 안 고른 묶음 (직접 할 일의 방향 고르기와 같은 셈).
 // 결과를 모르거나 목록이 비면(넘김·보류로 빈 목록 + 빈 이유) 비운다: "0"으로 보이면 셀 결과가 있는 것처럼 읽힌다
 function stepCounts(d: OALoaderData): (string | undefined)[] {
   const tables = d.comparisons?.length ? d.comparisons : null
   const dirs = d.directions?.length ? d.directions : null
-  const diffs = tables?.reduce((n, t) => n + t.rows.filter((x) => x.judgment === 'difference_candidate').length, 0)
+  // 구성요소 기준으로 센다 (진보성은 인용발명 칸마다가 아니라 어느 인용발명에서도 못 찾은 구성요소만)
+  const diffs = tables?.reduce((n, t) => n + differenceElements(t).length, 0)
   const toPick = dirs?.filter((x) => x.flags.includes('needs_human_judgment') && x.selection === null).length
   return [undefined, diffs === undefined ? undefined : `차이점 후보 ${diffs}`, toPick === undefined ? undefined : `고를 것 ${toPick}`, undefined]
 }
