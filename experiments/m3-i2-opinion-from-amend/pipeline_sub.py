@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run as R  # noqa: E402
 
 from patent_ai.api import deps  # noqa: E402
-from patent_ai.core.agents import orchestrator, step_inputs  # noqa: E402
+from patent_ai.core.agents import orchestrator  # noqa: E402
 from patent_ai.core.f4_response_draft import run as f4_run  # noqa: E402
 from patent_ai.core.llm.cache import FileCache  # noqa: E402
 from patent_ai.core.llm.limits import CallBudget, RunContext  # noqa: E402
@@ -59,23 +59,21 @@ def main():
         transport=Sub(),
         cache=cache,
     )
-    if plan_path:  # F3에만 보정 뒤 청구항 글을 준다 (F4는 OA 당시 글 그대로)
+    if plan_path:  # 판단 단위 나누기와 F3에만 보정 뒤 청구항 글을 준다 (F4는 OA 당시 글 그대로)
         plan = json.loads(plan_path.read_text())
-        orig = step_inputs.f3_input
 
-        def amended(results, case_id, texts):
-            payload = orig(results, case_id, texts)
-            if isinstance(payload, dict):
-                inputs = payload["config"]["inputs"]
-                claims = dict(inputs.claims_at_oa)
-                for q in plan["amended"]:
-                    if q["action"] != "delete" and q["claim"] in claims:
-                        claims[q["claim"]] = q["text"]
-                payload["config"]["inputs"] = inputs.model_copy(update={"claims_at_oa": claims})
-            return payload
+        def amend(texts):
+            if texts is None:
+                return None
+            claims = dict(texts.claims_at_oa)
+            for q in plan["amended"]:
+                if q["action"] != "delete" and q["claim"] in claims:
+                    claims[q["claim"]] = q["text"]
+            return texts.model_copy(update={"claims_at_oa": claims})
 
-        step_inputs.f3_input = amended
-        orchestrator.f3_input = amended
+        for name in ("prepare_input", "f3_input"):
+            orig = getattr(orchestrator, name)
+            setattr(orchestrator, name, lambda r, c, t, orig=orig: orig(r, c, amend(t)))
     f4_orig = f4_run.run_f4
 
     def saved(inp, *, ctx, **kw):
