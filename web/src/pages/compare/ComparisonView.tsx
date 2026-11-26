@@ -2,7 +2,7 @@ import { AuditOutlined, CheckOutlined, DiffOutlined, EllipsisOutlined, RobotOutl
 import { Button, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { type ReactNode, useContext, useState } from 'react'
-import { sentence } from '../../format'
+import { claimLocationText, scopeText, sentence } from '../../format'
 import { CoreLabel, HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
@@ -13,7 +13,7 @@ import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '.
 const judgmentTag: Record<Judgment, { color: string; text: string; icon: ReactNode }> = {
   disclosed: { color: 'green', text: '같은 구성', icon: <CheckOutlined /> },
   difference_candidate: { color: 'orange', text: '차이점 후보', icon: <DiffOutlined /> },
-  unclear: { color: 'default', text: '불명', icon: <EllipsisOutlined /> },
+  unclear: { color: 'default', text: '판단 어려움', icon: <EllipsisOutlined /> },
 }
 
 const noveltyVerdictText: Record<NoveltySummary['verdict'], string> = {
@@ -31,6 +31,12 @@ function headline(t: ComparisonTable): string {
   return '차이점 후보를 찾지 못했어요'
 }
 
+// 왜 가져왔나: 검색 내부 글자("hybrid 상위 10에서 9위")면 쉬운 말로, 아니면 그대로
+function whyText(why: string): string {
+  if (/hybrid|상위 \d+|\d+위|cite-idx/.test(why)) return '청구항 구성요소의 글자로 인용문헌에서 찾은 문단이에요.'
+  return `왜 가져왔나: ${why}`
+}
+
 // 구성 대비: 핵심(AI 제안) → 못 본 인용발명 → 구성요소 표(행을 누르면 오른쪽에 근거) → 따지는 순서 펼침
 export function ComparisonView({ t }: { t: ComparisonTable }) {
   const { openCite } = useContext(SourceContext)
@@ -42,9 +48,8 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
       render: (_, r) => (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span>{r.element}</span>
-          <span className="label2 t3">
-            청구항 {r.claim} · {r.element_location}
-          </span>
+          {/* "청구항 1 · 청구항 1 [구성 1-1]"처럼 겹치지 않게 위치 글자를 정리 */}
+          <span className="label2 t3">{claimLocationText(r.claim, r.element_location)}</span>
         </div>
       ),
     },
@@ -97,11 +102,21 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
         {/* 표가 "조회 범위 내 없음"이면 그 꼬리표와 찾아본 범위를 같이 */}
         {t.status.value !== 'confirmed' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <StatusTag status={t.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />
-            {t.status.value === 'not_found_in_scope' && t.status.searched_scope && (
+            {/* 표 전체가 "조회 범위 내 없음"이어도 같은 구성을 찾은 줄이 있으면 "일부"라고 말한다 (머리와 줄이 어긋나 보이지 않게) */}
+            {t.status.value === 'not_found_in_scope' && t.rows.some((r) => r.judgment === 'disclosed') ? (
               <span className="label1 t2">
-                {t.status.searched_scope}에서 같은 구성을 못 찾았어요. 없다고 단정하지는 않아요.
+                구성요소 {t.rows.filter((r) => r.status.value === 'not_found_in_scope').length}줄은 인용발명에서 대응 문단을 찾지
+                못했어요{t.status.searched_scope ? ` (찾아본 범위: ${scopeText(t.status.searched_scope)})` : ''}. 없다고 단정하지는 않아요.
               </span>
+            ) : (
+              <>
+                <StatusTag status={t.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />
+                {t.status.value === 'not_found_in_scope' && t.status.searched_scope && (
+                  <span className="label1 t2">
+                    같은 구성을 못 찾았어요 (찾아본 범위: {scopeText(t.status.searched_scope)}). 없다고 단정하지는 않아요.
+                  </span>
+                )}
+              </>
             )}
           </div>
         )}
@@ -134,7 +149,8 @@ export function ComparisonView({ t }: { t: ComparisonTable }) {
                 title: `${r.citation} ${r.evidence[0]?.location ?? r.element_location}`.trim(),
                 items: r.evidence,
                 status: r.status,
-                note: r.why_retrieved ? `왜 가져왔나: ${r.why_retrieved}` : null,
+                // 검색 순위·방식(hybrid, 몇 위)은 개발용이라 쉬운 말로 바꾼다
+                note: r.why_retrieved ? whyText(r.why_retrieved) : null,
                 unverifiedText: COMPARE_UNVERIFIED_TEXT,
               }),
             style: { cursor: 'pointer' },

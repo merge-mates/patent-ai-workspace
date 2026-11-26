@@ -40,7 +40,7 @@ export function ComparePage() {
   const unsupportedRows = unsupported.map((r) => (
     <div key={r.no} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <HumanCheckTag>직접 검토 필요</HumanCheckTag>
-      <span className="label1 t2">{`거절이유 ${r.no}(특허법 ${articleLabel(r.article.value)})는 AI가 다루지 않아 판단 단위가 없어요.`}</span>
+      <span className="label1 t2">{`거절이유 ${r.no}(특허법 ${articleLabel(r.article.value)}) — AI가 다루지 않는 거절이유라 대비하지 않았어요. 직접 검토해 주세요.`}</span>
     </div>
   ))
 
@@ -82,7 +82,8 @@ export function ComparePage() {
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="label1 t3">
-          묶음 {unit.order} · 청구항 {claimRange(unit.claims)}
+          {/* "묶음 N" 대신 청구항 범위만 */}
+          청구항 {claimRange(unit.claims)}
           {unit.read_with.length > 0 ? ` · 함께 읽을 청구항 ${claimRange(unit.read_with)}` : ''}
         </span>
         {unit.status.value !== 'confirmed' && <StatusTag status={unit.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />}

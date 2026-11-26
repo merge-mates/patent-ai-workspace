@@ -143,7 +143,13 @@ export function buildFixes(
   return out
 }
 
+type CaseItem = { name: string; result: 'ok' | 'warn' | 'fail'; detail: string }
+
+// 서버가 아직 검사 규칙을 만들지 않은 항목 ("확인되지 않음: 아직 검사하지 않는 규칙"):
+// 문제가 있다는 뜻이 아니라 AI가 안 본 것이라, "확인할 것" 개수에 넣지 않고 따로 한 줄로 알린다 (숨기지는 않음)
+export const isNotYetChecked = (it: CaseItem) => it.result === 'warn' && it.detail.includes('아직 검사하지 않는 규칙')
+
 // 사건 전체 검사에서 ok가 아닌 항목: 자유 글이라 위 줄과 짝을 맞추지 않고 따로 모은다 (N에 넣지 않음)
-export function caseToCheck(items: { name: string; result: 'ok' | 'warn' | 'fail'; detail: string }[]) {
-  return items.filter((it) => it.result !== 'ok')
+export function caseToCheck(items: CaseItem[]) {
+  return items.filter((it) => it.result !== 'ok' && !isNotYetChecked(it))
 }

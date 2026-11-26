@@ -2,7 +2,7 @@ import { Button, Tooltip } from 'antd'
 import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
 import { UploadMaterialButton } from './UploadMaterialButton'
-import { lookupResultLabel, materialKindLabel, sourceLabel } from '../labels'
+import { materialKindLabel, sourceLabel } from '../labels'
 import { showDispatchNumber } from '../numberShapes'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { OAResult } from '../types/generated/OAResult'
@@ -54,7 +54,7 @@ export function MaterialRows({
             <span className="body2" style={{ fontWeight: 600 }}>
               {x.what}
             </span>
-            <span className="label1 t3">{[lookupResultLabel[x.lookup_result], '판 모름', '자동 조회'].join(' · ')}</span>
+            {/* 이유는 오른쪽 상태 꼬리표에 있어 같은 말을 두 번 쓰지 않는다 ("판 모름 · 자동 조회"는 개발용이라 뺌) */}
           </div>
           {x.lookup_result === 'unsupported_country' ? (
             <HumanCheckTag>직접 확인</HumanCheckTag>

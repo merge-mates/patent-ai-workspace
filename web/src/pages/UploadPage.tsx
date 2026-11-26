@@ -68,7 +68,7 @@ export function UploadPage() {
         </Link>
         <h1 className="heading1">새 사건 · 의견제출통지서 올리기</h1>
         <span className="body2 t2">
-          통지서 PDF 하나만 올리면 나머지 자료는 출원번호로 찾아와요. 못 가져온 것만 올려 주시면 돼요.
+          통지서 PDF를 올리면 거절이유를 정리하고 인용발명과 대비해요. 인용문헌 본문이 필요하면 사건 화면에서 알려 드려요.
         </span>
         {/* 자동 조회(#54)는 아직 없다: mock이 흉내라는 것을 숨기지 않는다 */}
         {API_MODE === 'mock' && <span className="label2 t3">mock: 예시 사건으로 흉내 내요</span>}

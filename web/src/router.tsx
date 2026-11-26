@@ -18,6 +18,12 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AppShell />,
     errorElement: <RouteError />,
+    // 주소로 바로 들어와 처음 데이터를 받는 동안 빈 흰 화면 대신 알림 (화면 안 이동은 AppShell이 알린다)
+    hydrateFallbackElement: (
+      <div className="body1 t3" style={{ padding: 48, textAlign: 'center' }}>
+        사건 자료를 불러오는 중이에요…
+      </div>
+    ),
     children: [
       { index: true, loader: () => redirect('/cases') },
       { path: 'cases', loader: casesLoader, element: <CaseListPage />, errorElement: <RouteError /> },

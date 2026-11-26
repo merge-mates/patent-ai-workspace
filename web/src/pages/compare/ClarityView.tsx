@@ -4,7 +4,7 @@ import { CoreLabel } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
 import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
-import { claimRange, sentence } from '../../format'
+import { claimRange, sentence, claimLocationText } from '../../format'
 import type { ClarityReview } from '../../types/generated/ClarityReview'
 import type { JudgmentUnit } from '../../types/generated/JudgmentUnit'
 
@@ -51,7 +51,7 @@ export function ClarityView({ c, unit }: { c: ClarityReview; unit: JudgmentUnit 
         )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <Row label="청구항에서">{c.claim_location}</Row>
+        <Row label="청구항에서">{claimLocationText(null, c.claim_location)}</Row>
         {unit.read_with.length > 0 && (
           <Row label="함께 읽은 청구항">청구항 {claimRange(unit.read_with)}</Row>
         )}

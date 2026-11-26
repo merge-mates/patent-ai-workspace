@@ -1,3 +1,4 @@
+import { caseToCheck } from '../drafts/coverage'
 import { App, Alert, Button, Input, Radio } from 'antd'
 import { EmptyReason } from '../../components/EmptyReason'
 import { useContext, useState } from 'react'
@@ -155,7 +156,7 @@ function Fields({ c }: { c: DirectionCandidate }) {
       )}
       {c.checks.length > 0 && (
         <Field label="확인 사항">
-          {c.checks.map((x) => (
+          {checkLines(c.checks).map((x) => (
             <div key={x}>{x}</div>
           ))}
         </Field>
@@ -164,11 +165,25 @@ function Fields({ c }: { c: DirectionCandidate }) {
   )
 }
 
+// 확인 사항 줄 정리: "F3 보류: 청구항 N: 대표 청구항 …에 차이 후보·불명 구성요소가 있어 종속항을 대비하지 않음 …"이
+// 종속항마다 반복되므로 한 줄로 묶고 쉬운 말로 바꾼다. 그 밖의 줄은 그대로
+function checkLines(checks: string[]): string[] {
+  const held = checks.filter((x) => x.startsWith('F3 보류:'))
+  if (held.length === 0) return checks
+  const claims = held.map((x) => /청구항 (\d+)/.exec(x)?.[1]).filter((n): n is string => n !== undefined)
+  const rep = /대표 청구항 (\d+)/.exec(held[0])?.[1]
+  const line =
+    `청구항 ${claims.join(', ')}(종속항)은 따로 대비하지 않았어요` +
+    (rep ? `: 대표 청구항 ${rep}에 차이점 후보가 남아 있어 그쪽을 먼저 봤어요.` : '.') +
+    ' 필요하면 직접 확인해 주세요.'
+  return [...checks.filter((x) => !x.startsWith('F3 보류:')), line]
+}
+
 const rankText = (c: DirectionCandidate) => (c.rank === null ? '순위 없음' : `${c.rank}순위`)
 
-// 묶음 머리 작은 글: "묶음 1 · 진보성 · 청구항 1–5"
+// 머리 작은 글: "진보성 · 청구항 1–5" ("묶음 N"은 팀 안 말이라 청구항 범위로 부른다)
 const unitHead = (u: JudgmentUnit | undefined, unitId: string) =>
-  u ? `묶음 ${u.order} · ${rejectionKindLabel[u.rejection_kind]} · 청구항 ${claimRange(u.claims)}` : unitId
+  u ? `${rejectionKindLabel[u.rejection_kind]} · 청구항 ${claimRange(u.claims)}` : unitId
 
 // 4 대응 방향: 묶음마다 고른 후보(AI 기본값 또는 직접 고름)를 크게, 근거·칸을 줄로, 다른 후보로 바꾸기.
 // 최종 선택은 사람이 한다 (AI는 기본값만)
@@ -444,7 +459,8 @@ export function DirectionsPage() {
         ) : (
           <>
             <Button type="text" onClick={() => setCheckOpen(!checkOpen)} style={{ alignSelf: 'flex-start' }}>
-              {`사건 전체 검사 ${caseCheck.items.length}항목 · 확인할 것 ${caseCheck.items.filter((i) => i.result !== 'ok').length}개 ${checkOpen ? '접기' : '보기'}`}
+              {/* AI가 아직 검사하지 않는 규칙은 "확인할 것" 개수에서 뺀다 (펼치면 그대로 보임) */}
+              {`사건 전체 검사 ${caseCheck.items.length}항목 · 확인할 것 ${caseToCheck(caseCheck.items).length}개 ${checkOpen ? '접기' : '보기'}`}
             </Button>
             {checkOpen &&
               caseCheck.items.map((it) => (

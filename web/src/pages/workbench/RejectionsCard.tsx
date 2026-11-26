@@ -15,12 +15,15 @@ import { articleLabel, rejectionKindLabel } from '../../labels'
 import type { LegalEvidenceBundle } from '../../types/generated/LegalEvidenceBundle'
 import type { ClaimRow, OAResult, Rejection } from '../../types/generated/OAResult'
 
-// 거절이유가 어떤 방식으로 다뤄지나: 문헌과 대조 / 문장을 검토 / AI가 다루지 않음
+// AI가 다루지 않는 거절이유만 꼬리표를 단다 ("문헌 대조형"·"문장 검토형"은 팀 안 분류라 변리사 화면에서 뺌)
 function TypeTag({ rej }: { rej: Rejection }) {
-  if (!rej.supported) return <Tag color="default">지원 안 함</Tag>
-  if (rej.kind === 'clarity') return <Tag color="cyan">문장 검토형</Tag>
-  return <Tag color="geekblue">문헌 대조형</Tag>
+  if (!rej.supported) return <Tag color="default">AI가 다루지 않음</Tag>
+  return null
 }
+
+// 청구항 줄이 모두 "못 뽑음"(인용·위치·원문이 다 빈 줄)인지: 빈 줄 여러 개 대신 한 줄 안내로 바꾼다
+const isEmptyRow = (row: ClaimRow) =>
+  row.status.value !== 'confirmed' && row.citations.length === 0 && !row.raw_text && row.clarity_terms.length === 0
 
 // "claim:3" → "청구항 3", "rejection:1" → "거절이유 1"
 const sameAsText = (s: string) =>
@@ -126,7 +129,15 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
           </FieldValue>
         </Descriptions.Item>
       </Descriptions>
-      {rej.supported && (
+      {rej.supported && rows.length > 0 && rows.every(isEmptyRow) && (
+        // 청구항마다 빈 줄을 늘어놓지 않고, 무엇을 못 했는지 한 줄로 알린다
+        <Alert
+          type="info"
+          showIcon
+          message={`청구항 ${claimRange(rows.map((x) => x.claim).filter((c): c is number => c !== null))}의 청구항별 인용문헌·인용 위치를 통지서에서 읽지 못했어요. 위 "인용문헌·인용 위치"와 통지서 원문을 직접 확인해 주세요.`}
+        />
+      )}
+      {rej.supported && !(rows.length > 0 && rows.every(isEmptyRow)) && (
         <Table<ClaimRow>
           size="small"
           rowKey={(row, i) => `${row.claim}-${row.rejection}-${i}`}
@@ -317,7 +328,14 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                   if (!isOpen) openPage(rej.article.page, rej.article.raw_text, false)
                 }}
               >
-                <RejectionDetail rej={rej} rows={r.claim_rows.filter((row) => row.rejection === rej.no)} legal={legal} />
+                <RejectionDetail
+                  rej={rej}
+                  // 청구항 번호순 (모름(null)은 맨 뒤): 저장 순서대로 두면 1, 6, 7, …, 2처럼 섞인다
+                  rows={r.claim_rows
+                    .filter((row) => row.rejection === rej.no)
+                    .sort((a, b) => (a.claim ?? 9999) - (b.claim ?? 9999))}
+                  legal={legal}
+                />
               </Row>
             )
           })

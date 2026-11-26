@@ -14,7 +14,7 @@ import { useRunSnapshot } from '../../useRunSnapshot'
 import type { AmendedClaim, Drafts, Evidence1 } from '../../types/generated/Drafts'
 import type { DraftPatch } from '../../types/provisional/pending'
 import { CoverageTable } from './CoverageTable'
-import { buildCoverage, buildFixes, caseToCheck } from './coverage'
+import { buildCoverage, buildFixes, caseToCheck, isNotYetChecked } from './coverage'
 import { FixList } from './FixList'
 
 // 고치는 중인 곳: 의견서 칸 하나 또는 보정 청구항 하나 (보낼 요청과 같은 모양)
@@ -307,6 +307,7 @@ export function DraftsPage() {
       <FixList
         fixes={fixes}
         caseItems={caseItems}
+        notChecked={(caseCheck?.items ?? []).filter(isNotYetChecked)}
         hasCheck={caseCheck !== null}
         onShowClaims={() => setView('claims')}
         onShowOpinion={(title) => {
@@ -327,7 +328,7 @@ export function DraftsPage() {
             ]}
           />
           <span style={{ flex: '1 1 auto' }} />
-          <AiTag>{`AI 초안 · 묶음 선택 ${pickSource}`}</AiTag>
+          <AiTag>{`AI 초안 · 대응 방향 ${pickSource}`}</AiTag>
           {/* 내려받기는 API가 자리만이라 막아 둔다 */}
           <Tooltip title="서버가 오면 내려받을 수 있어요">
             <Button disabled>내려받기</Button>

@@ -29,8 +29,15 @@ export function RejectionLaw({ rejection, legal }: { rejection: number; legal: L
         이 거절이유의 법리
         <AiTag>AI가 찾아 붙임</AiTag>
       </span>
-      {bundles.map((b) => {
-        const sources = b.claims.flatMap((c) => c.sources)
+      {bundles.map((b, bi) => {
+        // 같은 거절이유를 묶음 여러 개(청구항 1–5, 6–10)가 각자 찾아 붙이면 같은 법령이 두 번 보인다.
+        // 앞 묶음에서 이미 보인 근거(같은 글자)는 빼고 한 번만 보인다
+        const shown = new Set(bundles.slice(0, bi).flatMap((p) => p.claims.flatMap((c) => c.sources)).map(lineText))
+        const sources = b.claims.flatMap((c) => c.sources).filter((s, i, all) => {
+          const t = lineText(s)
+          return !shown.has(t) && all.findIndex((x) => lineText(x) === t) === i
+        })
+        if (sources.length === 0 && b.claims.some((c) => c.sources.length > 0)) return null
         if (sources.length === 0) {
           return (
             <div key={b.bundle_id}>

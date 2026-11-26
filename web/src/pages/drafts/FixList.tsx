@@ -8,12 +8,15 @@ import type { Fix } from './coverage'
 export function FixList({
   fixes,
   caseItems,
+  notChecked,
   hasCheck,
   onShowClaims,
   onShowOpinion,
 }: {
   fixes: Fix[] | null
   caseItems: { name: string; result: 'warn' | 'fail' | 'ok'; detail: string }[]
+  // AI가 아직 검사하지 않는 규칙 (확인할 것 개수에 넣지 않고 이름만 한 줄로)
+  notChecked: { name: string }[]
   hasCheck: boolean
   onShowClaims: () => void
   onShowOpinion: (title: string) => void
@@ -78,6 +81,12 @@ export function FixList({
             </div>
           ))}
         </div>
+      )}
+      {notChecked.length > 0 && (
+        // AI가 아직 검사하지 않는 규칙: 문제 개수에 넣지 않되, 사람이 볼 것이라 이름은 다 보인다
+        <span className="label2 t3" style={{ marginTop: 8 }}>
+          AI가 아직 검사하지 않아 직접 봐 주세요: {notChecked.map((it) => it.name).join(', ')}
+        </span>
       )}
       {!hasCheck && <span className="label2 t3">사건 전체 검사 결과가 아직 없어요 (확인되지 않음)</span>}
     </div>

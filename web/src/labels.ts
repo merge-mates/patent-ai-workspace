@@ -6,14 +6,15 @@ import type { FurtherReviewWhy, LegalSourceKind, ReviewVerdict, Speaker } from '
 import type { RunState } from './types/provisional/case'
 
 export const unverifiedReasonLabel: Record<UnverifiedReason, string> = {
-  not_extracted: '못 뽑음',
-  ambiguous: '애매',
-  lookup_failed: '조회 실패',
+  // 변리사 화면 말: 무엇을 못 했는지 ("못 뽑음"·"애매"는 개발용 말이라 바꿈)
+  not_extracted: '통지서에서 못 읽음',
+  ambiguous: '해석이 둘 이상',
+  lookup_failed: '본문 못 가져옴',
   body_missing: '본문 미확보',
   evidence_rejected: '근거 빠짐',
   limit_reached: '상한 도달',
   edition_unknown: '판본 미확인',
-  input_unverified: '앞 단계 미확인',
+  input_unverified: '앞 단계 결과 확인 필요',
 }
 
 export const noticeKindLabel: Record<NoticeKind, string> = {
@@ -26,7 +27,7 @@ export const rejectionKindLabel: Record<RejectionKind, string> = {
   novelty: '신규성',
   inventive_step: '진보성',
   clarity: '명확성',
-  other: '그 밖',
+  other: '기타',
 }
 
 // 조문 코드(`29-2`, `42-4-2`, 여럿이면 `29-1-1|29-1-2`) → 특허법 조문 글자
@@ -79,7 +80,7 @@ export const skippedStepLabel: Record<string, string> = {
 }
 
 export const lookupResultLabel: Record<LookupResult, string> = {
-  lookup_failed: '조회 실패',
+  lookup_failed: '본문 못 가져옴',
   body_missing: '본문 미확보',
   unsupported_country: '지원 안 하는 나라',
 }
@@ -158,7 +159,7 @@ export const rebuttalTypeLabel: Record<RebuttalType, string> = {
   grace_period: '공지예외',
   obvious_error: '명백한 오기',
   clear_from_description: '설명으로 명확',
-  other: '그 밖',
+  other: '기타',
 }
 
 // 확신도 3단계 (% 숫자를 쓰지 않는다)

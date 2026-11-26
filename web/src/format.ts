@@ -35,7 +35,13 @@ export function unsupportedRejectionNos(fromCheck: number[] | undefined, rejecti
 
 // 법률 근거의 판본 글자: 법령·심사기준만 판본이 있다. 모르면 "판본 모름" (현행으로 짐작하지 않음). 판례·심결은 null
 export function editionText(s: LegalSource): string | null {
-  return s.source_kind === 'statute' || s.source_kind === 'guideline' ? (s.evidence.edition ?? '판본 모름') : null
+  if (s.source_kind !== 'statute' && s.source_kind !== 'guideline') return null
+  return s.evidence.edition ? editionClean(s.evidence.edition) : '판본 모름'
+}
+
+// 판본 글자 앞의 내부 법령 ID("특허법_212229_20191210 ")를 떼고 시행 기간만 남긴다 (변리사에게는 ID가 뜻이 없음)
+export function editionClean(edition: string): string {
+  return edition.replace(/^\S+_\d+_\d+\s*/, '').trim() || edition
 }
 
 // 법률 근거의 전문/요지 글자 (없으면 null)
@@ -52,4 +58,22 @@ export function sentence(s: string): string {
 export function confirmedAtText(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+// 찾아본 범위 글자를 변리사가 읽을 말로 바꾼다.
+// 서버 글자 예: "D1 조각 105개 중 hybrid 상위 10, … (cite-idx-v5) · 두 번 찾음" → "D1 본문 일부"
+// 검색 방식·색인 판 이름은 개발용이라 빼고, 어느 인용발명을 찾아봤는지만 남긴다. 모양이 다르면 그대로 둔다
+export function scopeText(scope: string): string {
+  const cites = [...new Set([...scope.matchAll(/\b(D\d+)\s*조각/g)].map((m) => m[1]))]
+  if (cites.length > 0) return `${cites.join('·')} 본문 일부`
+  return scope
+}
+
+// 청구항 위치 글자에서 개발용 꼬리를 뗀다: "[글자 543-552]"(글자 오프셋), 앞에 겹친 "청구항 N"
+export function claimLocationText(claim: number | null, location: string): string {
+  let cleaned = location.replace(/\s*\[글자 \d+\s*[-–]\s*\d+\]/g, '').trim()
+  // 앞에 청구항 번호를 따로 붙일 때만 겹친 "청구항 N"을 뗀다
+  if (claim !== null) cleaned = cleaned.replace(/^청구항\s*\d+\s*/, '').replace(/^\[(.+)\]$/, '$1').trim()
+  const head = claim !== null ? `청구항 ${claim}` : ''
+  return [head, cleaned].filter(Boolean).join(' · ')
 }
