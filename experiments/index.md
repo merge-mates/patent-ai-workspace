@@ -46,3 +46,4 @@
 | m3-i2-recheck-b | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `fixed_loop` (LLM 질의 3개 다시 쓰기 → 질의마다 hybrid k=10 → compare 다시 판정) | selected_recall_rechecked 0.114 | - | $0.00 | [card](m3-i2-recheck-b/card.md) |
 | m3-i2-recheck-c | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `agent` (tool use 루프, 판정은 compare) | selected_recall_rechecked 0.136 | - | $0.00 | [card](m3-i2-recheck-c/card.md) |
 | m3-i2-recheck-c-judge | 근거 다시 찾기 (F3 (가) 인용문헌 다시 찾기, 이슈 #309) | `recheck: none` → `agent`, `recheck_judge: compare` → `agent` (판정·인용 글자까지 에이전트, 코드는 원문 대조) | selected_recall_rechecked 0.222 | - | $0.00 | [card](m3-i2-recheck-c-judge/card.md) |
+| m3-i2-spec-before-direction-pilot | F4 | 대응 방향 선택 전에 최초 명세서 문단 제공 (없음 → BM25 문단 / 확인된 원문 문단) | 점수 없음 | - | - | [card](m3-i2-spec-before-direction-pilot/card.md) |
