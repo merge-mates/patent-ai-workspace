@@ -66,6 +66,8 @@ def _verdict(text: str) -> str | None:
 def _tag_verdict(rest: str) -> str:
     """표 줄·꼬리표의 처리 말 ("삭제", "삭제 (청구항 1에 합침)", "보정", "그대로")."""
     flat = squash(rest)
+    if _NOT_CHANGED.search(flat):  # "보정 결과에서 변경되지 않았습니다"는 표 줄 '보정'이 아니다
+        return "그대로"
     if _MERGE.search(flat):
         return "합침"
     if flat.startswith("삭제"):
@@ -111,6 +113,11 @@ def draft_treatment(claim: int, draft: DraftText) -> str:
                     tags.add(_tag_verdict(tag.group(1)))
                 for later in parts[i:] if v is None else []:
                     v = _verdict(strip_quotes(later))
+                    if v is not None:
+                        break
+                # 뒤에 말이 없으면 앞 마디를 본다 ("변경되지 않은 항: 제2항 내지 제10항, 제14항")
+                for earlier in reversed(parts[:i]) if v is None else []:
+                    v = _verdict(strip_quotes(earlier))
                     if v is not None:
                         break
                 found.append((len(nums) <= 2, v or "자체 보정"))

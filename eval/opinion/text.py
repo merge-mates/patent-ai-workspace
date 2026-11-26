@@ -82,8 +82,16 @@ _BUNDLE = re.compile(
 )
 
 
+# "청구항 14, 16 내지 19는 … 같은 이유로 …" ('종속항'·'인용' 말 없이 번호 + 같은 이유)
+_BUNDLE_SAME_REASON = re.compile(r"^(?:청구항|제)\d+[^.]{0,120}?(같은이유|동일한이유)로")
+
+
 def bundle_sentences(text: str) -> list[str]:
-    return [s for s in sentences(text) if _BUNDLE.search(squash(s))]
+    return [
+        s
+        for s in sentences(text)
+        if _BUNDLE.search(squash(s)) or _BUNDLE_SAME_REASON.search(squash(s))
+    ]
 
 
 def bundle_covers(text: str, claim: int) -> bool:

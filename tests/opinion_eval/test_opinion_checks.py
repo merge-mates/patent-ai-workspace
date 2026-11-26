@@ -212,3 +212,26 @@ def test_표_줄의_보정_표시는_추가_설명보다_앞선다():
         response="",
     )
     assert draft_treatment(3, d) == "자체 보정"
+
+
+def test_머리표_뒤가_보정으로_시작해도_변경되지_않았다면_그대로():
+    # "- 제3항 내지 제7항: 보정 결과에서 변경되지 않았습니다"를 표 줄 '보정'으로 읽으면 안 된다
+    d = draft(amendment="- 제3항 내지 제7항: 보정 결과에서 변경되지 않았습니다.", response="")
+    assert draft_treatment(5, d) == "언급 없음"
+
+
+def test_목록_앞쪽_마디의_말도_본다():
+    # "- 변경되지 않은 항: 제2항 내지 제10항, 제14항." → 제14항 마디 뒤에는 말이 없고 앞에 있다
+    d = draft(amendment="- 변경되지 않은 항: 제2항 내지 제10항, 제14항, 제16항.", response="")
+    assert draft_treatment(14, d) == "언급 없음"
+    assert draft_treatment(5, d) == "언급 없음"
+
+
+def test_종속항_번호와_같은_이유로_꼴도_묶음_문장():
+    # case02 초안 꼴: '종속항'·'인용' 말 없이 번호 + "같은 이유로"
+    text = (
+        "청구항 14, 16 내지 19는 청구항 13의 위 차이점을 모두 포함하므로, "
+        "같은 이유로 적용되기 어렵다고 주장합니다."
+    )
+    assert bundle_covers(text, 17)
+    assert not bundle_covers("청구항 14는 보정으로 바뀌었습니다. 같은 이유로 확인이 필요합니다.", 3)
