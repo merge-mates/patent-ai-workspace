@@ -217,7 +217,12 @@ def f3_gaps(inp: F4Input, unit: JudgmentUnit, f3: list) -> F3Gaps:
     )
 
 
-LEGAL_REVIEW_CHECK = "법률 근거: 근거 검토 전 (직접 검토 필요)"
+# F2 근거 검토(모델, #29)가 아직 없어 법률 근거 주장은 늘 "사람이 볼 것" 표시를 단다.
+# 조문 자체는 원문 대조를 통과했으니, 무엇을 아직 안 했는지 변리사가 읽을 말로 적는다
+LEGAL_REVIEW_CHECK = (
+    "법률 근거: 근거 조문은 원문과 대조했지만, 이 대응을 뒷받침하는 판례·심사기준은 "
+    "아직 검토하지 않았어요 (직접 검토 필요)"
+)
 
 
 def legal_needs_review(bundle: LegalEvidenceBundle) -> bool:
