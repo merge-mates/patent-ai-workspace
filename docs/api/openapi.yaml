@@ -337,6 +337,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /citations/{doc_id}/file:
+    get:
+      summary: Get Cited File
+      operationId: get_cited_file_citations__doc_id__file_get
+      parameters:
+      - name: doc_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Doc Id
+      - name: application_number
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Application Number
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /oas/{oa_id}/runs:
     post:
       summary: Create Run

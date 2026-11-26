@@ -117,6 +117,8 @@ export function CaseShell() {
   const evidence = evidenceAt && evidenceAt.owner === owner ? evidenceAt.data : null
   // 판에 연 인용문헌의 원문 전체 (대비 줄을 누를 때 받는다). loading/실패도 판에 그대로 보인다
   const [cited, setCited] = useState<CitedState | null>(null)
+  // 오른쪽 판 탭: 'oa'(의견제출통지서) 또는 인용문헌 번호. 링크를 누르면 저절로 바뀐다
+  const [tab, setTab] = useState<string>('oa')
   const [infoOpen, setInfoOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
 
@@ -150,6 +152,7 @@ export function CaseShell() {
   const openPage: OpenPage = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
     setEvidenceAt(null)
+    setTab('oa')
     // scroll=false("자세히"로 줄을 펼칠 때)는 판을 새로 펴지 않는다: 열려 있을 때만 문서를 바꾸고 접힘은 그대로.
     // 쪽 링크·근거 링크를 직접 누를 때(scroll=true)만 편다
     if (scroll) {
@@ -169,12 +172,15 @@ export function CaseShell() {
     setEvidenceAt({ data: { kind: 'cite', ref }, owner })
     setSrcOpen(true)
     scrollToPanel()
-    // 인용문헌 번호를 알면 원문 전체를 받아 판에 잇는다 (같은 문헌이면 다시 받지 않음).
-    // 받은 뒤 근거 문단으로 내린다 (effect 없이 누른 그 자리에서 받는다)
-    const docId = ref.docId
-    if (!docId) return
+    if (ref.docId) {
+      setTab(ref.docId)
+      loadCited(ref.docId, true)
+    }
+  }
+  // 인용문헌 원문 전체(글자 보기용)를 받는다. 같은 문헌이면 다시 받지 않는다 (effect 없이 누른 그 자리에서)
+  const loadCited = (docId: string, scroll: boolean) => {
     if (cited?.docId === docId && cited.doc) {
-      scrollToCited()
+      if (scroll) scrollToCited()
       return
     }
     setCited({ docId, doc: null, failed: false })
@@ -182,10 +188,26 @@ export function CaseShell() {
       .getCitedDocument(docId)
       .then((doc) => {
         setCited({ docId, doc, failed: false })
-        scrollToCited()
+        if (scroll) scrollToCited()
       })
       .catch(() => setCited({ docId, doc: null, failed: true }))
   }
+  // 탭을 직접 누르면 그 문서로 (법률 근거를 보던 중이면 닫는다)
+  const selectTab = (key: string) => {
+    if (evidence?.kind === 'legal') setEvidenceAt(null)
+    setTab(key)
+    if (key !== 'oa') loadCited(key, false)
+  }
+  // 탭 목록: 의견제출통지서 + 이 통지서가 인용한 문헌 (번호가 있는 것만, 처음 나온 라벨로)
+  const citeTabs = (() => {
+    const seen = new Map<string, string>()
+    for (const rej of r?.rejections ?? [])
+      for (const c of rej.citations) {
+        const no = c.number.value ?? c.number.raw_text
+        if (no && !seen.has(no)) seen.set(no, c.label)
+      }
+    return [...seen].map(([no, label]) => ({ key: no, label: `${label} ${no}` }))
+  })()
   // 강조한 근거 문단(없으면 판)으로 판 안에서 내린다
   const scrollToCited = () =>
     requestAnimationFrame(() =>
@@ -325,7 +347,11 @@ export function CaseShell() {
           </section>
           <SourcePanel
             open={srcOpen}
-            cited={evidence?.kind === 'cite' ? cited : null}
+            cited={cited}
+            tabs={[{ key: 'oa', label: '의견제출통지서' }, ...citeTabs]}
+            tab={tab}
+            onTab={selectTab}
+            applicationNumber={r?.application_number.value ?? null}
             page={shown.page}
             highlight={shown.text}
             document={data.document}

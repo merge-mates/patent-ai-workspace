@@ -14,7 +14,7 @@ from patent_ai.core.cases.case_fill import (
     case_materials_after_f1,
     plan_number_fill,
 )
-from patent_ai.core.cases.local_citations import local_citation_keys
+from patent_ai.core.cases.local_citations import local_citation_file, local_citation_keys
 from patent_ai.core.cases.materials import InMemoryCaseMaterialsStore
 from patent_ai.core.cases.store import InMemoryCaseAppStore, NewDocument
 from patent_ai.core.schemas.case_materials import CaseDocument, CaseMaterials, LookupResult
@@ -338,3 +338,14 @@ def test_합친_뒤_다시_실행해도_그대로다(merged):
     fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
     assert [r.oa_id for r in store.get_case(first.case_id).oas] == [first.oa_id, second.oa_id]
     assert materials.latest_case_materials(first.case_id).result.documents == before.documents
+
+
+def test_로컬_인용문헌_파일은_그_사건_폴더의_그_번호_PDF만_찾는다(tmp_path):
+    folder = tmp_path / APP
+    folder.mkdir()
+    (folder / f"{KR}.pdf").write_bytes(b"%PDF")
+    assert local_citation_file(APP, KR, tmp_path) == folder / f"{KR}.pdf"
+    assert local_citation_file(APP, US, tmp_path) is None  # 없는 문헌
+    # 경로를 벗어나는 값은 받지 않는다
+    assert local_citation_file(APP, "../x", tmp_path) is None
+    assert local_citation_file("../" + APP, KR, tmp_path) is None

@@ -43,3 +43,19 @@ def test_인용문헌_원문을_문헌_순서로_준다():
 def test_색인에_없는_문헌은_404():
     res = _client().get("/citations/KR9A")
     assert res.status_code == 404 and res.json()["code"] == "citation_not_found"
+
+
+def test_인용문헌_원본_PDF를_사건_폴더에서_준다(tmp_path):
+    from patent_ai.api.citations import get_cite_root
+
+    folder = tmp_path / "1020990000001"
+    folder.mkdir()
+    (folder / "KR1A.pdf").write_bytes(b"%PDF-1.4 test")
+    app = create_app()
+    app.dependency_overrides[get_cite_root] = lambda: tmp_path
+    client = TestClient(app)
+    r = client.get("/citations/KR1A/file", params={"application_number": "1020990000001"})
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content == b"%PDF-1.4 test"
+    miss = client.get("/citations/KR9A/file", params={"application_number": "1020990000001"})
+    assert miss.status_code == 404 and miss.json()["code"] == "citation_file_not_found"

@@ -7,6 +7,7 @@
 """
 
 import logging
+import re
 from pathlib import Path
 
 import yaml
@@ -48,3 +49,17 @@ def configured_local_citations(case_number: str) -> set[str]:
     """앱에서 쓰는 기본: 설정 폴더에서 그 사건의 인용문헌 키를 찾는다."""
     root = configured_root()
     return local_citation_keys(case_number, root) if root is not None else set()
+
+
+_SAFE = re.compile(r"^[A-Za-z0-9]+$")
+
+
+def local_citation_file(case_number: str, doc_id: str, root: Path) -> Path | None:
+    """그 사건 폴더의 인용문헌 PDF (원문 판이 PDF로 보이게). 없거나 이름이 이상하면 None.
+
+    출원번호·문헌 번호는 글자·숫자만 받는다 (폴더 밖 경로를 열지 못하게).
+    """
+    if not _SAFE.match(case_number) or not _SAFE.match(doc_id):
+        return None
+    file = root / case_number / f"{doc_id}.pdf"
+    return file if file.is_file() else None
