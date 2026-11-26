@@ -47,17 +47,11 @@ function markIn(pageNo: number, targets: PdfTargets): boolean {
     hit[0]?.scrollIntoView({ block: 'center' })
     return hit.length > 0
   }
-  // 1) 근거 문장: 통째로, 안 되면 앞 40글자로 찾는다 (문단이 길면 줄바꿈·쪽 넘김으로 끊길 수 있다)
+  // 1) 근거 문장 통째로
   for (const t of targets.texts) {
     const q = squeeze(t)
-    if (!q) continue
-    let at = joined.indexOf(q)
-    let len = q.length
-    if (at < 0 && q.length > 40) {
-      at = joined.indexOf(q.slice(0, 40))
-      len = Math.min(q.length, joined.length - at)
-    }
-    if (at >= 0 && paint(at, at + len)) return true
+    const at = q ? joined.indexOf(q) : -1
+    if (at >= 0 && paint(at, at + q.length)) return true
   }
   // 2) 문단 번호: 그 번호 표시부터 다음 문단 번호 앞까지
   for (const label of targets.labels) {
@@ -69,6 +63,13 @@ function markIn(pageNo: number, targets: PdfTargets): boolean {
       const end = Math.min(next ? next.index : joined.length, at + 600)
       if (paint(at, end)) return true
     }
+  }
+  // 3) 통째로도, 문단 번호로도 못 찾으면 근거 문장 앞 40글자로 (문단이 길면 줄바꿈·쪽 넘김으로 끊길 수 있다)
+  for (const t of targets.texts) {
+    const q = squeeze(t)
+    if (q.length <= 40) continue
+    const at = joined.indexOf(q.slice(0, 40))
+    if (at >= 0 && paint(at, at + Math.min(q.length, joined.length - at))) return true
   }
   return false
 }

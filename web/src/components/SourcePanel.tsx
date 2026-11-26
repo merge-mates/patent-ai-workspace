@@ -223,6 +223,8 @@ export function SourcePanel({
   // 판에 연 법률 근거 / 지금 인용문헌 탭에 맞는 근거 줄
   const legal = evidence?.kind === 'legal' ? evidence : null
   const citeRef = evidence?.kind === 'cite' && evidence.ref.docId === tab ? evidence.ref : null
+  // 어느 탭에도 맞지 않는 근거(문서를 모름 등): 탭 없이 근거 글만 보인다 (빈 판으로 두지 않게)
+  const looseCite = evidence?.kind === 'cite' && !tabs.some((t) => t.key === evidence.ref.docId) ? evidence.ref : null
   const citeShowPdf = view === 'pdf' && !citeFailed.includes(tab) && !!applicationNumber
 
   // 원문은 쪽마다 끊지 않고 전체를 이어서 보인다. 강조는 가리킨 쪽(page)에서만 찾는다
@@ -275,7 +277,7 @@ export function SourcePanel({
       {tabs.length > 1 && (
         <Segmented
           size="small"
-          value={legal ? '' : tab}
+          value={legal || looseCite ? '' : tab}
           onChange={(v) => onTab(String(v))}
           options={tabs.map((t) => ({ label: t.label, value: t.key }))}
           style={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}
@@ -284,16 +286,22 @@ export function SourcePanel({
       </div>
       {legal ? (
         <EvidenceBody s={legal.source} checkedOn={legal.checkedOn} />
+      ) : looseCite ? (
+        <CiteBody r={looseCite} />
       ) : tab === 'spec' ? (
-        // 명세서 탭: 이 출원의 명세서(출원서) 원본 PDF 전체 (강조 없이 처음부터)
+        // 명세서 탭: 이 출원의 명세서(출원서) 원본 PDF 전체. 근거 문단을 눌러 왔으면 그 문단([0050] 등)을 강조해 그 자리로
         specDocumentId ? (
           <>
+            {citeRef && <CiteBody r={citeRef} />}
             <span className="label2 t3">출원 당시 명세서 원본 · 스크롤해서 모두 볼 수 있어요</span>
             <PdfView
               key={`spec:${specDocumentId}`}
               url={`/api/documents/${encodeURIComponent(specDocumentId)}/file`}
               page={null}
-              targets={{ texts: [], labels: [] }}
+              targets={{
+                texts: (citeRef?.items ?? []).map((e) => e.raw_text).filter((x): x is string => !!x),
+                labels: (citeRef?.items ?? []).map((e) => e.location).filter((x): x is string => !!x),
+              }}
               onFail={() => {}}
             />
           </>

@@ -169,12 +169,16 @@ export function CaseShell() {
 
   // 대비 줄·후보 근거 열기: 공통 근거 위치를 판에 보인다
   const openCite: OpenCite = (ref) => {
-    setEvidenceAt({ data: { kind: 'cite', ref }, owner })
+    // 어느 탭에서 열지: 인용문헌 번호가 없으면 근거의 문서로 정한다
+    // (명세서 문단 근거 → '명세서' 탭, 인용문헌 → 그 문헌 탭, 둘 다 아니면 탭 없이 근거 글만)
+    const doc = ref.docId ?? ref.items[0]?.document_id ?? null
+    const target = doc !== null && doc === specDocumentId ? 'spec' : doc !== null && citeTabs.some((t) => t.key === doc) ? doc : null
+    setEvidenceAt({ data: { kind: 'cite', ref: { ...ref, docId: target ?? ref.docId ?? null } }, owner })
     setSrcOpen(true)
     scrollToPanel()
-    if (ref.docId) {
-      setTab(ref.docId)
-      loadCited(ref.docId, true)
+    if (target) {
+      setTab(target)
+      if (target !== 'spec') loadCited(target, true)
     }
   }
   // 인용문헌 원문 전체(글자 보기용)를 받는다. 같은 문헌이면 다시 받지 않는다 (effect 없이 누른 그 자리에서)
