@@ -987,3 +987,43 @@ def test_같은_취지_대상_줄이_위치만_애매하면_인용은_물려받�
     assert target.status.reason == UnverifiedReason.AMBIGUOUS
     assert row.status.value == StatusValue.CONFIRMED
     assert row.citations == target.citations
+
+
+# ---- 11/26 골 모드 뒤 case08 원인 (work/opinion-goal-1126/FOLLOWUP_1126.md) ----
+def test_청구항_번호가_판단_원문_바로_앞_문장에_있으면_줄을_만든다():
+    # 모델이 판단 원문을 "청구항 제7항에는 …" 다음 문장부터 줬다
+    # → 번호가 바로 앞 문장에 있으면 맞는 줄
+    pages = _pages(
+        (
+            "3-2. 청구항 제7항의 모듈들은 장치 구성을 특정할 수 없다.",
+            "3-2. 청구항 제7항에는 모듈이 기재되어 있습니다. "
+            "상기 모듈들은 장치 구성을 특정할 수 없다.",
+        )
+    )
+    judgment = {"value": None, "raw_text": "상기 모듈들은 장치 구성을 특정할 수 없다.", "page": 4,
+                "ambiguous": False}  # fmt: skip
+    row = _row(_read(_with_row(12, judgment=judgment), pages), 7, 3)
+    assert row.raw_text == "상기 모듈들은 장치 구성을 특정할 수 없다."
+
+
+def test_번호가_두_문장_넘어_앞에_있으면_맞는_줄이_아니다():
+    pages = _pages(
+        (
+            "3-2. 청구항 제7항의 모듈들은 장치 구성을 특정할 수 없다.",
+            "3-2. 청구항 제7항에는 모듈이 있습니다. 다른 말입니다. "
+            "상기 모듈들은 장치 구성을 특정할 수 없다.",
+        )
+    )
+    judgment = {"value": None, "raw_text": "상기 모듈들은 장치 구성을 특정할 수 없다.", "page": 4,
+                "ambiguous": False}  # fmt: skip
+    _assert_dropped(_row(_read(_with_row(12, judgment=judgment), pages), 7, 3))
+
+
+def test_겹친_줄은_앞이_확인되지_않음이고_뒤가_확인됨이면_뒤를_남긴다():
+    # case08: '청구항 2 내지 7'(같은 취지 애매) 줄이 앞, '제7 및 14항'(문제 표현 있음) 줄이 뒤
+    answer = _answer()
+    first = copy.deepcopy(answer["claim_rows"][12])
+    first["judgment"] = {**first["judgment"], "ambiguous": True}
+    answer["claim_rows"].insert(0, first)
+    row = _row(_read(answer), 7, 3)
+    assert row.status.value == StatusValue.CONFIRMED

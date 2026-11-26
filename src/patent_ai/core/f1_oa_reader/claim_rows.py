@@ -455,6 +455,26 @@ def _numbers_in_judgment(claims: list[int] | None, judgment: Item | None) -> boo
     return set(claims) <= claims_mentioned(judgment.raw_text or "")
 
 
+def _claims_just_before(r: ClaimRowExtraction, pages: PageText) -> bool:
+    """청구항 글자가 같은 쪽에서 판단 원문 바로 앞 문장에 있나.
+
+    모델이 "제1항에는 '…'가 기재되어 있습니다. 상기 기재에서 …"의 둘째 문장부터를 판단 원문으로
+    줬다 (11/26 case08). 두 문장 넘어 앞이면 아님.
+    """
+    assert r.judgment is not None and r.claims is not None
+    page = next((p for p in pages.pages if p.page == r.judgment.page), None)
+    needle = _squash(r.claims.raw_text or "")
+    if page is None or not needle:
+        return False
+    text = _squash(page.text)
+    at = text.find(_squash(r.judgment.raw_text or ""))
+    if at <= 0:
+        return False
+    pos = text.rfind(needle, 0, at)
+    # 청구항 글자와 판단 원문 사이에 문장 끝이 하나까지 (그 청구항 문장이 끝나고 판단 원문이 시작)
+    return pos >= 0 and len(re.findall(r"(다|요)\.", text[pos:at])) <= 1
+
+
 def _fits(
     r: ClaimRowExtraction,
     rej: dict,
@@ -470,7 +490,7 @@ def _fits(
         return True  # 판단 원문이 없으면 값 대조에서 어차피 떨어진다
     assert r.judgment is not None and r.claims is not None
     if _squash(r.claims.raw_text or "") not in _squash(r.judgment.raw_text or ""):
-        if not _numbers_in_judgment(claims, r.judgment):
+        if not _numbers_in_judgment(claims, r.judgment) and not _claims_just_before(r, pages):
             return False
     head = _head_number(r.judgment, pages)
     return head is None or head == rej["no"]
@@ -506,7 +526,7 @@ def build_claim_rows(
     # 인용이 아직 비어 있어 위치는 ClaimRow에 넣지 않고 따로 들고 있다가 인용을 채운 뒤 붙인다
     pending: dict[int, dict[str, list[str]]] = {}
     fallback: list[tuple[int, int, UnverifiedReason]] = []  # 값 없이 남길 줄 (다른 줄이 없을 때만)
-    seen: set[tuple[int, int]] = set()
+    seen: dict[tuple[int, int], int] = {}  # (청구항, 거절이유) -> made 안 번호
     # 위치만 애매한 줄 (made 안 번호): 인용은 판단 원문 규칙으로 정해져 있어
     # 같은 취지 줄이 물려받을 수 있다
     cite_ok: set[int] = set()
@@ -570,13 +590,26 @@ def build_claim_rows(
         for claim in claims:
             if claim is not None and no is not None:
                 if (claim, no) in seen:
-                    logger.info("같은 청구항·거절이유 줄이 겹침: 앞의 것만 남김")
-                    continue
-                seen.add((claim, no))
+                    # 앞 줄이 확인되지 않음이고 이 줄이 확인되면 이 줄로 바꾼다. 그 밖엔 앞의 것만.
+                    # (case08: 같은 취지가 애매한 '2 내지 7항' 줄 뒤에 표현이 있는 '제7 및 14항' 줄)
+                    at = seen[(claim, no)]
+                    if made[at].status.value == StatusValue.CONFIRMED or reason is not None:
+                        logger.info("같은 청구항·거절이유 줄이 겹침: 앞의 것만 남김")
+                        continue
+                    logger.info("겹친 줄: 앞 줄이 확인되지 않음이라 확인된 뒤 줄로 바꿈")
+                    replace_at = at
+                else:
+                    replace_at = None
+                    seen[(claim, no)] = len(made)
+            else:
+                replace_at = None
             row_reason = reason
             if row_reason is None and targets is not None and claim not in targets:
                 logger.warning("청구항 %s는 거절이유 %s의 대상이 아님: 확인되지 않음", claim, no)
                 row_reason = UnverifiedReason.NOT_EXTRACTED
+            ambiguous_loc = content.get("location_ambiguous")
+            if replace_at is not None and (row_reason is not None or ambiguous_loc):
+                continue  # 확인된 줄로만 바꾼다
             if row_reason is not None:
                 # 값 대조에 떨어진 줄만 모델 값을 남긴다 (대상 밖 청구항 줄은 번호만)
                 keep = row_reason == reason and failed is not None
@@ -592,8 +625,9 @@ def build_claim_rows(
                 continue
             values = {k: v for k, v in content.items() if k not in _INTERNAL}
             rule = content.get("citation_rule")
+            idx = len(made) if replace_at is None else replace_at
             if content.get("location_ambiguous"):
-                cite_ok.add(len(made))  # 인용은 원문 규칙으로 정했고 위치만 애매
+                cite_ok.add(idx)  # 인용은 원문 규칙으로 정했고 위치만 애매
                 # 판단 원문에 인용 언급이 없고 인용이 여럿인데 모델이 위치를 짚음: 값은 남기되
                 # 어느 문헌의 위치인지 원문으로 못 정했으니 확인되지 않음(애매)
                 status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
@@ -603,8 +637,13 @@ def build_claim_rows(
                     checked += f", {_RULE_NOTE[rule]}"
                 status = Status(value=StatusValue.CONFIRMED, checked=checked)
             if rule == _BY_SAME_AS:
-                pending[len(made)] = values.pop("locations")
-            made.append(ClaimRow(claim=claim, rejection=no, status=status, **values))
+                pending[idx] = values.pop("locations")
+            row = ClaimRow(claim=claim, rejection=no, status=status, **values)
+            if replace_at is None:
+                made.append(row)
+            else:
+                cite_ok.discard(replace_at)  # 앞 줄(확인되지 않음)의 표시는 버린다
+                made[replace_at] = row
     # 지원하는 거절이유의 대상 청구항 중 줄이 없는 것은 빈 줄로 채운다
     # (줄이 빠져도 조용히 지나가지 않게)
     produced = {(row.claim, row.rejection) for row in made}
