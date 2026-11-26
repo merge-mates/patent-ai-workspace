@@ -10,8 +10,10 @@ import re
 from dataclasses import dataclass
 
 from eval.opinion.text import (
+    LIST,
     bundle_covers,
     clauses,
+    expand,
     mentioned_claims,
     sentences,
     squash,
@@ -26,7 +28,14 @@ _MERGE = re.compile(r"병합|합쳐|합쳤|합친|합하|합침|부가|삽입|�
 # 바꾸지 않았다는 말: 그 항을 언급해도 보정 설명이 아니다
 _NOT_CHANGED = re.compile(
     r"(보정|변경|수정|정정)(하지|되지|을하지|이)?않|그대로|(변경|보정|수정|바뀐것)이?없|바뀌지않|unchanged"
+    r"|전후(가)?동일|동일(합니다|함|하다|하게)"
 )
+
+
+# 줄 머리 "- 청구항 4, 5: …", "- 제3항: …" (그 줄은 머리 번호 항을 말한다)
+_HEAD = re.compile(rf"^\s*[-•*·]?\s*(?:청구항\s*)?(?:제\s*)?({LIST})\s*항?\s*:(.*)$")
+# 머리표 뒤가 처리 말로 바로 시작하면 표 줄이다 ("- 제4항: 삭제", "- 제2항: 보정")
+_TAG_WORD = re.compile(r"(보정|정정|수정|바뀜|삭제|합침|병합|그대로)")
 
 
 @dataclass(frozen=True)
@@ -37,7 +46,7 @@ class DraftText:
     response: str  # 대응과 근거 (반박)
 
 
-_CHANGED = re.compile(r"보정|한정|부가|추가|정정|수정|바뀌|바꾸|변경|명확|고쳤|고침")
+_CHANGED = re.compile(r"보정|한정|부가|추가|정정|수정|바뀌|바꾸|바꿨|바뀐|변경|명확|고쳤|고침")
 
 
 def _verdict(text: str) -> str | None:
@@ -54,6 +63,18 @@ def _verdict(text: str) -> str | None:
     return None
 
 
+def _tag_verdict(rest: str) -> str:
+    """표 줄·꼬리표의 처리 말 ("삭제", "삭제 (청구항 1에 합침)", "보정", "그대로")."""
+    flat = squash(rest)
+    if _MERGE.search(flat):
+        return "합침"
+    if flat.startswith("삭제"):
+        return "삭제"
+    if flat.startswith("그대로"):
+        return "그대로"
+    return "자체 보정"
+
+
 def draft_treatment(claim: int, draft: DraftText) -> str:
     """초안이 그 항을 어떻게 처리했나 (삭제 / 합침 / 자체 보정 / 묶음 처리 / 언급 없음).
 
@@ -61,7 +82,18 @@ def draft_treatment(claim: int, draft: DraftText) -> str:
     동사 없는 조각("제14항 및 제2~10항,")은 같은 문장 뒤쪽 마디의 말을 따른다.
     """
     found: list[tuple[bool, str]] = []  # (그 항만 말한 마디인가, 처리 말)
+    tags: set[str] = set()  # 표 줄 머리표 "- 제4항: 삭제"·꼬리표 "제12항(보정)"의 처리 말
     for line in draft.amendment.split("\n"):
+        head = _HEAD.match(strip_quotes(line))
+        if head:
+            heads = set(expand(head.group(1)))
+            # "- 청구항 3: 청구항 2에 …" 줄의 2항은 인용 관계일 뿐
+            # → 머리 번호가 아닌 항은 이 줄을 건너뛴다
+            if claim not in heads:
+                continue
+            rest = head.group(2).strip()
+            if _TAG_WORD.match(rest):
+                tags.add(_tag_verdict(rest))
         for sent in sentences(line):
             # 따옴표 안(청구항 글자 인용)은 문장째 먼저 뺀다 (마디로 나누면 따옴표가 쪼개짐)
             parts = clauses(strip_quotes(sent))
@@ -76,21 +108,38 @@ def draft_treatment(claim: int, draft: DraftText) -> str:
                 v = None
                 if tag:
                     v = _verdict(tag.group(1))
+                    tags.add(_tag_verdict(tag.group(1)))
                 for later in parts[i:] if v is None else []:
                     v = _verdict(strip_quotes(later))
                     if v is not None:
                         break
                 found.append((len(nums) <= 2, v or "자체 보정"))
-    # 여러 항을 나열한 요약 마디보다 그 항만(두 항까지) 말한 마디를 따른다
-    if any(specific for specific, _ in found):
-        found = [f for f in found if f[0]]
-    kinds = [v for _, v in found]
+    all_kinds = {v for _, v in found}
+    # 머리표·꼬리표가 있으면 그것이 보정 결과다
+    # (보정된 항을 "…추가했습니다" 설명 때문에 합침으로 읽지 않게)
+    if tags:
+        kinds = list(tags)
+    else:
+        # 여러 항을 나열한 요약 마디보다 그 항만(두 항까지) 말한 마디를 따른다
+        if any(specific for specific, _ in found):
+            found = [f for f in found if f[0]]
+        kinds = [v for _, v in found]
+    # 합친 항은 늘 지운 항이기도 하다: 그 항만 말한 마디가 '삭제'여도 다른 마디(여러 항 나열)가
+    # '합쳤다'고 하면 합침으로 본다 (코드가 만든 표 줄 "- 제4항: 삭제"가 합침 설명을 이기지 않게)
+    if "삭제" in kinds and "합침" in all_kinds:
+        return "합침"
     for kind in ("합침", "삭제", "자체 보정"):
         if kind in kinds:
             return kind
     if bundle_covers(draft.response, claim):
         return "묶음 처리"
     return "언급 없음"
+
+
+def _agrees(actual: str, got: str) -> bool:
+    """실제 처리 = 초안 처리. 단 실제 의견서가 언급하지 않은 종속항을 초안이 묶음 문장으로 다룬 것은
+    맞음으로 센다 (11/26 재아 결정: 초안이 더 완전한 것을 감점하지 않음)."""
+    return got == actual or (actual == "언급 없음" and got == "묶음 처리")
 
 
 def treatment_agreement(issues: list[dict], draft: DraftText) -> tuple[int, int, list[dict]]:
@@ -102,7 +151,7 @@ def treatment_agreement(issues: list[dict], draft: DraftText) -> tuple[int, int,
         got = draft_treatment(x["claim"], draft)
         rows.append(
             {"id": x.get("id"), "claim": x["claim"], "actual": x["actual"], "draft": got,
-             "hit": got == x["actual"]}
+             "hit": _agrees(x["actual"], got)}
         )  # fmt: skip
     return sum(r["hit"] for r in rows), len(rows), rows
 

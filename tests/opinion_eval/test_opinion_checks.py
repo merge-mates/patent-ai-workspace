@@ -56,7 +56,8 @@ def test_일치율은_처리_논점마다_같으면_1():
         {"claim": 1, "role": "반박", "actual": "반박"},  # 반박 논점은 세지 않음
     ]
     hits, total, rows = treatment_agreement(issues, draft())
-    assert (hits, total) == (2, 3)
+    # 2항: 실제 언급 없음 + 초안 묶음 문장 → 맞음 (11/26 재아 결정)
+    assert (hits, total) == (3, 3)
     assert [r["draft"] for r in rows] == ["삭제", "합침", "묶음 처리"]
 
 
@@ -163,3 +164,51 @@ def test_따옴표가_마디를_넘어도_문장째_뺀다():
         response="",
     )
     assert draft_treatment(4, d) == "언급 없음"
+
+
+def test_삭제한_항도_다른_마디에서_합쳤다고_하면_합침():
+    # 합친 항은 늘 지운 항이기도 하다: 코드가 만든 표 줄 "- 제4항: 삭제"가 합침 설명을 이기지 않는다
+    d = draft(
+        amendment="- 제4항: 삭제\n- 제7항: 삭제\n- 제11항: 삭제\n"
+        "청구항 4, 5, 7의 구성은 청구항 1, 8, 15에 합쳤습니다.",
+        response="",
+    )
+    assert draft_treatment(4, d) == "합침"
+    assert draft_treatment(7, d) == "합침"
+    assert draft_treatment(11, d) == "삭제"  # 합침 말이 없는 지운 항은 그대로 삭제
+    assert draft_treatment(1, d) != "삭제"  # 합친 곳(받는 항)은 삭제가 아니다
+
+
+def test_항_머리표가_있는_줄은_그_항만_말한_것():
+    # "- 청구항 3: 청구항 2에 …" 줄의 청구항 2는 인용 관계일 뿐 2항의 처리가 아니다
+    d = draft(
+        amendment="- 청구항 2: '전처리 모듈'을 '명령'으로 바꿨습니다.\n"
+        "- 청구항 3: 청구항 2에 종속하는 구성은 유지하고, 신경망 구성을 추가했습니다.",
+        response="",
+    )
+    assert draft_treatment(2, d) == "자체 보정"
+
+
+def test_보정_전후_동일하다는_말은_바꾸지_않은_것():
+    d = draft(amendment="- 청구항 9, 10은 보정 전후 동일합니다.", response="")
+    assert draft_treatment(9, d) == "언급 없음"
+
+
+def test_실제가_언급_없음이고_초안이_묶음_문장이면_맞음():
+    # 11/26 재아 결정: 실제 의견서가 종속항을 언급하지 않았어도 초안이 독립항 논리를 묶음 문장으로
+    # 적용하면 맞은 것으로 센다 (초안이 더 완전한 것을 감점하지 않음)
+    issues = [{"claim": 2, "role": "처리", "actual": "언급 없음"}]
+    hits, total, rows = treatment_agreement(issues, draft())
+    assert (hits, total) == (1, 1)
+    assert rows[0]["draft"] == "묶음 처리"
+
+
+def test_표_줄의_보정_표시는_추가_설명보다_앞선다():
+    # 코드가 만든 보정 결과 표 "- 제3항: 보정"이 있으면,
+    # 반박 설명의 "청구항 3에 … 추가"를 합침으로 읽지 않는다
+    d = draft(
+        amendment="- 청구항 3: 청구항 2에 종속하는 구성은 유지하고, 신경망 구성을 추가했습니다.\n"
+        "- 제3항: 보정",
+        response="",
+    )
+    assert draft_treatment(3, d) == "자체 보정"
