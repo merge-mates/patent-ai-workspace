@@ -32,7 +32,7 @@ TITLES = {
 }
 
 
-def ours(inp, plan, ctx, oa=None, before=False):
+def ours(inp, plan, ctx, oa=None, before=False, case=False):
     """판단 단위마다 앱 의견서 프롬프트를 쓰되, 고른 방향 자리에 E 전략·보정안을, 끝에 점검 지시를 넣는다."""
     note = "".join(
         (HERE / f"prompts/{n}.md").read_text(encoding="utf-8") for n in ("note_amend", "note_check")
@@ -47,6 +47,10 @@ def ours(inp, plan, ctx, oa=None, before=False):
         | ({"보정 전 글": q["before"]} if before else {})
         for q in plan["amended"]
     ]
+    selected = to_json({"name": plan["strategy"], "보정안": rows}) + "\n" + note
+    if case:  # 사건 단위: 한 번에
+        out = O.build_case_opinion(inp, selected, ctx, oa_text=oa)
+        return {t: getattr(out, k) or "" for k, t in TITLES.items()}
     parts = {k: [] for k in TITLES}
     for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
         v = unit_variables(
@@ -61,7 +65,7 @@ def ours(inp, plan, ctx, oa=None, before=False):
                 "response_due": None,
             }
         )
-        v["selected"] = to_json({"name": plan["strategy"], "보정안": rows}) + "\n" + note
+        v["selected"] = selected
         if oa:  # 셋째 비교: 거절이유 자리 뒤에 OA 글자 전체
             v["rejection"] += "\n\nOA 글자 전체 (원문)\n" + oa
         out = call_with_one_retry(O.STEP, v, O.OpinionOut, ctx)
@@ -96,7 +100,7 @@ def sub_main():
     inp = F4Input.model_validate_json((folder / "f4_input.json").read_text())
     plan = json.loads((folder / "plan.json").read_text())
     oa = json.loads(Path(sys.argv[3]).read_text())["oa"]
-    # 판 이름에 든 낱말로 켠다: oa = OA 전체 글, before = 보정 전 글
+    # 판 이름에 든 낱말로 켠다: oa = OA 전체 글, before = 보정 전 글, case = 사건 단위 한 번
     arms = sys.argv[4].split(",") if len(sys.argv) > 4 else ["ours_sub", "ours_oa_sub"]
     for name in arms:
         text = oa if "_oa" in name else None
@@ -107,7 +111,9 @@ def sub_main():
             )
             dest.write_text(
                 json.dumps(
-                    ours(inp, plan, ctx, text, "before" in name), ensure_ascii=False, indent=1
+                    ours(inp, plan, ctx, text, "before" in name, "case" in name),
+                    ensure_ascii=False,
+                    indent=1,
                 )
             )
             print("DONE", folder.name, rep, name, "호출", len(ctx.recorder.records), flush=True)
