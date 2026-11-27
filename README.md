@@ -46,7 +46,6 @@
 - **대상**: 국내 OA, 컴퓨터 비전 분야, 거절이유는 진보성(특허법 29조 2항)·신규성(29조 1항)·명확성(42조 4항 2호). 2019~2022년 OA 약 70만 건을 직접 집계해 보니 이 세 가지만 있는 통지서가 76.7%였다 ([PRD 3.2절](docs/product.md#32-지원하는-거절이유)).
 - **AI가 하지 않는 것**: 법률 결론, 등록 가능성 보증, 대응 방향 확정, 자동 제출. AI는 후보를 순위·이유·확신도와 함께 내고, 확신이 낮으면 "직접 판단 필요"라고 표시한다 ([ADR 0001](docs/decisions/0001-ai-amended-claim-draft.md)).
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 주요 기능
 
@@ -70,7 +69,6 @@ flowchart LR
 
 화면은 사건 목록 → 올리기 → OA 작업대 → 대비 → 법률 근거 → 대응 방향 → 초안 순서로 이어지고, 사건을 다시 열면 저장된 결과에서 이어 본다.
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 설계 원칙
 
@@ -90,14 +88,13 @@ flowchart LR
 **4. 정답을 미리 보지 않는다**
 - 평가 세트를 연습(tune)·검사·예비로 나누고, 최종 평가 세트(report)는 개발하는 세션이 열지 않는다 (저장소 훅으로 막음). 합격 기준은 돌리기 전에 적는다.
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 성과
 
 ### 보정 청구항 추천: 그냥 Opus보다 정확하게, 괜한 수정은 절반 가까이 줄임
 "OA와 출원서만 보고, 실제 보정서에서 어느 청구항이 **정정·삭제·그대로**였는지 맞히기"로 문제를 정하고, 실제 보정서(청구항 이력)를 정답으로 코드가 채점했다. 비교 기준선은 같은 입력을 받은 그냥 Claude Opus.
 
-| 지표 (처음 보는 사건 27건, 한 번) | 그냥 Opus | 우리 방식 |
+| 지표 (처음 보는 사건) | 그냥 Opus | 우리 방식 |
 |---|---|---|
 | 청구항마다 정정·삭제·그대로를 맞힌 비율 | 67.7% | **73.0%** (+5.3%p, 구간 +0.7 ~ +9.9) |
 | 고칠 필요 없는데 고치라고 한 항 | 39항 | **22항** (−44%) |
@@ -116,7 +113,6 @@ flowchart LR
 - 파이썬 테스트 **3,000개 이상**이 네트워크·DB·API 키 없이 돈다 (외부 응답은 기록된 파일로 테스트). PR마다 GitHub Actions가 테스트·린트·화면 빌드를 돈다.
 - 큰 결정은 ADR **4건**으로 남겼다 ([docs/decisions/](docs/decisions/)).
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 시스템 구조와 기술 스택
 
@@ -145,7 +141,6 @@ flowchart LR
 
 부르는 방향은 `api → core → retrieval·law_api·db`만 허용한다. 자세한 이유와 버린 선택지는 [ADR 0003](docs/decisions/0003-tech-stack.md), 엔티티·결과 스키마는 [데이터 모델](docs/data-model.md), API는 [API 명세](docs/api/README.md).
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 시작하기
 
@@ -180,7 +175,6 @@ uv run python eval/make_index.py   # 점수 표 다시 만들기
 ```
 평가 세트(정답)는 git 밖 `data/goldsets/`에 둔다. 형식은 [eval/GUIDE.md](eval/GUIDE.md).
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 폴더 구조
 
@@ -201,11 +195,10 @@ tests/          테스트 (API · 코어 · DB · E2E)
 ```
 원본 데이터·사건 자료·정답은 `data/`, `work/`(git 밖)에 두고 어떤 커밋에도 넣지 않는다.
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## AI와 같이 개발한 방식
 
-두 사람이 3주 안에 끝에서 끝까지 만들기 위해, 첫날부터 Claude Code와 일하는 틀을 저장소에 넣었다.
+두 사람이 3주 안에 완성하기 위해, 첫날부터 Claude Code와 일하는 틀을 저장소에 넣었다.
 
 - **팀 규칙** [`CLAUDE.md`](CLAUDE.md): 폴더 역할, 부르는 방향, 특허 도메인 규칙(판 섞지 않기, 못 찾음 ≠ 없음), 리뷰 심각도(막음 / 고칠 것 / 참고)를 사람과 AI가 같이 따른다.
 - **스킬** [`.claude/skills/`](.claude/skills/README.md): 이슈 하나를 `/start → /implement → /check → /pr-draft` 순서로 돌린다. 기획 질문(`/interview`), 문서 검토(`/doc-review`), 실험 채점(`/experiment`), 상대 PR 리뷰(`/pr-review`)도 스킬로 부른다.
@@ -214,7 +207,6 @@ tests/          테스트 (API · 코어 · DB · E2E)
 - **안전장치**: 최종 평가 정답을 개발 세션이 못 열게 막는 훅, gitignore된 파일 강제 추가 금지, push·PR·머지는 사람이 승인.
 - **GitHub flow**: 계획 하나 = 브랜치 하나 = PR 하나, 상대가 리뷰, merge commit으로 머지.
 
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
 
 ## 데이터 출처
 
