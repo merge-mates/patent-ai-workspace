@@ -33,6 +33,7 @@
 6. [시작하기](#시작하기)
 7. [폴더 구조](#폴더-구조)
 8. [AI와 같이 개발한 방식](#ai와-같이-개발한-방식)
+9. [데이터 출처](#데이터-출처)
 
 </details>
 
@@ -213,5 +214,14 @@ tests/          테스트 (API · 코어 · DB · E2E)
 - **문서 흐름**: 기능마다 `requirements.md`(무엇) → `design.md`(어떻게) → `tasks.md`(이번 이터레이션 할 일), 되돌리기 어려운 결정은 ADR.
 - **안전장치**: 최종 평가 정답을 개발 세션이 못 열게 막는 훅, gitignore된 파일 강제 추가 금지, push·PR·머지는 사람이 승인.
 - **GitHub flow**: 계획 하나 = 브랜치 하나 = PR 하나, 상대가 리뷰, merge commit으로 머지.
+
+<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
+
+## 데이터 출처
+
+- [KIPRIS Plus](https://plus.kipris.or.kr/): 행정 이력, 공보, 청구항 변동 이력, 의견제출통지서
+- [법제처 국가법령정보 Open API](https://open.law.go.kr/): 특허법·시행령·심사기준·판례
+- 인용문헌 원문: Google Patents 공보 PDF, 논문 공개 판 PDF
+- 자료마다 출처·이용 조건·가공 단계는 [데이터 카드](docs/data/)에 적었다.
 
 <p align="right">(<a href="#readme-top">맨 위로</a>)</p>
