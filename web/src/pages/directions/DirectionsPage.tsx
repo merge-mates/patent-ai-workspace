@@ -34,8 +34,10 @@ import type { LegalEvidenceBundle, LegalSource } from '../../types/generated/Leg
 
 // 근거가 든 문서 이름: 같은 OA 대비표의 인용발명 이름(D1 등)과 문서 번호를 맞춘다. 통지서 문서면 "통지서".
 // 못 맞추면 명세서·청구항(문서 번호 끝 글자)이고, 그래도 모르면 "근거"
-function documentKind(documentId: string, names: Map<string, string>, noticeId: string | null): string {
+function documentKind(documentId: string, names: Map<string, string>, noticeId: string | null, specId: string | null = null): string {
   if (noticeId !== null && documentId === noticeId) return '통지서'
+  // 출원 명세서 문서 (사건 정보에서 찾은 문서 ID)
+  if (specId !== null && documentId === specId) return '명세서'
   const cite = names.get(documentId)
   if (cite) return cite
   if (/_spec$/.test(documentId)) return '명세서'
@@ -61,11 +63,13 @@ function BasisLines({
   legal,
   names,
   noticeId,
+  specId = null,
 }: {
   c: DirectionCandidate
   legal: LegalEvidenceBundle[]
   names: Map<string, string>
   noticeId: string | null
+  specId?: string | null
 }) {
   const { openCite, openEvidence, openPage } = useContext(SourceContext)
   if (c.evidence.length === 0) return null
@@ -77,7 +81,7 @@ function BasisLines({
       {c.evidence.map((e, i) => {
         const law = legalMatch(e, legal)
         const where = e.location ?? (e.page !== null ? `${e.page}쪽` : e.document_id)
-        const kind = law ? sourceKindLabel[law.source.source_kind] : documentKind(e.document_id, names, noticeId)
+        const kind = law ? sourceKindLabel[law.source.source_kind] : documentKind(e.document_id, names, noticeId, specId)
         return (
           <div
             key={`${e.document_id}-${e.location}-${i}`}
@@ -188,7 +192,7 @@ const unitHead = (u: JudgmentUnit | undefined, unitId: string) =>
 // 최종 선택은 사람이 한다 (AI는 기본값만)
 export function DirectionsPage() {
   const { units, directions, comparisons, caseCheck, directionsEmptyReason, hasCasePlan } = useLoaderData() as DirectionsLoaderData
-  const { oa, oaResult, legal } = useRouteLoaderData('oa') as OALoaderData
+  const { oa, oaResult, legal, specDocumentId } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
   const revalidator = useRevalidator()
   const navigate = useNavigate()
@@ -461,6 +465,7 @@ export function DirectionsPage() {
                       legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)}
                       names={citeNames}
                       noticeId={oa.document_id}
+                      specId={specDocumentId}
                     />
                     <Fields c={picked} hideAmendment={hasCasePlan} />
                   </div>
