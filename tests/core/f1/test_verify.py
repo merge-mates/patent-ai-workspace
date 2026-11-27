@@ -134,10 +134,11 @@ def test_원문에_없는_글자는_값과_쪽을_버린다():
     assert r.value is None and r.page is None and r.raw_text is None
 
 
-def test_다른_쪽_번호를_대면_대조_실패():
+def test_한_쪽_틀린_쪽_번호는_원문에서_찾은_쪽으로_바로잡는다():
+    # 11/27 설계 변경: 바로 앞뒤 한 쪽에만 있으면 그 쪽으로 바로잡아 대조한다 (전에는 대조 실패)
     r = merge(Found("10-2099-0000001", "10-2099-0000001", 2), None, PAGES)
-    assert r.status.value == StatusValue.UNVERIFIED
-    assert r.page is None
+    assert r.status.value == StatusValue.CONFIRMED
+    assert r.page == 1
 
 
 def test_쪽이_없는_값은_대조_실패():
@@ -288,3 +289,27 @@ def test_나라_표기가_둘_섞이면_ambiguous():
     assert r.value is None
     assert r.status.reason == UnverifiedReason.AMBIGUOUS
     assert (r.raw_text, r.page) == ("US 2099/0000001, JP 2099-000001", 1)
+
+
+# ---- 모델이 준 쪽이 한 쪽 틀릴 때 (11/27): 바로 앞뒤 쪽에서 찾으면 그 쪽으로 바로잡는다 ----
+# 꼬리말 "- 2 -" 바로 뒤 글자를 모델이 앞 쪽으로 적는 일이 있다. 결과의 쪽은 원문에서 찾은 쪽이다
+THREE = _pages("출원번호 10-2099-0000001", "인용발명 1: 공개특허공보", "인용발명 2: 등록특허공보")
+
+
+def test_한_쪽_틀린_쪽_번호는_원문에서_찾은_쪽으로_바로잡아_확인한다():
+    r = merge(None, Found(None, "인용발명 2: 등록특허공보", 2), THREE, compare_by="raw_text")
+    assert r.status.value == StatusValue.CONFIRMED
+    assert r.page == 3
+    assert r.status.checked == "3쪽 원문 대조"
+
+
+def test_두_쪽_이상_틀린_쪽_번호는_바로잡지_않는다():
+    r = merge(None, Found(None, "인용발명 2: 등록특허공보", 1), THREE, compare_by="raw_text")
+    assert r.status.reason == UnverifiedReason.NOT_EXTRACTED
+    assert r.page is None
+
+
+def test_앞뒤_두_쪽에_다_있으면_어느_쪽인지_몰라_바로잡지_않는다():
+    both = _pages("같은 글자", "다른 글자", "같은 글자")
+    r = merge(None, Found(None, "같은 글자", 2), both, compare_by="raw_text")
+    assert r.status.reason == UnverifiedReason.NOT_EXTRACTED
