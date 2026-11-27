@@ -1,4 +1,4 @@
-import { Button, Tag } from 'antd'
+import { Alert, Button, Tag } from 'antd'
 import { useContext } from 'react'
 import { Link } from 'react-router'
 import { SourceContext } from '../../components/sourceContext'
@@ -12,7 +12,7 @@ export function FixList({
   onShowClaims,
   onShowOpinion,
 }: {
-  fixes: Fix[]
+  fixes: Fix[] | null
   caseItems: { name: string; result: 'warn' | 'fail' | 'ok'; detail: string }[]
   hasCheck: boolean
   onShowClaims: () => void
@@ -22,10 +22,11 @@ export function FixList({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <h2 className="heading2" style={{ marginBottom: 8 }}>
-        {`제출 전에 고칠 곳 ${fixes.length}`}
+        {fixes === null ? '제출 전에 고칠 곳' : `제출 전에 고칠 곳 ${fixes.length}`}
       </h2>
-      {fixes.length === 0 && <span className="body1 t2">고칠 곳으로 잡힌 것이 없어요. 제출 전에 한 번 더 직접 읽어 주세요.</span>}
-      {fixes.map((f) => (
+      {fixes === null && <Alert type="warning" showIcon message="초안 검사 결과가 아직 없어요 · 누락과 번호 일치를 직접 확인해 주세요" />}
+      {fixes?.length === 0 && <span className="body1 t2">고칠 곳으로 잡힌 것이 없어요. 제출 전에 한 번 더 직접 읽어 주세요.</span>}
+      {fixes?.map((f) => (
         <div
           key={f.key}
           style={{

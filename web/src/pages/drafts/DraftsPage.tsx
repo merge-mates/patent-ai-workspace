@@ -3,6 +3,7 @@ import { EmptyReason } from '../../components/EmptyReason'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useRouteLoaderData } from 'react-router'
 import { api, API_MODE } from '../../api'
+import { hasDraftCheck } from '../../api/draftCheck'
 import { AiTag, HumanTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { TrackedText } from '../../components/TrackedText'
@@ -10,8 +11,8 @@ import type { DraftsLoaderData, OALoaderData } from '../../loaders'
 import { unsupportedRejectionNos } from '../../format'
 import { LOW_CONFIDENCE_TEXT, rejectionKindLabel } from '../../labels'
 import { useRunSnapshot } from '../../useRunSnapshot'
-import type { AmendedClaim, Evidence1 } from '../../types/generated/Drafts'
-import type { DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
+import type { AmendedClaim, Drafts, Evidence1 } from '../../types/generated/Drafts'
+import type { DraftPatch } from '../../types/provisional/pending'
 import { CoverageTable } from './CoverageTable'
 import { buildCoverage, buildFixes, caseToCheck } from './coverage'
 import { FixList } from './FixList'
@@ -65,7 +66,7 @@ export function DraftsPage() {
   const rebuilding = runState === 'queued' || runState === 'running'
   const { message } = App.useApp()
   const { openCite } = useContext(SourceContext)
-  const [drafts, setDrafts] = useState<DraftsWithCheck | null>(initial)
+  const [drafts, setDrafts] = useState<Drafts | null>(initial)
   const [view, setView] = useState<'opinion' | 'claims'>('opinion')
   const [aiShown, setAiShown] = useState<string[]>([]) // AI 원문을 펼친 칸: 's:<key>' / 'c:<청구항>'
   const [editing, setEditing] = useState<Editing>(null)
@@ -96,8 +97,11 @@ export function DraftsPage() {
   const rejections = oaResult?.result.rejections ?? []
   // AI가 다루지 않은 거절이유: 사건 전체 검사 + 정리 결과의 supported=false
   const unsupported = unsupportedRejectionNos(caseCheck?.unsupported_rejections, rejections)
-  const coverage = buildCoverage(drafts, directions, rejections, unsupported)
-  const fixes = buildFixes(drafts, directions, rejections, unsupported, drafts.opinion.map((x) => x.title))
+  const checkedDrafts = hasDraftCheck(drafts) ? drafts : null
+  const coverage = checkedDrafts === null ? null : buildCoverage(checkedDrafts, directions, rejections, unsupported)
+  const fixes = checkedDrafts === null
+    ? null
+    : buildFixes(checkedDrafts, directions, rejections, unsupported, drafts.opinion.map((x) => x.title))
   const caseItems = caseToCheck(caseCheck?.items ?? [])
 
   // 고친 글을 저장한다. AI 원본(ai_text)은 서버가 그대로 남기고 사람 글은 human_text에 둔다
@@ -276,7 +280,7 @@ export function DraftsPage() {
   }
 
   // 번호 불일치가 가리킨 칸: 빨간 물결 밑줄 + 줄 아래 작은 글 (문장 위치는 데이터에 없다)
-  const mismatchesOf = (title: string) => drafts.check.number_mismatches.filter((m) => m.where === title)
+  const mismatchesOf = (title: string) => checkedDrafts?.check.number_mismatches.filter((m) => m.where === title) ?? []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
@@ -284,7 +288,7 @@ export function DraftsPage() {
       {rebuilding && (
         <Alert type="info" showIcon message="초안 다시 만드는 중 · 지금 보이는 초안은 이전 방향으로 만든 것이에요. 끝나면 새 초안으로 바뀌어요 · 그때까지는 옛 초안을 고칠 수 없어요" />
       )}
-      <CoverageTable model={coverage} />
+      {coverage !== null && <CoverageTable model={coverage} />}
       <FixList
         fixes={fixes}
         caseItems={caseItems}
