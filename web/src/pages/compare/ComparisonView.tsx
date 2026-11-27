@@ -313,11 +313,14 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {/* 표 전체가 "조회 범위 내 없음"이어도 같은 구성을 찾은 줄이 있으면 "일부"라고 말한다 (머리와 줄이 어긋나 보이지 않게) */}
             {t.status.value === 'not_found_in_scope' && t.rows.some((r) => r.judgment === 'disclosed') ? (
+              // 차이점 후보가 0개면 이 줄을 쓰지 않는다 (제목이 이미 "차이점 후보를 찾지 못했어요")
+              diffNames(t).length === 0 ? null : (
               // 표가 구성요소 한 줄씩이라 개수도 구성요소로 센다: 어느 인용발명에서도 같은 구성을 못 찾은 구성요소
               <span className="label1 t2">
                 구성요소 {diffNames(t).length}개는 {citeLabels.join('·')} 어디에서도 같은 구성을 찾지 못해 차이점 후보예요. 없다고
                 단정하지는 않아요.
               </span>
+              )
             ) : (
               <>
                 <StatusTag status={t.status} detail={false} unverifiedText={COMPARE_UNVERIFIED_TEXT} />

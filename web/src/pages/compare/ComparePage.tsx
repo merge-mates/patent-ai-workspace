@@ -4,6 +4,9 @@ import { API_MODE } from '../../api'
 import { EmptyReason } from '../../components/EmptyReason'
 import { HumanCheckTag } from '../../components/Marks'
 import { RejectionLaw } from '../../components/RejectionLaw'
+import { NextStep } from '../../components/NextStep'
+import { SourceContext } from '../../components/sourceContext'
+import { useContext } from 'react'
 import { isRunEnded } from '../../runPoll'
 import { useRunSnapshot } from '../../useRunSnapshot'
 import { StatusTag } from '../../components/StatusTag'
@@ -27,6 +30,7 @@ export function ComparePage() {
   const { units, comparisons, clarity, legal, emptyReasons } = useLoaderData() as CompareLoaderData
   const { oa, oaResult, ready } = useRouteLoaderData('oa') as OALoaderData
   const navigate = useNavigate()
+  const { openPage } = useContext(SourceContext)
   // 실행 중이면 대응 방향 결과가 아직 없을 수 있다 (없는 화면을 열면 result_not_ready 오류가 뜨던 곳)
   const run = useRunSnapshot(oa.latest_run)?.run ?? null
   const running = run !== null && !isRunEnded(run.state)
@@ -69,6 +73,9 @@ export function ComparePage() {
   const table = comparisons.find((t) => t.unit_id === unit.unit_id)
   const review = clarity.find((c) => c.unit_id === unit.unit_id)
   const unitReason = unit.rejection_kind === 'clarity' ? emptyReasons.clarity : emptyReasons.comparisons
+  // 명확성 대표 청구항의 통지서 줄 (판단 원문·쪽): 검토가 없을 때 원문으로 보낸다
+  const clarityRow =
+    oaResult?.result.claim_rows.find((r) => r.rejection === unit.rejection && r.claim === unit.representative_claim) ?? null
   // 함께 읽을 앞 청구항(인용하는 청구항)의 검토가 있는 묶음: 명확성 종속항이 따를 곳
   const sameReasonUnit = units.find(
     (u) => u.unit_id !== unit.unit_id && unit.read_with.includes(u.representative_claim) && clarity.some((c) => c.unit_id === u.unit_id),
@@ -108,8 +115,27 @@ export function ComparePage() {
           </Button>
         </div>
       )}
-      {!table && !review && !(unit.rejection_kind === 'clarity' && sameReasonUnit) && (unitReason ? (
-        <EmptyReason what={unit.rejection_kind === 'clarity' ? '명확성 문구 검토' : '인용발명 대비'} reason={unitReason} />
+      {/* 명확성인데 검토가 없고 따를 앞 청구항도 없음: 통지서가 문제 표현을 따옴표로 짚지 않은 경우가 대부분이다.
+          "해당 거절이유 없음"처럼 읽히지 않게 이유와 원문을 보인다 */}
+      {!table && !review && unit.rejection_kind === 'clarity' && !sameReasonUnit && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span className="body1 t2">
+            {`${josaAfterNumber(`청구항 ${unit.representative_claim}`, '은', '는')} 통지서가 문제 표현을 따옴표로 짚지 않아 문구 검토를 하지 않았어요. 심사관 판단 원문을 직접 확인해 주세요.`}
+          </span>
+          {clarityRow && (
+            <div>
+              <Button size="small" onClick={() => openPage(clarityRow.page, clarityRow.raw_text)}>
+                통지서에서 심사관 판단 보기{clarityRow.page !== null ? ` (${clarityRow.page}쪽)` : ''}
+              </Button>
+            </div>
+          )}
+          <NextStep title="따옴표 없는 명확성 지적도 검토">
+            표현을 따옴표로 짚지 않고 "어느 단계와 결합하는지 알 수 없다"처럼 쓴 지적도, 심사관 판단 문장에서 문제 부분을 찾아 청구항과 대조해 보여요.
+          </NextStep>
+        </div>
+      )}
+      {!table && !review && !(unit.rejection_kind === 'clarity') && (unitReason ? (
+        <EmptyReason what="인용발명 대비" reason={unitReason} />
       ) : (
         <Empty description="이 청구항들의 대비 결과가 아직 없습니다" />
       ))}
