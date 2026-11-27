@@ -164,8 +164,8 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
       },
     ],
     further_review: [
-      { chunk_id: 'legal_precedent#7', why: 'opposite_holding', note: '실질적 동일을 부정한 판례가 더 있는지', index_version: null },
-      { chunk_id: 'legal_exam_guideline#12', why: 'other_edition', note: null, index_version: null },
+      { chunk_id: 'legal_precedent#7', why: 'opposite_holding', note: '실질적 동일을 부정한 판례가 더 있는지', index_version: null, source: null },
+      { chunk_id: 'legal_exam_guideline#12', why: 'other_edition', note: null, index_version: null, source: null },
     ],
     ...common(ok('주장마다 근거 원문 대조')),
   },
@@ -190,8 +190,9 @@ export const exampleLegal: Record<string, LegalEvidenceBundle> = {
       },
     ],
     further_review: [
-      { chunk_id: 'legal_statute#3', why: 'edition_unknown', note: '판본을 확인한 뒤 다시 보기', index_version: null },
-      { chunk_id: 'legal_precedent#9', why: 'not_used_candidate', note: '효과가 현저한 효과로 인정된 사례', index_version: null },
+      { chunk_id: 'legal_statute#3', why: 'edition_unknown', note: '판본을 확인한 뒤 다시 보기', index_version: null, source: null },
+      { chunk_id: 'legal_precedent#9', why: 'not_used_candidate', note: '효과가 현저한 효과로 인정된 사례', index_version: null, source: { source_kind: 'precedent', identifier: '판례_20XX후0009 (예시)', text_kind: 'full', speaker: 'party', decided_on: '2099-01-05', court: '대법원 (예시)', evidence: { ...ev('legal_precedent', '이유 2.나.', '(예시) 원고는 효과가 현저하다고 주장한다.', null), chunk_id: 'legal_precedent#9' }, status: ok('위치 확인') } },
+      { chunk_id: 'legal_exam_guideline#21', why: 'not_used_candidate', note: null, index_version: null, source: { source_kind: 'guideline', identifier: '3부 3장 6.2 (예시 위치)', text_kind: null, speaker: null, decided_on: null, court: null, evidence: { ...ev('legal_exam_guideline', '120쪽 (3부 3장 6.2)', '(예시) 결합 동기는 인용발명의 과제와 기능에서 찾는다.', '2099.1. 개정 (예시)'), chunk_id: 'legal_exam_guideline#21' }, status: ok('위치 확인') } },
     ],
     ...common(unv('edition_unknown')),
   },

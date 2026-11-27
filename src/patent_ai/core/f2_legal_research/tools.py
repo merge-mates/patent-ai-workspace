@@ -1,8 +1,7 @@
 """F2 검색 도구와 출처 확인 (design 7-1 도구 표, 2절 3·4단계). 모두 코드, 모델을 부르지 않는다.
 
 - 아는 조문은 ID 조회(`get_article`), 모르는 근거는 검색(`search_article`). design 5절.
-- 심사기준·판례·심결은 `law-idx-v3`(#24) 전이라 조각이 없다. 그때는 `search`를 부르지 않고
-  `unverified(body_missing)`로 남긴다 (못 찾음 ≠ 없음).
+- 심사기준·판례·심결 검색은 `source_search.py`에 있다.
 - 출처 확인(`check_source`)은 무조건 도는 코드 단계다: 없는 출처 0건을 코드로 보장한다.
 """
 
@@ -24,11 +23,13 @@ from patent_ai.core.schemas.legal_evidence import (
 )
 from patent_ai.retrieval.contract import Searcher
 from patent_ai.retrieval.repository import ChunkRepository
-from patent_ai.retrieval.schemas import Chunk, SearchResult
+from patent_ai.retrieval.schemas import Chunk, ChunkKind, SearchResult
 
 logger = logging.getLogger(__name__)
 
 CORPUS = "law"
+# 판례·심결 조각 종류 (요지·전문). 판례인지 심결인지는 source_kind로 가른다
+CASE_KINDS: list[ChunkKind] = ["judgment_summary", "judgment"]
 # 법령 doc_id 꼴: <법 이름>_<MST>_<시행일 8자리> (retrieval/law_index._RAW_NAME)
 _LAW_DOC = re.compile(r"^(?P<law>.+)_[0-9]+_[0-9]{8}$")
 _SPACE = re.compile(r"\s+")
@@ -52,9 +53,6 @@ class LawPool:
     def in_force(self, as_of: date) -> list[Chunk]:
         """그 날짜에 시행 중인 조각. 판본 모름은 빼고, not_applicable(판례 등)은 남긴다."""
         return [c for c in self.chunks if _in_force(c, as_of)]
-
-    def count_kind(self, kind: str) -> int:
-        return sum(1 for c in self.chunks if c.chunk_kind == kind)
 
 
 def edition_unknown(chunk: Chunk) -> bool:
@@ -156,37 +154,6 @@ def search_article(searcher: Searcher, query: str, as_of: date | None, k: int) -
     return searcher.search(query, CORPUS, "bm25", k, as_of=as_of, chunk_kinds=["article"])
 
 
-# 자료 유형 -> 그 유형의 조각 종류 (판례·심결은 law-idx-v3에서 source_kind로 가른다, F2 design 5-1)
-_KIND_OF = {
-    LegalSourceKind.GUIDELINE: "guideline",
-    LegalSourceKind.PRECEDENT: "judgment",
-    LegalSourceKind.TRIAL: "judgment",
-}
-
-
-def search_not_indexed(
-    pool: LawPool, source: LegalSourceKind, as_of: date | None
-) -> SearchLogEntry:
-    """심사기준·판례·심결: 아직 검색이 없어 부르지 않고 body_missing 기록 (design 2절 3단계).
-
-    조각이 0개여도(law-idx-v3 전, 평소) 조각이 있어도(검색은 다음 계획) 경고를 남긴다:
-    묶음이 확인됨이어도 이 유형은 안 봤다는 것이 기록(status)과 로그에 남아야 한다.
-    """
-    n = pool.count_kind(_KIND_OF[source])
-    if n:
-        logger.warning("%s 조각 %d개가 있지만 F2 검색은 아직 없음 (확인되지 않음)", source, n)
-    else:
-        logger.warning("%s 조각이 색인 %s에 없음 (확인되지 않음)", source, pool.index_version)
-    return SearchLogEntry(
-        source_kind=source,
-        index_version=pool.index_version,
-        as_of=as_of,
-        queries=0,
-        hits=0,
-        status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.BODY_MISSING),
-    )
-
-
 def _squash(text: str) -> str:
     return _SPACE.sub("", text)
 
@@ -197,13 +164,19 @@ def check_source(
     raw_text: str | None,
     as_of: date | None,
 ) -> bool:
-    """출처 확인: 조각이 색인에 있고, 인용 글이 조각 글에 그대로(공백 무시) 있고, 기준일 판인가."""
+    """출처 확인: 조각이 색인에 있고, 인용 글이 조각 글에 그대로(공백 무시) 있고, 기준일 판인가.
+
+    판례·심결은 판본이 없어 선고일(심결일) ≤ 기준일을 본다. 날짜를 모르면 통과하지 못한다.
+    """
     if not chunk_id or not raw_text or not _squash(raw_text):
         return False
     candidates = pool.in_force(as_of) if as_of is not None else list(pool.chunks)
     found = next((c for c in candidates if c.chunk_id == chunk_id), None)
     if found is None:
         return False  # 없는 조각이거나 기준일에 시행 중인 판이 아님
+    if as_of is not None and found.chunk_kind in CASE_KINDS:
+        if found.decided_on is None or found.decided_on > as_of:
+            return False  # 그 시점에는 없던 판결이거나 날짜를 모름
     return _squash(raw_text) in _squash(found.text)
 
 
@@ -214,8 +187,6 @@ ALL_KINDS = [
     LegalSourceKind.PRECEDENT,
     LegalSourceKind.TRIAL,
 ]
-# 심사기준·판례·심결: 검색이 아직 없어 body_missing으로 기록만 남기는 유형 (law-idx-v3 뒤 검색)
-NOT_SEARCHED = (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL)
 
 
 def edition_text(chunk: Chunk) -> str | None:

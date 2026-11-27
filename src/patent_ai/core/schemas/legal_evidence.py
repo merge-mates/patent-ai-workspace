@@ -233,11 +233,18 @@ class FurtherReview(BaseModel):
     why: FurtherReviewWhy
     note: str | None = None
     index_version: str | None = None  # 조각이 속한 색인 판
+    # 조각의 원문·위치·판본·선고일·요지/전문·화자 (출처 확인을 지난 것만). 옛 결과에는 없어 비울 수
+    # 있다. 원문이 있다는 뜻일 뿐, 주장을 뒷받침하는지는 검토하지 않았다
+    source: LegalSource | None = None
 
     @model_validator(mode="after")
     def _검사(self) -> FurtherReview:
         if not self.chunk_id.strip():
             raise ValueError("chunk_id가 비어 있음")
+        if self.source is not None:
+            ev = self.source.evidence
+            if (ev.chunk_id, ev.index_version) != (self.chunk_id, self.index_version):
+                raise ValueError("source의 조각(chunk_id·index_version)이 이 줄의 조각과 다름")
         return self
 
 

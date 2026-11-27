@@ -164,6 +164,7 @@ def ask(
             checked_on=today,
             prior_evidence=chat.prior_evidence,
             search_k=settings.chat_search_k,
+            source_search_k=settings.source_search_k,
         )
     try:
         turn = unit.store.add_turn(chat_id, question, scope_changed, bundle, datetime.now(UTC))

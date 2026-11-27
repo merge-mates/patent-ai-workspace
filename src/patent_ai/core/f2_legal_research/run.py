@@ -64,7 +64,7 @@ class F2Settings(BaseModel):
 
     index_version: str  # 법령 색인 판 (law corpus)
     chat_search_k: int = Field(default=3, ge=1)  # 법률 질문: 번호 없는 질문의 BM25 조문 수
-    source_search_k: int = Field(ge=1)  # OA 흐름: 심사기준·판례·심결을 유형마다 몇 개 찾을지
+    source_search_k: int = Field(ge=1)  # 심사기준·판례·심결을 유형마다 몇 개
     # OA 흐름과 법률 질문이 같이 쓰는 검색기 값 (기준선 experiments/m2-i2-law-bm25-char-bigram)
     search_method: Literal["bm25"] = "bm25"
     # 아래 둘은 기본값이 없다: 빠지면 unique_query_terms가 조용히 꺼져 점수가 크게 떨어진다
@@ -126,6 +126,10 @@ def _empty(unit, oa, question, checked_on, status, logs=(), further=()) -> Legal
     if status.value not in (StatusValue.UNVERIFIED, StatusValue.NOT_FOUND_IN_SCOPE):
         # 충돌(같은 날 시행판 둘)은 고를 근거가 없어 확인되지 않음(ambiguous)으로 둔다
         status = Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.AMBIGUOUS)
+    skipped = sum(e.skipped_unverified_edition + e.skipped_unknown_date for e in logs)
+    if skipped and status.value == StatusValue.NOT_FOUND_IN_SCOPE:
+        # 판본·날짜를 몰라 건너뛴 조각이 있으면 "없음"이 아니다 (스키마도 막는다)
+        status = _unverified(UnverifiedReason.EDITION_UNKNOWN)
     return LegalEvidenceBundle(
         bundle_id=f"lb:{unit.unit_id}",
         unit_id=unit.unit_id,

@@ -8,7 +8,6 @@ from patent_ai.core.f2_legal_research.tools import (
     check_source,
     get_article,
     search_article,
-    search_not_indexed,
 )
 from patent_ai.core.schemas.common import StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import LegalSourceKind
@@ -83,18 +82,6 @@ def test_조문_번호_없이_질의로_찾는다():
     assert all(h.edition.effective_from <= date(2020, 5, 4) for h in out.hits)
 
 
-def test_심사기준_판례_심결_조각이_없으면_찾지_않고_body_missing과_경고(caplog):
-    for kind in (LegalSourceKind.GUIDELINE, LegalSourceKind.PRECEDENT, LegalSourceKind.TRIAL):
-        caplog.clear()
-        log = search_not_indexed(_pool(), kind, date(2020, 5, 4))
-        assert (log.source_kind, log.queries, log.hits) == (kind, 0, 0)
-        assert (log.status.value, log.status.reason) == (
-            StatusValue.UNVERIFIED,
-            UnverifiedReason.BODY_MISSING,
-        )
-        assert "없음" in caplog.text  # 조각 0개도 경고 (평소 law-idx-v3 전)
-
-
 def test_법령_조회_기록에도_결과_상태가_남는다():
     assert get_article(_pool(), R292, date(2020, 5, 4)).log.status.value == StatusValue.CONFIRMED
     got = get_article(_pool(), R292, date(2010, 1, 1))
@@ -113,7 +100,6 @@ def test_law_corpus는_한_번만_읽는다():
     for d in (date(2018, 5, 4), date(2020, 5, 4)):
         get_article(pool, R292, d)
         check_source(pool, f"{IV}:{NEW_DOC}:290002", "통상의 기술자", d)
-        search_not_indexed(pool, LegalSourceKind.GUIDELINE, d)
     assert Counting.reads == 1
 
 
@@ -145,3 +131,17 @@ def test_search_article은_질의와_더_잘_맞는_심사기준_판례가_있�
     assert out.hits
     assert {h.chunk_kind for h in out.hits} == {"article"}
     assert out.scope.chunk_kinds == ["article"]
+
+
+def test_출처_확인은_판례_심결의_선고일이_기준일_이전일_때만_통과시킨다():
+    def case(no, source, decided):
+        na = Edition(status="not_applicable")
+        c = law_chunk("판례1", no, "이유 1", f"판결 글 {no}", na, kind="judgment")
+        return c.model_copy(update={"source_kind": source, "decided_on": decided})
+
+    day = date(2018, 9, 1)
+    for source in ("precedent", "trial"):
+        cs = [case(1, source, day), case(2, source, date(2018, 9, 2)), case(3, source, None)]
+        pool = _pool(InMemoryChunkRepository({"law": cs}))
+        # 그날 선고는 통과, 다음 날 선고와 날짜 모름은 통과 못 함
+        assert [check_source(pool, c.chunk_id, c.text, day) for c in cs] == [True, False, False]

@@ -14,6 +14,7 @@ from patent_ai.core.llm.errors import ModelConfigError
 from patent_ai.core.schemas.common import ExtractedValue, Flag, StatusValue, UnverifiedReason
 from patent_ai.core.schemas.legal_evidence import AsOfSource, LegalSourceKind
 from patent_ai.retrieval.repository import InMemoryChunkRepository
+from patent_ai.retrieval.schemas import Edition
 from tests.core.f2 import fakes
 from tests.core.f2.fakes import IV, NEW_DOC, SEARCH, TEXT_292_NEW, TEXT_424_NEW
 from tests.core.f3.fakes import OK, bad, oa, rejection, split
@@ -87,6 +88,8 @@ def test_심사기준_조각이_있으면_BM25로_찾아_근거_후보로만_남
     assert log.hits == 1 and log.status.value == StatusValue.CONFIRMED
     # 주장(근거 검토는 #29)에는 안 올리고 더 볼 것으로만 둔다
     assert [c.chunk_id for c in bundle.further_review] == [guide.chunk_id]
+    ev = bundle.further_review[0].source.evidence
+    assert (ev.raw_text, ev.location) == (guide.text, "1쪽 (제3부 제3장)") and ev.edition
     assert len(bundle.claims) == 1 and len(bundle.claims[0].sources) == 1
 
 
@@ -210,3 +213,12 @@ def test_단위가_가리키는_거절이유가_OA에_없으면_확인되지_않
     assert out.bundles[0].status.value == StatusValue.CONFIRMED
     assert out.bundles[1].status.reason == UnverifiedReason.INPUT_UNVERIFIED
     assert "OA에 없음" in caplog.text
+
+
+def test_조문은_없고_날짜_모름_판례를_건너뛰었으면_멈추지_않고_확인되지_않음():
+    case = fakes.law_chunk(
+        "판례_1", 1, "이유 1", "판결 글", Edition(status="not_applicable"), kind="judgment"
+    ).model_copy(update={"source_kind": "precedent"})  # 선고일 모름
+    only = InMemoryChunkRepository({"law": [fakes.chunks()[0], case]})  # 42조는 어느 판에도 없음
+    clarity = run_f2(_input(), repo=only).bundles[1]
+    assert clarity.claims == [] and clarity.status.reason == UnverifiedReason.EDITION_UNKNOWN

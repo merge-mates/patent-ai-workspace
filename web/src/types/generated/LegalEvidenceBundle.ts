@@ -171,6 +171,7 @@ export interface FurtherReview1 {
   why: FurtherReviewWhy
   note: Note
   index_version: IndexVersion1
+  source: LegalSource | null
 }
 /**
  * 자료 종류 하나를 어떻게 찾았나 (못 찾음 ≠ 없음을 가르는 기록).

@@ -3,7 +3,7 @@
 index_version: law-idx-v3
 # 법률 질문 탭(chat.py): 조문 번호 없는 질문을 BM25로 찾을 때 가져올 조문 수
 chat_search_k: 3
-# OA 흐름(source_search.py): 심사기준·판례·심결을 유형마다 BM25로 몇 개 찾을지
+# OA 흐름·법률 질문 탭(source_search.py): 심사기준·판례·심결을 유형마다 BM25로 몇 개 찾을지
 source_search_k: 3
 # OA 흐름과 법률 질문이 같이 쓰는 검색기 값 (기준선 m2-i2-law-bm25-char-bigram). 지금은 bm25만 된다 (search_article·주장 글이 bm25 고정, 다른 방식은 29b)
 search_method: bm25
