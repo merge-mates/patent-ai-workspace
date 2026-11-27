@@ -18,6 +18,7 @@ import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../todos'
 import { useRunSnapshot } from '../useRunSnapshot'
 import type { LatestRun } from '../types/provisional/case'
 import { differenceElements } from '../pages/compare/differences'
+import { reviewRowCount } from '../components/reviewDetail'
 
 // 사건 안의 단계 4개 (디자인 B 고친 판). 단계마다 주소가 있어 새로고침·뒤로 가기가 된다
 const STEPS = [
@@ -134,7 +135,8 @@ export function CaseShell() {
   const previous = isPreviousResult(data.oaResult, data.oa.latest_run, snap)
   const runError = snap?.error ?? null
   const ready: (boolean | null)[] = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
-  const reviewCount = data.reviewItems?.length ?? null
+  // 검토할 사항 화면 줄 수와 같게 센다 (같은 문장·같은 이유 청구항은 한 줄)
+  const reviewCount = reviewRowCount(data.reviewItems, r)
 
   // 아무것도 안 골랐으면 통지서 첫 거절이유가 있는 쪽을 기본으로 (없으면 1쪽)
   const defaultPage = r?.rejections.map((x) => x.article.page).find((p) => p !== null) ?? 1
