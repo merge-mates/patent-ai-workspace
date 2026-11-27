@@ -4,6 +4,8 @@
 
 # Patent AI Workspace
 
+<sub>거절은 거절해</sub>
+
 **의견제출통지서(OA) 한 통을 올리면, 거절이유 정리부터 검토용 보정 청구항·의견서 초안까지**
 
 변리사의 국내 특허 OA 대응을 돕는 AI 업무 공간. 모든 결과에 원문 위치·판본·확인 상태가 붙고, 고르고 제출하는 것은 사람이 한다.
@@ -31,8 +33,6 @@
 6. [시작하기](#시작하기)
 7. [폴더 구조](#폴더-구조)
 8. [AI와 같이 개발한 방식](#ai와-같이-개발한-방식)
-9. [로드맵](#로드맵)
-10. [팀과 감사](#팀과-감사)
 
 </details>
 
@@ -213,35 +213,5 @@ tests/          테스트 (API · 코어 · DB · E2E)
 - **문서 흐름**: 기능마다 `requirements.md`(무엇) → `design.md`(어떻게) → `tasks.md`(이번 이터레이션 할 일), 되돌리기 어려운 결정은 ADR.
 - **안전장치**: 최종 평가 정답을 개발 세션이 못 열게 막는 훅, gitignore된 파일 강제 추가 금지, push·PR·머지는 사람이 승인.
 - **GitHub flow**: 계획 하나 = 브랜치 하나 = PR 하나, 상대가 리뷰, merge commit으로 머지.
-
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
-
-## 로드맵
-
-- [x] M1 OA 정리: OA 읽기·거절이유별 정리, 근거·상태 표시
-- [x] M2 걷는 뼈대: 화면에서 사건 하나가 F1 → F3 → F2 → F4로 끝까지 돌고 저장·다시 열기
-- [x] M3 다듬기와 평가: 검색 비교, 근거 다시 찾기, 실제 보정서를 정답으로 한 보정 추천 평가
-- [ ] 사건 전체 청구항을 후보로 한 보정 추천을 F4 앞 단계로 붙이기
-- [ ] 보정 추천 결과 위에 의견서 초안 올리기 (무엇을 보정했고 왜 인용발명에 없는지)
-- [ ] 지원 거절이유 넓히기: 청구항 기재방법(42조 8항)·뒷받침(42조 4항 1호)
-
-<p align="right">(<a href="#readme-top">맨 위로</a>)</p>
-
-## 팀과 감사
-
-| 이름 | 맡은 일 |
-|---|---|
-| 은진 ([@Eunjin-Kwon](https://github.com/Eunjin-Kwon)) | 서버(FastAPI·Postgres), 사건·법령 데이터 수집, 법률 근거 조사(F2)·근거·상태 표시(F5), 보정 추천 실험 |
-| 재아 ([@jaea-kim](https://github.com/jaea-kim)) | 화면(React·TS), OA 읽기·인용문헌 대비·대응 초안(F1·F3·F4), 인용문헌 검색·근거 다시 찾기, 개발 틀(규칙·스킬·에이전트), 리뷰 |
-
-**자료 출처**
-- [KIPRIS Plus](https://plus.kipris.or.kr/): 행정 이력, 공보, 청구항 변동 이력, 의견제출통지서
-- [법제처 국가법령정보 Open API](https://open.law.go.kr/): 특허법·시행령·심사기준·판례
-- 자료마다 출처·이용 조건·가공 단계는 [데이터 카드](docs/data/)에 적었다.
-
-**참고**
-- [Best-README-Template](https://github.com/othneildrew/Best-README-Template), [freeCodeCamp: README 잘 쓰는 법](https://www.freecodecamp.org/korean/news/gisheobeu-peurojegteue-rideumi-paileul-jal-jagseonghaneun-bangbeob/)
-
-학술 과제로 만든 프로젝트다. 결과는 검토용 초안이며 법률 자문이 아니다.
 
 <p align="right">(<a href="#readme-top">맨 위로</a>)</p>
