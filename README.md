@@ -135,7 +135,7 @@ flowchart LR
 | 화면 | React + TypeScript (Vite) | 대비표·초안처럼 상태가 많은 화면 |
 | DB | Postgres + pgvector, Alembic | 표·JSON·벡터를 DB 하나에. 스키마는 마이그레이션으로만 |
 | 에이전트 | LangGraph | 단계 기록, 사람 승인 전 멈춤 |
-| 모델 | Claude Haiku(앱 기본), Claude Opus(실험), Gemini 임베딩(인용문헌) | 단계마다 설정 파일(`config/`)에서 고름 |
+| 모델 | Claude Haiku 5.5 medium(기본), Claude Opus 5.5 medium(실험), gemini-embedding-001(인용문헌) | 단계마다 설정 파일(`config/`)에서 고름 |
 | 검색 | BM25(법령), BM25 + 벡터 RRF(인용문헌) | 위 [검색 실험](#검색-자료마다-맞는-방식을-같은-채점기로-골랐다) |
 | 개발 환경 | Docker Compose | `make up` 한 줄로 DB·서버·화면 |
 
