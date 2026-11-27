@@ -111,3 +111,9 @@ body {
     padding-left: 0;
   }
 }
+
+/* 원본 PDF 위 근거 문장 형광펜 (PDF.js 글자 층의 글자는 투명이라 바탕색만 칠한다) */
+.react-pdf__Page__textContent span.pdf-hl {
+  background: rgba(255, 196, 0, 0.45);
+  border-radius: 2px;
+}

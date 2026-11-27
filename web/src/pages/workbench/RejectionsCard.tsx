@@ -8,21 +8,41 @@ import { candidatesText } from '../../components/extracted'
 import { RejectionLaw } from '../../components/RejectionLaw'
 import { HintsCard } from './HintsCard'
 import { SourceLink } from '../../components/SourceLink'
+import { CiteSpotButton } from '../../components/CiteSpotButtons'
 import { SourceContext } from '../../components/sourceContext'
 import { StatusTag } from '../../components/StatusTag'
-import { claimRange, claimsText } from '../../format'
+import { claimRange, claimsText, termText } from '../../format'
 import { articleLabel, rejectionKindLabel } from '../../labels'
 import type { LegalEvidenceBundle } from '../../types/generated/LegalEvidenceBundle'
 import type { ClaimRow, OAResult, Rejection } from '../../types/generated/OAResult'
 
-// 거절이유가 어떤 방식으로 다뤄지나: 문헌과 대조 / 문장을 검토 / AI가 다루지 않음
+// AI가 다루지 않는 거절이유만 꼬리표를 단다 ("문헌 대조형"·"문장 검토형"은 팀 안 분류라 변리사 화면에서 뺌)
 function TypeTag({ rej }: { rej: Rejection }) {
-  if (!rej.supported) return <Tag color="default">지원 안 함</Tag>
-  if (rej.kind === 'clarity') return <Tag color="cyan">문장 검토형</Tag>
-  return <Tag color="geekblue">문헌 대조형</Tag>
+  if (!rej.supported) return <Tag color="default">AI가 다루지 않음</Tag>
+  return null
 }
 
+// 청구항 줄이 모두 "못 뽑음"(인용·위치·원문이 다 빈 줄)인지: 빈 줄 여러 개 대신 한 줄 안내로 바꾼다
+const isEmptyRow = (row: ClaimRow) =>
+  row.status.value !== 'confirmed' && row.citations.length === 0 && row.clarity_terms.length === 0 && row.same_as.length === 0
+
 // "claim:3" → "청구항 3", "rejection:1" → "거절이유 1"
+// 같은 취지 여러 개: 청구항 번호는 "청구항 1–5"처럼 범위로 묶는다 (거절이유 등은 그대로)
+function sameAsList(items: string[]): string {
+  const claims = items.map((x) => /^claim:(\d+)$/.exec(x)?.[1]).filter((n): n is string => n !== undefined).map(Number)
+  const others = items.filter((x) => !/^claim:\d+$/.test(x)).map(sameAsText)
+  return [...(claims.length ? [`청구항 ${claimRange(claims)}`] : []), ...others].join(', ')
+}
+
+// 끝 숫자 읽는 소리에 맞춰 "와/과" (1 일·3 삼·6 육·7 칠·8 팔·0 영·10 십 → 과, 그 밖 → 와)
+function withWa(text: string): string {
+  const last = /(\d+)\s*$/.exec(text)?.[1]
+  if (!last) return `${text}와`
+  const n = Number(last)
+  const batchim = n % 10 === 0 ? n !== 0 : [1, 3, 6, 7, 8].includes(n % 10)
+  return `${text}${batchim || n === 0 ? '과' : '와'}`
+}
+
 const sameAsText = (s: string) =>
   s.replace(/^claim:(\d+)$/, '청구항 $1').replace(/^rejection:(\d+)$/, '거절이유 $1')
 
@@ -30,27 +50,56 @@ const sameAsText = (s: string) =>
 // 문구가 하나도 없으면 조문을 그대로 둔다 (지어내지 않음)
 function rejectionSub(rej: Rejection, rows: ClaimRow[]): string {
   if (rej.kind === 'clarity') {
-    const terms = [...new Set(rows.filter((x) => x.rejection === rej.no).flatMap((x) => x.clarity_terms))]
+    const terms = [...new Set(rows.filter((x) => x.rejection === rej.no).flatMap((x) => x.clarity_terms.map(termText)))]
     if (terms.length > 0)
       return `${claimsText(rej.claims)} · “${terms[0]}”${terms.length > 1 ? ` 외 ${terms.length - 1}개` : ''}`
   }
   return `${claimsText(rej.claims)} · 특허법 ${articleLabel(rej.article.value)}`
 }
 
-function locationText(row: ClaimRow): string {
-  if (row.no_location) return row.no_location
-  const parts = Object.entries(row.locations).map(([label, locs]) => `${label} ${locs.join(', ')}`)
-  return parts.length > 0 ? parts.join(' / ') : '—'
+// 인용문헌·위치 한 칸: 인용문헌마다 위치 버튼 (위치가 없으면 문헌 버튼). 누르면 원문에서 그 문단 강조
+function CiteCell({ row, numbers }: { row: ClaimRow; numbers: Record<string, string> }) {
+  if (row.no_location) return <span className="body2 t2">{row.no_location}</span>
+  if (row.citations.length === 0) return <span className="t3">—</span>
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {row.citations.flatMap((label) => {
+        const locs = row.locations[label] ?? []
+        return locs.length > 0
+          ? locs.map((loc) => <CiteSpotButton key={`${label}-${loc}`} label={label} number={numbers[label] ?? null} location={loc} />)
+          : [<CiteSpotButton key={label} label={label} number={numbers[label] ?? null} location={null} />]
+      })}
+    </div>
+  )
 }
 
-// 청구항 줄 표의 열 (거절이유별·청구항별 둘이 같이 쓴다)
-const rowColumns = (clarity: boolean): ColumnsType<ClaimRow> => [
+// 같은 내용(인용·위치·같은 취지·상태)인 이어진 청구항 줄을 한 줄로 합친다 ("제6–10항")
+type ShownRow = ClaimRow & { claimsShown: number[] }
+function mergeRows(rows: ClaimRow[]): ShownRow[] {
+  const key = (r: ClaimRow) =>
+    JSON.stringify([r.citations, r.locations, r.same_as, r.status.value, r.status.reason, r.no_location, r.clarity_terms, r.clarity_reason])
+  const out: ShownRow[] = []
+  for (const r of rows) {
+    const last = out.at(-1)
+    if (last && r.claim !== null && key(last) === key(r)) last.claimsShown.push(r.claim)
+    else out.push({ ...r, claimsShown: r.claim === null ? [] : [r.claim] })
+  }
+  return out
+}
+const claimCell = (row: ClaimRow) => {
+  const shown = (row as ShownRow).claimsShown
+  if (shown && shown.length > 1) return `제${claimRange(shown)}항`
+  return row.claim === null ? '모름' : `제${row.claim}항`
+}
+
+// 청구항 줄 표의 열 (거절이유별·청구항별 둘이 같이 쓴다). numbers: 인용 라벨 → 문헌 번호 (버튼으로 원문을 연다)
+const rowColumns = (clarity: boolean, numbers: Record<string, string> = {}): ColumnsType<ClaimRow> => [
   ...(clarity
     ? [
         {
           title: '문제 표현',
           render: (_: unknown, row: ClaimRow) =>
-            row.clarity_terms.length > 0 ? row.clarity_terms.map((t) => `'${t}'`).join(', ') : '—',
+            row.clarity_terms.length > 0 ? row.clarity_terms.map((t) => `'${termText(t)}'`).join(', ') : '—',
         },
         {
           title: '이유 (AI 참고)',
@@ -60,12 +109,13 @@ const rowColumns = (clarity: boolean): ColumnsType<ClaimRow> => [
         },
       ]
     : [
-        { title: '인용', render: (_: unknown, row: ClaimRow) => (row.citations.length ? row.citations.join(' + ') : '—') },
-        { title: '인용 위치', render: (_: unknown, row: ClaimRow) => locationText(row) },
+        // 인용과 인용 위치를 한 칸으로: 위치 버튼을 누르면 오른쪽 판에 인용문헌 원문을 열고 그 문단을 강조
+        { title: '인용문헌 · 위치', render: (_: unknown, row: ClaimRow) => <CiteCell row={row} numbers={numbers} /> },
       ]),
   {
-    title: '같은 취지',
-    render: (_, row) => (row.same_as.length ? row.same_as.map(sameAsText).join(', ') : '—'),
+    // 통지서의 "동일한 취지로 / ~에서 기술한 바와 같이"를 칸 이름이 아니라 뜻으로 보인다
+    title: '같은 이유로 본 청구항',
+    render: (_, row) => (row.same_as.length ? `${withWa(sameAsList(row.same_as))} 같은 이유` : '—'),
   },
   { title: '상태', render: (_, row) => <StatusTag status={row.status} compact /> },
   {
@@ -112,8 +162,17 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
                   <Tag>{c.label}</Tag>
                   <FieldValue v={c.number}>{c.number.value ?? c.number.raw_text ?? '번호 모름'}</FieldValue>
                   {!c.country_supported && <HumanCheckTag>지원 안 하는 나라 · 직접 확인</HumanCheckTag>}
+                  {/* 인용 위치도 아래 청구항 표처럼 버튼: 누르면 그 인용문헌 원문에서 그 위치를 강조 */}
                   <FieldValue v={c.cited_paragraphs}>
-                    {c.cited_paragraphs.value?.join(', ') ?? c.cited_paragraphs.raw_text ?? '위치 없음'}
+                    {c.cited_paragraphs.value && c.cited_paragraphs.value.length > 0 ? (
+                      <Space size={4} wrap>
+                        {c.cited_paragraphs.value.map((loc) => (
+                          <CiteSpotButton key={loc} label={c.label} number={c.number.value ?? c.number.raw_text} location={loc} />
+                        ))}
+                      </Space>
+                    ) : (
+                      (c.cited_paragraphs.raw_text ?? '위치 없음')
+                    )}
                   </FieldValue>
                 </Space>
               ))}
@@ -126,22 +185,58 @@ function RejectionDetail({ rej, rows, legal }: { rej: Rejection; rows: ClaimRow[
           </FieldValue>
         </Descriptions.Item>
       </Descriptions>
-      {rej.supported && (
+      {rej.supported && rows.length > 0 && rows.every(isEmptyRow) && (
+        // 청구항마다 빈 줄을 늘어놓지 않고, 무엇을 못 했는지 한 줄로 알린다
+        <Alert
+          type="info"
+          showIcon
+          message={`청구항 ${claimRange(rows.map((x) => x.claim).filter((c): c is number => c !== null))}의 청구항별 인용문헌·인용 위치를 통지서에서 읽지 못했어요. 위 "인용문헌·인용 위치"와 통지서 원문을 직접 확인해 주세요.`}
+        />
+      )}
+      {rej.supported && !(rows.length > 0 && rows.every(isEmptyRow)) && (
+        <>
         <Table<ClaimRow>
           size="small"
           rowKey={(row, i) => `${row.claim}-${row.rejection}-${i}`}
           columns={[
-            { title: '청구항', render: (_, row) => (row.claim === null ? '모름' : `제${row.claim}항`) },
-            ...rowColumns(rej.kind === 'clarity'),
+            { title: '청구항', width: 90, render: (_, row) => claimCell(row) },
+            ...rowColumns(
+              rej.kind === 'clarity',
+              Object.fromEntries(
+                rej.citations
+                  .map((c) => [c.label, c.number.value ?? c.number.raw_text] as const)
+                  .filter((x): x is readonly [string, string] => !!x[1]),
+              ),
+            ),
           ]}
-          dataSource={rows}
+          // 값이 다 빈 줄은 표에 늘어놓지 않고 아래 한 줄로 묶고, 같은 내용 줄은 합친다
+          dataSource={mergeRows(rows.filter((x) => !isEmptyRow(x)))}
           pagination={false}
           scroll={{ x: 640 }}
           locale={{ emptyText: '청구항 줄 없음' }}
         />
+        <EmptyRowsLine rows={rows.filter(isEmptyRow)} />
+        </>
       )}
       {/* 법리는 따로 단계가 아니라 이 거절이유 안에 */}
       <RejectionLaw rejection={rej.no} legal={legal} />
+    </div>
+  )
+}
+
+// 빈 청구항 줄 묶음 한 줄: "청구항 2–6, 8–10은 항마다 따로 적힌 내용을 통지서에서 찾지 못했어요" + 후보 위치
+// (값이 없는 줄을 같은 모양으로 여러 개 늘어놓지 않는다. 숨기지는 않고 번호는 다 보인다)
+function EmptyRowsLine({ rows }: { rows: ClaimRow[] }) {
+  if (rows.length === 0) return null
+  const nos = rows.map((x) => x.claim).filter((c): c is number => c !== null)
+  const first = rows.find((x) => x.page !== null)
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <StatusTag status={rows[0].status} compact />
+      <span className="label1 t2">
+        청구항 {claimRange(nos)}은 항마다 따로 적힌 내용을 통지서에서 찾지 못했어요. 통지서 원문을 직접 확인해 주세요.
+      </span>
+      {first && <SourceLink page={first.page} rawText={first.raw_text} candidate />}
     </div>
   )
 }
@@ -192,36 +287,64 @@ function Row({
   )
 }
 
-// 청구항별 줄 안: 그 청구항에 걸린 거절이유 줄들 (지금까지 청구항별 표의 정보)
-function ClaimDetail({ rows, byNo }: { rows: ClaimRow[]; byNo: Map<number, Rejection> }) {
-  const columns: ColumnsType<ClaimRow> = [
-    {
-      title: '거절이유',
-      render: (_, row) => {
-        const rej = row.rejection === null ? undefined : byNo.get(row.rejection)
-        return rej ? `${rej.no} · ${rejectionKindLabel[rej.kind]}` : '모름'
-      },
-    },
-    {
-      title: '인용·위치 / 문제 표현',
-      render: (_, row) =>
-        row.clarity_terms.length > 0
-          ? row.clarity_terms.map((t) => `'${t}'`).join(', ')
-          : `${row.citations.join(' + ') || '—'} ${locationText(row) === '—' ? '' : `· ${locationText(row)}`}`,
-    },
-    ...rowColumns(false).slice(2),
-  ]
+// 청구항별 줄 안: 그 청구항에 걸린 거절이유마다 한 덩어리 (거절이유별 펼침과 같은 칸·같은 버튼).
+// 넓은 표 대신 덩어리로 둬 좁은 판에서도 잘리지 않게 한다. AI가 다루지 않는 거절이유도 빼지 않고 보인다
+function ClaimDetail({ rows, nos, byNo }: { rows: ClaimRow[]; nos: (number | null)[]; byNo: Map<number, Rejection> }) {
   return (
-    <div className="row-detail">
-      <Table<ClaimRow>
-        size="small"
-        rowKey={(row, i) => `${row.claim}-${row.rejection}-${i}`}
-        columns={columns}
-        dataSource={rows}
-        pagination={false}
-        scroll={{ x: 640 }}
-        locale={{ emptyText: '청구항 줄 없음 (AI가 다루지 않는 거절이유예요)' }}
-      />
+    <div className="row-detail" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {nos.map((n) => {
+        const rej = n === null ? undefined : byNo.get(n)
+        const mine = rows.filter((x) => x.rejection === n)
+        // 인용 라벨 → 문헌 번호 (버튼으로 그 인용문헌 원문을 연다)
+        const numbers = Object.fromEntries(
+          (rej?.citations ?? []).flatMap((c) => {
+            const num = c.number.value ?? c.number.raw_text
+            return num ? [[c.label, num]] : []
+          }),
+        )
+        return (
+          <div
+            key={n ?? 'none'}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 12px', border: '1px solid var(--line-neutral-tertiary)', borderRadius: 8 }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className="body2" style={{ fontWeight: 600 }}>
+                {rej ? `거절이유 ${rej.no} · ${rejectionKindLabel[rej.kind]}` : '거절이유 모름'}
+              </span>
+              {rej && !rej.supported && <HumanCheckTag>AI가 다루지 않음 · 직접 검토</HumanCheckTag>}
+              {mine.map((row, i) => (
+                <span key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {row.status.value !== 'confirmed' && <StatusTag status={row.status} compact />}
+                  <SourceLink page={row.page} rawText={row.raw_text} candidate={row.status.value !== 'confirmed'} />
+                </span>
+              ))}
+              {/* 줄이 없는 거절이유(AI가 다루지 않음 등)는 조문 원문으로 */}
+              {mine.length === 0 && rej && <SourceLink page={rej.article.page} rawText={rej.article.raw_text} />}
+            </div>
+            {mine.map((row, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {row.clarity_terms.length > 0 ? (
+                  <span className="body2">
+                    <span className="label2 t3">문제 표현 </span>
+                    {row.clarity_terms.map((t) => `'${termText(t)}'`).join(', ')}
+                  </span>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="label2 t3">인용문헌 · 위치</span>
+                    <CiteCell row={row} numbers={numbers} />
+                  </div>
+                )}
+                {row.same_as.length > 0 && (
+                  <span className="body2 t2">{`${withWa(sameAsList(row.same_as))} 같은 이유`}</span>
+                )}
+              </div>
+            ))}
+            {mine.length === 0 && rej && !rej.supported && (
+              <span className="label1 t3">특허법 {articleLabel(rej.article.value)} · 통지서 원문을 직접 확인해 주세요</span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -262,6 +385,9 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
     .join(' · ')
 
   const byNo = new Map(r.rejections.map((x) => [x.no, x]))
+  // 보이는 순서: 통지서 순번 그대로 (오른쪽 원문 PDF와 같은 순서). AI가 다루지 않는 것은 "직접 검토 필요" 표시로 구분한다
+  const ordered = [...r.rejections].sort((a, b) => a.no - b.no)
+  const rank = new Map(ordered.map((x, i) => [x.no, i]))
   // 청구항별: 청구항 번호로 모은다 (모름(null)은 맨 뒤)
   const claimNos = [...new Set<number | null>([...r.claim_rows.map((x) => x.claim), ...rejected])].sort(
     (a, b) => (a ?? 9999) - (b ?? 9999),
@@ -293,7 +419,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
       </div>
       {r.rejections.length === 0 && <Empty description="거절이유를 찾지 못했습니다 (확인되지 않음)" />}
       {cur.view === 'rejection'
-        ? r.rejections.map((rej) => {
+        ? ordered.map((rej) => {
             const id = `r${rej.no}`
             const isOpen = cur.open.includes(id)
             return (
@@ -317,7 +443,14 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                   if (!isOpen) openPage(rej.article.page, rej.article.raw_text, false)
                 }}
               >
-                <RejectionDetail rej={rej} rows={r.claim_rows.filter((row) => row.rejection === rej.no)} legal={legal} />
+                <RejectionDetail
+                  rej={rej}
+                  // 청구항 번호순 (모름(null)은 맨 뒤): 저장 순서대로 두면 1, 6, 7, …, 2처럼 섞인다
+                  rows={r.claim_rows
+                    .filter((row) => row.rejection === rej.no)
+                    .sort((a, b) => (a.claim ?? 9999) - (b.claim ?? 9999))}
+                  legal={legal}
+                />
               </Row>
             )
           })
@@ -325,13 +458,13 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
             {claimNos.map((no) => {
               const id = `c${no}`
               const rows = r.claim_rows.filter((row) => row.claim === no)
-              // 걸린 거절이유 = 청구항 줄의 거절이유 + 대상 청구항에 이 청구항이 든 거절이유 (합쳐서 번호순)
+              // 걸린 거절이유 = 청구항 줄의 거절이유 + 대상 청구항에 이 청구항이 든 거절이유 (위 거절이유별과 같은 순서)
               const nos = [
                 ...new Set<number | null>([
                   ...rows.map((x) => x.rejection),
                   ...(no === null ? [] : r.rejections.filter((x) => x.claims.value?.includes(no)).map((x) => x.no)),
                 ]),
-              ].sort((a, b) => (a ?? 9999) - (b ?? 9999))
+              ].sort((a, b) => (a === null ? 9999 : (rank.get(a) ?? 9998)) - (b === null ? 9999 : (rank.get(b) ?? 9998)))
               const rejs = nos.map((n) => (n === null ? undefined : byNo.get(n)))
               // 거절이유가 둘 이상이거나 AI가 다루지 않는 것이 걸렸으면 직접 검토
               const warn = nos.length >= 2 || rejs.some((x) => !x || !x.supported)
@@ -350,7 +483,7 @@ export function RejectionsCard({ r, legal }: { r: OAResult; legal: LegalEvidence
                   open={cur.open.includes(id)}
                   onToggle={() => toggle(id)}
                 >
-                  <ClaimDetail rows={rows} byNo={byNo} />
+                  <ClaimDetail rows={rows} nos={nos} byNo={byNo} />
                 </Row>
               )
             })}

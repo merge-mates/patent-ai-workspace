@@ -14,6 +14,7 @@ from patent_ai.core.cases.case_fill import (
     case_materials_after_f1,
     plan_number_fill,
 )
+from patent_ai.core.cases.local_citations import local_citation_file, local_citation_keys
 from patent_ai.core.cases.materials import InMemoryCaseMaterialsStore
 from patent_ai.core.cases.store import InMemoryCaseAppStore, NewDocument
 from patent_ai.core.schemas.case_materials import CaseDocument, CaseMaterials, LookupResult
@@ -119,6 +120,60 @@ def test_처음_만든_사건_자료는_OA_원문과_인용문헌마다_올려_�
     assert [h.task for h in m.held_tasks] == ["f3_compare:oa_1:D1", "f3_compare:oa_1:D2"]
     # 마무리를 거쳐 저장할 수 있는 ⑥이다 (검토할 사항 개수 = 줄 수)
     assert m.review_items is not None and m.review_items_count == len(m.review_items)
+
+
+def test_로컬_폴더에_있는_인용문헌은_받은_것으로_보고_올려_달라고_하지_않는다():
+    # 자동 조회 대신 로컬 인용문헌 폴더에 모든 자료를 둔다: 있는 것은 받음, 없는 것만 "올려 주세요"
+    m = case_materials_after_f1(
+        "c_1", APP, "doc_1", _oa(), [_oa()], None, None, local_citations={KR}
+    )
+    assert [(x.citation_key, x.lookup_result) for x in m.missing] == [
+        (US, LookupResult.LOOKUP_FAILED)
+    ]
+    assert [h.task for h in m.held_tasks] == ["f3_compare:oa_1:D2"]
+    # 받은 인용문헌도 사건 자료 목록에 한 줄 (로컬 자료). "자료 1건(통지서만)"으로 안 보이게
+    citations = [d for d in m.documents if d.kind == "citation"]
+    assert [(d.citation_key, d.source, d.status.value) for d in citations] == [
+        (KR, "local", StatusValue.CONFIRMED)
+    ]
+
+
+def test_다시_실행해도_로컬_인용문헌_줄이_불어나지_않는다():
+    first = case_materials_after_f1(
+        "c_1", APP, "doc_1", _oa(), [_oa()], None, None, local_citations={KR}
+    )
+    again = case_materials_after_f1(
+        "c_1", APP, "doc_1", _oa(), [_oa()], first, None, local_citations={KR}
+    )
+    assert [d.citation_key for d in again.documents if d.kind == "citation"] == [KR]
+
+
+def test_앞서_못_가져온_인용문헌도_로컬에_생기면_받은_것으로_바뀐다():
+    m = case_materials_after_f1(
+        "c_1", APP, "doc_1", _oa(), [_oa()], _previous(), None, local_citations={KR, US}
+    )
+    assert m.missing == [] and m.held_tasks == []
+
+
+def test_로컬_인용문헌_키는_사건_출원번호_폴더의_PDF_이름이다(tmp_path):
+    folder = tmp_path / APP
+    folder.mkdir()
+    (folder / f"{KR}.pdf").write_bytes(b"%PDF")
+    (folder / "메모.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "1020990000002").mkdir()
+    (tmp_path / "1020990000002" / f"{US}.pdf").write_bytes(b"%PDF")  # 다른 사건 폴더는 안 봄
+    assert local_citation_keys(APP, tmp_path) == {KR}
+    assert local_citation_keys("1020990000009", tmp_path) == set()  # 폴더가 없으면 빈 집합
+
+
+def test_메모리_구현은_로컬_인용문헌_폴더를_받은_것으로_센다(cases):
+    store, created = cases
+    materials = InMemoryCaseMaterialsStore()
+    oa = _oa(created.oa_id)
+    fill = InMemoryCaseFill(store, materials, local_citations=lambda number: {KR, US})
+    fill.fill_after_f1(created.oa_id, created.run_id, oa, None)
+    saved = materials.latest_case_materials(created.case_id)
+    assert saved.result.missing == []
 
 
 def test_글자_추출_상태를_OA_문서_줄에_남긴다():
@@ -283,3 +338,14 @@ def test_합친_뒤_다시_실행해도_그대로다(merged):
     fill.fill_after_f1(second.oa_id, second.run_id, _next_oa(second.oa_id), None)
     assert [r.oa_id for r in store.get_case(first.case_id).oas] == [first.oa_id, second.oa_id]
     assert materials.latest_case_materials(first.case_id).result.documents == before.documents
+
+
+def test_로컬_인용문헌_파일은_그_사건_폴더의_그_번호_PDF만_찾는다(tmp_path):
+    folder = tmp_path / APP
+    folder.mkdir()
+    (folder / f"{KR}.pdf").write_bytes(b"%PDF")
+    assert local_citation_file(APP, KR, tmp_path) == folder / f"{KR}.pdf"
+    assert local_citation_file(APP, US, tmp_path) is None  # 없는 문헌
+    # 경로를 벗어나는 값은 받지 않는다
+    assert local_citation_file(APP, "../x", tmp_path) is None
+    assert local_citation_file("../" + APP, KR, tmp_path) is None

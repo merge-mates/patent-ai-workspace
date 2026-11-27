@@ -48,7 +48,8 @@ const columns: ColumnsType<Row> = [
             {c.case_name}
           </Link>
           {/* 확인됨은 꼬리표 없음. 확인되지 않음·충돌은 숨기지 않는다 */}
-          {c.status !== 'confirmed' && <StatusTag status={c.status} detail={false} />}
+          {/* 정리 결과에 확인되지 않은 곳이 있다는 뜻 (사건 이름이 확인되지 않은 것이 아님) */}
+          {c.status !== 'confirmed' && <StatusTag status={c.status} detail={false} unverifiedText="정리에 확인할 곳 있음" />}
         </span>
         {c.latest_oa.notice_kind === 'final' && (
           <span style={{ fontSize: 13, lineHeight: '18px', color: 'var(--fg-cautionary-text)' }}>{FINAL_NOTE}</span>

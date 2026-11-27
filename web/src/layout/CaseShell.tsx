@@ -1,12 +1,13 @@
 import { Button, Steps } from 'antd'
 import { useState } from 'react'
 import { Link, Outlet, ScrollRestoration, useLocation, useNavigate, useRouteLoaderData } from 'react-router'
+import { api } from '../api'
 import { NumberInputForm } from '../components/NumberInputForm'
 import { CaseInfo } from '../components/CaseInfo'
 import { currentRunText, isPreviousResult } from '../previousResult'
 import { HumanCheckTag } from '../components/Marks'
 import { type OpenCite, type OpenEvidence, type OpenPage, SourceContext } from '../components/sourceContext'
-import { type PanelEvidence, SourcePanel } from '../components/SourcePanel'
+import { type CitedState, type PanelEvidence, SourcePanel } from '../components/SourcePanel'
 import { RunNotice } from '../components/RunNotice'
 import { StatusTag } from '../components/StatusTag'
 import { TodoRows } from '../components/TodoList'
@@ -16,6 +17,8 @@ import { refreshRun, isRunEnded, isSelectionRunActive } from '../runPoll'
 import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../todos'
 import { useRunSnapshot } from '../useRunSnapshot'
 import type { LatestRun } from '../types/provisional/case'
+import { differenceElements } from '../pages/compare/differences'
+import { reviewRowCount } from '../components/reviewDetail'
 
 // 사건 안의 단계 4개 (디자인 B 고친 판). 단계마다 주소가 있어 새로고침·뒤로 가기가 된다
 const STEPS = [
@@ -82,13 +85,14 @@ function stepItems(
   })
 }
 
-// 단계 막대 설명의 개수 (디자인 B): 대비 "차이점 후보 N" = 대비표 줄 가운데 차이점 후보,
+// 단계 막대 설명의 개수 (디자인 B): 대비 "차이점 후보 N" = 대비표마다 차이점 후보 구성요소 수의 합,
 // 방향 "고를 것 N" = 직접 판단이 필요한데 아직 안 고른 묶음 (직접 할 일의 방향 고르기와 같은 셈).
 // 결과를 모르거나 목록이 비면(넘김·보류로 빈 목록 + 빈 이유) 비운다: "0"으로 보이면 셀 결과가 있는 것처럼 읽힌다
 function stepCounts(d: OALoaderData): (string | undefined)[] {
   const tables = d.comparisons?.length ? d.comparisons : null
   const dirs = d.directions?.length ? d.directions : null
-  const diffs = tables?.reduce((n, t) => n + t.rows.filter((x) => x.judgment === 'difference_candidate').length, 0)
+  // 구성요소 기준으로 센다 (진보성은 인용발명 칸마다가 아니라 어느 인용발명에서도 못 찾은 구성요소만)
+  const diffs = tables?.reduce((n, t) => n + differenceElements(t).length, 0)
   const toPick = dirs?.filter((x) => x.flags.includes('needs_human_judgment') && x.selection === null).length
   return [undefined, diffs === undefined ? undefined : `차이점 후보 ${diffs}`, toPick === undefined ? undefined : `고를 것 ${toPick}`, undefined]
 }
@@ -114,6 +118,10 @@ export function CaseShell() {
   const [evidenceAt, setEvidenceAt] = useState<{ data: PanelEvidence; owner: string } | null>(null)
   const owner = `${sub}|${new URLSearchParams(location.search).get('unit') ?? ''}`
   const evidence = evidenceAt && evidenceAt.owner === owner ? evidenceAt.data : null
+  // 판에 연 인용문헌의 원문 전체 (대비 줄을 누를 때 받는다). loading/실패도 판에 그대로 보인다
+  const [cited, setCited] = useState<CitedState | null>(null)
+  // 오른쪽 판 탭: 'oa'(의견제출통지서) 또는 인용문헌 번호. 링크를 누르면 저절로 바뀐다
+  const [tab, setTab] = useState<string>('oa')
   const [infoOpen, setInfoOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
 
@@ -127,28 +135,39 @@ export function CaseShell() {
   const previous = isPreviousResult(data.oaResult, data.oa.latest_run, snap)
   const runError = snap?.error ?? null
   const ready: (boolean | null)[] = [data.ready.summary, data.ready.compare, data.ready.directions, data.ready.drafts]
-  const reviewCount = data.reviewItems?.length ?? null
+  // 검토할 사항 화면 줄 수와 같게 센다 (같은 문장·같은 이유 청구항은 한 줄)
+  const reviewCount = reviewRowCount(data.reviewItems, r)
 
   // 아무것도 안 골랐으면 통지서 첫 거절이유가 있는 쪽을 기본으로 (없으면 1쪽)
   const defaultPage = r?.rejections.map((x) => x.article.page).find((p) => p !== null) ?? 1
   const shown = source ?? { page: defaultPage, text: null }
 
   // 쪽 링크를 누르면 판을 펴고 그 쪽으로. 쪽을 모르면(null) 판만 편다
-  const scrollToPanel = () =>
-    // 판 안에서는 강조 줄(없으면 판)로, 좁은 화면에서 판이 본문 아래면 화면도 거기로 (effect 없이 그린 뒤 한 번)
-    requestAnimationFrame(() =>
-      (document.getElementById('source-highlight') ?? document.getElementById('source-panel'))?.scrollIntoView({
-        block: 'nearest',
-      }),
-    )
+  const scrollToPanel = (page: number | null = null) =>
+    // 판 안에서는 강조 줄 → 그 쪽 머리 → 판 순서로 찾아 내린다. 원문은 전체 쪽을 한 판에 이어 보이므로
+    // 강조가 없으면 그 쪽 머리로 간다 (effect 없이 그린 뒤 한 번)
+    requestAnimationFrame(() => {
+      const hl = document.getElementById('source-highlight')
+      const pageHead = page !== null ? document.getElementById(`source-page-${page}`) : null
+      if (hl ?? pageHead) {
+        ;(hl ?? pageHead)?.scrollIntoView({ block: hl ? 'center' : 'start' })
+        return
+      }
+      // 판 자체로 갈 때: 판이 이미 화면에 보이면(넓은 화면에서 본문 옆) 왼쪽 화면을 움직이지 않는다.
+      // 좁은 화면에서 판이 본문 아래로 내려가 안 보일 때만 판으로 내린다
+      const panel = document.getElementById('source-panel')
+      const top = panel?.getBoundingClientRect().top ?? 0
+      if (panel && (top < 0 || top > window.innerHeight * 0.8)) panel.scrollIntoView({ block: 'start' })
+    })
   const openPage: OpenPage = (page, text, scroll = true) => {
     if (page !== null) setSource({ page, text })
     setEvidenceAt(null)
+    setTab('oa')
     // scroll=false("자세히"로 줄을 펼칠 때)는 판을 새로 펴지 않는다: 열려 있을 때만 문서를 바꾸고 접힘은 그대로.
     // 쪽 링크·근거 링크를 직접 누를 때(scroll=true)만 편다
     if (scroll) {
       setSrcOpen(true)
-      scrollToPanel()
+      scrollToPanel(page)
     }
   }
   // 법률 근거 열기: 근거 글(raw_text)을 판에 보인다
@@ -160,10 +179,56 @@ export function CaseShell() {
 
   // 대비 줄·후보 근거 열기: 공통 근거 위치를 판에 보인다
   const openCite: OpenCite = (ref) => {
-    setEvidenceAt({ data: { kind: 'cite', ref }, owner })
+    // 어느 탭에서 열지: 인용문헌 번호가 없으면 근거의 문서로 정한다
+    // (명세서 문단 근거 → '명세서' 탭, 인용문헌 → 그 문헌 탭, 둘 다 아니면 탭 없이 근거 글만)
+    const doc = ref.docId ?? ref.items[0]?.document_id ?? null
+    const target = doc !== null && doc === specDocumentId ? 'spec' : doc !== null && citeTabs.some((t) => t.key === doc) ? doc : null
+    setEvidenceAt({ data: { kind: 'cite', ref: { ...ref, docId: target ?? ref.docId ?? null } }, owner })
     setSrcOpen(true)
     scrollToPanel()
+    if (target) {
+      setTab(target)
+      if (target !== 'spec') loadCited(target, true)
+    }
   }
+  // 인용문헌 원문 전체(글자 보기용)를 받는다. 같은 문헌이면 다시 받지 않는다 (effect 없이 누른 그 자리에서)
+  const loadCited = (docId: string, scroll: boolean) => {
+    if (cited?.docId === docId && cited.doc) {
+      if (scroll) scrollToCited()
+      return
+    }
+    setCited({ docId, doc: null, failed: false })
+    api
+      .getCitedDocument(docId)
+      .then((doc) => {
+        setCited({ docId, doc, failed: false })
+        if (scroll) scrollToCited()
+      })
+      .catch(() => setCited({ docId, doc: null, failed: true }))
+  }
+  // 탭을 직접 누르면 그 문서로 (법률 근거를 보던 중이면 닫는다)
+  const selectTab = (key: string) => {
+    if (evidence?.kind === 'legal') setEvidenceAt(null)
+    setTab(key)
+    if (key !== 'oa' && key !== 'spec') loadCited(key, false)
+  }
+  // 탭 목록: 의견제출통지서 + 이 통지서가 인용한 문헌 (번호가 있는 것만, 처음 나온 라벨로)
+  const citeTabs = (() => {
+    const seen = new Map<string, string>()
+    for (const rej of r?.rejections ?? [])
+      for (const c of rej.citations) {
+        const no = c.number.value ?? c.number.raw_text
+        if (no && !seen.has(no)) seen.set(no, c.label)
+      }
+    return [...seen].map(([no, label]) => ({ key: no, label: `${label} ${no}` }))
+  })()
+  // 이 출원의 명세서(출원서) 문서: 있으면 '명세서' 탭을 둔다
+  const specDocumentId = data.specDocumentId
+  // 강조한 근거 문단(없으면 판)으로 판 안에서 내린다
+  const scrollToCited = () =>
+    requestAnimationFrame(() =>
+      (document.getElementById('cited-highlight') ?? document.getElementById('source-panel'))?.scrollIntoView({ block: 'center' }),
+    )
 
   return (
     <SourceContext value={{ openPage, openEvidence, openCite }}>
@@ -190,7 +255,8 @@ export function CaseShell() {
             )}
             {r && <HumanCheckTag />}
             {r && r.response_due.status.value !== 'confirmed' && <StatusTag status={r.response_due.status} />}
-            {r && r.status.value !== 'confirmed' && <StatusTag status={r.status} />}
+            {/* 정리 결과 전체의 상태: 무엇이 확인되지 않았는지 읽히게 글을 바꾸고, 원래 상태·이유는 툴팁에 */}
+            {r && r.status.value !== 'confirmed' && <StatusTag status={r.status} detail={false} unverifiedText="정리에 확인할 곳 있음" />}
             {r && (
               <Button type="text" size="small" onClick={() => setInfoOpen(!infoOpen)}>
                 {infoOpen ? '사건 정보 접기' : '사건 정보'}
@@ -286,7 +352,8 @@ export function CaseShell() {
             style={{
               flex: '999 1 560px',
               minWidth: 0,
-              maxWidth: 920,
+              // 원문 판을 접으면 본문이 남은 폭을 다 쓴다 (펴 있을 때만 읽기 좋은 폭으로 묶음)
+              maxWidth: srcOpen ? 920 : 'none',
               padding: '32px 40px 80px',
               display: 'flex',
               flexDirection: 'column',
@@ -297,6 +364,16 @@ export function CaseShell() {
           </section>
           <SourcePanel
             open={srcOpen}
+            cited={cited}
+            tabs={[
+              { key: 'oa', label: '의견제출통지서' },
+              ...(specDocumentId ? [{ key: 'spec', label: '명세서' }] : []),
+              ...citeTabs,
+            ]}
+            tab={tab}
+            onTab={selectTab}
+            applicationNumber={r?.application_number.value ?? null}
+            specDocumentId={specDocumentId}
             page={shown.page}
             highlight={shown.text}
             document={data.document}

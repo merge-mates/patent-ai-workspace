@@ -1133,7 +1133,8 @@
           "reason": null,
           "checked": "3쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 1,
@@ -1156,7 +1157,8 @@
           "reason": null,
           "checked": "3쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 2,
@@ -1182,7 +1184,8 @@
           "reason": null,
           "checked": "3쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 3,
@@ -1205,7 +1208,8 @@
           "reason": null,
           "checked": "3쪽 원문 대조, 문장에 인용 표기 없음, 같은 취지 대상 줄의 인용으로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 4,
@@ -1232,7 +1236,8 @@
           "reason": null,
           "checked": "3쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 5,
@@ -1258,7 +1263,8 @@
           "reason": "ambiguous",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 6,
@@ -1284,7 +1290,8 @@
           "reason": "ambiguous",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 7,
@@ -1310,7 +1317,8 @@
           "reason": "ambiguous",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 8,
@@ -1335,7 +1343,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 9,
@@ -1360,7 +1369,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조, 문장에 인용 표기 없음, 같은 취지 대상 줄의 인용으로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 10,
@@ -1385,7 +1395,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조, 문장에 인용 표기 없음, 같은 취지 대상 줄의 인용으로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 11,
@@ -1412,7 +1423,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 12,
@@ -1437,7 +1449,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 13,
@@ -1462,7 +1475,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 6,
@@ -1483,7 +1497,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 7,
@@ -1502,7 +1517,8 @@
           "reason": null,
           "checked": "4쪽 원문 대조",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       }
     ]
   },

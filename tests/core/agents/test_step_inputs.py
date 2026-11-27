@@ -40,3 +40,14 @@ def test_넘김_이유는_앞머리_코드_뒤에_사람이_읽는_말만(name):
     head, body = out.why.split(": ", 1)
     assert head == "input_unverified"
     assert body and not CODE_NAME.search(body), body
+
+
+def test_f4_입력에_OA_쪽_글자를_싣는다():
+    """사건 단위 보정안이 OA 글자 전체를 읽으려면 F4 입력에 OA 쪽 글자가 있어야 한다 (이 브랜치)."""
+    from patent_ai.core.schemas.document import PageText
+
+    pages = PageText.model_construct(document_id="doc_oa", pages=[])
+    texts = F3Inputs.model_construct(claims_at_oa={}, claims_document_id="d", spec=None)
+    f3 = F3Result.model_construct(units=[], comparisons=[], clarity_reviews=[], held_tasks=[])
+    got = f4_input({"read_oa": OA, "run_f3": f3, "extract_pages": pages}, texts, DAY)
+    assert got["oa_pages"] is pages

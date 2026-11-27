@@ -39,6 +39,8 @@ services:
       - ./work:/app/work
       # 받아 둔 사건 자료 (사건 채우기 local_folder, #54). 읽기만
       - ./data/processed/cases:/app/data/processed/cases:ro
+      # 로컬 인용문헌 PDF (config/cite_search.yaml raw_root). 있으면 사건 자료에서 받은 본문으로 센다
+      - ./data/raw/cited_v2:/app/data/raw/cited_v2:ro
     depends_on:
       db:
         condition: service_healthy

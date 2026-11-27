@@ -1,5 +1,6 @@
 // "직접 할 일" 만들기 (순수 함수). 새 결과를 만들지 않고 이미 있는 것만 모은다:
 // 검토할 사항(ReviewItem) 중 사람이 할 일 + 고정 한 줄 "제출기일 직접 확인". (결정 D1)
+import { claimRange } from './format'
 import { articleLabel, heldTaskLabel, lookupResultLabel } from './labels'
 import type { CaseMaterials } from './types/generated/CaseMaterials'
 import type { DirectionCandidates } from './types/generated/DirectionCandidates'
@@ -118,8 +119,8 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
         title: `${row.what} 올리기`,
         desc:
           tasks.length > 0
-            ? `${lookupResultLabel[row.lookup_result]}라 보류한 작업: ${tasks.join(', ')}`
-            : `${lookupResultLabel[row.lookup_result]}라 대비 일부는 원문 확인 필요예요`,
+            ? `${lookupResultLabel[row.lookup_result]} · 올리면 다시 확인할 작업: ${tasks.join(', ')}`
+            : `${lookupResultLabel[row.lookup_result]} · 대비 일부는 원문 확인이 필요해요`,
         go: { kind: 'upload', what: row.what, label: '올리기' },
       })
     } else if (item.kind === 'needs_human_review') {
@@ -152,11 +153,13 @@ export function directTodos(input: TodoInput): DirectTodoList | null {
   // 직접 판단 표시가 있고 아직 안 고른(selection === null) 묶음마다 한 줄
   for (const d of directions ?? []) {
     if (!d.flags.includes('needs_human_judgment') || d.selection !== null) continue
-    // 판단 단위 순서(order)를 알면 대응 방향 화면과 같은 "묶음 N", 모르면 단위 ID의 조문·청구항
-    const order = units?.find((u) => u.unit_id === d.unit_id)?.order
+    // 판단 단위를 알면 그 청구항 범위, 모르면 단위 ID의 조문·청구항
+    const unit = units?.find((u) => u.unit_id === d.unit_id)
+    const unitClaims = unit ? claimRange(unit.claims) : null
     todos.push({
       key: `j-${d.unit_id}`,
-      title: order !== undefined ? `묶음 ${order} 대응 방향 고르기` : `방향 고르기: ${unitText(d.unit_id)}`,
+      // "묶음 N" 대신 청구항 범위로 부른다 (대응 방향 화면 머리와 같은 말)
+      title: unitClaims ? `청구항 ${unitClaims} 대응 방향 고르기` : `방향 고르기: ${unitText(d.unit_id)}`,
       desc: '확신도가 낮아 미리 고르지 않았어요',
       go: { kind: 'route', path: '/directions', label: '고르러 가기' },
     })

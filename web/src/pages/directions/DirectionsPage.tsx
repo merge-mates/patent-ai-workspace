@@ -1,5 +1,7 @@
+import { caseToCheck } from '../drafts/coverage'
 import { App, Alert, Button, Input, Radio } from 'antd'
 import { EmptyReason } from '../../components/EmptyReason'
+import { NextStep } from '../../components/NextStep'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useNavigate, useRevalidator, useRouteLoaderData } from 'react-router'
 import { api } from '../../api'
@@ -13,7 +15,6 @@ import { claimRange, claimsText, sentence, unsupportedRejectionNos } from '../..
 import {
   addedSourceLabel,
   amendmentKindLabel,
-  amendmentLimitLabel,
   confidenceLabel,
   rebuttalTypeLabel,
   rejectionKindLabel,
@@ -33,8 +34,10 @@ import type { LegalEvidenceBundle, LegalSource } from '../../types/generated/Leg
 
 // 근거가 든 문서 이름: 같은 OA 대비표의 인용발명 이름(D1 등)과 문서 번호를 맞춘다. 통지서 문서면 "통지서".
 // 못 맞추면 명세서·청구항(문서 번호 끝 글자)이고, 그래도 모르면 "근거"
-function documentKind(documentId: string, names: Map<string, string>, noticeId: string | null): string {
+function documentKind(documentId: string, names: Map<string, string>, noticeId: string | null, specId: string | null = null): string {
   if (noticeId !== null && documentId === noticeId) return '통지서'
+  // 출원 명세서 문서 (사건 정보에서 찾은 문서 ID)
+  if (specId !== null && documentId === specId) return '명세서'
   const cite = names.get(documentId)
   if (cite) return cite
   if (/_spec$/.test(documentId)) return '명세서'
@@ -60,11 +63,13 @@ function BasisLines({
   legal,
   names,
   noticeId,
+  specId = null,
 }: {
   c: DirectionCandidate
   legal: LegalEvidenceBundle[]
   names: Map<string, string>
   noticeId: string | null
+  specId?: string | null
 }) {
   const { openCite, openEvidence, openPage } = useContext(SourceContext)
   if (c.evidence.length === 0) return null
@@ -76,7 +81,7 @@ function BasisLines({
       {c.evidence.map((e, i) => {
         const law = legalMatch(e, legal)
         const where = e.location ?? (e.page !== null ? `${e.page}쪽` : e.document_id)
-        const kind = law ? sourceKindLabel[law.source.source_kind] : documentKind(e.document_id, names, noticeId)
+        const kind = law ? sourceKindLabel[law.source.source_kind] : documentKind(e.document_id, names, noticeId, specId)
         return (
           <div
             key={`${e.document_id}-${e.location}-${i}`}
@@ -123,12 +128,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // 고른 후보의 칸들: 데이터에 있는 것만 (없는 칸은 그리지 않는다)
-function Fields({ c }: { c: DirectionCandidate }) {
+// hideAmendment: 보정을 사건 전체에서 한 번 정했으면(사건 단위 보정안) 묶음별 보정 칸은 그리지 않는다.
+// 묶음은 처음 분석하는 틀이고, 실제 보정은 초안의 보정 전략을 따른다
+function Fields({ c, hideAmendment = false }: { c: DirectionCandidate; hideAmendment?: boolean }) {
   // 보정하는 청구항: 그대로(unchanged)인 청구항은 빼고 센다 (argue_only는 칸이 안 그려짐. F4 opinion.py has_amendment와 같은 기준)
   const claims = [...new Set(c.amendment_core.filter((a) => a.kind !== 'unchanged').map((a) => a.claim))]
   return (
-    <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-      <Field label="보정 핵심">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {!hideAmendment && <Field label="보정 핵심">
         {c.amendment_core.length === 0
           ? '보정 없음'
           : c.amendment_core.map((a) => (
@@ -137,8 +144,8 @@ function Fields({ c }: { c: DirectionCandidate }) {
                 {a.source && ` (출처: ${addedSourceLabel[a.source]})`}
               </div>
             ))}
-      </Field>
-      {claims.length > 0 && <Field label="보정하는 청구항">청구항 {claimRange(claims)}</Field>}
+      </Field>}
+      {!hideAmendment && claims.length > 0 && <Field label="보정하는 청구항">청구항 {claimRange(claims)}</Field>}
       {c.per_rejection.length > 0 && (
         <Field label="거절이유별 대응">
           {c.per_rejection.map((r) => (
@@ -148,14 +155,9 @@ function Fields({ c }: { c: DirectionCandidate }) {
           ))}
         </Field>
       )}
-      {c.rebuttal && (
-        <Field label="반박 논리">
-          {rebuttalTypeLabel[c.rebuttal.type]} — {c.rebuttal.summary}
-        </Field>
-      )}
       {c.checks.length > 0 && (
         <Field label="확인 사항">
-          {c.checks.map((x) => (
+          {checkLines(c.checks).map((x) => (
             <div key={x}>{x}</div>
           ))}
         </Field>
@@ -164,17 +166,33 @@ function Fields({ c }: { c: DirectionCandidate }) {
   )
 }
 
+// 확인 사항 줄 정리: "F3 보류: 청구항 N: 대표 청구항 …에 차이 후보·불명 구성요소가 있어 종속항을 대비하지 않음 …"이
+// 종속항마다 반복되므로 한 줄로 묶고 쉬운 말로 바꾼다. 그 밖의 줄은 그대로
+function checkLines(all: string[]): string[] {
+  // "법률 근거: … 직접 검토 필요"는 묶음마다 늘 같은 줄이라 화면에서 뺀다 (재아 결정 11/27, 데이터에는 남음)
+  const checks = all.filter((x) => !x.startsWith('법률 근거:'))
+  const held = checks.filter((x) => x.startsWith('F3 보류:'))
+  if (held.length === 0) return checks
+  const claims = held.map((x) => /청구항 (\d+)/.exec(x)?.[1]).filter((n): n is string => n !== undefined)
+  const rep = /대표 청구항 (\d+)/.exec(held[0])?.[1]
+  const line =
+    `청구항 ${claims.join(', ')}(종속항)은 따로 대비하지 않았어요` +
+    (rep ? `: 대표 청구항 ${rep}에 차이점 후보가 남아 있어 그쪽을 먼저 봤어요.` : '.') +
+    ' 필요하면 직접 확인해 주세요.'
+  return [...checks.filter((x) => !x.startsWith('F3 보류:')), line]
+}
+
 const rankText = (c: DirectionCandidate) => (c.rank === null ? '순위 없음' : `${c.rank}순위`)
 
-// 묶음 머리 작은 글: "묶음 1 · 진보성 · 청구항 1–5"
+// 머리 작은 글: "진보성 · 청구항 1–5" ("묶음 N"은 팀 안 말이라 청구항 범위로 부른다)
 const unitHead = (u: JudgmentUnit | undefined, unitId: string) =>
-  u ? `묶음 ${u.order} · ${rejectionKindLabel[u.rejection_kind]} · 청구항 ${claimRange(u.claims)}` : unitId
+  u ? `${rejectionKindLabel[u.rejection_kind]} · 청구항 ${claimRange(u.claims)}` : unitId
 
 // 4 대응 방향: 묶음마다 고른 후보(AI 기본값 또는 직접 고름)를 크게, 근거·칸을 줄로, 다른 후보로 바꾸기.
 // 최종 선택은 사람이 한다 (AI는 기본값만)
 export function DirectionsPage() {
-  const { units, directions, comparisons, caseCheck, directionsEmptyReason } = useLoaderData() as DirectionsLoaderData
-  const { oa, oaResult, legal } = useRouteLoaderData('oa') as OALoaderData
+  const { units, directions, comparisons, caseCheck, directionsEmptyReason, hasCasePlan } = useLoaderData() as DirectionsLoaderData
+  const { oa, oaResult, legal, specDocumentId } = useRouteLoaderData('oa') as OALoaderData
   const { message } = App.useApp()
   const revalidator = useRevalidator()
   const navigate = useNavigate()
@@ -211,6 +229,8 @@ export function DirectionsPage() {
   // 누르기 막기: 실행이 막는 동안 + 어느 묶음이든 저장(PUT)이 오가는 동안 (그 사이 다른 묶음을 누르면 서버가 409)
   const locked = blocked || Object.values(saving).some(Boolean)
   const [checkOpen, setCheckOpen] = useState(false)
+  // 묶음마다 "자세히"(근거·거절이유별 대응·확인 사항)를 펼쳤는지. 기본은 접어 요지와 후보 고르기만 보인다
+  const [detailOpen, setDetailOpen] = useState<Record<string, boolean>>({})
   // 문서 번호 → 인용발명 이름 (대비표 줄의 근거와 citation 이름으로 맞춘다)
   const citeNames = new Map<string, string>()
   for (const t of comparisons)
@@ -266,7 +286,7 @@ export function DirectionsPage() {
     .join(', ')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <AmendmentLimitAlert noticeKind={oaResult?.result.notice_kind.value ?? null} />
       {/* 서버는 작은 실행이 끝날 때까지 옛 선택을 돌려준다: 끝나면 고른 선택이 여기에 보인다 */}
       {blocked && (
@@ -282,6 +302,27 @@ export function DirectionsPage() {
           }
         />
       )}
+      {/* 보정은 묶음마다가 아니라 사건 전체에서 한 번 정한다: 묶음별 방향은 반박 논점을 고르는 데 쓴다 */}
+      {hasCasePlan && directions.length > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          message={
+            <span>
+              보정은 청구항마다가 아니라 사건 전체에서 한 번 정해요. 여기서 고르는 방향은 의견서의 반박 논점으로 쓰여요.{' '}
+              <Link to="../drafts" relative="path">
+                초안의 보정 전략 보기
+              </Link>
+            </span>
+          }
+        />
+      )}
+      {/* 다음 단계: 방향을 고를 때 명세서 문단도 본다 (숫자는 실험 카드 m3-i2-spec-before-direction-pilot 그대로) */}
+      {directions.length > 0 && (
+        <NextStep title="명세서 문단을 보고 방향 고르기">
+          지금 방향은 청구항·인용발명 대비·법리만 보고 골라요. 다음 단계에서는 보정 근거가 될 명세서 문단도 함께 찾아 봐요. 파일럿(tune 4건, 1회 실행)에서 실제 대응과 방향이 맞은 줄이 17줄 중 8줄 → 11줄이었어요.
+        </NextStep>
+      )}
       {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
       {directions.length === 0 &&
         (directionsEmptyReason ? (
@@ -289,7 +330,7 @@ export function DirectionsPage() {
         ) : (
           <span className="body2 t3">대응 방향 후보가 아직 없습니다</span>
         ))}
-      {directions.map((d, idx) => {
+      {directions.map((d) => {
         const sel = d.selection
         const mine = justChosen[d.unit_id]
         const mineSnap = mine !== undefined ? snapOf(mine.runId) : null // 그 선택이 묶인 실행 (아직 latest_run이 아니어도 찾는다)
@@ -300,10 +341,21 @@ export function DirectionsPage() {
         const justName = d.candidates.find((c) => c.candidate_id === just?.candidate_id)?.name
         const picked = d.candidates.find((c) => c.candidate_id === sel?.candidate_id)
         return (
-          <div key={d.unit_id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {idx > 0 && <hr className="hr" style={{ width: '100%', margin: 0 }} />}
+          // 묶음 하나 = 카드 하나: 머리 → 고른 방향 → 반박 요지 → 후보 고르기 → (자세히) 근거·대응·확인 사항
+          <div
+            key={d.unit_id}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              padding: '20px 24px',
+              border: '1px solid var(--line-neutral-tertiary)',
+              borderRadius: 12,
+              background: 'var(--bg-neutral-primary, #fff)',
+            }}
+          >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className="label1 t3">
+              <span className="label1" style={{ fontWeight: 600 }}>
                 {unitHead(
                   units.find((u) => u.unit_id === d.unit_id),
                   d.unit_id,
@@ -322,12 +374,18 @@ export function DirectionsPage() {
               ) : (
                 <HumanCheckTag>{LOW_CONFIDENCE_TEXT} · 고를 때까지 초안 없음</HumanCheckTag>
               )}
-              {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만) */}
-              <span className="label1 t3">
-                보정 제한{d.amendment_limit.value ? `: ${amendmentLimitLabel[d.amendment_limit.value]}` : ''}
-              </span>
+              {/* 보정 제한: 최초/최후. 모르면 값 없이 상태 꼬리표만 (없음으로 읽히지 않게, 글자는 한 번만).
+                  보정을 사건 전체에서 한 번 정하면 묶음 카드에서는 빼고 위 안내로 본다 */}
+              {!hasCasePlan && <span className="label1 t3">
+                {/* "보정 제한: 최초"는 뜻이 안 읽혀 보정할 수 있는 범위로 풀어 쓴다 */}
+                {d.amendment_limit.value === 'initial'
+                  ? '보정 범위: 최초 명세서 범위 안 (최초거절이유통지)'
+                  : d.amendment_limit.value === 'final'
+                    ? '보정 범위: 제47조제3항 제한 (최후거절이유통지)'
+                    : '보정 범위'}
+              </span>}
               {/* 값이 있어도 확인되지 않았으면(애매 등) 상태를 같이 보인다 */}
-              {d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
+              {!hasCasePlan && d.amendment_limit.status.value !== 'confirmed' && <StatusTag status={d.amendment_limit.status} />}
             </div>
 
             {sel?.written_direction ? (
@@ -335,44 +393,45 @@ export function DirectionsPage() {
               <>
                 <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>직접 쓴 방향</h2>
                 <p className="body1" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{sel.written_direction}</p>
-                <span className="label2 t3">직접 쓴 방향이라 AI가 이 묶음의 초안을 만들지 않아요. 직접 대응해 주세요.</span>
+                <span className="label2 t3">직접 쓴 방향이라 AI가 이 청구항들의 초안을 만들지 않아요. 직접 대응해 주세요.</span>
               </>
             ) : picked ? (
               <>
-                <h2 className="heading1" style={{ fontSize: 24, lineHeight: '32px' }}>
+                <h2 className="heading2" style={{ margin: 0 }}>
                   {picked.rank === null ? picked.name : `${rankText(picked)} · ${picked.name}`}
                 </h2>
-                <p className="body1 t2">
+                <p className="body2 t2" style={{ margin: 0 }}>
                   {sentence(picked.reason)} 확신도 {confidenceLabel[picked.confidence]}.
                 </p>
+                {/* 반박 요지: 의견서에 쓰일 논점을 한눈에 (왼쪽 선으로 구분) */}
+                {picked.rebuttal && (
+                  <div style={{ padding: '10px 14px', borderLeft: '3px solid var(--fg-accent-primary, #0066ff)', background: 'var(--bg-neutral-secondary)', borderRadius: 4 }}>
+                    <span className="label2 t3">반박 요지 · {rebuttalTypeLabel[picked.rebuttal.type]}</span>
+                    <div className="body2">{picked.rebuttal.summary}</div>
+                  </div>
+                )}
                 {picked.status.value !== 'confirmed' && (
                   <div>
                     <StatusTag status={picked.status} />
                   </div>
                 )}
-                <BasisLines
-                  c={picked}
-                  legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)}
-                  names={citeNames}
-                  noticeId={oa.document_id}
-                />
-                <Fields c={picked} />
               </>
             ) : d.candidates.length === 0 ? (
               // 후보가 0개면 실패한 것이다 (이유는 머리의 상태 꼬리표). 확신이 낮아서라고 말하지 않는다
-              <Alert type="warning" showIcon message="후보를 만들지 못했어요. 이 묶음은 직접 대응해 주세요." />
+              <Alert type="warning" showIcon message="후보를 만들지 못했어요. 이 청구항들은 직접 대응해 주세요." />
             ) : d.flags.includes('needs_human_judgment') && !d.candidates.some((c) => c.rank !== null) ? (
               <p className="body1 t2">
-                확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 묶음의 초안은 만들지 않아요.
+                확신도가 낮아 미리 고르지 않았어요. 후보 {d.candidates.length}개는 순위 없이 보여요. 고를 때까지 이 청구항들의 초안은 만들지 않아요.
               </p>
             ) : (
-              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 묶음의 초안은 만들지 않아요.</p>
+              <p className="body1 t2">아직 고르지 않았어요. 후보를 골라 주세요. 고를 때까지 이 청구항들의 초안은 만들지 않아요.</p>
             )}
 
             {d.candidates.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
               <span className="label1 t2">
-                {picked ? '다른 후보로 바꾸기' : '후보 고르기'} · 순위는 검토 순서 제안이고 등록을 보증하지 않아요
+                {picked ? '다른 후보로 바꾸기' : '후보 고르기'}
+                <span className="label2 t3"> · 순위는 검토 순서 제안이고 등록을 보증하지 않아요</span>
               </span>
               <Radio.Group
                 value={just ? just.candidate_id : (sel?.candidate_id ?? null)}
@@ -393,10 +452,32 @@ export function DirectionsPage() {
             </div>
             )}
 
+            {/* 자세히: 근거 · 거절이유별 대응 · 확인 사항 (개수만 보이고 누르면 펼친다) */}
+            {picked && !sel?.written_direction && (
+              <>
+                <Button type="link" style={{ alignSelf: 'flex-start', padding: 0 }} onClick={() => setDetailOpen((prev) => ({ ...prev, [d.unit_id]: !prev[d.unit_id] }))}>
+                  {`근거 ${picked.evidence.length}개 · 확인할 것 ${checkLines(picked.checks).length}개 ${detailOpen[d.unit_id] ? '접기' : '자세히 보기'}`}
+                </Button>
+                {detailOpen[d.unit_id] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingLeft: 16, borderLeft: '2px solid var(--line-neutral-tertiary)' }}>
+                    <BasisLines
+                      c={picked}
+                      legal={legal.filter((b) => b.unit_id === d.unit_id || b.unit_id === null)}
+                      names={citeNames}
+                      noticeId={oa.document_id}
+                      specId={specDocumentId}
+                    />
+                    <Fields c={picked} hideAmendment={hasCasePlan} />
+                  </div>
+                )}
+              </>
+            )}
+
             {/* 직접 쓰기: 모든 묶음에 둔다. 아직 안 골랐고 확신이 낮은 묶음은 눈에 띄게(primary) */}
             {writing[d.unit_id] === undefined ? (
               <div>
                 <Button
+                  size="small"
                   type={!sel && !just && d.flags.includes('needs_human_judgment') ? 'primary' : 'default'}
                   disabled={locked}
                   onClick={() => setWriting((prev) => ({ ...prev, [d.unit_id]: sel?.written_direction ?? '' }))}
@@ -406,7 +487,7 @@ export function DirectionsPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span className="label1 t2">후보 밖 방향을 직접 써요. 저장하면 AI는 이 묶음의 초안을 만들지 않아요</span>
+                <span className="label1 t2">후보 밖 방향을 직접 써요. 저장하면 AI는 이 청구항들의 초안을 만들지 않아요</span>
                 <Input.TextArea
                   autoSize={{ minRows: 3, maxRows: 10 }}
                   value={writing[d.unit_id]}
@@ -444,7 +525,8 @@ export function DirectionsPage() {
         ) : (
           <>
             <Button type="text" onClick={() => setCheckOpen(!checkOpen)} style={{ alignSelf: 'flex-start' }}>
-              {`사건 전체 검사 ${caseCheck.items.length}항목 · 확인할 것 ${caseCheck.items.filter((i) => i.result !== 'ok').length}개 ${checkOpen ? '접기' : '보기'}`}
+              {/* AI가 아직 검사하지 않는 규칙은 "확인할 것" 개수에서 뺀다 (펼치면 그대로 보임) */}
+              {`사건 전체 검사 ${caseCheck.items.length}항목 · 확인할 것 ${caseToCheck(caseCheck.items).length}개 ${checkOpen ? '접기' : '보기'}`}
             </Button>
             {checkOpen &&
               caseCheck.items.map((it) => (

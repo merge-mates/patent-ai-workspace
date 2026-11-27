@@ -20,6 +20,7 @@ from patent_ai.core.cases.case_source.filler import SourceCaseFiller
 from patent_ai.core.cases.case_source.local_folder import load_case_source
 from patent_ai.core.cases.human_inputs import HumanInputStore
 from patent_ai.core.cases.human_inputs_pg import PostgresHumanInputStore
+from patent_ai.core.cases.local_citations import configured_local_citations
 from patent_ai.core.cases.materials import CaseMaterialsStore, PostgresCaseMaterialsStore
 from patent_ai.core.cases.results import OAResultStore
 from patent_ai.core.cases.results_pg import PostgresOAResultStore
@@ -187,15 +188,22 @@ def _run_case_executor() -> RunCaseExecutor:
     취소 표시·결과 저장소는 취소 API·결과 API가 쓰는 것과 같은 것을 넘긴다.
     """
     factory = sessionmaker(_engine())
-    texts = PostgresTextsSource(factory)
     source = load_case_source()  # config/case_source.yaml (지금은 받아 둔 폴더, #54)
+
+    def claim_history(app_no: str, dispatch: str) -> str | None:
+        # F3·F4 청구항 글자를 줄바꿈 끊김 없는 청구항이력 글자로 정리하려고 읽는다 (못 받으면 None)
+        got = source.fetch(app_no, dispatch).claim_history
+        return got if isinstance(got, str) else None
+
+    texts = PostgresTextsSource(factory, claim_history=claim_history)
     return RunCaseExecutor(
         store=get_run_status_store(),
         registry=get_cancel_registry(),
         oa_results=get_oa_result_store(),
         step_results=get_step_result_store(),
         # F1 뒤 사건 출원번호·발송번호와 사건 자료(⑥) (#261)
-        case_fill=PostgresCaseFill(factory, _latest_oa_result),
+        # 로컬 인용문헌 폴더(config/cite_search.yaml raw_root)에 있는 인용문헌은 받은 것으로 센다
+        case_fill=PostgresCaseFill(factory, _latest_oa_result, configured_local_citations),
         # F3·F4 글자: OA 당시 청구항 판 + 최초 명세서 (#205)
         # 못 찾으면 F3·F4는 넘긴 이유와 함께 빈다
         inputs=PostgresRunInputSource(factory, texts=texts),

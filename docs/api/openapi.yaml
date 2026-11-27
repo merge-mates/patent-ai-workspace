@@ -263,6 +263,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /documents/{document_id}/file:
+    get:
+      summary: Get Document File
+      operationId: get_document_file_documents__document_id__file_get
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /cases/{case_id}/documents:
     post:
       summary: Upload Missing Document
@@ -287,6 +307,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadedMaterialOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /citations/{doc_id}:
+    get:
+      summary: Get Cited Document
+      operationId: get_cited_document_citations__doc_id__get
+      parameters:
+      - name: doc_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Doc Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitedDocument'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /citations/{doc_id}/file:
+    get:
+      summary: Get Cited File
+      operationId: get_cited_file_citations__doc_id__file_get
+      parameters:
+      - name: doc_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Doc Id
+      - name: application_number
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Application Number
+      responses:
+        '200':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -1386,6 +1456,49 @@ components:
       - country_supported
       - cited_paragraphs
       title: Citation
+    CitedDocument:
+      properties:
+        doc_id:
+          type: string
+          title: Doc Id
+        index_version:
+          type: string
+          title: Index Version
+        parts:
+          items:
+            $ref: '#/components/schemas/CitedPart'
+          type: array
+          title: Parts
+      additionalProperties: false
+      type: object
+      required:
+      - doc_id
+      - index_version
+      - parts
+      title: CitedDocument
+    CitedPart:
+      properties:
+        chunk_id:
+          type: string
+          title: Chunk Id
+        kind:
+          type: string
+          title: Kind
+        label:
+          type: string
+          title: Label
+        text:
+          type: string
+          title: Text
+      additionalProperties: false
+      type: object
+      required:
+      - chunk_id
+      - kind
+      - label
+      - text
+      title: CitedPart
+      description: 문헌 조각 하나 (화면에서 한 문단).
     ClaimRow:
       properties:
         claim:
@@ -1446,6 +1559,11 @@ components:
           title: Page
         status:
           $ref: '#/components/schemas/Status'
+        check_failed:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Check Failed
       additionalProperties: false
       type: object
       required:
@@ -1456,9 +1574,11 @@ components:
       description: '청구항 줄 하나 = 청구항 x 거절이유 (정답 형식 2.4, 채점 단위).
 
 
-        값은 원문 대조를 통과했을 때만 둔다. 대조에 떨어지면 status가 unverified이고 값은 비어 있다
+        확인됨 줄의 값은 원문 대조를 통과한 값이다. 대조에 떨어진 줄은 status가 unverified이고,
 
-        (청구항·거절이유 번호만 어느 줄인지 알리려고 남길 수 있음).'
+        모델이 준 값(판단 원문·쪽·인용·위치)을 check_failed(떨어진 검사)와 함께 남길 수 있다 (11/26 D3:
+
+        사람이 "확인 필요"로 보게). 모델이 줄을 주지 않은 빈 줄은 번호만 남긴다.'
     ClaimVersionOut:
       properties:
         version:
@@ -2118,6 +2238,29 @@ components:
           - type: string
           - type: 'null'
           title: Legality Notice
+        amendment_strategy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Amendment Strategy
+        amendment_alternatives:
+          items:
+            type: string
+          type: array
+          title: Amendment Alternatives
+          default: []
+        amendment_checks:
+          items:
+            $ref: '#/components/schemas/PlanIssue'
+          type: array
+          title: Amendment Checks
+          default: []
+        amendment_extra:
+          items:
+            $ref: '#/components/schemas/ExtraClaim'
+          type: array
+          title: Amendment Extra
+          default: []
       type: object
       required:
       - oa_id
@@ -2189,6 +2332,40 @@ components:
       - allowable_claims
       - amendment_note
       title: ExaminerHints
+    ExtraClaim:
+      properties:
+        claim:
+          type: integer
+          title: Claim
+        action:
+          type: string
+          enum:
+          - amend
+          - delete
+          - add
+          title: Action
+        drafts:
+          items:
+            type: integer
+          type: array
+          title: Drafts
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - claim
+      - action
+      - drafts
+      - reason
+      title: ExtraClaim
+      description: '1번 안은 그대로 두지만 2·3번 안이 고친 항 (변리사가 "검토해 볼 항"으로 본다).
+
+
+        1번 안이 놓친 실제 보정 항의 대부분이 다른 안에 있었다
+
+        (검사 17건 16개 중 14개, 예비 39개 중 24개).'
     ExtractedValue_AmendmentLimit_:
       properties:
         value:
@@ -2996,6 +3173,7 @@ components:
       - response
       - amendment
       - closing
+      - review
       title: OpinionKey
       description: 의견서 칸. 선언 순서가 의견서 순서다.
     OpinionSection:
@@ -3086,6 +3264,24 @@ components:
       - examiner
       - ai_found
       title: ParagraphSource
+    PlanIssue:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        claim:
+          type: integer
+          title: Claim
+        detail:
+          type: string
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - claim
+      - detail
+      title: PlanIssue
     QuestionSource:
       type: string
       enum:

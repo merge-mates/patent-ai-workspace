@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from patent_ai.api.cases import read_pdf
@@ -24,7 +25,7 @@ from patent_ai.api.deps import (
 from patent_ai.api.errors import AppError
 from patent_ai.core.cases import upload
 from patent_ai.core.cases.case_fill import merged_message
-from patent_ai.core.cases.document_pages import read_document_pages
+from patent_ai.core.cases.document_pages import document_file, read_document_pages
 from patent_ai.core.cases.store import now_utc
 from patent_ai.core.f1_oa_reader.case_grouping import (
     MissingNotFoundError,
@@ -55,6 +56,17 @@ def get_document(document_id: str, unit: Annotated[CaseUnit, Depends(get_case_un
     if pages is None:
         raise AppError(404, "document_not_found", "문서를 찾을 수 없습니다")
     return pages
+
+
+@router.get("/documents/{document_id}/file", response_class=FileResponse)
+def get_document_file(
+    document_id: str, unit: Annotated[CaseUnit, Depends(get_case_unit)]
+) -> FileResponse:
+    # 원본 PDF 그대로 (화면 원문 판이 PDF.js로 그린다). 글자 뽑기는 GET /documents/{id}
+    file = document_file(unit.store, document_id)
+    if file is None:
+        raise AppError(404, "document_file_not_found", "원본 PDF를 찾을 수 없습니다")
+    return FileResponse(file, media_type="application/pdf")
 
 
 @router.post("/cases/{case_id}/documents", response_model=UploadedMaterialOut)

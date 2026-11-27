@@ -136,7 +136,7 @@ export function LegalPage() {
             onSearch={ask}
             loading={busy}
             enterButton={<Button type="primary" disabled={needDate}>묻기</Button>}
-            placeholder="이어서 물어보세요. 질문, 쟁점, 키워드, 사건번호 다 돼요"
+            placeholder="질문, 쟁점, 키워드, 조문, 사건번호를 넣으세요"
           />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="label2 t3">시점</span>

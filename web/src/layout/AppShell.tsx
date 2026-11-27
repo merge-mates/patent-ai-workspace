@@ -58,9 +58,6 @@ export function AppShell() {
         <Link to="/cases/new">
           <Button type="primary">통지서 올리기</Button>
         </Link>
-        <span className="avatar" aria-label="기본 사용자">
-          기본
-        </span>
       </header>
       {/* 본문 여백은 각 화면이 갖는다 */}
       <Outlet />

@@ -209,9 +209,17 @@ class _Judged:
     dropped: bool = False  # 모델이 준 정의 근거가 대조에 떨어져 버렸나
 
 
+# 통지서가 문구 일부를 인용할 때 앞뒤에 붙이는 표시 ("~상기 이미지 처리 과정~"). 원문 글자가 아니다
+_QUOTE_MARKS = "~∼〜…"
+
+
 def _locate(term: str, claim: int, claim_text: str) -> str | None:
-    """문구가 청구항 원문에 그대로 있으면 위치 글, 없으면 None (공백 줄이기만 허용)."""
-    spans = find_all_spans(term, claim_text)
+    """문구가 청구항 원문에 그대로 있으면 위치 글, 없으면 None (공백 줄이기만 허용).
+
+    앞뒤 물결표·말줄임표는 떼고 찾는다 (심사관이 문구 일부만 따온 표시).
+    """
+    core = term.strip().strip(_QUOTE_MARKS).strip() or term
+    spans = find_all_spans(core, claim_text)
     if not spans:
         return None
     start, end = spans[0]

@@ -2,7 +2,7 @@ import { Button, Tooltip } from 'antd'
 import { HumanCheckTag } from './Marks'
 import { StatusTag } from './StatusTag'
 import { UploadMaterialButton } from './UploadMaterialButton'
-import { lookupResultLabel, materialKindLabel, sourceLabel } from '../labels'
+import { materialKindLabel, sourceLabel } from '../labels'
 import { showDispatchNumber } from '../numberShapes'
 import type { CaseMaterials } from '../types/generated/CaseMaterials'
 import type { OAResult } from '../types/generated/OAResult'
@@ -23,20 +23,36 @@ export function MaterialRows({
   r,
   caseId,
   showRetry = false,
+  specDocumentId = null,
 }: {
   m: CaseMaterials
   r: OAResult | null
   caseId: string
   showRetry?: boolean
+  // 사건 정보에서 찾은 출원 명세서 문서 ID. 사건 자료 목록에 없으면 줄을 하나 더해 보인다 (원문 판의 명세서 탭과 맞춘다)
+  specDocumentId?: string | null
 }) {
+  const extraSpec = specDocumentId !== null && !m.documents.some((d) => d.document_id === specDocumentId)
   return (
     <>
+      {extraSpec && (
+        <div style={lineStyle}>
+          <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span className="body2" style={{ fontWeight: 600 }}>
+              명세서 (출원서)
+            </span>
+            <span className="label1 t3">출원 때 판 · 오른쪽 원문 판의 명세서 탭에서 볼 수 있어요</span>
+          </div>
+        </div>
+      )}
       {/* 찾아온 자료. 상태는 "받음"이 아니라 묶기 상태 (다른 출원번호 문서가 묻히지 않게). 확인됨은 꼬리표 없음 */}
       {m.documents.map((d) => (
         <div key={d.document_id} style={lineStyle}>
           <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span className="body2" style={{ fontWeight: 600 }}>
               {materialKindLabel[d.kind] ?? d.kind}
+              {/* 인용문헌은 어느 문헌인지 번호까지 */}
+              {d.citation_key ? ` ${d.citation_key}` : ''}
             </span>
             <span className="label1 t3">
               {/* 통지서는 어느 판인지 발송번호로 (날짜만으로 합치지 않음) */}
@@ -54,7 +70,7 @@ export function MaterialRows({
             <span className="body2" style={{ fontWeight: 600 }}>
               {x.what}
             </span>
-            <span className="label1 t3">{[lookupResultLabel[x.lookup_result], '판 모름', '자동 조회'].join(' · ')}</span>
+            {/* 이유는 오른쪽 상태 꼬리표에 있어 같은 말을 두 번 쓰지 않는다 ("판 모름 · 자동 조회"는 개발용이라 뺌) */}
           </div>
           {x.lookup_result === 'unsupported_country' ? (
             <HumanCheckTag>직접 확인</HumanCheckTag>

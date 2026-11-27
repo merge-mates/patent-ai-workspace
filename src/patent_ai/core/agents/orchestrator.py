@@ -386,6 +386,12 @@ def run_case(
             note("check", "check_oa", "발송번호를 몰라 사람을 기다림", "waiting")
             return {"waiting_for": WaitingFor.DISPATCH_NUMBER}
         found = store.find_oa(app.value, disp.value)
+        # 찾은 OA가 지금 돌리는 OA 자신이면 중복 올리기가 아니라 다시 돌리기다
+        # (POST /oas/{oa_id}/runs). 그 OA가 속한 사건으로 이어서 끝까지 돈다
+        # (전에는 자기 자신을 "이미 있는 OA"로 막았다)
+        if found is not None and found[1] == oa_id:
+            note("check", "check_oa", "같은 OA를 다시 돌림", "ok")
+            return {"case_id": found[0]}
         if found is not None:
             case_id, found_oa_id = found
             note("check", "check_oa", f"이미 있는 OA: {found_oa_id}", "failed")

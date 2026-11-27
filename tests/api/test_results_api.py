@@ -53,6 +53,11 @@ def test_results_api_실행이_끝나면_F3_F4_결과가_같은_실행에서_열
     for n in ("units", "comparisons", "clarity-reviews", "directions"):
         assert body[n]["result"] and body[n]["empty_reason"] is None, n
     assert body["drafts"]["result"] is not None and body["drafts"]["legality_notice"]
+    # 사건 단위 보정안 칸 (이 브랜치): 기본 설정(끔)에서는 비어 있다
+    assert body["drafts"]["amendment_strategy"] is None
+    assert body["drafts"]["amendment_alternatives"] == []
+    assert body["drafts"]["amendment_checks"] == []
+    assert body["drafts"]["amendment_extra"] == []
     assert body["directions"]["rank_notice"]
 
 

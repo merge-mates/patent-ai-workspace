@@ -1,4 +1,6 @@
-import { Alert, Button } from 'antd'
+import { Alert, Button, Segmented } from 'antd'
+import { useState } from 'react'
+import { PdfView } from './PdfView'
 import { editionText, textKindText } from '../format'
 import { sourceKindLabel, speakerLabel } from '../labels'
 import type { LegalSource } from '../types/generated/LegalEvidenceBundle'
@@ -6,6 +8,19 @@ import type { PageText } from '../types/generated/PageText'
 import { StatusLine } from './StatusLine'
 import { StatusTag } from './StatusTag'
 import type { CiteRef } from './sourceContext'
+import type { CitedDocument } from '../types/provisional/citedDocument'
+
+export interface PanelTab {
+  key: string // 'oa'(통지서), 'spec'(이 출원 명세서) 또는 인용문헌 번호
+  label: string
+}
+
+// 판에 연 인용문헌 원문 전체 상태: 받는 중(doc null, failed false) / 받음 / 못 받음
+export interface CitedState {
+  docId: string
+  doc: CitedDocument | null
+  failed: boolean
+}
 
 // 근거 글자를 찾으면 왼쪽 파란 선 + 옅은 파랑 바탕 (디자인 B 고친 판)
 const highlightStyle = {
@@ -29,6 +44,16 @@ interface Props {
   document: PageText | null
   // 판에 연 법률 근거. 있으면 통지서 쪽 대신 근거 글을 보인다
   evidence: PanelEvidence | null
+  // 대비 줄을 열었을 때 그 인용문헌 원문 전체 (글자 보기에서 쓴다)
+  cited?: CitedState | null
+  // 판 위 탭: 의견제출통지서('oa') + 인용문헌(문헌 번호). 지금 탭과 바꾸기
+  tabs?: PanelTab[]
+  tab?: string
+  onTab?: (key: string) => void
+  // 인용문헌 PDF를 찾을 사건 출원번호 (로컬 인용문헌 폴더가 출원번호별)
+  applicationNumber?: string | null
+  // 이 출원의 명세서(출원서) 문서 ID. 있으면 '명세서' 탭에서 원본 PDF를 보인다
+  specDocumentId?: string | null
   onToggle: () => void
 }
 
@@ -99,14 +124,68 @@ function CiteBody({ r }: { r: CiteRef }) {
       ))}
       {r.items.length === 0 && <Alert type="info" showIcon message="이 줄에 연결된 근거 위치가 없어요" />}
       {r.note && <span className="label1 t2">{r.note}</span>}
-      <span className="label1 t3">원문 전체는 아직 열 수 없어요. 근거가 가리키는 부분만 보여요.</span>
     </>
+  )
+}
+
+// 인용문헌 원문 전체: 요약 → 청구항 → 본문 문단 → 도면 설명. 근거 문단은 강조하고 첫 근거로 판이 내려간다
+function CitedFull({ cited, highlight, labels }: { cited: CitedState; highlight: Set<string>; labels: Set<string> }) {
+  // 근거 조각(chunk_id)이거나 심사관이 짚은 표기(라벨)인 문단을 강조한다
+  const isOn = (p: { chunk_id: string; label: string }) => highlight.has(p.chunk_id) || labels.has(p.label)
+  if (cited.failed) return <Alert type="info" showIcon message={`${cited.docId} 원문을 받지 못했어요`} />
+  if (!cited.doc) return <span className="label1 t3">{cited.docId} 원문을 불러오는 중이에요…</span>
+  // 첫 근거 문단에만 id를 달아 판이 그리로 내려가게 한다
+  const firstId = cited.doc.parts.find(isOn)?.chunk_id
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--line-neutral-tertiary)', paddingTop: 12 }}>
+      <span className="label2 t3">
+        {cited.docId} 원문 전체 · {cited.doc.parts.length}개 문단 · 스크롤해서 모두 볼 수 있어요
+      </span>
+      {cited.doc.parts.map((p) => {
+        const on = isOn(p)
+        const id = p.chunk_id === firstId ? 'cited-highlight' : undefined
+        return (
+          <div key={p.chunk_id} id={id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span className="label2" style={{ fontWeight: 600, color: on ? 'var(--fg-neutral-primary)' : 'var(--fg-neutral-tertiary)' }}>
+              {p.label}
+              {/* AI가 근거로 고른 문단 / 심사관이 짚은 문단을 다르게 부른다 */}
+              {highlight.has(p.chunk_id) ? ' · 근거' : labels.has(p.label) ? ' · 심사관 지정' : ''}
+            </span>
+            <p
+              className="body2r"
+              style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: 'var(--fg-neutral-secondary)', ...(on ? highlightStyle : {}) }}
+            >
+              {p.text}
+            </p>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
 // 오른쪽 "참고 원문" 판. 펴면 그 쪽 글자, 접으면 48px 세로 막대.
 // 단계를 옮겨도 사건 틀이 상태를 들고 있어서 접힘이 유지된다
-export function SourcePanel({ open, page, highlight, document, evidence, onToggle }: Props) {
+export function SourcePanel({
+  open,
+  page,
+  highlight,
+  document,
+  evidence,
+  onToggle,
+  cited = null,
+  tabs = [],
+  tab = 'oa',
+  onTab = () => {},
+  applicationNumber = null,
+  specDocumentId = null,
+}: Props) {
+  // 통지서 보기: 원본 PDF(기본) / 뽑은 글자. PDF를 못 그리면 글자 보기로 돌아간다
+  const [view, setView] = useState<'pdf' | 'text'>('pdf')
+  const [pdfFailed, setPdfFailed] = useState(false)
+  // PDF를 못 그린 인용문헌 (그 문헌은 글자 보기로)
+  const [citeFailed, setCiteFailed] = useState<string[]>([])
+  const showPdf = view === 'pdf' && !pdfFailed
   if (!open) {
     return (
       <aside
@@ -141,6 +220,14 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
     )
   }
 
+  // 판에 연 법률 근거 / 지금 인용문헌 탭에 맞는 근거 줄
+  const legal = evidence?.kind === 'legal' ? evidence : null
+  const citeRef = evidence?.kind === 'cite' && evidence.ref.docId === tab ? evidence.ref : null
+  // 어느 탭에도 맞지 않는 근거(문서를 모름 등): 탭 없이 근거 글만 보인다 (빈 판으로 두지 않게)
+  const looseCite = evidence?.kind === 'cite' && !tabs.some((t) => t.key === evidence.ref.docId) ? evidence.ref : null
+  const citeShowPdf = view === 'pdf' && !citeFailed.includes(tab) && !!applicationNumber
+
+  // 원문은 쪽마다 끊지 않고 전체를 이어서 보인다. 강조는 가리킨 쪽(page)에서만 찾는다
   const text = document?.pages.find((p) => p.page === page)?.text ?? null
   const at = text && highlight ? text.indexOf(highlight) : -1
 
@@ -159,57 +246,182 @@ export function SourcePanel({ open, page, highlight, document, evidence, onToggl
         gap: 14,
       }}
     >
+      {/* 머리(제목·접기)와 문서 탭은 판을 내려도 위에 붙어 있게 한다 (문서를 바꾸려고 다시 올리지 않게) */}
+      <div
+        style={{
+          position: 'sticky',
+          top: -24,
+          zIndex: 2,
+          margin: '-24px -28px 0',
+          padding: '24px 28px 10px',
+          background: 'var(--bg-neutral-secondary)',
+          borderBottom: '1px solid var(--line-neutral-tertiary)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span className="label2 t3">참고 원문</span>
-          <span className="headline2">{evidence ? (evidence.kind === 'legal' ? evidence.source.identifier : evidence.ref.title) : `통지서 ${page}쪽`}</span>
+          <span className="headline2">
+            {legal ? legal.source.identifier : citeRef ? citeRef.title : tab === 'oa' ? '의견제출통지서' : (tabs.find((t) => t.key === tab)?.label ?? tab)}
+          </span>
         </div>
-        {!evidence && document && document.status.value !== 'confirmed' && <StatusTag status={document.status} detail={false} />}
+        {tab === 'oa' && !legal && document && document.status.value !== 'confirmed' && <StatusTag status={document.status} detail={false} />}
         <Button type="text" onClick={onToggle}>
           접기
         </Button>
       </div>
-      {evidence ? (
-        evidence.kind === 'legal' ? (
-          <EvidenceBody s={evidence.source} checkedOn={evidence.checkedOn} />
+      {/* 무엇을 볼지: 의견제출통지서 / 인용문헌. 링크를 누르면 저절로 그 탭이 된다 */}
+      {tabs.length > 1 && (
+        <Segmented
+          size="small"
+          value={legal || looseCite ? '' : tab}
+          onChange={(v) => onTab(String(v))}
+          options={tabs.map((t) => ({ label: t.label, value: t.key }))}
+          style={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}
+        />
+      )}
+      </div>
+      {legal ? (
+        <EvidenceBody s={legal.source} checkedOn={legal.checkedOn} />
+      ) : looseCite ? (
+        <CiteBody r={looseCite} />
+      ) : tab === 'spec' ? (
+        // 명세서 탭: 이 출원의 명세서(출원서) 원본 PDF 전체. 근거 문단을 눌러 왔으면 그 문단([0050] 등)을 강조해 그 자리로
+        specDocumentId ? (
+          <>
+            {citeRef && <CiteBody r={citeRef} />}
+            <span className="label2 t3">출원 당시 명세서 원본 · 스크롤해서 모두 볼 수 있어요</span>
+            <PdfView
+              key={`spec:${specDocumentId}`}
+              url={`/api/documents/${encodeURIComponent(specDocumentId)}/file`}
+              page={null}
+              targets={{
+                texts: (citeRef?.items ?? []).map((e) => e.raw_text).filter((x): x is string => !!x),
+                labels: (citeRef?.items ?? []).map((e) => e.location).filter((x): x is string => !!x),
+              }}
+              onFail={() => {}}
+            />
+          </>
         ) : (
-          <CiteBody r={evidence.ref} />
+          <Alert type="info" showIcon message="명세서 원본을 받지 못했어요" />
         )
+      ) : tab !== 'oa' ? (
+        // 인용문헌 탭: (누른 줄이 있으면) 근거 줄 → 원문 PDF(기본) 또는 글자(문단)
+        <>
+          {citeRef && <CiteBody r={citeRef} />}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="label2 t3" style={{ flex: '1 1 auto' }}>
+              {tab} 원문 전체 · 스크롤해서 모두 볼 수 있어요
+            </span>
+            <Segmented
+              size="small"
+              value={citeShowPdf ? 'pdf' : 'text'}
+              onChange={(v) => setView(v as 'pdf' | 'text')}
+              options={[
+                { label: '원본 PDF', value: 'pdf', disabled: citeFailed.includes(tab) || !applicationNumber },
+                { label: '글자', value: 'text' },
+              ]}
+            />
+          </div>
+          {citeFailed.includes(tab) && <span className="label1 t3">원본 PDF를 그리지 못해 색인 문단으로 보여요</span>}
+          {citeShowPdf ? (
+            <PdfView
+              // 문서가 바뀌면 새로 만든다: 앞 문서의 쪽 수가 남으면 없는 쪽을 그리다 화면 전체가 멈춘다
+              key={`cite:${tab}`}
+              url={`/api/citations/${encodeURIComponent(tab)}/file?application_number=${encodeURIComponent(applicationNumber ?? '')}`}
+              page={null}
+              targets={{
+                texts: (citeRef?.items ?? []).map((e) => e.raw_text).filter((x): x is string => !!x),
+                labels: citeRef?.highlightLabels ?? [],
+              }}
+              onFail={() => setCiteFailed((xs) => [...xs, tab])}
+            />
+          ) : cited && cited.docId === tab ? (
+            <CitedFull
+              cited={cited}
+              highlight={new Set((citeRef?.items ?? []).map((e) => e.chunk_id).filter((x): x is string => !!x))}
+              labels={new Set(citeRef?.highlightLabels ?? [])}
+            />
+          ) : (
+            <span className="label1 t3">원문을 불러오는 중이에요…</span>
+          )}
+        </>
       ) : document === null ? (
         // 원문이 없어도 빈 판으로 두지 않는다
         <Alert type="info" showIcon message="원문을 받지 못했어요" />
       ) : (
         <>
-          <span className="label2 t3">
-            의견제출통지서 · 전체 {document.pages.length}쪽
-          </span>
-          {text === null ? (
-            <Alert type="info" showIcon message="이 쪽의 원문 글자를 받지 못했습니다" />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="label2 t3" style={{ flex: '1 1 auto' }}>
+              전체 {document.pages.length}쪽 · 스크롤해서 모두 볼 수 있어요
+            </span>
+            <Segmented
+              size="small"
+              value={showPdf ? 'pdf' : 'text'}
+              onChange={(v) => setView(v as 'pdf' | 'text')}
+              options={[
+                { label: '원본 PDF', value: 'pdf', disabled: pdfFailed },
+                { label: '글자', value: 'text' },
+              ]}
+            />
+          </div>
+          {pdfFailed && <span className="label1 t3">원본 PDF를 그리지 못해 뽑은 글자로 보여요</span>}
+          {showPdf ? (
+            <PdfView
+              key={`oa:${document.document_id}`}
+              url={`/api/documents/${encodeURIComponent(document.document_id)}/file`}
+              page={page}
+              targets={{ texts: highlight ? [highlight] : [], labels: [] }}
+              onFail={() => setPdfFailed(true)}
+            />
           ) : (
-            <>
-              {highlight && at < 0 && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="근거 글자를 이 쪽에서 그대로 찾지 못했습니다"
-                  description={highlight}
-                />
-              )}
-              <p
-                className="body2r"
-                style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--fg-neutral-secondary)', overflowWrap: 'anywhere' }}
-              >
-                {at < 0 || !highlight ? (
-                  text
+          <>
+          {highlight && text !== null && at < 0 && (
+            <Alert type="warning" showIcon message={`근거 글자를 ${page}쪽에서 그대로 찾지 못했습니다`} description={highlight} />
+          )}
+          {document.pages.map((pg) => {
+            // 가리킨 쪽에서만 근거 글자를 강조한다
+            const mark = pg.page === page && highlight && at >= 0
+            return (
+              <div key={pg.page} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {/* 쪽 머리: 쪽 링크를 누르면 여기로 내려온다 */}
+                <span
+                  id={`source-page-${pg.page}`}
+                  className="label2"
+                  style={{
+                    fontWeight: 600,
+                    color: pg.page === page ? 'var(--fg-neutral-primary)' : 'var(--fg-neutral-tertiary)',
+                    borderTop: '1px solid var(--line-neutral-tertiary)',
+                    paddingTop: 8,
+                  }}
+                >
+                  {pg.page}쪽
+                </span>
+                {pg.text ? (
+                  <p
+                    className="body2r"
+                    style={{ whiteSpace: 'pre-wrap', margin: 0, color: 'var(--fg-neutral-secondary)', overflowWrap: 'anywhere' }}
+                  >
+                    {mark ? (
+                      <>
+                        {pg.text.slice(0, at)}
+                        <span id="source-highlight" style={highlightStyle}>{highlight}</span>
+                        {pg.text.slice(at + highlight.length)}
+                      </>
+                    ) : (
+                      pg.text
+                    )}
+                  </p>
                 ) : (
-                  <>
-                    {text.slice(0, at)}
-                    <span id="source-highlight" style={highlightStyle}>{highlight}</span>
-                    {text.slice(at + highlight.length)}
-                  </>
+                  <span className="label1 t3">이 쪽의 원문 글자를 받지 못했어요</span>
                 )}
-              </p>
-            </>
+              </div>
+            )
+          })}
+          </>
           )}
         </>
       )}

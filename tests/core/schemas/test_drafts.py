@@ -155,7 +155,7 @@ def test_based_on_unit_중복_거부():
 
 def test_opinion_key_순서_코드():
     assert [k.value for k in OpinionKey] == [
-        "case_info", "points", "response", "amendment", "closing",
+        "case_info", "points", "response", "amendment", "closing", "review",
     ]  # fmt: skip
 
 

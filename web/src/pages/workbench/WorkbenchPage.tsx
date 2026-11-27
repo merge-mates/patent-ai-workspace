@@ -15,12 +15,13 @@ import { DIRECTIONS_UNKNOWN_NOTE, directTodos, todoCountText } from '../../todos
 import { useRunSnapshot } from '../../useRunSnapshot'
 import { MaterialsCard } from './MaterialsCard'
 import { RejectionsCard } from './RejectionsCard'
+import { reviewRowCount } from '../../components/reviewDetail'
 
 // 사건 작업 1 정리: 직접 할 일 → 거절이유 정리 → 심사관 힌트 → 사건 자료 → 검토할 사항.
 // 통지 정보는 사건 틀 머리의 "사건 정보"로, 원문은 오른쪽 판으로 옮겼다
 export function WorkbenchPage() {
   const data = useRouteLoaderData('oa') as OALoaderData
-  const { oa, oaResult, materials, reviewItems } = data
+  const { oa, oaResult, materials, reviewItems, specDocumentId } = data
   const location = useLocation()
   const navigate = useNavigate()
   const { message } = App.useApp()
@@ -83,7 +84,8 @@ export function WorkbenchPage() {
   }
   const r = oaResult.result
   const todos = directTodos(data)
-  const reviewCount = reviewItems?.length ?? null
+  // 화면 줄 수와 같게 센다 (같은 문장·같은 이유 청구항은 한 줄)
+  const reviewCount = reviewRowCount(reviewItems, r)
 
   return (
     <>
@@ -137,7 +139,7 @@ export function WorkbenchPage() {
       />
       <RejectionsCard r={r} legal={data.legal} />
       {materials ? (
-        <MaterialsCard m={materials} r={r} caseId={oa.case_id} />
+        <MaterialsCard m={materials} r={r} caseId={oa.case_id} specDocumentId={specDocumentId} />
       ) : (
         <div id="materials" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <h2 className="heading2">사건 자료 (모름)</h2>

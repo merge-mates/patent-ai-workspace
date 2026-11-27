@@ -41,7 +41,7 @@ from patent_ai.core.f1_oa_reader.case_grouping import (
     group_materials,
 )
 from patent_ai.core.f1_oa_reader.case_repository import DEFAULT_USER_ID
-from patent_ai.core.schemas.case_materials import CaseMaterials, LookupResult
+from patent_ai.core.schemas.case_materials import CaseDocument, CaseMaterials, LookupResult
 from patent_ai.core.schemas.common import ExtractedValue, Status, StatusValue
 from patent_ai.core.schemas.oa_result import OAResult
 from patent_ai.core.schemas.propagation import finalize_case_materials
@@ -137,6 +137,7 @@ def case_materials_after_f1(
     case_oas: list[OAResult],
     previous: CaseMaterials | None,
     text_status: Status | None,
+    local_citations: set[str] | frozenset[str] = frozenset(),
 ) -> CaseMaterials:
     """사건 자료(⑥)를 이번 OA 정리까지 넣어 다시 만든다.
 
@@ -144,8 +145,8 @@ def case_materials_after_f1(
       이번 OA 원문이 아직 없을 때만 문서 줄을 더한다 (다시 실행해도 줄이 불어나지 않음).
     - 빠진 자료·보류 작업은 사건의 OA 정리 전부(case_oas, 이번 것 포함)로 다시 계산한다.
       앞서 남긴 조회 이유(#54가 넣은 body_missing 등)는 그대로 쓴다.
-    - 인용문헌 본문은 저장된 문서 줄의 키로만 받은 것으로 친다
-      (자동 조회 전이라 그 밖은 lookup_failed).
+    - 인용문헌 본문은 저장된 문서 줄의 키 + 로컬 인용문헌 폴더에 있는 키(local_citations)를
+      받은 것으로 친다. 자동 조회 대신 로컬에 모든 자료를 두므로 그 밖만 lookup_failed.
     """
     kept = list(previous.documents) if previous else []
     new = []
@@ -160,6 +161,8 @@ def case_materials_after_f1(
         )
         new = group_materials([material], case_number)
     received = {d.citation_key for d in kept if d.kind == "citation" and d.citation_key}
+    # 로컬 폴더에 본문 PDF가 있으면 받은 것 (앞서 "못 가져옴"이었어도 지금 있으면 받음)
+    received |= set(local_citations)
     failures: dict[str, LookupResult] = {
         m.citation_key: m.lookup_result
         for m in (previous.missing if previous else [])
@@ -168,10 +171,42 @@ def case_materials_after_f1(
     statuses = {oa_document_id: text_status} if text_status is not None else {}
     built = build_case_materials(case_id, new, case_oas, received, failures, statuses)
     merged = CaseMaterials.model_validate(
-        built.model_dump() | {"documents": [*kept, *built.documents]}
+        built.model_dump()
+        | {"documents": [*kept, *built.documents, *_local_rows(case_oas, kept, local_citations)]}
     )
     # 문서 줄을 합쳤으니 검토할 사항을 다시 모은다 (개수 = 줄 수 검사도 다시)
     return finalize_case_materials(case_oas, merged)
+
+
+def _local_rows(
+    case_oas: list[OAResult], kept: list[CaseDocument], local: set[str] | frozenset[str]
+) -> list[CaseDocument]:
+    """로컬 폴더에서 받은 인용문헌을 사건 자료 목록의 줄로 (사건 OA가 인용한 것만, OA 인용 순서).
+
+    문서 id는 DB 문서가 아니라 "local:<인용문헌 번호>"다. 이미 줄이 있으면(다시 실행) 더하지 않는다.
+    """
+    have = {d.citation_key for d in kept if d.kind == "citation" and d.citation_key}
+    rows: list[CaseDocument] = []
+    for oa in case_oas:
+        for rej in oa.rejections:
+            for c in rej.citations:
+                key = c.number.value
+                if not key or key not in local or key in have:
+                    continue
+                have.add(key)
+                rows.append(
+                    CaseDocument(
+                        document_id=f"local:{key}",
+                        kind="citation",
+                        source="local",
+                        status=Status(
+                            value=StatusValue.CONFIRMED,
+                            checked="로컬 인용문헌 폴더에 본문 PDF 있음",
+                        ),
+                        citation_key=key,
+                    )
+                )
+    return rows
 
 
 def _warn_not_merged(case_id: str, target: str) -> None:
@@ -207,9 +242,12 @@ class PostgresCaseFill:
         self,
         session_factory: Callable[[], Session],
         latest_result: Callable[[str], OAResult | None],
+        local_citations: Callable[[str], set[str]] | None = None,
     ) -> None:
         self._factory = session_factory
         self._latest = latest_result
+        # 출원번호 → 로컬 인용문헌 폴더에 있는 인용문헌 키 (없으면 로컬 확인을 안 함)
+        self._local = local_citations
 
     def fill_after_f1(
         self, oa_id: str, run_id: str, result: OAResult, text_status: Status | None
@@ -273,6 +311,7 @@ class PostgresCaseFill:
                 _case_oas(order, result, others),
                 previous,
                 text_status,
+                self._local(fill.case_number) if self._local else frozenset(),
             ).model_dump(mode="json")
             if row is None:
                 s.add(CaseMaterialsRow(case_id=case.id, body=body, run_id=run_id))
@@ -359,10 +398,12 @@ class InMemoryCaseFill:
         cases,  # InMemoryCaseAppStore (순환 import를 피하려고 이름만)
         materials: InMemoryCaseMaterialsStore,
         latest_result: Callable[[str], OAResult | None] = lambda oa_id: None,
+        local_citations: Callable[[str], set[str]] | None = None,
     ) -> None:
         self._cases = cases
         self._materials = materials
         self._latest = latest_result
+        self._local = local_citations
         self._lock = threading.Lock()
 
     def fill_after_f1(
@@ -401,5 +442,6 @@ class InMemoryCaseFill:
                 _case_oas(order, result, others),
                 saved.result if saved else None,
                 text_status,
+                self._local(fill.case_number) if self._local else frozenset(),
             )
             self._materials.put(case_id, run_id, body)

@@ -708,7 +708,8 @@
           "reason": null,
           "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 2,
@@ -730,7 +731,8 @@
           "reason": null,
           "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 3,
@@ -752,7 +754,8 @@
           "reason": null,
           "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 4,
@@ -774,7 +777,8 @@
           "reason": null,
           "checked": "2쪽 원문 대조, 문장에 인용 표기 없음, 거절이유 인용 전부로 봄",
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       }
     ]
   },

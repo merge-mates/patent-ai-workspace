@@ -1259,8 +1259,14 @@ def _compare_unit(
             # 무너지지 않았어도 대표 청구항의 구성요소를 다 갖지 않았거나 대표에 없는
             # 인용문헌이 더 붙은 종속항은 건너뛰지 않는다 (대표 대비로 그 구성요소·문헌이
             # 가려지지 않음, 11/21 부모 구성요소 결정)
+            # 부르는 쪽이 꼭 대비하라고 준 종속항(compare_claims)은 건너뛰지 않는다
+            keep = set(config.inputs.compare_claims)
             skip_claims = [
-                c for c in later if collapsed is False and _covered_by_rep(c, rep, cites_of, splits)
+                c
+                for c in later
+                if collapsed is False
+                and _covered_by_rep(c, rep, cites_of, splits)
+                and c not in keep
             ]
             for claim in skip_claims:
                 # 대비(모델)만 건너뛴다: 같은 검색은 하고 기록을 search_log에 남긴다

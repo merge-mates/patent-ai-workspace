@@ -67,7 +67,8 @@ def _basic():
 def test_의견서_칸은_정해진_순서이고_AI_원문이_비지_않는다():
     part, calls, _ = _basic()
     assert len(calls) == 2  # 묶음마다 한 번
-    assert [s.key for s in part.sections] == list(OpinionKey)
+    # 변리사 확인 사항(review)은 의견서만 흐름(opinion_v2)에서 메모가 있을 때만 붙는다
+    assert [s.key for s in part.sections] == [k for k in OpinionKey if k != OpinionKey.REVIEW]
     for s in part.sections:
         assert s.ai_text.strip() and s.title.strip()
 
@@ -357,3 +358,23 @@ def test_저장소_설정의_의견서_단계_값():
     assert (cfg.model, cfg.effort, cfg.max_tokens) == ("claude-haiku-5-5", "medium", 64000)
     assert cfg.prompt == "prompts/f4/opinion.md"
     assert cfg.max_model_calls == load_step_config("f4.direction").max_model_calls
+
+
+# ---- 사건 단위 의견서 (합친 흐름 실험, 이 브랜치) ----
+def test_사건_단위_의견서는_모든_묶음과_청구항과_OA_글을_한_번에_넘긴다():
+    from patent_ai.core.f4_response_draft.opinion import build_case_opinion
+
+    inp = _case()
+    transport = FakeTransport({STEP: [_text(_answer("opinion_inventive"))]})
+    ctx = RunContext(
+        run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
+    )
+    out = build_case_opinion(inp, '{"name": "보정안"}', ctx, oa_text="OA 원문 표시글")
+    assert len(transport.calls) == 1  # 묶음이 둘이어도 한 번
+    prompt = transport.calls[0]["prompt"]
+    for unit in inp.units:
+        assert unit.unit_id in prompt
+    for claim in inp.claims_text:
+        assert claim.text in prompt
+    assert "OA 원문 표시글" in prompt and '"보정안"' in prompt
+    assert out.response == _answer("opinion_inventive")["response"]

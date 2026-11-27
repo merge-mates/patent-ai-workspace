@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from patent_ai.core.cases.case_source.parse import ClaimChangeRow
 from patent_ai.core.cases.texts_source import build_texts
 from patent_ai.core.f1_oa_reader.case_repository import ClaimVersionRow
 from patent_ai.core.f1_oa_reader.pages import PdfReadError
@@ -51,6 +52,35 @@ def test_texts_source_출원_때_판이면_출원서_청구항과_명세서():
     assert got.claims_at_oa == {1: "화분.", 2: "제1항의 화분."}
     assert got.claims_document_id == "d_app"
     assert got.spec.document_id == "d_app"  # 최초 명세서 = 출원서
+
+
+def _hist(claim, text, change="신규"):
+    return ClaimChangeRow("112099000000001", str(claim), change, text)
+
+
+def test_texts_source_줄바꿈만_다르면_청구항이력의_깨끗한_글자를_쓴다():
+    # PDF는 줄 폭에서 단어 한가운데를 끊는다 ("화\n분"). 청구항이력은 끊기지 않은 글자다
+    files = {"app.pdf": [APP.replace("【청구항 1】\n화분.", "【청구항 1】\n화\n분.")]}
+    got = build_texts(
+        V0, [V0], {"d_app": "app.pdf"},
+        read_pages=lambda p, d: PageText(
+            document_id=d, status=OK,
+            pages=[Page(page=1, status=OK, text=files[p.name][0])],
+        ),
+        claim_history=[_hist(1, "화분."), _hist(2, "제1항의<br />화분.")],
+    )  # fmt: skip
+    # <br />는 청구항 안의 진짜 줄바꿈이다
+    assert got.claims_at_oa == {1: "화분.", 2: "제1항의\n화분."}
+    assert got.claims_status.value == StatusValue.CONFIRMED
+
+
+def test_texts_source_글자가_다르면_PDF_글자를_그대로_쓴다():
+    # 이력의 다른 판(보정 전 글 등)과 섞이지 않게: 띄어쓰기를 뺀 글자가 같을 때만 바꾼다
+    got = build_texts(
+        V0, [V0, V1, PUB], PATHS, read_pages=_read,
+        claim_history=[_hist(1, "센서 화분."), _hist(2, "제1항의 화분.")],
+    )  # fmt: skip
+    assert got.claims_at_oa == {1: "화분.", 2: "제1항의 화분."}
 
 
 def test_texts_source_보정서_판이면_보정을_적용하고_명세서는_출원서():

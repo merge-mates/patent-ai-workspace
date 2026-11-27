@@ -1,5 +1,6 @@
 // 화면에 들어가기 전에 데이터를 받는 곳 (react-router loader). 화면 부품 안에서 따로 부르지 않는다.
 import { redirect, type LoaderFunctionArgs } from 'react-router'
+import type { AmendmentPlanInfo } from './api'
 import { api } from './api'
 import { ApiError, isNotReady } from './api/errors'
 import type { ResultList } from './api/resultList'
@@ -9,11 +10,12 @@ import type { ReviewItem } from './types/generated/ReviewItem'
 import type { ClarityReview } from './types/generated/ClarityReview'
 import type { ComparisonTable } from './types/generated/ComparisonTable'
 import type { DirectionCandidates } from './types/generated/DirectionCandidates'
+import type { Drafts } from './types/generated/Drafts'
 import type { JudgmentUnit } from './types/generated/JudgmentUnit'
 import type { LegalEvidenceBundle } from './types/generated/LegalEvidenceBundle'
 import type { CaseSummary, ConfirmationOut, OADetail, OAResultResponse } from './types/provisional/case'
 import type { CaseListExtra } from './types/provisional/caseListExtra'
-import type { CaseCheck, DraftsWithCheck } from './types/provisional/pending'
+import type { CaseCheck } from './types/provisional/pending'
 import { seedRun } from './runPoll'
 import { directTodos, pickFocusCase } from './todos'
 
@@ -25,15 +27,60 @@ export interface CasesLoaderData {
   focus: { case: CaseSummary; titles: string[] } | null
 }
 
+// 시연 등에서 사건 목록에 보일 사건만 고른다: VITE_SHOWN_CASES="출원번호,출원번호" (git 밖 web/.env.local).
+// 비어 있으면 모든 사건. 데이터는 지우지 않고 목록에서만 뺀다 (주소로 직접 열면 그대로 열림)
+const SHOWN_CASES = (import.meta.env.VITE_SHOWN_CASES ?? '')
+  .split(',')
+  .map((x: string) => x.trim())
+  .filter(Boolean)
+
 export async function casesLoader(): Promise<CasesLoaderData> {
-  const [cases, extraList] = await Promise.all([api.listCases(), api.listCaseExtras()])
-  const extras = Object.fromEntries(extraList.map((e) => [e.case_id, e]))
+  const [allCases, extraList] = await Promise.all([api.listCases(), api.listCaseExtras()])
+  const cases = SHOWN_CASES.length > 0 ? allCases.filter((c) => SHOWN_CASES.includes(c.case_name)) : allCases
+  const extras: Record<string, CaseListExtra> = Object.fromEntries(extraList.map((e) => [e.case_id, e]))
+  // 서버 모드는 목록 API에 제출기일·단계·할 일 칸이 없어 빈 목록이 온다.
+  // 그 사건들만 작업대 데이터를 받아 사건 화면과 같은 계산으로 채운다 (목록과 사건 화면 숫자가 어긋나지 않게)
+  const missing = cases.filter((c) => !extras[c.case_id])
+  const loaded = new Map<string, OALoaderData>()
+  const settled = await Promise.allSettled(missing.map((c) => loadOA(c.latest_oa.oa_id)))
+  settled.forEach((s, i) => {
+    const c = missing[i]
+    if (s.status === 'fulfilled') {
+      loaded.set(c.case_id, s.value)
+      extras[c.case_id] = extraFromOA(c.case_id, s.value)
+    } else {
+      // 한 사건을 못 받아도 목록은 그린다: 그 사건 칸만 "모름"
+      console.warn('사건 목록: 작업대 데이터를 받지 못함', c.case_id, s.reason)
+    }
+  })
   const top = pickFocusCase(cases, new Map(Object.entries(extras)))
   if (top === null) return { cases, extras, focus: null }
-  // 한 건만 제목이 필요해서 그 사건만 작업대 데이터를 받는다
-  const d = await loadOA(top.latest_oa.oa_id)
+  // 위에서 받은 것이 있으면 다시 받지 않는다
+  const d = loaded.get(top.case_id) ?? (await loadOA(top.latest_oa.oa_id))
   const todos = directTodos(d)?.todos ?? []
   return { cases, extras, focus: { case: top, titles: todos.slice(0, 3).map((t) => t.title) } }
+}
+
+// 작업대 데이터 → 목록 표 칸 (제출기일 원문 글자 · 지금 단계 · 직접 할 일 개수)
+function extraFromOA(caseId: string, d: OALoaderData): CaseListExtra {
+  // 지금 단계: 결과가 있는 가장 뒤 단계 (모름(null)은 건너뛰지 않고 그 앞에서 멈추지도 않는다)
+  const stage = d.ready.drafts
+    ? 'drafts'
+    : d.ready.directions
+      ? 'directions'
+      : d.ready.compare
+        ? 'compare'
+        : d.ready.summary
+          ? 'summary'
+          : null
+  // 직접 할 일: 방향 고르기를 못 셌으면 개수가 "이 이상"이라 모름(null)으로 둔다 (적게 보이지 않게)
+  const list = directTodos(d)
+  return {
+    case_id: caseId,
+    response_due_raw: d.oaResult?.result.response_due.raw_text ?? null,
+    stage,
+    todo_count: list && list.directionsKnown ? list.todos.length : null,
+  }
 }
 
 // /cases/:caseId → 그 사건의 가장 최근 OA 작업대로
@@ -70,6 +117,8 @@ export interface OALoaderData {
   ready: { summary: boolean; compare: boolean | null; directions: boolean | null; drafts: boolean | null }
   // 결과 유무만 보려던 호출이 실패했을 때 화면에 작게 보일 경고 ("<단계> 결과를 받지 못했어요")
   warnings: string[]
+  // 이 출원의 명세서(출원서) 문서 ID: 사건의 출원 때 청구항 판이 나온 문서. 모르면 null (원문 판에 명세서 탭을 두지 않음)
+  specDocumentId: string | null
 }
 
 export function oaLoader({ params }: LoaderFunctionArgs): Promise<OALoaderData> {
@@ -88,8 +137,7 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const oa = await api.getOA(oaId)
   // 실행 상태 폴링에 지금 값을 넣는다 (화면은 이 값을 구독한다)
   if (oa.latest_run) seedRun(oa.latest_run)
-  let draftCheckMissing = false
-  const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP] = await Promise.all([
+  const [oaResult, confirmationP, materialsP, reviewList, document, directionsP, legalP, unitsP, draftsP, comparisonsP, caseDetail] = await Promise.all([
     api.getOAResult(oa.oa_id).catch(notReadyAsNull),
     // 정리 확인: 결과가 아직 없으면 null, 그 밖의 오류는 모름(null) + 경고 (화면을 막지 않는다)
     probe(api.getOAResultConfirmation(oa.oa_id)),
@@ -108,21 +156,11 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
     probe(api.getLegalEvidence(oa.oa_id).then(itemsOf)),
     // 대비·초안 단계에 결과가 있는지만 알려고 부른다 (값은 쓰지 않고, 없는 것을 지어내지 않는다)
     probe(api.getUnits(oa.oa_id).then(itemsOf)),
-    // 초안은 있는데 검사 결과(check)만 없으면(draft_check_missing) 초안 단계는 "있음"으로 보고 경고만 따로 단다
-    probe(
-      api.getDrafts(oa.oa_id).then(
-        () => true,
-        (e: unknown) => {
-          if (e instanceof ApiError && e.code === 'draft_check_missing') {
-            draftCheckMissing = true
-            return true
-          }
-          throw e
-        },
-      ),
-    ),
+    probe(api.getDrafts(oa.oa_id).then(() => true)),
     // 단계 막대 "차이점 후보 N": 대비표를 받아 센다 (결과가 아직 없으면 null)
     probe(api.getComparisons(oa.oa_id).then(itemsOf)),
+    // 명세서 탭용 사건 정보: 못 받아도 화면을 막지 않는다 (탭만 빠짐)
+    api.getCase(oa.case_id).catch(() => null),
   ])
   // 결과 유무 확인이 result_not_ready 아닌 오류로 실패하면 화면 전체를 막지 않고 "모름"(null) + 경고로 둔다
   const warnings: string[] = []
@@ -139,14 +177,15 @@ async function loadOA(oaId: string): Promise<OALoaderData> {
   const units = known(unitsP, '인용발명 대비')
   const drafts = known(draftsP, '초안')
   const comparisons = known(comparisonsP, '대비표')
-  if (draftCheckMissing) warnings.push('초안 검사 결과가 없어요: 누락 검사·번호 불일치를 보일 수 없어요')
   const ready = {
     summary: oaResult !== null,
     compare: unitsP.unknown ? null : units !== null,
     directions: directionsP.unknown ? null : directions !== null,
     drafts: draftsP.unknown ? null : drafts !== null,
   }
-  return { oa, oaResult, confirmation, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings }
+  // 출원 때 판(application)을 뽑은 문서 = 명세서(출원서)
+  const specDocumentId = caseDetail?.claim_versions?.find((v) => v.source_kind === 'application')?.document_id ?? null
+  return { oa, oaResult, confirmation, materials, reviewItems, document, directions, units, comparisons, legal, ready, warnings, specDocumentId }
 }
 
 // 결과 목록에서 목록만 (결과 유무·개수만 보는 곳)
@@ -218,17 +257,20 @@ export interface DirectionsLoaderData {
   caseCheck: CaseCheck | null
   // 대응 방향 목록이 빈 이유 (서버 empty_reason). 목록이 있으면 null
   directionsEmptyReason: string | null
+  // 사건 단위 보정안이 있으면 보정은 사건 전체에서 정한 것 (대응 방향의 묶음별 보정 칸은 숨긴다)
+  hasCasePlan: boolean
 }
 
 // 4 대응 방향: 묶음마다 후보 + 사건 전체 검사
 // 실행 중이라 결과가 아직 없으면 null (화면은 "아직 결과가 없어요"를 보인다)
 export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<DirectionsLoaderData | null> {
   const oaId = params.oaId!
-  const [units, directions, comparisons, caseCheck] = await Promise.all([
+  const [units, directions, comparisons, caseCheck, plan] = await Promise.all([
     api.getUnits(oaId).catch(notReadyAsNull),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getComparisons(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
+    api.getAmendmentPlan(oaId).catch(() => null),
   ])
   if (units === null || directions === null) return null
   return {
@@ -237,24 +279,27 @@ export async function directionsLoader({ params }: LoaderFunctionArgs): Promise<
     comparisons: comparisons?.items ?? [],
     caseCheck,
     directionsEmptyReason: reasonOf(directions),
+    hasCasePlan: plan !== null,
   }
 }
 
 export interface DraftsLoaderData {
   // 초안이 아직 없으면 null (404 result_not_ready)
-  drafts: DraftsWithCheck | null
+  drafts: Drafts | null
   // 지금 선택: 초안이 바탕으로 삼은 선택과 다른지 본다
   directions: DirectionCandidates[]
   caseCheck: CaseCheck | null
   // 초안이 없는 이유 (서버가 result: null과 함께 준 empty_reason: 모든 묶음 보류·F4 넘김 등). 모르면 null
   draftsEmptyReason: string | null
+  // 사건 단위 보정안의 전략 글·다른 안·코드 검사 (이 브랜치). 그 보정안을 쓰지 않은 실행이면 null
+  plan: AmendmentPlanInfo | null
 }
 
 // 5 의견서·보정 초안
 export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<DraftsLoaderData | null> {
   const oaId = params.oaId!
   let draftsEmptyReason: string | null = null
-  const [drafts, directions, caseCheck] = await Promise.all([
+  const [drafts, directions, caseCheck, plan] = await Promise.all([
     api.getDrafts(oaId).catch((e: unknown) => {
       // 실행이 끝났는데 초안이 없으면 서버는 200 + empty_reason을 준다 (api가 result_not_ready·httpStatus 200으로 바꿔 던짐)
       if (isNotReady(e) && e instanceof ApiError && e.httpStatus === 200) draftsEmptyReason = e.message
@@ -262,8 +307,9 @@ export async function draftsLoader({ params }: LoaderFunctionArgs): Promise<Draf
     }),
     api.getDirections(oaId).catch(notReadyAsNull),
     api.getCaseCheck(oaId).catch(notReadyAsNull),
+    api.getAmendmentPlan(oaId).catch(() => null),
   ])
   // 방향 결과가 아직 없으면(실행 중) 초안도 없다: 빈 화면 대신 "아직 결과가 없어요"
   if (directions === null) return null
-  return { drafts, directions: directions.items, caseCheck, draftsEmptyReason }
+  return { drafts, directions: directions.items, caseCheck, draftsEmptyReason, plan }
 }

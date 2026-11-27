@@ -674,7 +674,8 @@
           "reason": "not_extracted",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 2,
@@ -693,7 +694,8 @@
           "reason": "not_extracted",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 3,
@@ -712,7 +714,8 @@
           "reason": "not_extracted",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 4,
@@ -731,7 +734,8 @@
           "reason": "not_extracted",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       },
       {
         "claim": 1,
@@ -750,7 +754,8 @@
           "reason": "not_extracted",
           "checked": null,
           "searched_scope": null
-        }
+        },
+        "check_failed": null
       }
     ]
   },

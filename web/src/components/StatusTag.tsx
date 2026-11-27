@@ -5,6 +5,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons'
 import { Tag, Tooltip } from 'antd'
+import { scopeText } from '../format'
 import { unverifiedReasonLabel } from '../labels'
 import type { Status, StatusValue } from '../types/generated/OAResult'
 
@@ -69,7 +70,7 @@ export function StatusTag({ status, detail = true, compact = false, unverifiedTe
   if (s.value === 'not_found_in_scope') {
     return (
       <Tag icon={<SearchOutlined />} style={{ background: '#f0f0f0', color: 'rgba(0,0,0,0.65)', whiteSpace: 'normal', maxWidth: '100%' }}>
-        조회 범위 내 없음{detail && s.searched_scope ? ` · ${s.searched_scope}` : ''}
+        조회 범위 내 없음{detail && s.searched_scope ? ` · ${scopeText(s.searched_scope)}` : ''}
       </Tag>
     )
   }

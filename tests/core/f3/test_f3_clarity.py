@@ -131,6 +131,16 @@ def test_짚은_문구를_청구항_원문에서_찾아_위치를_적는다():
     assert first.note and "앞 청구항에 제어 모듈이 나오지 않음" in first.note
 
 
+def test_심사관이_물결표로_감싼_문구도_청구항_원문에서_찾는다():
+    # 통지서는 문구 일부를 "~상기 제어 모듈~"처럼 물결표로 감싸 인용한다 (물결표는 원문 아님)
+    quoted = f"~{TERM}~"
+    out, _ = _run(_oa([quoted]), _answer([_term(quoted, pick=(P16, DEFINITION))]))
+    (only,) = out.reviews
+    start = CLAIMS[3].index(TERM)
+    assert only.claim_location == f"청구항 3 [글자 {start}-{start + len(TERM)}]"
+    assert only.status.value == StatusValue.CONFIRMED
+
+
 def test_청구항_원문에_없는_문구는_확인되지_않음으로_남긴다(caplog):
     answer = _answer([_term(TERM, pick=(P16, DEFINITION))])
     with caplog.at_level(logging.WARNING):

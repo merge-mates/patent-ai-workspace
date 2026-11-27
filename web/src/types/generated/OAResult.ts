@@ -93,6 +93,7 @@ export type Origin2 = 'ai_generated' | 'ai_default' | 'human_selected' | 'human_
 export type NoLocation = string | null
 export type RawText9 = string | null
 export type Page9 = number | null
+export type CheckFailed = string | null
 export type ClaimRows = ClaimRow[]
 
 export interface OAResult {
@@ -223,8 +224,9 @@ export interface CandidateListStr {
 /**
  * 청구항 줄 하나 = 청구항 x 거절이유 (정답 형식 2.4, 채점 단위).
  *
- * 값은 원문 대조를 통과했을 때만 둔다. 대조에 떨어지면 status가 unverified이고 값은 비어 있다
- * (청구항·거절이유 번호만 어느 줄인지 알리려고 남길 수 있음).
+ * 확인됨 줄의 값은 원문 대조를 통과한 값이다. 대조에 떨어진 줄은 status가 unverified이고,
+ * 모델이 준 값(판단 원문·쪽·인용·위치)을 check_failed(떨어진 검사)와 함께 남길 수 있다 (11/26 D3:
+ * 사람이 "확인 필요"로 보게). 모델이 줄을 주지 않은 빈 줄은 번호만 남긴다.
  */
 export interface ClaimRow {
   claim: Claim
@@ -239,6 +241,7 @@ export interface ClaimRow {
   raw_text: RawText9
   page: Page9
   status: Status
+  check_failed: CheckFailed
 }
 export interface Locations {
   [k: string]: string[]

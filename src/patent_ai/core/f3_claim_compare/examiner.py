@@ -1,7 +1,7 @@
 """심사관 지정 위치 -> 색인 조각 맞추기 (답이 정해진 코드 도구).
 
 위치 글자는 F1이 정답 꼴로 맞춰 둔 값이다:
-`[0016]`, `[0080]-[0081]`, `도 4c`, `청구항 9`, `요약`, `3:5-10`.
+`[0016]`, `[0080]-[0081]`, `도 4c`, `청구항 9`, `청구항 1-3`, `요약`, `3:5-10`.
 맞춤 규칙은 검색 계약 design 7-4의 인용문헌 판정과 같다 (채점기 코드는 import하지 않는다):
 문단·범위는 겹치는 문단 조각, 도면은 그 도면 번호를 담은 조각,
 청구항은 그 청구항 조각, 요약은 요약 조각.
@@ -19,7 +19,7 @@ from patent_ai.retrieval.schemas import Chunk
 # F1이 만든 위치 값의 꼴 (해석이 아니라 정해진 코드 값 읽기)
 _PARAGRAPH = re.compile(r"\[(\d{1,4})\](?:-\[(\d{1,4})\])?")
 _FIGURE = re.compile(r"도 (\d+)[A-Za-z]?")
-_CLAIM = re.compile(r"청구항 (\d+)")
+_CLAIM = re.compile(r"청구항 (\d+)(?:-(\d+))?")  # 범위(청구항 1-3)도: 통지서 구성 대비표 머리
 _COLUMN_LINE = re.compile(r"\d+:\d+(?:-\d+)?")
 _NO_LOCATION = "위치 없음"
 _MAX_SAME_AS_HOPS = 5  # 같은 취지 줄을 따라가는 깊이 상한 (돌고 도는 것 막기)
@@ -52,7 +52,10 @@ def match_location(location: str, chunks: list[Chunk]) -> ExaminerMatch:
     elif m := _FIGURE.fullmatch(location):
         found = [c for c in chunks if int(m.group(1)) in c.location.figures]
     elif m := _CLAIM.fullmatch(location):
-        found = [c for c in chunks if int(m.group(1)) in c.location.claims]
+        # 청구항 하나 또는 범위: 그 번호들 중 하나라도 담은 청구항 조각
+        first = int(m.group(1))
+        numbers = set(range(first, int(m.group(2) or first) + 1))
+        found = [c for c in chunks if numbers & set(c.location.claims)]
     elif location == "요약":
         found = [c for c in chunks if c.chunk_kind == "abstract"]
     elif _COLUMN_LINE.fullmatch(location):

@@ -8,13 +8,20 @@
 초안 검사(인용 번호·문단·조문이 앞 결과와 맞는지, 이슈 #40)는 여기서 하지 않는다.
 """
 
+import json
 import logging
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from patent_ai.core.bundle_errors import BUNDLE_ERRORS, failed_status, why
 from patent_ai.core.f4_response_draft.config import F4Options, load_f4_options
-from patent_ai.core.f4_response_draft.directions import f3_results, to_json, unit_variables
+from patent_ai.core.f4_response_draft.directions import (
+    f3_results,
+    to_json,
+    unit_scope,
+    unit_variables,
+)
 from patent_ai.core.f4_response_draft.inputs import F4Input, legal_bundle_for
 from patent_ai.core.f4_response_draft.llm_call import call_with_one_retry
 from patent_ai.core.llm.limits import RunContext
@@ -35,9 +42,14 @@ from patent_ai.core.schemas.drafts import AmendedClaim, BasedOn, Drafts, Opinion
 from patent_ai.core.schemas.judgment_unit import JudgmentUnit
 from patent_ai.core.schemas.propagation import propagate
 
+if TYPE_CHECKING:  # amendment.py가 이 파일을 import한다 (돌고 도는 import 막기)
+    from patent_ai.core.f4_response_draft.amendment import AmendmentPart
+
 logger = logging.getLogger(__name__)
 
 STEP = "f4.opinion"
+# 보정 초안을 먼저 만든 뒤 부르는 의견서 단계 (설정 opinion_after_amendment). 프롬프트가 다르다
+STEP_AMENDED = "f4.opinion_amended"
 
 # 의견서 칸 제목 (순서는 OpinionKey 선언 순서)
 SECTION_TITLES: dict[OpinionKey, str] = {
@@ -46,6 +58,7 @@ SECTION_TITLES: dict[OpinionKey, str] = {
     OpinionKey.RESPONSE: "대응과 근거",
     OpinionKey.AMENDMENT: "보정 설명",
     OpinionKey.CLOSING: "마무리",
+    OpinionKey.REVIEW: "변리사 확인 사항 (제출 전 지울 것)",
 }
 # 사건 전체에 한 번만 쓰는 칸: 첫 묶음 것만 쓴다. 나머지 칸은 묶음 순서대로 이어 붙인다
 _ONCE = (OpinionKey.CASE_INFO, OpinionKey.CLOSING)
@@ -78,6 +91,8 @@ class OpinionPart(BaseModel):
     status: Status
     evidence: list[Evidence] = Field(default_factory=list)
     flags: list[Flag] = Field(default_factory=list)
+    # 의견서만 실행에서 고른 방향의 보정 유무가 바깥 보정 결과와 어긋난 묶음 (opinion_v2)
+    mismatch_units: list[str] = Field(default_factory=list)
 
 
 def has_amendment(candidate: DirectionCandidate) -> bool:
@@ -133,7 +148,9 @@ def _prompt_variables(
 ) -> dict[str, str]:
     """프롬프트 변수. 방향은 고른 후보 하나만 싣는다 (다른 후보는 어디에도 넣지 않음)."""
     variables = unit_variables(inp, unit, f3, bundle, max_candidates=1)
-    del variables["max_candidates"]  # 방향 후보 단계에만 있는 자리
+    # 방향 후보 단계에만 있는 자리. 청구항 글자는 보정 범위(ADR 0005) 그대로 둔다:
+    # 고른 방향이 범위만 넓힌 종속항을 합치면 의견서 보정 설명이 그 글자를 봐야 한다
+    del variables["max_candidates"], variables["scope_block"]
     oa = inp.oa
     variables["case_info"] = to_json(
         {
@@ -161,12 +178,83 @@ def _prompt_variables(
     return variables
 
 
+def examiner_rows(inp: F4Input, unit: JudgmentUnit) -> str:
+    """이 묶음의 보정 범위 청구항마다 심사관이 든 인용·위치 (F1 항별 줄, 확인된 줄만).
+
+    거절이유 단위 인용은 여러 항을 한데 묶어 위치가 비기 쉽다 (예: 20개 항 거절이유의 문단 칸 null).
+    의견서는 항마다 심사관이 무엇을 어디를 들었는지 알아야 그 주장에 답할 수 있다.
+    """
+    scope = set(unit_scope(inp, unit).claims) | set(unit.claims)
+    rows = [
+        {
+            "claim": r.claim,
+            "rejection": r.rejection,
+            "citations": r.citations,
+            "locations": r.locations,
+            "same_as": r.same_as,
+            "no_location": r.no_location,
+            "examiner_text": r.raw_text,  # 심사관이 이 항을 판단한 OA 원문 글자
+        }
+        for r in inp.oa.claim_rows
+        if r.claim in scope and r.status.value == StatusValue.CONFIRMED
+    ]
+    rows.sort(key=lambda x: (x["claim"], x["rejection"] or 0))
+    if not rows:
+        logger.warning("f4.opinion %s: 확인된 F1 항별 줄이 0개", unit.unit_id)
+        return "(확인된 항별 심사관 근거 없음: 거절이유 단위 자료만 있음)"
+    return to_json(rows)
+
+
+def amended_claims(amendment: AmendmentPart, chosen: DirectionCandidate, unit: JudgmentUnit) -> str:
+    """이 묶음에서 만든 보정 결과: 청구항마다 종류(고른 방향의 amendment_core)·보정 앞뒤 글자."""
+    kinds = {a.claim: a.kind.value for a in chosen.amendment_core}
+    rows = [
+        {
+            "claim": c.claim,
+            "kind": kinds.get(c.claim, "unknown"),
+            "before": c.before,
+            "after": c.ai_text,  # 보류면 null
+            "held_reason": c.held_reason,
+        }
+        for c in amendment.claims
+        if c.unit_id == unit.unit_id
+    ]
+    if not rows:
+        return "(이 묶음은 보정한 청구항 없음)"
+    return to_json(rows)
+
+
+def planned_part(inp: F4Input, directions: list[DirectionCandidates]) -> OpinionPart:
+    """의견서를 부르기 전, 보정 단계에 넘길 '어느 묶음이 어느 후보인가'만 담은 부분 결과.
+
+    보정 단계(build_amendments)는 의견서의 based_on·held_units만 본다. 보정을 먼저 만들 때
+    고른 후보로 같은 값을 만든다 (의견서 칸은 비어 있다).
+    """
+    by_unit = {d.unit_id: d for d in directions}
+    based_on: list[BasedOn] = []
+    held: list[str] = []
+    for unit in sorted(inp.units, key=lambda u: (u.order, u.unit_id)):
+        result = by_unit.get(unit.unit_id)
+        chosen = selected_candidate(result) if result else None
+        if chosen is None:
+            held.append(unit.unit_id)
+        else:
+            based_on.append(BasedOn(unit_id=unit.unit_id, candidate_id=chosen.candidate_id))
+    return OpinionPart(
+        sections=[],
+        based_on=based_on,
+        held_units=held,
+        status=Status(value=StatusValue.UNVERIFIED, reason=UnverifiedReason.NOT_EXTRACTED),
+    )
+
+
 def build_opinion(
     inp: F4Input,
     directions: list[DirectionCandidates],
     ctx: RunContext,
     *,
     options: F4Options | None = None,
+    amendment: AmendmentPart | None = None,
 ) -> OpinionPart:
     """방향을 고른 묶음마다 의견서 칸을 만들어 order 순으로 잇는다.
 
@@ -210,8 +298,14 @@ def build_opinion(
         f3, bundle = f3_results(inp, unit), legal_bundle_for(inp, unit)
         amended = has_amendment(chosen)
         variables = _prompt_variables(inp, unit, chosen, f3, bundle)
+        step = STEP
+        if amendment is not None:
+            # 보정을 먼저 만든 실행: 보정 결과와 항별 심사관 근거를 더 싣고 다른 프롬프트를 쓴다
+            step = STEP_AMENDED
+            variables["amended_claims"] = amended_claims(amendment, chosen, unit)
+            variables["examiner_rows"] = examiner_rows(inp, unit)
         try:
-            out = call_with_one_retry(STEP, variables, _checked_schema(amended), ctx)
+            out = call_with_one_retry(step, variables, _checked_schema(amended), ctx)
         except BUNDLE_ERRORS as e:
             # 이 묶음만 보류한다 (사람이 직접 판단). 다음 묶음은 계속 진행
             logger.warning("f4.opinion %s: %s (이 묶음만 보류)", unit.unit_id, why(e))
@@ -289,3 +383,54 @@ def drafts_from_opinion(
         evidence=part.evidence,
         flags=flags,
     )
+
+
+def build_case_opinion(
+    inp: F4Input, selected: str, ctx: RunContext, *, oa_text: str | None = None
+) -> OpinionOut:
+    """사건 단위 의견서 (합친 흐름 실험, 이 브랜치): 모든 묶음을 한 번의 호출로 쓴다.
+
+    묶음마다 따로 부르면 같은 보정 설명이 겹치고 다른 묶음의 심사관 판단을 못 본다.
+    그래서 앱 의견서 프롬프트의 자리를 사건 전체 값으로 채운다: 묶음·거절이유·F3 결과·법률 근거는
+    목록으로, 청구항은 전체를, OA 원문 글(oa_text)이 있으면 거절이유 뒤에 붙인다.
+    selected는 고른 방향 자리에 넣을 글(보정안과 지시)이다. 보정 설명 칸은 늘 있어야 한다.
+    """
+    units = sorted(inp.units, key=lambda u: (u.order, u.unit_id))
+    if not units:
+        raise ValueError(f"판단 단위가 0개라 사건 단위 의견서를 만들 수 없음: {inp.oa.oa_id}")
+    per_unit = []
+    for unit in units:
+        v = unit_variables(
+            inp, unit, f3_results(inp, unit), legal_bundle_for(inp, unit), max_candidates=1
+        )
+        per_unit.append({k: json.loads(v[k]) for k in ("unit", "rejection", "comparison", "legal")})
+    seen, rejections = set(), []
+    for row in per_unit:  # 같은 거절이유는 한 번만
+        if row["rejection"]["no"] not in seen:
+            seen.add(row["rejection"]["no"])
+            rejections.append(row["rejection"])
+    rejection = to_json(rejections)
+    if oa_text:
+        rejection += "\n\nOA 글자 전체 (원문)\n" + oa_text
+    variables = unit_variables(
+        inp, units[0], f3_results(inp, units[0]), legal_bundle_for(inp, units[0]), 1
+    )
+    del variables["max_candidates"]
+    variables.pop("scope_block", None)  # 의견서 프롬프트에 없는 자리 (보정 범위 글, #349)
+    variables |= {
+        "unit": to_json([r["unit"] for r in per_unit]),
+        "rejection": rejection,
+        "claims_text": "\n\n".join(f"[청구항 {c.claim}]\n{c.text}" for c in inp.claims_text),
+        "comparison": to_json([r["comparison"] for r in per_unit]),
+        "legal": to_json([r["legal"] | {"unit_id": r["unit"]["unit_id"]} for r in per_unit]),
+        "case_info": to_json(
+            {
+                "application_number": None,
+                "dispatch_number": None,
+                "notice_date": None,
+                "response_due": None,
+            }
+        ),
+        "selected": selected,
+    }
+    return call_with_one_retry(STEP, variables, _checked_schema(True), ctx)

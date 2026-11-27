@@ -93,6 +93,28 @@ def _passes(found: Found, pages: PageText) -> bool:
     return raw_text_on_page(pages, found.page, found.raw_text)
 
 
+def _fix_page(found: Found, pages: PageText, field: str) -> Found:
+    """모델이 준 쪽에 글자가 없고 바로 앞뒤 한 쪽 중 한 곳에만 있으면 그 쪽으로 바로잡는다.
+
+    꼬리말("- 2 -") 바로 뒤 글자를 앞 쪽으로 적는 일이 있다 (11/27, 등록특허공보 번호).
+    결과의 쪽은 원문에서 찾은 쪽이라 틀린 쪽이 남지 않는다. 두 쪽 이상 틀리거나
+    앞뒤 두 쪽에 다 있으면 어느 쪽인지 정할 수 없어 바로잡지 않는다 (지어내지 않음).
+    """
+    if found.raw_text is None or found.page is None or _passes(found, pages):
+        return found
+    near = [
+        p
+        for p in (found.page - 1, found.page + 1)
+        if p >= 1 and raw_text_on_page(pages, p, found.raw_text)
+    ]
+    if len(near) != 1:
+        return found
+    logger.info(
+        "쪽 번호를 원문에서 찾은 쪽으로 바로잡음: field=%s %s→%s", field, found.page, near[0]
+    )
+    return Found(found.value, found.raw_text, near[0], found.ambiguous)
+
+
 def unverified(
     reason: UnverifiedReason, found: Found | None = None, *, keep_location: bool = False
 ) -> ExtractedValue:
@@ -119,7 +141,8 @@ def merge(
     field: 로그에 찍을 필드 이름 (값 글자는 찍지 않는다).
     """
     given = [("rule", rule), ("model", model)]
-    given = [(s, f) for s, f in given if f is not None]
+    # 쪽이 한 쪽 틀린 값은 원문에서 찾은 쪽으로 바로잡은 뒤 대조한다
+    given = [(s, _fix_page(f, pages, field)) for s, f in given if f is not None]
     # 1) 둘 다 안 뽑았다
     if not given:
         return unverified(UnverifiedReason.NOT_EXTRACTED)

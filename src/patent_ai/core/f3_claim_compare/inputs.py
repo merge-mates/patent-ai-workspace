@@ -95,6 +95,9 @@ class F3Inputs(BaseModel):
     claims_status: Status
     claims_document_id: str  # 청구항 글자가 나온 문서 ID
     spec: PageText | None = None  # 최초 명세서 쪽 글자 (명확성 단계가 씀). 없으면 None
+    # 대표 청구항에 차이점이 있어도 대비를 건너뛰지 않을 종속항 (11/26 P5: 실제 보정이 독립항에
+    # 합치거나 자체로 한정·부가한 종속항, 의견서가 따로 반박한 종속항). 비면 지금 규칙 그대로
+    compare_claims: list[int] = Field(default_factory=list)
 
 
 class F3Config(BaseModel):

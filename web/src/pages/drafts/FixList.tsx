@@ -1,4 +1,5 @@
-import { Button, Tag } from 'antd'
+import { NextStep } from '../../components/NextStep'
+import { Alert, Button, Tag } from 'antd'
 import { useContext } from 'react'
 import { Link } from 'react-router'
 import { SourceContext } from '../../components/sourceContext'
@@ -8,12 +9,15 @@ import type { Fix } from './coverage'
 export function FixList({
   fixes,
   caseItems,
+  notChecked,
   hasCheck,
   onShowClaims,
   onShowOpinion,
 }: {
-  fixes: Fix[]
+  fixes: Fix[] | null
   caseItems: { name: string; result: 'warn' | 'fail' | 'ok'; detail: string }[]
+  // AI가 아직 검사하지 않는 규칙 (확인할 것 개수에 넣지 않고 이름만 한 줄로)
+  notChecked: { name: string }[]
   hasCheck: boolean
   onShowClaims: () => void
   onShowOpinion: (title: string) => void
@@ -22,10 +26,19 @@ export function FixList({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <h2 className="heading2" style={{ marginBottom: 8 }}>
-        {`제출 전에 고칠 곳 ${fixes.length}`}
+        {fixes === null ? '제출 전에 고칠 곳' : `제출 전에 고칠 곳 ${fixes.length}`}
       </h2>
-      {fixes.length === 0 && <span className="body1 t2">고칠 곳으로 잡힌 것이 없어요. 제출 전에 한 번 더 직접 읽어 주세요.</span>}
-      {fixes.map((f) => (
+      {fixes === null && (
+        <>
+          <Alert type="warning" showIcon message="초안 검사 결과가 아직 없어요 · 누락과 번호 일치를 직접 확인해 주세요" />
+          {/* 다음 단계: 제출 전 초안 자동 검사 (지금은 사람이 직접 확인) */}
+          <NextStep title="초안 자동 검사">
+            제출 전에 의견서·보정안을 AI가 검사해 여기에 고칠 곳으로 보여요: 거절이유·청구항이 빠지지 않았는지, 청구항 번호와 인용 관계가 맞는지, 보정이 최초 명세서 범위 안인지, 의견서가 심사관 판단을 바르게 옮겼는지.
+          </NextStep>
+        </>
+      )}
+      {fixes?.length === 0 && <span className="body1 t2">고칠 곳으로 잡힌 것이 없어요. 제출 전에 한 번 더 직접 읽어 주세요.</span>}
+      {fixes?.map((f) => (
         <div
           key={f.key}
           style={{
@@ -77,6 +90,12 @@ export function FixList({
             </div>
           ))}
         </div>
+      )}
+      {notChecked.length > 0 && (
+        // AI가 아직 검사하지 않는 규칙: 문제 개수에 넣지 않되, 사람이 볼 것이라 이름은 다 보인다
+        <span className="label2 t3" style={{ marginTop: 8 }}>
+          AI가 아직 검사하지 않아 직접 봐 주세요: {notChecked.map((it) => it.name).join(', ')}
+        </span>
       )}
       {!hasCheck && <span className="label2 t3">사건 전체 검사 결과가 아직 없어요 (확인되지 않음)</span>}
     </div>

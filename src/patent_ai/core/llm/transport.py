@@ -64,8 +64,16 @@ def is_real_transport(transport) -> bool:
 
 
 class Transport(Protocol):
+    # system: 단계 설정에 system_prompt가 있을 때만 넘긴다 (없으면 인자 자체를 안 넘김)
     def complete(
-        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
+        self,
+        *,
+        step: str,
+        model: str,
+        prompt: str,
+        effort: str,
+        max_tokens: int,
+        system: str | None = None,
     ) -> TransportResponse: ...
 
     def converse(
@@ -98,14 +106,24 @@ class AnthropicTransport:
         self._client = anthropic.Anthropic()
 
     def complete(
-        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
+        self,
+        *,
+        step: str,
+        model: str,
+        prompt: str,
+        effort: str,
+        max_tokens: int,
+        system: str | None = None,
     ) -> TransportResponse:
-        message = self._stream_message(
+        kwargs = dict(
             model=model,
             max_tokens=max_tokens,
             output_config={"effort": effort},
             messages=[{"role": "user", "content": prompt}],
         )
+        if system is not None:
+            kwargs["system"] = system  # 의견서·저지처럼 역할 글을 user와 나눌 때만
+        message = self._stream_message(**kwargs)
         return parse_anthropic_message(message)
 
     def converse(
@@ -214,17 +232,19 @@ class FakeTransport:
     _used: dict[str, int] = field(default_factory=dict)
 
     def complete(
-        self, *, step: str, model: str, prompt: str, effort: str, max_tokens: int
+        self,
+        *,
+        step: str,
+        model: str,
+        prompt: str,
+        effort: str,
+        max_tokens: int,
+        system: str | None = None,
     ) -> TransportResponse:
-        self.calls.append(
-            dict(
-                step=step,
-                model=model,
-                prompt=prompt,
-                effort=effort,
-                max_tokens=max_tokens,
-            )
-        )
+        call = dict(step=step, model=model, prompt=prompt, effort=effort, max_tokens=max_tokens)
+        if system is not None:
+            call["system"] = system  # system을 받은 호출만 칸이 생긴다
+        self.calls.append(call)
         if step not in self.responses:
             raise ModelConfigError(f"FakeTransport에 {step!r}의 답이 없음")
         item = self.responses[step]

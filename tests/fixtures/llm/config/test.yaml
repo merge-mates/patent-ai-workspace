@@ -16,3 +16,16 @@ missingprompt:
   effort: medium
   max_tokens: 100
   prompt: prompts/does_not_exist.txt
+# system 칸이 있는 단계 (P0.5): system_prompt 파일은 변수 없이 그대로 system으로 간다
+withsystem:
+  model: fake-model-1
+  effort: medium
+  max_tokens: 256
+  prompt: prompts/summarize.txt
+  system_prompt: prompts/summarize.system.txt
+badsystem:
+  model: fake-model-1
+  effort: medium
+  max_tokens: 256
+  prompt: prompts/summarize.txt
+  system_prompt: prompts/system_with_var.txt

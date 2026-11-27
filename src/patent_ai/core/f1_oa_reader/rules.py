@@ -121,7 +121,7 @@ def expand_claims(text: str) -> list[int] | None:
     # 군더더기(청구항·제·항)를 지우고 `내지`·`~`는 `-`로 바꿔 `1-4,6` 꼴로 만든다
     s = text.replace("내지", "-").replace("~", "-")
     s = s.replace("및", ",").replace("와", ",").replace("과", ",")  # 이음말은 쉼표로
-    s = re.sub(r"청구항|[제항]|\s+", "", s)
+    s = re.sub(r"청구항|발명|[제항]|\s+", "", s)  # '청구항 1 발명'의 '발명'도 군더더기
     if not s:
         return None
     numbers: set[int] = set()
@@ -192,22 +192,50 @@ def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
 # 정답 형식(f1-oa-gold.md 2.4): 문단 `[0016]`, 범위 `[0080]-[0081]`, 도면 `도 4c`,
 # 인용문헌 청구항 `청구항 9`, `요약`, 미국 칼럼·줄 `3:5-10`
 _LOC_NOISE = re.compile(
-    r"등\s*참조|참조|식별번호|단락\s*번호|단락|문단|paragraphs?|para\.?", re.IGNORECASE
+    r"(?:및\s*)?관련\s*설명\s*(?:부분)?|등\s*참조|참조|식별번호|단락\s*번호|단락|문단|등\s*(?=$|[)）])"
+    r"|paragraphs?|para\.?",
+    re.IGNORECASE,
 )
 _LOC_TOKEN = re.compile(
     r"""
     (?P<range>\[\s*(?P<ra>\d+)\s*\]\s*(?:-|~|내지)\s*\[\s*(?P<rb>\d+)\s*\])
     |\[(?P<group>[\d\s,~\-]+)\]
-    |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?(?:\s*(?:,|및)\s*\d+[A-Za-z]?(?![\d:A-Za-z]|\s*:))*)
-    |청구항\s*제?\s*(?P<claim>\d+)\s*항?
+    |(?P<paper>페이지\s*(?P<pp>\d+)\s*P?\s*,?\s*섹션\s*(?P<ps>\d+(?:\.\d+)*)\s*,?\s*
+        (?:(?P<pl1>\d+)\s*[-~]\s*(?P<pl2>\d+)\s*라인|(?P<pfull>\d+)\s*쪽\s*전체))
+    |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?
+        (?:\s*(?:,|및)\s*\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?(?![\d:A-Za-z]|\s*:))*)
+    |(?<![\d:.\-])(?P<bare>\d{4})(?:\s*[-~]\s*(?P<bare2>\d{4}))?(?![\d:])
+    |청구항\s*제?\s*(?P<claim>\d+(?:\s*-\s*\d+)?(?:\s*(?:,|및)\s*\d+(?:\s*-\s*\d+)?)*)\s*항?
     |(?P<abstract>요약)
     |(?P<sign>[가-힣A-Za-z]+\s*\(\s*\d+[A-Za-z]?(?:\s*,\s*\d+[A-Za-z]?)*\s*\))
     |(?:col\.?\s*)?(?P<col>\d+)\s*(?::|,\s*ll?\.?)\s*(?P<l1>\d+)(?:\s*[-~]\s*(?P<l2>\d+))?
     """,
     re.VERBOSE,
 )
-_LOC_SEPARATOR = re.compile(r"[\s,;/]|및")
+# 구분 기호: 판단 원문 속 괄호로 감싼 위치("개시하고 있어(청구항 1, 6)")도 읽게 괄호를 넣는다
+_LOC_SEPARATOR = re.compile(r"[\s,;/()（）]|및")
 _MAX_PARAGRAPH = 9999  # 문단 번호는 4자리까지
+
+
+def _cited_claims(body: str) -> list[str] | None:
+    """인용문헌 청구항 번호 글자를 정답 꼴로.
+
+    `12-24` -> [`청구항 12-24`], `1-2,12` -> [`청구항 1-2`, `청구항 12`].
+    """
+    out: list[str] = []
+    for part in re.split(r",|및", body):
+        m = re.fullmatch(r"\s*(\d+)(?:\s*-\s*(\d+))?\s*", part)
+        if not m:
+            return None
+        a = int(m.group(1))
+        if m.group(2):
+            b = int(m.group(2))
+            if b < a:
+                return None  # 거꾸로 범위는 지어내지 않는다
+            out.append(f"청구항 {a}-{b}")
+        else:
+            out.append(f"청구항 {a}")
+    return out
 
 
 def _paragraph(n: str) -> str | None:
@@ -250,10 +278,27 @@ def parse_cited_locations(raw: str) -> list[str] | None:
             found = [one] if one else None
         elif m.group("group") is not None:
             found = _paragraph_group(m.group("group"))
+        elif m.group("bare"):
+            # 괄호 없이 4자리로만 쓴 문단 번호 ("(0052 등)", "0018-0019"): 대괄호 꼴과 같게 읽는다
+            if m.group("bare2"):
+                one = _paragraph_range(m.group("bare"), m.group("bare2"))
+                found = [one] if one else None
+            else:
+                found = [_paragraph(m.group("bare"))] if _paragraph(m.group("bare")) else None
+        elif m.group("paper"):
+            # 논문 위치: 정답 꼴 `3쪽 3.1절 1-5줄` (#11/26 P4 원인 표, case04)
+            head = f"{int(m.group('pp'))}쪽 {m.group('ps')}절"
+            if m.group("pl1"):
+                found = [f"{head} {int(m.group('pl1'))}-{int(m.group('pl2'))}줄"]
+            else:
+                found = [f"{head} {int(m.group('pfull'))}쪽 전체"]
         elif m.group("fig"):
-            found = [f"도 {n}" for n in re.findall(r"\d+[A-Za-z]?", m.group("fig"))]
+            # `도 3-5`처럼 도면 범위는 정답도 한 조각 그대로
+            figs = re.findall(r"\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?", m.group("fig"))
+            found = [f"도 {re.sub(r'\s+', '', n)}" for n in figs]
         elif m.group("claim"):
-            found = [f"청구항 {int(m.group('claim'))}"]
+            # 인용문헌 청구항: `청구항 12-24`(범위는 한 조각), `청구항 1-2,12항`(목록은 나눔)
+            found = _cited_claims(m.group("claim"))
         elif m.group("abstract"):
             found = ["요약"]
         elif m.group("sign"):
@@ -271,11 +316,23 @@ def parse_cited_locations(raw: str) -> list[str] | None:
 
 # ---- 청구항 줄: 같은 취지 대상, 따옴표 안 글자 ----
 _SAME_REJECTION = re.compile(r"거절\s*이유\s*(?:제\s*)?(\d+)")
-_SAME_SECTION = re.compile(r"(\d+)\s*-\s*\d+\s*에서\s*본\s*바와")  # "1-1에서 본 바와 같이"
+# "1-1에서 본 바와 같이", "상기 1-1.에서 살펴본 바와 같이"
+_SAME_SECTION = re.compile(r"(\d+)\s*-\s*\d+\s*\.?\s*에서\s*(?:살펴\s*)?본\s*바와")
 _SAME_MARK = re.compile(r"(.*)[과와]\s*(?:동일|같)")  # 마지막 "과/와 같" 앞까지
 _CLAIM_LIST = re.compile(
     r"(?:청구항\s*)?제?\s*\d+\s*항?(?:\s*(?:내지|~|-|,|및)\s*(?:청구항\s*)?제?\s*\d+\s*항?)*"
 )
+
+
+def claims_mentioned(text: str) -> set[int]:
+    """글에 '청구항 N'·'제N항' 꼴로 나온 청구항 번호 전부 (문단·도면 부호 숫자는 뺀다)."""
+    out: set[int] = set()
+    for m in _CLAIM_LIST.finditer(text):
+        token = m.group(0)
+        if "청구항" not in token and not token.rstrip().endswith("항"):
+            continue  # '항'도 '청구항'도 없는 숫자(문단·부호)는 청구항이 아님
+        out.update(expand_claims(token) or [])
+    return out
 
 
 def parse_same_as(raw: str) -> list[str] | None:

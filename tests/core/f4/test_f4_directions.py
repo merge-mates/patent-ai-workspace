@@ -539,3 +539,16 @@ def test_다른_단위의_보류는_옮기지_않는다():
         for c in r.candidates:
             assert c.status.value == StatusValue.CONFIRMED
             assert not any(k.startswith("F3 보류") for k in c.checks)
+
+
+# ---- 보정 방식 안내: 사건 단위 보정이면 묶음 방향에 보정안을 쓰지 않게 알린다 (11/27) ----
+def test_사건_단위_보정이면_방향_프롬프트에_보정_방식_안내를_붙인다():
+    from patent_ai.core.f4_response_draft.config import F4Options
+    from patent_ai.core.f4_response_draft.directions import amendment_mode_note
+
+    case_mode = F4Options(
+        final_rejection_limit=False, max_units=20, max_candidates=3, amendment_enabled=False
+    )
+    unit_mode = F4Options(final_rejection_limit=False, max_units=20, max_candidates=3)
+    assert "사건 전체" in amendment_mode_note(case_mode)
+    assert amendment_mode_note(unit_mode) == ""

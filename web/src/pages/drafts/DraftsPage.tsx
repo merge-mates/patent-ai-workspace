@@ -3,6 +3,7 @@ import { EmptyReason } from '../../components/EmptyReason'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useRouteLoaderData } from 'react-router'
 import { api, API_MODE } from '../../api'
+import { hasDraftCheck } from '../../api/draftCheck'
 import { AiTag, HumanTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { TrackedText } from '../../components/TrackedText'
@@ -10,10 +11,10 @@ import type { DraftsLoaderData, OALoaderData } from '../../loaders'
 import { unsupportedRejectionNos } from '../../format'
 import { LOW_CONFIDENCE_TEXT, rejectionKindLabel } from '../../labels'
 import { useRunSnapshot } from '../../useRunSnapshot'
-import type { AmendedClaim, Evidence1 } from '../../types/generated/Drafts'
-import type { DraftPatch, DraftsWithCheck } from '../../types/provisional/pending'
+import type { AmendedClaim, Drafts, Evidence1 } from '../../types/generated/Drafts'
+import type { DraftPatch } from '../../types/provisional/pending'
 import { CoverageTable } from './CoverageTable'
-import { buildCoverage, buildFixes, caseToCheck } from './coverage'
+import { buildCoverage, buildFixes, caseToCheck, isNotYetChecked } from './coverage'
 import { FixList } from './FixList'
 
 // 고치는 중인 곳: 의견서 칸 하나 또는 보정 청구항 하나 (보낼 요청과 같은 모양)
@@ -50,22 +51,23 @@ function LinkedText({ text, evidence, onOpen }: { text: string; evidence: Eviden
   )
 }
 
-// 청구항이 어떻게 바뀌었나: 지운 글만 남으면 삭제, 같으면 그대로
+// 청구항이 어떻게 바뀌었나: 지운 글만 남거나 "(삭제)"로 적혀 있으면 삭제, 같으면 그대로
+// (사건 단위 보정안은 지운 항을 빈 글 대신 "(삭제)"로 준다)
 function claimKind(before: string, text: string): '보정' | '삭제' | '그대로' {
-  if (text.trim() === '') return '삭제'
+  if (text.trim() === '' || /^\(\s*삭제\s*\)$/.test(text.trim())) return '삭제'
   return text === before ? '그대로' : '보정'
 }
 
 // 5 초안 단계: 대응 현황 표 → 제출 전에 고칠 곳 → 초안 본문(의견서 / 보정 청구항)
 export function DraftsPage() {
-  const { drafts: initial, directions, caseCheck, draftsEmptyReason } = useLoaderData() as DraftsLoaderData
-  const { oaResult, oa } = useRouteLoaderData('oa') as OALoaderData
+  const { drafts: initial, directions, caseCheck, draftsEmptyReason, plan } = useLoaderData() as DraftsLoaderData
+  const { oaResult, oa, specDocumentId } = useRouteLoaderData('oa') as OALoaderData
   // 그 OA의 최근 실행이 아직 도는 동안 보이는 초안은 옛것이다 (방향을 고르면 초안만 다시 만드는 작은 실행이 생긴다)
   const runState = useRunSnapshot(oa.latest_run)?.run.state
   const rebuilding = runState === 'queued' || runState === 'running'
   const { message } = App.useApp()
   const { openCite } = useContext(SourceContext)
-  const [drafts, setDrafts] = useState<DraftsWithCheck | null>(initial)
+  const [drafts, setDrafts] = useState<Drafts | null>(initial)
   const [view, setView] = useState<'opinion' | 'claims'>('opinion')
   const [aiShown, setAiShown] = useState<string[]>([]) // AI 원문을 펼친 칸: 's:<key>' / 'c:<청구항>'
   const [editing, setEditing] = useState<Editing>(null)
@@ -96,8 +98,11 @@ export function DraftsPage() {
   const rejections = oaResult?.result.rejections ?? []
   // AI가 다루지 않은 거절이유: 사건 전체 검사 + 정리 결과의 supported=false
   const unsupported = unsupportedRejectionNos(caseCheck?.unsupported_rejections, rejections)
-  const coverage = buildCoverage(drafts, directions, rejections, unsupported)
-  const fixes = buildFixes(drafts, directions, rejections, unsupported, drafts.opinion.map((x) => x.title))
+  const checkedDrafts = hasDraftCheck(drafts) ? drafts : null
+  const coverage = checkedDrafts === null ? null : buildCoverage(checkedDrafts, directions, rejections, unsupported)
+  const fixes = checkedDrafts === null
+    ? null
+    : buildFixes(checkedDrafts, directions, rejections, unsupported, drafts.opinion.map((x) => x.title))
   const caseItems = caseToCheck(caseCheck?.items ?? [])
 
   // 고친 글을 저장한다. AI 원본(ai_text)은 서버가 그대로 남기고 사람 글은 human_text에 둔다
@@ -149,8 +154,15 @@ export function DraftsPage() {
 
   // 근거 링크는 의견서·보정 청구항 근거 목록에서 같은 위치를 찾아 원문 판으로
   const allEvidence = [...drafts.evidence, ...drafts.claims.flatMap((c) => c.spec_basis)]
+  // 근거 문서의 이름: 출원 명세서면 "최초 명세서", 인용문헌이면 통지서의 인용 이름(D1 등). 모르면 "근거"
+  // (문단 표기 "[0044]"만 보고 명세서라고 하면 인용문헌 문단도 "최초 명세서"로 잘못 보인다)
+  const docName = (documentId: string): string => {
+    if (specDocumentId !== null && documentId === specDocumentId) return '최초 명세서'
+    for (const r of rejections) for (const c of r.citations) if ((c.number.value ?? c.number.raw_text) === documentId) return c.label
+    return '근거'
+  }
   const openBasis = (token: string, e: Evidence1) =>
-    openCite({ title: `최초 명세서 ${token}`, items: [e], status: drafts.status, note: null })
+    openCite({ title: `${docName(e.document_id)} ${token}`, items: [e], status: drafts.status, note: null })
 
   const claimView = (c: AmendedClaim) => {
     const key = `c:${c.claim}`
@@ -178,7 +190,7 @@ export function DraftsPage() {
               type="info"
               showIcon
               message="직접 쓴 방향이라 AI가 초안을 만들지 않아요 · 직접 대응해 주세요"
-              description={rebuilding ? '실행이 끝나면 이 묶음이 보류로 바뀌어요' : undefined}
+              description={rebuilding ? '실행이 끝나면 이 청구항들이 보류로 바뀌어요' : undefined}
             />
           ) : note === 'picked' ? (
             <Alert
@@ -187,7 +199,7 @@ export function DraftsPage() {
               message={
                 rebuilding
                   ? '고른 방향으로 초안을 만드는 중 · 끝나면 보여요'
-                  : '방향을 골랐어요. 이 묶음의 초안은 아직 없어요 · 다시 만들어야 함'
+                  : '방향을 골랐어요. 이 청구항들의 초안은 아직 없어요 · 다시 만들어야 함'
               }
               description={
                 API_MODE === 'mock'
@@ -229,8 +241,23 @@ export function DraftsPage() {
             )}
           </>,
         )}
+        {/* 사건 단위 보정안의 코드 검사 표시 (고치지 않고 알리기만, 적법성 판단 아님) */}
+        {(plan?.checks ?? [])
+          .filter((x) => x.claim === c.claim)
+          .map((x, i) => (
+            <Alert
+              key={i}
+              type="warning"
+              showIcon
+              message={
+                x.kind === 'dangling_reference'
+                  ? `지운 청구항 ${x.detail}을(를) 아직 인용해요 · 인용 번호를 확인해 주세요`
+                  : `명세서·원래 청구항에서 찾지 못한 문구 · 명세서 근거를 확인해 주세요: ${x.detail}`
+              }
+            />
+          ))}
         {note === 'written' && (
-          <Alert type="warning" showIcon message="직접 쓴 방향으로 바뀜 · 이 초안은 이전 방향으로 만든 것이에요. AI는 이 묶음 초안을 다시 만들지 않으니 직접 대응해 주세요" />
+          <Alert type="warning" showIcon message="직접 쓴 방향으로 바뀜 · 이 초안은 이전 방향으로 만든 것이에요. AI는 이 청구항들의 초안을 다시 만들지 않으니 직접 대응해 주세요" />
         )}
         {note === 'changed' && (
           <Alert type="warning" showIcon message="선택이 바뀜 · 다시 만들어야 함. 이 초안은 이전 방향으로 만든 것이라 다시 확인이 필요해요" />
@@ -263,9 +290,9 @@ export function DraftsPage() {
                 key={`${b.document_id}-${where}`}
                 type="link"
                 size="small"
-                onClick={() => openCite({ title: `근거 ${where}`, items: [b], status: drafts.status, note: null })}
+                onClick={() => openCite({ title: `${docName(b.document_id)} ${where}`, items: [b], status: drafts.status, note: null })}
               >
-                {where.startsWith('[') ? `최초 명세서 ${where}` : where}
+                {`${docName(b.document_id)} ${where}`}
               </Button>
             )
           })}
@@ -276,7 +303,7 @@ export function DraftsPage() {
   }
 
   // 번호 불일치가 가리킨 칸: 빨간 물결 밑줄 + 줄 아래 작은 글 (문장 위치는 데이터에 없다)
-  const mismatchesOf = (title: string) => drafts.check.number_mismatches.filter((m) => m.where === title)
+  const mismatchesOf = (title: string) => checkedDrafts?.check.number_mismatches.filter((m) => m.where === title) ?? []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
@@ -284,10 +311,11 @@ export function DraftsPage() {
       {rebuilding && (
         <Alert type="info" showIcon message="초안 다시 만드는 중 · 지금 보이는 초안은 이전 방향으로 만든 것이에요. 끝나면 새 초안으로 바뀌어요 · 그때까지는 옛 초안을 고칠 수 없어요" />
       )}
-      <CoverageTable model={coverage} />
+      {coverage !== null && <CoverageTable model={coverage} />}
       <FixList
         fixes={fixes}
         caseItems={caseItems}
+        notChecked={(caseCheck?.items ?? []).filter(isNotYetChecked)}
         hasCheck={caseCheck !== null}
         onShowClaims={() => setView('claims')}
         onShowOpinion={(title) => {
@@ -308,7 +336,7 @@ export function DraftsPage() {
             ]}
           />
           <span style={{ flex: '1 1 auto' }} />
-          <AiTag>{`AI 초안 · 묶음 선택 ${pickSource}`}</AiTag>
+          <AiTag>{`AI 초안 · 대응 방향 ${pickSource}`}</AiTag>
           {/* 내려받기는 API가 자리만이라 막아 둔다 */}
           <Tooltip title="서버가 오면 내려받을 수 있어요">
             <Button disabled>내려받기</Button>
@@ -346,6 +374,12 @@ export function DraftsPage() {
                         lineHeight: '28px',
                         margin: 0,
                         cursor: 'text',
+                        // 모델이 나눈 문단·목록 줄바꿈을 살린다 (없으면 칸 전체가 한 덩어리로 붙어 보임)
+                        whiteSpace: 'pre-wrap',
+                        // 변리사 확인 사항은 제출할 본문이 아니라 검토 메모: 회색 상자로 구분
+                        ...(s.key === 'review'
+                          ? { background: 'var(--bg-neutral-secondary)', padding: '14px 18px', borderRadius: 8, fontSize: 14, lineHeight: '24px' }
+                          : {}),
                         ...(mism.length > 0 ? { textDecoration: 'underline wavy var(--fg-negative-text)', textUnderlineOffset: 5 } : {}),
                       }}
                     >
@@ -373,6 +407,42 @@ export function DraftsPage() {
         ) : (
           <>
             <span className="label2 t3">검토용 초안이에요. 보정이 적법한지는 판단하지 않아요. AI가 바꾼 곳은 파랑, 지운 곳은 줄을 그었어요. 사람이 고친 곳은 검정 밑줄이에요.</span>
+            {plan && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 16px', border: '1px solid var(--line-neutral-tertiary)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className="headline2" style={{ fontWeight: 600 }}>보정 전략</span>
+                  <AiTag>AI 추천 · 방향이 다른 3안 중 1번</AiTag>
+                </div>
+                <span className="body1">{plan.strategy}</span>
+                {plan.alternatives.length > 0 && (
+                  <details>
+                    <summary className="label1">다른 안 {plan.alternatives.length}개 보기</summary>
+                    <ol style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+                      {plan.alternatives.map((a, i) => (
+                        <li key={i} className="body2">{a}</li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+                <span className="label2 t3">
+                  {`청구항 ${drafts.claims.length}개를 고치거나 지워요 · 코드 검사 표시 ${plan.checks.length}건`}
+                </span>
+                {plan.extra.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                    <span className="label1" style={{ fontWeight: 600 }}>{`검토해 볼 항 ${plan.extra.length}개`}</span>
+                    <span className="label2 t3">추천 안은 그대로 두지만 다른 방향의 안은 고친 항이에요. 실제 보정에서 자주 함께 바뀌니 넣을지 한 번 봐 주세요.</span>
+                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                      {plan.extra.map((x) => (
+                        <li key={x.claim} className="body2">
+                          {`청구항 ${x.claim} · ${x.action === 'delete' ? '삭제' : x.action === 'add' ? '추가' : '고침'} (${x.drafts.map((d) => `${d}번 안`).join(', ')})`}
+                          {x.reason && <span className="t3">{` — ${x.reason}`}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             {drafts.claims.map(claimView)}
           </>
         )}
