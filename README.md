@@ -196,18 +196,6 @@ tests/          테스트 (API · 코어 · DB · E2E)
 원본 데이터·사건 자료·정답은 `data/`, `work/`(git 밖)에 두고 어떤 커밋에도 넣지 않는다.
 
 
-## AI와 같이 개발한 방식
-
-두 사람이 3주 안에 완성하기 위해, 첫날부터 Claude Code와 일하는 틀을 저장소에 넣었다.
-
-- **팀 규칙** [`CLAUDE.md`](CLAUDE.md): 폴더 역할, 부르는 방향, 특허 도메인 규칙(판 섞지 않기, 못 찾음 ≠ 없음), 리뷰 심각도(막음 / 고칠 것 / 참고)를 사람과 AI가 같이 따른다.
-- **스킬** [`.claude/skills/`](.claude/skills/README.md): 이슈 하나를 `/start → /implement → /check → /pr-draft` 순서로 돌린다. 기획 질문(`/interview`), 문서 검토(`/doc-review`), 실험 채점(`/experiment`), 상대 PR 리뷰(`/pr-review`)도 스킬로 부른다.
-- **역할 에이전트** [`.claude/agents/`](.claude/agents/): 구현(테스트 먼저), 코드 리뷰, 설계 비판, 계획 리뷰, 실험 분석, 검증, 조사.
-- **문서 흐름**: 기능마다 `requirements.md`(무엇) → `design.md`(어떻게) → `tasks.md`(이번 이터레이션 할 일), 되돌리기 어려운 결정은 ADR.
-- **안전장치**: 최종 평가 정답을 개발 세션이 못 열게 막는 훅, gitignore된 파일 강제 추가 금지, push·PR·머지는 사람이 승인.
-- **GitHub flow**: 계획 하나 = 브랜치 하나 = PR 하나, 상대가 리뷰, merge commit으로 머지.
-
-
 ## 데이터 출처
 
 - [KIPRIS Plus](https://plus.kipris.or.kr/): 행정 이력, 공보, 청구항 변동 이력, 의견제출통지서
