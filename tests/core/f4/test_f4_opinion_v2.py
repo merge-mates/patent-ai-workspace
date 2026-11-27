@@ -108,13 +108,19 @@ def _run(amendment=ORACLE, case_out=CASE_WITH, enabled=False):
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
-    options = dataclasses.replace(load_f4_options(), amendment_enabled=enabled)
+    # 사건 단위 보정안은 끈다: 바깥 보정 결과만으로 쓰는 의견서를 본다
+    options = dataclasses.replace(
+        load_f4_options(), amendment_enabled=enabled, case_amendment_enabled=False
+    )
     out = run_f4(F4Input.model_validate(_case(amendment)), ctx=ctx, options=options)
     return out, transport
 
 
-def test_기본값은_보정안_단계_켬():
-    assert load_f4_options().amendment_enabled is True
+def test_기본값은_보정안_단계_끄고_사건_단위_보정안_켬():
+    # 11/26 골 모드 Bh: 방향 → 사건 단위 보정안 → 의견서
+    options = load_f4_options()
+    assert options.amendment_enabled is False
+    assert options.case_amendment_enabled is True
 
 
 def test_끄면_보정안_단계를_부르지_않고_묶음마다_반박_사건마다_한_번():
@@ -170,7 +176,9 @@ def test_사건_전체_답의_보정_설명_유무가_바깥_보정과_어긋나
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
-    options = dataclasses.replace(load_f4_options(), amendment_enabled=False)
+    options = dataclasses.replace(
+        load_f4_options(), amendment_enabled=False, case_amendment_enabled=False
+    )
     out = run_f4(F4Input.model_validate(_case()), ctx=ctx, options=options)
     assert [c["step"] for c in transport.calls].count("f4.opinion_case") == 2
     assert OpinionKey.AMENDMENT in {s.key for s in out.drafts.opinion}
@@ -274,7 +282,9 @@ def _run_units(unit_answers, case_out=CASE_WITH):
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
-    options = dataclasses.replace(load_f4_options(), amendment_enabled=False)
+    options = dataclasses.replace(
+        load_f4_options(), amendment_enabled=False, case_amendment_enabled=False
+    )
     out = run_f4(F4Input.model_validate(_case(MERGED)), ctx=ctx, options=options)
     return out, transport
 

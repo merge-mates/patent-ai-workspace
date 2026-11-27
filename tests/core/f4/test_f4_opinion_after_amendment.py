@@ -57,7 +57,13 @@ def _run(after: bool) -> FakeTransport:
     ctx = RunContext(
         run_id="r_1", budget=CallBudget(), recorder=MemoryRecorder(), transport=transport
     )
-    options = dataclasses.replace(load_f4_options(), opinion_after_amendment=after)
+    # 옛 흐름(보정안 단계 켬)에서만 쓰는 스위치라 흐름을 적어 둔다 (기본값은 11/26부터 새 흐름)
+    options = dataclasses.replace(
+        load_f4_options(),
+        opinion_after_amendment=after,
+        amendment_enabled=True,
+        case_amendment_enabled=False,
+    )
     run_f4(F4Input.model_validate(_case()), ctx=ctx, options=options)
     return transport
 
