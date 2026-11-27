@@ -53,7 +53,8 @@ search:
 
 # 단계: 청구항 하나의 구성요소 × 후보 문단 대비 판정
 compare:
-  model: claude-haiku-5-5
+  # 11/24 재아 결정: 대비 판정은 Sonnet (나누기·효과·명확성은 Haiku 그대로, 이슈 #345)
+  model: claude-sonnet-5-5
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/compare.md
@@ -67,7 +68,7 @@ compare:
 compare_recall:
   # max_model_calls·max_retries는 compare 칸과 같은 근거(판단 단위 × 청구항 + 검사 실패 재시도, second_search 두 배).
   # compare_variant가 하나만 돌아 두 칸 합계가 아니라 한쪽 상한만 쓰인다
-  model: claude-haiku-5-5
+  model: claude-sonnet-5-5
   effort: medium
   max_tokens: 64000
   prompt: prompts/f3/compare_recall.md

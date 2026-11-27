@@ -482,9 +482,12 @@ def test_명확성_단위는_건너뛰고_대비표만_모은다():
 
 # ---- 설정·임베딩 ----
 def test_compare와_embed_단계_설정():
+    # 대비 판정은 Sonnet (11/24 재아 결정, 이슈 #345). compare_recall은 프롬프트만 다르고 같은 모델
     cfg = load_step_config("f3.compare")
-    assert (cfg.model, cfg.effort, cfg.max_tokens) == ("claude-haiku-5-5", "medium", 64000)
+    assert (cfg.model, cfg.effort, cfg.max_tokens) == ("claude-sonnet-5-5", "medium", 64000)
     assert cfg.prompt == "prompts/f3/compare.md" and cfg.max_model_calls is not None
+    recall = load_step_config("f3.compare_recall")
+    assert (recall.model, recall.effort) == (cfg.model, cfg.effort)
     embed = load_embed_config("f3.embed")
     assert embed.max_model_calls is not None
 
