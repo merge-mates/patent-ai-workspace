@@ -1,6 +1,7 @@
 import { caseToCheck } from '../drafts/coverage'
 import { App, Alert, Button, Input, Radio } from 'antd'
 import { EmptyReason } from '../../components/EmptyReason'
+import { NextStep } from '../../components/NextStep'
 import { useContext, useState } from 'react'
 import { Link, useLoaderData, useNavigate, useRevalidator, useRouteLoaderData } from 'react-router'
 import { api } from '../../api'
@@ -311,6 +312,12 @@ export function DirectionsPage() {
             </span>
           }
         />
+      )}
+      {/* 다음 단계: 방향을 고를 때 명세서 문단도 본다 (숫자는 실험 카드 m3-i2-spec-before-direction-pilot 그대로) */}
+      {directions.length > 0 && (
+        <NextStep title="명세서 문단을 보고 방향 고르기">
+          지금 방향은 청구항·인용발명 대비·법리만 보고 골라요. 다음 단계에서는 보정 근거가 될 명세서 문단도 함께 찾아 봐요. 파일럿(tune 4건, 1회 실행)에서 실제 대응과 방향이 맞은 줄이 17줄 중 8줄 → 11줄이었어요.
+        </NextStep>
       )}
       {/* 빈 목록이면 서버가 준 이유를 (넘김·보류·확인되지 않음), 이유가 없으면 지금 글자 */}
       {directions.length === 0 &&

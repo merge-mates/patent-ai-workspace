@@ -8,6 +8,7 @@ import { CoreLabel, HumanCheckTag } from '../../components/Marks'
 import { SourceContext } from '../../components/sourceContext'
 import { locationLabels } from '../../components/citeLabels'
 import { StatusTag } from '../../components/StatusTag'
+import { NextStep } from '../../components/NextStep'
 import { differenceElements } from './differences'
 import { COMPARE_UNVERIFIED_TEXT } from '../../labels'
 import type { ComparisonRow, ComparisonTable, Judgment, NoveltySummary } from '../../types/generated/ComparisonTable'
@@ -301,6 +302,12 @@ export function ComparisonView({ t, oa, unit }: { t: ComparisonTable; oa: OAResu
           </ul>
         )}
         {t.summary.kind === 'novelty' && <p className="body1 t2">{sentence(t.summary.reason)} 판정은 하지 않아요.</p>}
+        {/* 다음 단계: 차이를 다른 인용발명이 메우는지(결합) AI가 판단. 지금은 심사관 판단 요약만 있다 */}
+        {t.summary.kind === 'inventive_step' && diffNames(t).length > 0 && (
+          <NextStep title="결합 판단">
+            {`차이점 후보 ${diffNames(t).length}개를 다른 인용발명이 메우는지(결합 동기·설계변경 여부)를 AI가 구성요소마다 판단해 결론 칸에 붙여요. 지금은 위 심사관 판단 요약과 심사관이 짚은 문단까지만 보여요.`}
+          </NextStep>
+        )}
         {/* 표가 "조회 범위 내 없음"이면 그 꼬리표와 찾아본 범위를 같이 */}
         {t.status.value !== 'confirmed' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
