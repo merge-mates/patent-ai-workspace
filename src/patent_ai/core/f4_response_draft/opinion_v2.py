@@ -74,7 +74,8 @@ class CaseOut(BaseModel):
 _INTERNAL = re.compile(
     r"\b(supported|initial|final|merged_into|changed_in_other_units|unit_id|notice_kind|"
     r"amended|deleted|added|unchanged|clarity|inventive_step|novelty|difference_candidate|"
-    r"disclosed|not_found_in_scope|unverified|confirmed|ai_found)\b"
+    r"disclosed|not_found_in_scope|unverified|confirmed|ai_found|"
+    r"argue_only|amend_and_argue|amend_only)\b"
     r"|\[(법률 근거 )?확인 필요[^\]]*\]|조문 표기",
     re.IGNORECASE,
 )
@@ -307,11 +308,36 @@ def examiner_rows_v2(inp: F4Input, unit: JudgmentUnit) -> str:
     return to_json(rows)
 
 
+# 방향 코드 값 → 의견서 모델에 넘길 한국어 (코드 값을 넘기면 모델이 글에 그대로 옮겨 쓴다)
+COARSE_KO = {
+    "argue_only": "보정 없이 반박",
+    "amend_and_argue": "보정과 반박 병행",
+    "amend_only": "보정만",
+}
+REBUTTAL_KO = {
+    "difference": "차이점",
+    "no_motivation": "결합 동기 없음",
+    "combination_difficulty": "결합 곤란",
+    "remarkable_effect": "현저한 효과",
+    "hindsight": "사후적 고찰",
+    "not_substantially_same": "실질적 동일 아님",
+    "grace_period": "공지예외",
+    "obvious_error": "명백한 오기",
+    "clear_from_description": "설명으로 명확",
+    "other": "기타",
+}
+
+
 def _rebuttal_of(chosen) -> str:
     """고른 방향에서 반박 논점만 (보정 종류 amendment_core는 바깥 보정 결과를 따르므로 뺀다)."""
     data = chosen.model_dump(
         mode="json", include={"coarse", "name", "reason", "per_rejection", "rebuttal"}
     )
+    # 코드 값은 한국어로 바꿔 넘긴다
+    data["coarse"] = COARSE_KO.get(data.get("coarse"), data.get("coarse"))
+    if isinstance(data.get("rebuttal"), dict):
+        kind = data["rebuttal"].get("type")
+        data["rebuttal"]["type"] = REBUTTAL_KO.get(kind, kind)
     if not chosen.rebuttal and not chosen.per_rejection:
         data["note"] = (
             "이 방향에는 반박 논점이 없음: 대비 결과의 차이점과 항별 심사관 근거로 반박을 세운다"

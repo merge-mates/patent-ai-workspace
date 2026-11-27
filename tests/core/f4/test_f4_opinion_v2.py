@@ -342,3 +342,34 @@ def test_확인_메모는_같은_말을_한_번만_내부_코드는_한국어로
     assert sum("[0041]" in x for x in lines) == 1  # 같은 말은 한 번
     assert "unclear" not in review and "판단 어려움" in review
     assert "상위 20" not in review
+
+
+# ---- 방향 코드 값이 의견서 글에 새지 않게 (11/27: 검토 칸에 "(argue_only)"가 나옴) ----
+def test_고른_방향의_코드_값은_한국어로_넘기고_글에_나오면_내부_말로_잡는다():
+    from patent_ai.core.f4_response_draft.opinion_v2 import _rebuttal_of, internal_words
+    from patent_ai.core.schemas.direction import CoarseDirection, RebuttalType
+
+    @dataclasses.dataclass
+    class _Rebuttal:
+        type: RebuttalType
+        summary: str
+
+    @dataclasses.dataclass
+    class _Chosen:
+        coarse: CoarseDirection
+        name: str
+        reason: str
+        per_rejection: list
+        rebuttal: _Rebuttal | None
+
+        def model_dump(self, mode: str, include: set[str]) -> dict:
+            data = {k: v for k, v in dataclasses.asdict(self).items() if k in include}
+            return json.loads(json.dumps(data, default=str))
+
+    chosen = _Chosen(
+        CoarseDirection.ARGUE_ONLY, "반박", "이유", [], _Rebuttal(RebuttalType.DIFFERENCE, "요지")
+    )
+    text = _rebuttal_of(chosen)
+    assert "argue_only" not in text and "보정 없이 반박" in text
+    assert '"difference"' not in text and "차이점" in text
+    assert internal_words("고른 방향은 '설명만 함'(argue_only)인데") == ["argue_only"]
