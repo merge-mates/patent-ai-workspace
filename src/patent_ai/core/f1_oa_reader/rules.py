@@ -192,7 +192,7 @@ def notice_kind_of(pages: PageText) -> ExtractedValue[NoticeKind]:
 # 정답 형식(f1-oa-gold.md 2.4): 문단 `[0016]`, 범위 `[0080]-[0081]`, 도면 `도 4c`,
 # 인용문헌 청구항 `청구항 9`, `요약`, 미국 칼럼·줄 `3:5-10`
 _LOC_NOISE = re.compile(
-    r"(?:및\s*)?관련\s*설명\s*(?:부분)?|등\s*참조|참조|식별번호|단락\s*번호|단락|문단|등\s*$"
+    r"(?:및\s*)?관련\s*설명\s*(?:부분)?|등\s*참조|참조|식별번호|단락\s*번호|단락|문단|등\s*(?=$|[)）])"
     r"|paragraphs?|para\.?",
     re.IGNORECASE,
 )
@@ -204,6 +204,7 @@ _LOC_TOKEN = re.compile(
         (?:(?P<pl1>\d+)\s*[-~]\s*(?P<pl2>\d+)\s*라인|(?P<pfull>\d+)\s*쪽\s*전체))
     |(?<![가-힣])도면?\s*(?P<fig>\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?
         (?:\s*(?:,|및)\s*\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?(?![\d:A-Za-z]|\s*:))*)
+    |(?<![\d:.\-])(?P<bare>\d{4})(?:\s*[-~]\s*(?P<bare2>\d{4}))?(?![\d:])
     |청구항\s*제?\s*(?P<claim>\d+(?:\s*-\s*\d+)?(?:\s*(?:,|및)\s*\d+(?:\s*-\s*\d+)?)*)\s*항?
     |(?P<abstract>요약)
     |(?P<sign>[가-힣A-Za-z]+\s*\(\s*\d+[A-Za-z]?(?:\s*,\s*\d+[A-Za-z]?)*\s*\))
@@ -277,6 +278,13 @@ def parse_cited_locations(raw: str) -> list[str] | None:
             found = [one] if one else None
         elif m.group("group") is not None:
             found = _paragraph_group(m.group("group"))
+        elif m.group("bare"):
+            # 괄호 없이 4자리로만 쓴 문단 번호 ("(0052 등)", "0018-0019"): 대괄호 꼴과 같게 읽는다
+            if m.group("bare2"):
+                one = _paragraph_range(m.group("bare"), m.group("bare2"))
+                found = [one] if one else None
+            else:
+                found = [_paragraph(m.group("bare"))] if _paragraph(m.group("bare")) else None
         elif m.group("paper"):
             # 논문 위치: 정답 꼴 `3쪽 3.1절 1-5줄` (#11/26 P4 원인 표, case04)
             head = f"{int(m.group('pp'))}쪽 {m.group('ps')}절"
